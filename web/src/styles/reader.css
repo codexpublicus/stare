@@ -1,0 +1,35 @@
+/* web/src/styles/reader.css */
+.reader { max-width: 680px; margin: 0 auto; padding: 32px 24px 64px; }
+.reader-header { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-light); }
+.reader-title { font-family: Georgia, 'Times New Roman', serif; font-size: 22px; font-weight: 600; line-height: 1.3; color: var(--text); }
+.reader-meta { margin-top: 6px; font-size: 14px; color: var(--text-secondary); }
+.reader-author { font-family: Georgia, 'Times New Roman', serif; font-style: italic; color: var(--text-secondary); margin-bottom: 16px; font-size: 15px; }
+.reader-text { font-family: Georgia, 'Times New Roman', serif; font-size: 16px; line-height: 1.8; color: var(--text-body); }
+.reader-text p { margin-bottom: 16px; }
+
+.cite-link { color: var(--link); text-decoration: none; border-bottom: 1px dotted var(--link); cursor: pointer; transition: all 0.15s; }
+.cite-link:hover { color: var(--link-hover); border-bottom-style: solid; }
+.cite-unresolved { color: var(--unresolved); border-bottom: 1px dotted var(--unresolved-border); cursor: default; }
+.page-marker { font-family: -apple-system, system-ui, sans-serif; font-size: 11px; color: var(--text-tertiary); display: inline; margin: 0 2px; user-select: none; }
+
+.cite-badge { display: inline-block; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; padding: 3px 10px; background: var(--cite-badge-bg); border-radius: 4px; margin: 2px 4px 2px 0; color: var(--cite-badge-text); transition: background 0.2s, color 0.2s; }
+.cite-badge.primary { background: var(--cite-badge-primary-bg); color: var(--cite-badge-primary-text); font-weight: 500; }
+
+.cited-case { padding: 6px 0; display: flex; align-items: center; gap: 6px; }
+.cited-case + .cited-case { border-top: 1px solid var(--border-light); }
+.cited-case-link { color: var(--link); text-decoration: none; font-size: 13px; flex: 1; }
+.cited-case-link:hover { text-decoration: underline; }
+.cited-case-unresolved { color: var(--unresolved); font-size: 13px; flex: 1; }
+.cited-status { font-size: 11px; width: 14px; text-align: center; }
+.cited-status.ok { color: var(--status-ok); }
+.cited-status.no { color: var(--status-no); }
+
+.sidebar-action { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--sidebar-action); text-decoration: none; font-size: 13px; cursor: pointer; transition: color 0.15s; }
+.sidebar-action:hover { color: var(--text); }
+.sidebar-action-icon { width: 16px; text-align: center; font-size: 14px; }
+
+.multi-notice { padding: 8px 16px; background: var(--status-bg); border-bottom: 1px solid var(--status-border); font-size: 13px; color: var(--status-text); }
+.multi-notice a { color: var(--link); }
+
+.status-line { padding: 6px 16px; font-size: 13px; color: var(--status-text); min-height: 1.4em; }
+.status-line.error { color: var(--error-text); background: var(--error-bg); border-bottom: 1px solid var(--error-border); }

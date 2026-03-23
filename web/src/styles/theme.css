@@ -1,0 +1,44 @@
+/* web/src/styles/theme.css */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #fff; --bg-alt: #fafafa; --bg-surface: #f5f5f0;
+  --text: #1a1a1a; --text-body: #333; --text-secondary: #888; --text-tertiary: #bbb;
+  --border: #e8e8e8; --border-light: #eee;
+  --topbar-bg: #1a1a1a; --topbar-text: #fff; --topbar-muted: #888;
+  --topbar-divider: #555; --topbar-cite: #ccc; --topbar-edit-border: #444;
+  --link: #2563eb; --link-hover: #1d4ed8;
+  --unresolved: #999; --unresolved-border: #ccc;
+  --status-ok: #22c55e; --status-no: #ddd;
+  --cite-badge-bg: #e8e8e8; --cite-badge-text: #555;
+  --cite-badge-primary-bg: #1a1a1a; --cite-badge-primary-text: #fff;
+  --sidebar-action: #555; --sidebar-meta-strong: #555;
+  --tab-active-border: #1a1a1a; --tab-active-text: #1a1a1a;
+  --footnote-text: #666;
+  --error-bg: #fef2f2; --error-border: #fecaca; --error-text: #dc2626;
+  --status-bg: #f0f7ff; --status-border: #dbeafe; --status-text: #2563eb;
+}
+
+[data-theme="dark"] {
+  --bg: #181818; --bg-alt: #1e1e1e; --bg-surface: #252525;
+  --text: #e4e4e4; --text-body: #ccc; --text-secondary: #888; --text-tertiary: #555;
+  --border: #333; --border-light: #2a2a2a;
+  --topbar-bg: #111; --topbar-text: #e4e4e4; --topbar-muted: #777;
+  --topbar-divider: #444; --topbar-cite: #aaa; --topbar-edit-border: #555;
+  --link: #60a5fa; --link-hover: #93c5fd;
+  --unresolved: #666; --unresolved-border: #444;
+  --status-ok: #4ade80; --status-no: #444;
+  --cite-badge-bg: #333; --cite-badge-text: #aaa;
+  --cite-badge-primary-bg: #2563eb; --cite-badge-primary-text: #fff;
+  --sidebar-action: #aaa; --sidebar-meta-strong: #bbb;
+  --tab-active-border: #e4e4e4; --tab-active-text: #e4e4e4;
+  --footnote-text: #888;
+  --error-bg: #2d1b1b; --error-border: #5c2626; --error-text: #f87171;
+  --status-bg: #1a2332; --status-border: #253344; --status-text: #60a5fa;
+}
+
+body {
+  font-family: -apple-system, system-ui, 'Segoe UI', sans-serif;
+  background: var(--bg); color: var(--text);
+  transition: background 0.2s, color 0.2s;
+}

@@ -1,5 +1,7 @@
 ---
-
+import '../styles/theme.css';
+import '../styles/layout.css';
+import '../styles/reader.css';
 ---
 
 <html lang="en">
@@ -7,192 +9,51 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>stare.pub — U.S. Case Law Citation Resolution</title>
-		<style>
-			* { box-sizing: border-box; margin: 0; padding: 0; }
-			body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem 1rem; color: #1a1a1a; }
-			h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-			.subtitle { color: #666; margin-bottom: 2rem; font-size: 0.9rem; }
-			form { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-			input { padding: 0.5rem 0.75rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
-			input[name="reporter"] { width: 8rem; }
-			input[name="volume"], input[name="page"] { width: 5rem; }
-			button { padding: 0.5rem 1.25rem; background: #1a1a1a; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
-			button:hover { background: #333; }
-			button:disabled { background: #999; cursor: wait; }
-			#status { color: #666; font-size: 0.85rem; margin-bottom: 1rem; min-height: 1.2rem; }
-			#result { display: none; }
-			.case-header { margin-bottom: 1rem; }
-			.case-name { font-size: 1.25rem; font-weight: 600; }
-			.case-meta { color: #666; font-size: 0.9rem; margin-top: 0.25rem; }
-			.opinion { margin-top: 1.5rem; }
-			.opinion-header { font-weight: 600; color: #444; margin-bottom: 0.5rem; }
-			.opinion-text { white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; }
-			.error { color: #c00; }
-		</style>
+		<script is:inline>
+			try {
+				var theme = localStorage.getItem('stare-theme');
+				if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+					document.documentElement.setAttribute('data-theme', 'dark');
+				}
+			} catch(e) {}
+		</script>
 	</head>
 	<body>
-		<h1>stare.pub</h1>
-		<p class="subtitle">U.S. case law citation resolution — all client-side, no server</p>
-
-		<form id="lookup-form">
-			<input name="reporter" placeholder="Reporter (a2d)" required />
-			<input name="volume" type="number" placeholder="Vol" required />
-			<input name="page" type="number" placeholder="Page" required />
-			<button type="submit" id="submit-btn">Resolve</button>
-		</form>
-
-		<div id="status"></div>
-
-		<div id="result">
-			<div class="case-header">
-				<div class="case-name" id="case-name"></div>
-				<div class="case-meta" id="case-meta"></div>
-			</div>
-			<div id="opinions"></div>
+		<!-- Landing state -->
+		<div id="landing" class="landing">
+			<h1 class="landing-brand">stare.pub</h1>
+			<p class="landing-subtitle">U.S. case law citation resolution</p>
+			<form id="landing-form" class="landing-form">
+				<input id="landing-input" type="text" placeholder="a2d 31 647" autocomplete="off" />
+				<button type="submit" id="landing-btn">Resolve</button>
+			</form>
+			<div id="landing-status" class="status-line"></div>
 		</div>
 
-		<script is:inline type="module">
-			import init, { lookup_page, extract_case } from '/wasm/stare_wasm.js';
+		<!-- Resolved state (hidden initially) -->
+		<div id="resolved" class="hidden">
+			<div class="topbar" id="topbar">
+				<span class="topbar-brand">stare.pub</span>
+				<span class="topbar-divider">|</span>
+				<span class="topbar-cite" id="topbar-cite"></span>
+				<span class="topbar-case" id="topbar-case"></span>
+				<button id="theme-btn" class="theme-toggle" title="Toggle dark mode">&#9790;</button>
+				<button id="edit-btn" class="topbar-edit">Edit</button>
+			</div>
+			<div id="status-bar" class="status-line hidden"></div>
+			<div class="layout">
+				<div class="main">
+					<div class="view-tabs">
+						<div class="view-tab active">Reader</div>
+						<div class="view-tab" style="opacity:0.4;cursor:default" title="Coming soon">Original Pages</div>
+					</div>
+					<div id="reader" class="reader"></div>
+				</div>
+				<div class="sidebar" id="sidebar"></div>
+			</div>
+		</div>
+		<button class="sidebar-toggle hidden" id="sidebar-toggle">&#9776;</button>
 
-			// Index bins are served from this site; zips from static.case.law
-			const INDEX_URL = '/data';
-			const ZIP_URL = 'https://static.case.law';
-			const DB_NAME = 'stare-cache';
-			const DB_VERSION = 1;
-
-			let wasmReady = false;
-
-			// IndexedDB for caching zips (too large for localStorage)
-			function openCache() {
-				return new Promise((resolve, reject) => {
-					const req = indexedDB.open(DB_NAME, DB_VERSION);
-					req.onupgradeneeded = () => {
-						const db = req.result;
-						if (!db.objectStoreNames.contains('bins')) db.createObjectStore('bins');
-						if (!db.objectStoreNames.contains('zips')) db.createObjectStore('zips');
-					};
-					req.onsuccess = () => resolve(req.result);
-					req.onerror = () => reject(req.error);
-				});
-			}
-
-			async function cacheGet(store, key) {
-				const db = await openCache();
-				return new Promise((resolve) => {
-					const tx = db.transaction(store, 'readonly');
-					const req = tx.objectStore(store).get(key);
-					req.onsuccess = () => resolve(req.result || null);
-					req.onerror = () => resolve(null);
-				});
-			}
-
-			async function cacheSet(store, key, value) {
-				const db = await openCache();
-				return new Promise((resolve) => {
-					const tx = db.transaction(store, 'readwrite');
-					tx.objectStore(store).put(value, key);
-					tx.oncomplete = () => resolve();
-				});
-			}
-
-			function setStatus(msg) {
-				document.getElementById('status').textContent = msg;
-			}
-
-			function setError(msg) {
-				const el = document.getElementById('status');
-				el.innerHTML = `<span class="error">${msg}</span>`;
-			}
-
-			async function fetchWithCache(store, key, url) {
-				const cached = await cacheGet(store, key);
-				if (cached) return cached;
-				const resp = await fetch(url);
-				if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${url}`);
-				const data = new Uint8Array(await resp.arrayBuffer());
-				await cacheSet(store, key, data);
-				return data;
-			}
-
-			async function resolve(reporter, volume, page) {
-				setStatus('Loading WASM...');
-				if (!wasmReady) {
-					await init();
-					wasmReady = true;
-				}
-
-				const binKey = `${reporter}/${volume}.bin`;
-				setStatus(`Fetching index ${binKey}...`);
-				const binData = await fetchWithCache('bins', binKey, `${INDEX_URL}/${reporter}/${volume}.bin`);
-
-				setStatus('Looking up page...');
-				const caseFile = lookup_page(binData, page);
-				if (!caseFile) {
-					throw new Error(`No case found at page ${page} in ${reporter} vol. ${volume}`);
-				}
-
-				const zipKey = `${reporter}/${volume}.zip`;
-				setStatus(`Fetching case data ${zipKey}...`);
-				const zipData = await fetchWithCache('zips', zipKey, `${ZIP_URL}/${reporter}/${volume}.zip`);
-
-				setStatus('Extracting case...');
-				const caseJson = extract_case(zipData, caseFile);
-				return JSON.parse(caseJson);
-			}
-
-			function displayCase(c) {
-				const cite = c.citations?.[0]?.cite || '';
-				document.getElementById('case-name').textContent = c.name_abbreviation;
-				document.getElementById('case-meta').textContent =
-					`${cite}  |  ${c.decision_date}  |  ${c.court?.name || ''}`;
-
-				const opinionsEl = document.getElementById('opinions');
-				opinionsEl.innerHTML = '';
-				for (const op of c.casebody?.opinions || []) {
-					const div = document.createElement('div');
-					div.className = 'opinion';
-					const header = op.author
-						? `[${op.type} — ${op.author}]`
-						: `[${op.type}]`;
-					div.innerHTML = `<div class="opinion-header">${header}</div><div class="opinion-text"></div>`;
-					div.querySelector('.opinion-text').textContent = op.text;
-					opinionsEl.appendChild(div);
-				}
-
-				document.getElementById('result').style.display = 'block';
-				setStatus('');
-			}
-
-			document.getElementById('lookup-form').addEventListener('submit', async (e) => {
-				e.preventDefault();
-				const form = new FormData(e.target);
-				const reporter = form.get('reporter').trim().toLowerCase();
-				const volume = parseInt(form.get('volume'));
-				const page = parseInt(form.get('page'));
-
-				document.getElementById('result').style.display = 'none';
-				document.getElementById('submit-btn').disabled = true;
-
-				try {
-					const c = await resolve(reporter, volume, page);
-					displayCase(c);
-				} catch (err) {
-					setError(err.message);
-				} finally {
-					document.getElementById('submit-btn').disabled = false;
-				}
-			});
-
-			// Pre-fill from URL hash: #a2d/31/647
-			const hash = window.location.hash.slice(1);
-			if (hash) {
-				const [r, v, p] = hash.split('/');
-				if (r && v && p) {
-					document.querySelector('[name=reporter]').value = r;
-					document.querySelector('[name=volume]').value = v;
-					document.querySelector('[name=page]').value = p;
-				}
-			}
-		</script>
+		<script is:inline type="module" src="/js/main.js"></script>
 	</body>
 </html>

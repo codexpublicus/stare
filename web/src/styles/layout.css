@@ -1,0 +1,45 @@
+.topbar { position: sticky; top: 0; z-index: 10; background: var(--topbar-bg); color: var(--topbar-text); padding: 8px 16px; display: flex; align-items: center; gap: 12px; font-size: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+.topbar-brand { font-weight: 700; letter-spacing: -0.5px; font-size: 15px; }
+.topbar-divider { color: var(--topbar-divider); }
+.topbar-cite { font-family: 'SF Mono', 'Fira Code', monospace; color: var(--topbar-cite); font-size: 13px; }
+.topbar-case { color: var(--topbar-muted); font-size: 13px; margin-left: auto; }
+.topbar-edit { color: var(--topbar-muted); font-size: 12px; cursor: pointer; padding: 2px 8px; border: 1px solid var(--topbar-edit-border); border-radius: 3px; transition: all 0.15s; background: none; }
+.topbar-edit:hover { color: var(--topbar-text); border-color: var(--topbar-muted); }
+.theme-toggle { color: var(--topbar-muted); font-size: 18px; cursor: pointer; background: none; border: none; padding: 2px 6px; line-height: 1; transition: color 0.15s; }
+.theme-toggle:hover { color: var(--topbar-text); }
+
+.layout { display: flex; min-height: calc(100vh - 40px); }
+.main { flex: 1; min-width: 0; border-right: 1px solid var(--border); }
+.sidebar { width: 300px; min-width: 300px; background: var(--bg-alt); overflow-y: auto; font-size: 13px; }
+.sidebar-section { padding: 16px; border-bottom: 1px solid var(--border); }
+.sidebar-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); font-weight: 600; margin-bottom: 8px; }
+.sidebar-title { font-size: 15px; font-weight: 600; line-height: 1.3; margin-bottom: 4px; }
+.sidebar-meta { color: var(--text-secondary); line-height: 1.5; }
+.sidebar-meta strong { color: var(--sidebar-meta-strong); font-weight: 500; }
+
+.view-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-alt); }
+.view-tab { padding: 8px 20px; font-size: 13px; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; background: none; }
+.view-tab:hover { color: var(--text); }
+.view-tab.active { color: var(--tab-active-text); font-weight: 600; border-bottom-color: var(--tab-active-border); background: var(--bg); }
+
+.landing { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; }
+.landing-brand { font-size: 2rem; font-weight: 700; letter-spacing: -1px; margin-bottom: 0.25rem; }
+.landing-subtitle { color: var(--text-secondary); margin-bottom: 2rem; font-size: 0.95rem; }
+.landing-form { display: flex; gap: 0.5rem; }
+.landing-form input { padding: 10px 14px; border: 2px solid var(--border); border-radius: 6px; font-size: 15px; font-family: 'SF Mono', 'Fira Code', monospace; background: var(--bg); color: var(--text); width: 260px; }
+.landing-form input:focus { outline: none; border-color: var(--link); }
+.landing-form button { padding: 10px 20px; background: var(--topbar-bg); color: var(--topbar-text); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: opacity 0.15s; }
+.landing-form button:hover { opacity: 0.85; }
+.landing-form button:disabled { opacity: 0.5; cursor: wait; }
+
+.hidden { display: none !important; }
+
+.sidebar-toggle { display: none; position: fixed; right: 16px; bottom: 16px; width: 40px; height: 40px; background: var(--topbar-bg); color: var(--topbar-text); border: none; border-radius: 50%; font-size: 18px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 20; }
+
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .sidebar.open { display: block; position: fixed; right: 0; top: 40px; bottom: 0; z-index: 15; width: 300px; box-shadow: -2px 0 8px rgba(0,0,0,0.2); }
+  .sidebar-toggle { display: block; }
+  .reader { padding: 20px 16px 48px; }
+  .topbar-case { display: none; }
+}
