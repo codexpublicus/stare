@@ -4,7 +4,7 @@
 
 use crate::case::{self, CaseJson};
 use crate::index;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 
 pub struct CaseResult {
     pub case_file: String,
