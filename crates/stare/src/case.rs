@@ -1,10 +1,10 @@
 /// Case data extracted from Harvard CAP zip files.
 
 use anyhow::{bail, Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::io::Read;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CaseJson {
     pub id: u64,
     pub name: String,
@@ -16,29 +16,29 @@ pub struct CaseJson {
     pub casebody: CaseBody,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Citation {
     #[serde(rename = "type")]
     pub cite_type: String,
     pub cite: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Court {
     pub name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Jurisdiction {
     pub name_long: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CaseBody {
     pub opinions: Vec<Opinion>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Opinion {
     pub text: String,
     #[serde(rename = "type")]

@@ -12,26 +12,37 @@
 
 ## Phase 1: Citation Index + CLI Tool
 
-- [ ] Download `ReportersMetadata.json` from static.case.law
-- [ ] Build `reporters.json` (abbreviation → slug mapping, 401 reporters)
-- [ ] Write index builder: `CasesMetadata.json` from each zip → `.bin` files
+### Done
+- [x] Rust project setup (workspace, stare crate, rustls)
+- [x] Binary index format (.bin): parse, lookup, build — 6 tests
+- [x] Zip case extraction: extract_from_zip, list_cases_in_zip — 3 tests
+- [x] Core resolve: resolve_local (index + zip → case text) — 3 tests
+- [x] Remote resolve: resolve_remote (local .bin + HTTP fetch .zip from static.case.law) — 1 network test
+- [x] CLI: `stare build-index <zip>` builds .bin from any volume zip
+- [x] CLI: `stare resolve <reporter> <vol> <page>` with --index-dir, --base-url, --local
+- [x] Pre-built a2d/31.bin index committed to data/
+- [x] End-to-end test: `stare resolve a2d 31 647` → full case text from static.case.law
+
+### Remaining
+- [ ] `--json` output flag on resolve for machine consumption
 - [ ] Handle multi-case pages: `.multi` sidecar for -02, -03 entries
-- [ ] Test core lookup end-to-end: `resolve("a2d", 31, 647)` → case text
+- [ ] Batch `build-index` across all zips (once mirror has them)
 - [ ] Set up Cloudflare R2 buckets (`codex-index`, `codex-data`)
-- [ ] Upload index + a small data subset to R2
+- [ ] Upload index + zips to R2
 - [ ] Test full pipeline against live R2 bucket
-- [ ] Python CLI: `stare resolve a2d 31 647` → case name, text, citation, date
-- [ ] Python CLI: `stare download --reporters a2d` (fetch index + zips for a reporter locally)
+- [ ] `stare list <reporter> <vol>` — list cases in a volume
+- [ ] `stare download --reporters <slug>` — fetch index + zips locally
 
 ## Phase 2: Web Tool (WASM)
 
-- [ ] Rust/WASM citation parser (port eyeCite: Aho-Corasick over `reporters-db` JSON)
+- [ ] Compile stare-core to WASM (split lib from CLI-specific code if needed)
+- [ ] Rust/WASM citation parser (port eyeCite: Aho-Corasick over `reporters-db` JSON + Harvard slug field)
 - [ ] WASM: zip extraction + case JSON rendering
 - [ ] Simple web UI on Cloudflare Pages (stare.pub): citation input → text display
 - [ ] PDF fallback: link to `/data/{reporter}/{vol}.pdf` for volume viewing
 - [ ] Verify PDF OCR quality on a sample of volumes before investing further
 
-## Phase 3: DuckLake
+## Phase 3: DuckLake (Python + DuckDB)
 
 - [ ] Write zip → Parquet processor (schema: cases, citations, courts, jurisdictions)
 - [ ] Process all zips, assign stable case IDs

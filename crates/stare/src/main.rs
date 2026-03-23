@@ -36,6 +36,9 @@ enum Commands {
         /// Use local zip files instead of fetching remotely
         #[arg(long)]
         local: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -74,6 +77,7 @@ fn main() -> anyhow::Result<()> {
             index_dir,
             base_url,
             local,
+            json,
         } => {
             let result = if local {
                 stare::resolve::resolve_local(&index_dir, &reporter, volume, page)?
@@ -81,7 +85,11 @@ fn main() -> anyhow::Result<()> {
                 stare::resolve::resolve_remote(&index_dir, &base_url, &reporter, volume, page)?
             };
 
-            print_case(&result);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&result.case)?);
+            } else {
+                print_case(&result);
+            }
         }
     }
 
