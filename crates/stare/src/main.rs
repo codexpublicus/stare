@@ -57,18 +57,33 @@ fn main() -> anyhow::Result<()> {
                     (c.as_str(), page)
                 })
                 .collect();
-            let bin_data = stare::index::build(&case_pages);
+            let result = stare::index::build(&case_pages);
 
             let out_path = output.unwrap_or_else(|| zip_path.with_extension("bin"));
-            std::fs::write(&out_path, &bin_data)
+            std::fs::write(&out_path, &result.bin)
                 .with_context(|| format!("failed to write {}", out_path.display()))?;
 
-            println!(
-                "Built index: {} cases, {} bytes → {}",
-                cases.len(),
-                bin_data.len(),
-                out_path.display()
-            );
+            if !result.multi.is_empty() {
+                let multi_path = out_path.with_extension("multi");
+                let multi_data = stare::index::serialize_multi(&result.multi);
+                std::fs::write(&multi_path, &multi_data)
+                    .with_context(|| format!("failed to write {}", multi_path.display()))?;
+                println!(
+                    "Built index: {} cases ({} multi-case pages), {} bytes → {} + {}",
+                    cases.len(),
+                    result.multi.len(),
+                    result.bin.len(),
+                    out_path.display(),
+                    multi_path.display()
+                );
+            } else {
+                println!(
+                    "Built index: {} cases, {} bytes → {}",
+                    cases.len(),
+                    result.bin.len(),
+                    out_path.display()
+                );
+            }
         }
         Commands::Resolve {
             reporter,

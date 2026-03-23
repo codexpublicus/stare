@@ -121,12 +121,18 @@ mod tests {
                 (c.as_str(), page)
             })
             .collect();
-        let bin_data = index::build(&case_pages);
-        let bin_path = reporter_dir.join("31.bin");
-        std::fs::File::create(&bin_path)
+        let result = index::build(&case_pages);
+        std::fs::File::create(reporter_dir.join("31.bin"))
             .unwrap()
-            .write_all(&bin_data)
+            .write_all(&result.bin)
             .unwrap();
+        if !result.multi.is_empty() {
+            std::fs::write(
+                reporter_dir.join("31.multi"),
+                index::serialize_multi(&result.multi),
+            )
+            .unwrap();
+        }
 
         // Copy the zip
         std::fs::copy("tests/fixtures/a2d-31.zip", reporter_dir.join("31.zip")).unwrap();
@@ -150,10 +156,10 @@ mod tests {
                 (c.as_str(), page)
             })
             .collect();
-        let bin_data = index::build(&case_pages);
+        let result = index::build(&case_pages);
         std::fs::File::create(reporter_dir.join("31.bin"))
             .unwrap()
-            .write_all(&bin_data)
+            .write_all(&result.bin)
             .unwrap();
 
         dir
