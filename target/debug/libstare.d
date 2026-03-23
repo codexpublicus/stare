@@ -1,0 +1,1 @@
+/home/lokkju/projects/lokkju/codex-publicus/target/debug/libstare.rlib: /home/lokkju/projects/lokkju/codex-publicus/crates/stare/src/case.rs /home/lokkju/projects/lokkju/codex-publicus/crates/stare/src/index.rs /home/lokkju/projects/lokkju/codex-publicus/crates/stare/src/lib.rs /home/lokkju/projects/lokkju/codex-publicus/crates/stare/src/resolve.rs
