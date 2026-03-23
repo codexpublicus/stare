@@ -54,7 +54,9 @@
 		<script is:inline type="module">
 			import init, { lookup_page, extract_case } from '/wasm/stare_wasm.js';
 
-			const BASE_URL = 'https://static.case.law';
+			// Index bins are served from this site; zips from static.case.law
+			const INDEX_URL = '/data';
+			const ZIP_URL = 'https://static.case.law';
 			const DB_NAME = 'stare-cache';
 			const DB_VERSION = 1;
 
@@ -121,7 +123,7 @@
 
 				const binKey = `${reporter}/${volume}.bin`;
 				setStatus(`Fetching index ${binKey}...`);
-				const binData = await fetchWithCache('bins', binKey, `${BASE_URL}/${reporter}/${volume}.bin`);
+				const binData = await fetchWithCache('bins', binKey, `${INDEX_URL}/${reporter}/${volume}.bin`);
 
 				setStatus('Looking up page...');
 				const caseFile = lookup_page(binData, page);
@@ -131,7 +133,7 @@
 
 				const zipKey = `${reporter}/${volume}.zip`;
 				setStatus(`Fetching case data ${zipKey}...`);
-				const zipData = await fetchWithCache('zips', zipKey, `${BASE_URL}/${reporter}/${volume}.zip`);
+				const zipData = await fetchWithCache('zips', zipKey, `${ZIP_URL}/${reporter}/${volume}.zip`);
 
 				setStatus('Extracting case...');
 				const caseJson = extract_case(zipData, caseFile);
