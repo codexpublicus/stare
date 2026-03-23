@@ -79,7 +79,7 @@ This keeps the lookup testable in isolation and lets parsing evolve independentl
 
 **Rust/WASM port** (future): eyeCite's core is Aho-Corasick over `reporters-db` JSON + citation structure regex. The `reporters-db` is already JSON. A Rust port using the `aho-corasick` crate would run natively (CLI) and in WASM (website) from the same implementation — one citation parser everywhere. Worth doing instead of maintaining two separate parsers.
 
-**Build order**: core lookup first. Add eyeCite to the Python MCP server when needed. Port to Rust/WASM when building the website.
+**Build order**: core lookup first (structured input only). Add eyeCite to the Python CLI when needed. Port to Rust/WASM when building the website — one implementation for both CLI and website, replaces the Python dependency.
 
 ## Reporter Slug Mapping
 

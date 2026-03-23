@@ -89,8 +89,8 @@ Total: ~4.4 TB across 203K files.
 
 ## Language & Tooling Preferences
 
-- Python (using `uv run python`, never bare `python`)
-- Rust for WASM modules
+- **Rust** for CLI tool + core lookup library (compiles to native CLI and WASM from same codebase)
+- **Python** (using `uv run python`, never bare `python`) for build tools: index builder, DuckLake pipeline, RoaringBuckets generator
 - DuckDB for data processing and DuckLake
 - `ruff` for Python linting/formatting
 - Docker compose for services
