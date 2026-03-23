@@ -83,7 +83,7 @@ Total: ~4.4 TB across 203K files.
 5. **Build MCP server** — citation resolution tool for LLMs
 6. **Build website** — serverless WASM app on Cloudflare Pages
 7. **IPFS distribution** — pin tars + PDFs from TrueNAS
-8. **CourtListener integration** — merge enriched metadata, ongoing updates
+8. **CourtListener integration** (phase 2) — citation graph first, then post-2018 cases (text-only), then full pre-2018 merge if warranted. See `search-plan.md` for decision rationale. Worth asking Free Law Project about PDFs/scans before committing to text-only tier.
 
 ## Language & Tooling Preferences
 

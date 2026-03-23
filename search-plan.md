@@ -316,6 +316,38 @@ The DuckLake build is a prerequisite for RoaringBuckets — you need all cases e
 
 ---
 
+## CourtListener Integration (Phase 2)
+
+**Decision**: CourtListener integration is deferred to phase 2. Phase 1 is Harvard CAP only.
+
+### What CourtListener adds
+
+- **Post-2018 cases**: Harvard CAP stops at 2018; CourtListener scrapes continuously. Text-only — no scans.
+- **Citation graph**: `citation-map` table is more complete than Harvard's `cites_to` arrays. Enables reverse citation lookup ("all cases citing X"). ~1-2 GB.
+- **Richer metadata**: docket numbers, judge names, more parallel citations.
+- **`filepath_pdf_harvard`**: join key linking CourtListener opinion clusters to Harvard PDF paths. Less useful since we're already mirroring everything.
+
+### Why deferred
+
+- 324 GB of text data (20x more than Harvard's 17 GB of zips).
+- Deduplication complexity: pre-2018 cases exist in both sources; merging requires matching on `filepath_pdf_harvard`, which isn't a clean 1:1.
+- Post-2018 cases are text-only — no ALTO, no scans, no PDFs — creating a two-tier architecture that complicates every consumer.
+- Primary use case (LLM citation validation) mostly involves historical cases where Harvard CAP is complete.
+
+### Phase 2 scope
+
+Minimum useful integration, in priority order:
+
+1. **Citation graph** — pull `citation-map` + `citations` tables, add to DuckLake. High value, low deduplication complexity.
+2. **Post-2018 cases** — add as a text-only tier (no scans). Separate Parquet partition, separate R2 prefix.
+3. **Full pre-2018 merge** — deduplicate Harvard + CourtListener for pre-2018 cases. Only worth doing if CourtListener has meaningfully better metadata for specific courts.
+
+### The scan question
+
+CourtListener doesn't currently have scans/PDFs for most cases. If Free Law Project can be convinced to share their PDF collection (or broker access to court-held PDFs), phase 2 scope expands significantly. Worth asking Mike Lissner directly — see `cap-preservation-plan.md` for contact context.
+
+---
+
 ## Open questions
 
 1. **Case ID scheme**: packed encoding (reporter * 2M + volume * 1K + seq) vs sequential? Packed is simpler but may waste bitmap space if the ID space is sparse.
@@ -323,5 +355,5 @@ The DuckLake build is a prerequisite for RoaringBuckets — you need all cases e
 3. **DuckDB RoaringBuckets extension**: worth building? Scope and timeline?
 4. **DuckLake maturity**: frozen DuckLake is new (late 2025). Use plain Parquet + `.duckdb` as a fallback?
 5. **Citation graph**: include in DuckLake? Enables "all cases citing Roe v. Wade" queries.
-6. **CourtListener integration**: merge their 324 GB enriched metadata? Adds richer data but significantly increases scope.
+6. **CourtListener integration**: resolved — see below.
 7. **Opinion text tokenization**: stemmer choice, stop words, legal-specific normalization?
