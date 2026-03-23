@@ -1,5 +1,5 @@
 ---
-
+import '../styles/theme.css';
 ---
 
 <html lang="en">
@@ -7,28 +7,14 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>stare.pub — U.S. Case Law Citation Resolution</title>
-		<style>
-			* { box-sizing: border-box; margin: 0; padding: 0; }
-			body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem 1rem; color: #1a1a1a; }
-			h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-			.subtitle { color: #666; margin-bottom: 2rem; font-size: 0.9rem; }
-			form { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-			input { padding: 0.5rem 0.75rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
-			input[name="reporter"] { width: 8rem; }
-			input[name="volume"], input[name="page"] { width: 5rem; }
-			button { padding: 0.5rem 1.25rem; background: #1a1a1a; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
-			button:hover { background: #333; }
-			button:disabled { background: #999; cursor: wait; }
-			#status { color: #666; font-size: 0.85rem; margin-bottom: 1rem; min-height: 1.2rem; }
-			#result { display: none; }
-			.case-header { margin-bottom: 1rem; }
-			.case-name { font-size: 1.25rem; font-weight: 600; }
-			.case-meta { color: #666; font-size: 0.9rem; margin-top: 0.25rem; }
-			.opinion { margin-top: 1.5rem; }
-			.opinion-header { font-weight: 600; color: #444; margin-bottom: 0.5rem; }
-			.opinion-text { white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; }
-			.error { color: #c00; }
-		</style>
+		<script is:inline>
+			try {
+				var theme = localStorage.getItem('stare-theme');
+				if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+					document.documentElement.setAttribute('data-theme', 'dark');
+				}
+			} catch(e) {}
+		</script>
 	</head>
 	<body>
 		<h1>stare.pub</h1>
