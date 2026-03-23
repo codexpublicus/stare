@@ -61,23 +61,25 @@ The mirrored files (tars, zips, PDFs) are served as-is. No per-case file extract
 **Upload cost**: ~$0.90 one-time (Class A operations at $4.50/M)
 **Clonability**: anyone can `rclone sync` the entire service in minutes
 
-## Citation Parsing
+## Core Lookup Interface
 
-### eyeCite (from Free Law Project)
+The core system takes structured input — no citation string parsing:
 
-Lightweight Python library. Dependencies: `reporters-db`, `courts-db`, `lxml`, `regex`, `pyahocorasick`.
+```
+resolve(reporter_slug: str, volume: int, page: int) → CaseResult
+```
 
-**Performance**: 0.15ms per parse (6,600 parses/sec). Negligible overhead.
+Citation string parsing (`"31 A.2d 647"` → `("a2d", 31, 647)`) is a separate front-end layer that sits above the core. The core doesn't care how the caller obtained the structured input.
 
-**What it handles**:
-- Standard citations: `31 A.2d 647`, `410 U.S. 113`
-- Abbreviation variants: `A.2d`, `A. 2d`, `Atlantic Reporter`
-- Parallel citations, short-form citations, supra references
-- 1,235 reporter entries in `reporters-db`
+This keeps the lookup testable in isolation and lets parsing evolve independently.
 
-**For our first pass**: we're parsing user-provided citation strings, not scanning text for citations. eyeCite handles all the normalization edge cases that a regex would miss, and it's fast enough to be invisible.
+### Citation parsing (front-end, added later)
 
-**Install**: `uv add eyecite`
+**eyeCite** (Python): the existing Free Law Project library. Handles all abbreviation variants, parallel citations, short-form references. 1,235 reporters in `reporters-db`. Works for the Python MCP server.
+
+**Rust/WASM port** (future): eyeCite's core is Aho-Corasick over `reporters-db` JSON + citation structure regex. The `reporters-db` is already JSON. A Rust port using the `aho-corasick` crate would run natively (CLI) and in WASM (website) from the same implementation — one citation parser everywhere. Worth doing instead of maintaining two separate parsers.
+
+**Build order**: core lookup first. Add eyeCite to the Python MCP server when needed. Port to Rust/WASM when building the website.
 
 ## Reporter Slug Mapping
 
@@ -355,9 +357,10 @@ Static JS/WASM app on Cloudflare Pages:
 
 ## Next Steps
 
-1. Build the reporter mapping from `ReportersMetadata.json`
-2. Write the index builder (read CasesMetadata.json from zips → .bin files)
-3. Test citation resolution end-to-end with a few volumes
-4. Build the MCP server prototype
-5. Upload index + subset of data to R2 for testing
-6. Build the WASM page viewer prototype
+1. Build the reporter mapping from `ReportersMetadata.json` → `reporters.json`
+2. Write the index builder (read `CasesMetadata.json` from zips → `.bin` files)
+3. Test core lookup end-to-end with a few volumes: `resolve("a2d", 31, 647)` → case text
+4. Build the MCP server with `resolve_case(reporter, volume, page)` — structured input, no citation parsing yet
+5. Upload index + subset of data to R2, test against live bucket
+6. Add citation string parsing front-end (eyeCite for Python MCP server; Rust/WASM port for website)
+7. Build the WASM page viewer prototype
