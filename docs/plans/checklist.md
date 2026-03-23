@@ -24,8 +24,8 @@
 - [x] End-to-end test: `stare resolve a2d 31 647` → full case text from static.case.law
 
 ### Remaining
-- [ ] `--json` output flag on resolve for machine consumption
-- [ ] Handle multi-case pages: `.multi` sidecar for -02, -03 entries
+- [x] `--json` output flag on resolve for machine consumption
+- [x] Handle multi-case pages: `.multi` sidecar for -02, -03 entries
 - [ ] Batch `build-index` across all zips (once mirror has them)
 - [ ] Set up Cloudflare R2 buckets (`codex-index`, `codex-data`)
 - [ ] Upload index + zips to R2
@@ -35,10 +35,17 @@
 
 ## Phase 2: Web Tool (WASM)
 
-- [ ] Compile stare-core to WASM (split lib from CLI-specific code if needed)
-- [ ] Rust/WASM citation parser (port eyeCite: Aho-Corasick over `reporters-db` JSON + Harvard slug field)
-- [ ] WASM: zip extraction + case JSON rendering
-- [ ] Simple web UI on Cloudflare Pages (stare.pub): citation input → text display
+### Done
+- [x] Compile stare-core to WASM (index + case modules, 273 KB binary)
+- [x] stare-wasm crate with wasm-bindgen: lookup_page, extract_case, list_cases
+- [x] WASM: zip extraction + case JSON rendering
+- [x] Astro site: citation slug input → text display (all client-side)
+- [x] IndexedDB caching for .bin and .zip files
+- [x] URL hash support (#reporter/vol/page)
+
+### Remaining
+- [ ] Rust/WASM citation parser (port eyeCite: Aho-Corasick over `reporters-db` JSON + Harvard slug field) — in progress externally
+- [ ] Deploy to Cloudflare Pages (stare.pub)
 - [ ] PDF fallback: link to `/data/{reporter}/{vol}.pdf` for volume viewing
 - [ ] Verify PDF OCR quality on a sample of volumes before investing further
 
