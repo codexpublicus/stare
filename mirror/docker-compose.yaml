@@ -1,0 +1,28 @@
+services:
+  aria2:
+    image: hurlenko/aria2-ariang
+    container_name: codex-mirror
+    ports:
+      - "8280:8080"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - ARIA2RPCPORT=8280
+      - RPC_SECRET=codex-publicus
+      - EMBED_RPC_SECRET=true
+    entrypoint: /aria2/init-input.sh
+    command: ["--conf-path=/aria2/conf/aria2.conf"]
+    volumes:
+      - mirror-data:/aria2/data
+      - ./aria2.conf:/aria2/conf-copy/aria2.conf:ro
+      - ./urls-aria2.txt:/aria2/urls-aria2.txt:ro
+      - ./init-input.sh:/aria2/init-input.sh:ro
+    restart: unless-stopped
+
+volumes:
+  mirror-data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr=truenas.lodenheim.lokkju.com,rw,nfsvers=4
+      device: ":/mnt/mega/codex-publicus"

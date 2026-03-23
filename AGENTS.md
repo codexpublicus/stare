@@ -2,49 +2,108 @@
 
 ## Project Overview
 
-**Codex Publicus** (stare.pub) is a free, serverless, publicly accessible search index over U.S. case law. It is built on RoaringBuckets with full text hosted on Cloudflare R2 and scanned reporter PDFs preserved on IPFS.
+**Codex Publicus** (stare.pub) is a free, serverless, publicly accessible system for resolving and searching U.S. case law citations. All interfaces are static files on object storage — no backend, no API, no database to run.
 
-**Mission**: Acquire the complete Harvard Caselaw Access Project (CAP) dataset — full text and scanned reporter PDFs — before the project's infrastructure disappears. Build a permanent, open search index over that data.
+**Mission**: Preserve the complete Harvard Caselaw Access Project (CAP) dataset — full text, OCR data, and scanned reporter volumes — and build a permanent, open citation resolution and search system over that data.
 
 ## Repository Structure
 
-- `cap-preservation-plan.md` — Master plan document covering data acquisition, architecture, outreach, and risk assessment.
+```
+cap-preservation-plan.md    — Original plan: outreach, risk assessment, data sources
+static-case-law-mirror.md   — Mirror of static.case.law: status, file formats, aria2 setup
+extraction-plan.md          — Citation index + data pipeline: bin index, R2 layout, WASM client
+search-plan.md              — Search + data products: RoaringBuckets, DuckLake, comparisons
+mirror/                     — Docker compose + config for the aria2 mirror job
+```
 
-## Key Technical Decisions
+## Architecture
 
-- **Search index**: RoaringBuckets binary index stored on Cloudflare R2, queryable via HTTP range requests with zero backend compute.
-- **Full text**: Merged Harvard + CourtListener text on R2, deduplicated via xxHash.
-- **PDFs**: IPFS content-addressed storage, pinned from homelab TrueNAS. Zero ongoing hosting cost.
-- **Target cost**: Under $5/month for R2-hosted components.
+Three interfaces to the same data, all static files:
 
-## Data Sources
+| Interface | Purpose | Size | Consumer |
+|-----------|---------|------|----------|
+| **Citation index** (.bin files) | Citation → text + PDF | ~40 MB | MCP server, CLI, website |
+| **RoaringBuckets search** (bitmaps) | Full-text + structured search | ~3-7 GB | Serverless website |
+| **DuckLake** (Parquet + DuckDB catalog) | SQL queries, bulk analysis | ~25-35 GB | Researchers, data science |
 
-| Source | Content | Size | License |
-|--------|---------|------|---------|
-| Harvard CAP (Hugging Face) | OCR'd case text (JSONL) | 24.3 GB compressed | CC0 |
-| CourtListener bulk CSV | Enriched opinions + citation graph | 324 GB | CC0 |
-| case.law PDFs | Scanned reporter volumes | ~400 GB–2 TB (web PDFs) | CC0 |
+### R2 Object Layout
+
+```
+/index/{reporter}/{vol}.bin       — citation lookup (page offset → case file)
+/index/reporters.json             — abbreviation → slug mapping
+/data/{reporter}/{vol}.zip        — case text JSONs (served as-is from mirror)
+/data/{reporter}/{vol}.tar        — page images + ALTO OCR (range requests via tar.csv)
+/data/{reporter}/{vol}.tar.csv    — tar byte offset manifest
+/data/{reporter}/{vol}.pdf        — volume PDF fallback
+/search/...                       — RoaringBuckets bitmap index
+/ducklake/...                     — DuckLake Parquet + catalog
+```
+
+### Storage Split
+
+- **R2**: index, zips, tar.csvs, search index, DuckLake (~$1-8/month)
+- **IPFS**: tars, volume PDFs (pinned from homelab TrueNAS, $0)
+
+### Client-Side Rendering (WASM)
+
+All rendering runs client-side. Server serves only static files.
+- Citation parsing: eyeCite (Python) or Rust port
+- Zip extraction, tar range access, ALTO XML parsing: WASM
+- On-demand PDF generation: BentoPDF or printpdf WASM module
+- Page viewer: JPG + ALTO text overlay
+
+## Data Source: static.case.law
+
+Plain HTML directory listings served via Cloudflare (not JS-rendered). ~40,622 volumes across hundreds of reporter series.
+
+Per volume:
+- `.tar` (~97 MB): ALTO OCR XML, page images (JPG), METS, CASEMETS
+- `.pdf` (~12 MB): full volume scan
+- `.zip` (~400 KB): per-case JSON + HTML + metadata
+- `.tar.csv`: tar byte offset manifest
+- `.tar.sha256`: tar checksum
+
+Total: ~4.4 TB across 203K files.
+
+## Current Status
+
+- **Mirror**: running on ml-01 via Docker (aria2 + AriaNg). Writing to TrueNAS `mega/codex-publicus` via NFS. ~10% complete, ETA ~7 days. Web UI at http://ml-01:8280/
+- **Citation index**: designed, not yet built
+- **DuckLake**: designed, not yet built
+- **RoaringBuckets search**: designed, not yet built
+- **MCP server**: not yet started
+- **Website**: not yet started
 
 ## Development Phases
 
-1. **Phase 1** (urgent): Acquire Harvard CAP PDFs before case.law goes dark — via direct bulk transfer request or scrape.
-2. **Phase 2**: Download Harvard text from Hugging Face and CourtListener bulk CSV.
-3. **Phase 3**: Build RoaringBuckets index, publish to R2, build resolution table.
-4. **Phase 4**: Ongoing quarterly CourtListener updates pipeline.
+1. **Mirror static.case.law** (in progress) — aria2 downloading all tars, PDFs, zips, metadata
+2. **Build citation index** — process zips → .bin files, build reporter mapping
+3. **Build DuckLake** — process zips into Parquet, build catalog, assign stable case IDs
+4. **Build RoaringBuckets search** — generate bitmaps from DuckLake data
+5. **Build MCP server** — citation resolution tool for LLMs
+6. **Build website** — serverless WASM app on Cloudflare Pages
+7. **IPFS distribution** — pin tars + PDFs from TrueNAS
+8. **CourtListener integration** — merge enriched metadata, ongoing updates
 
 ## Language & Tooling Preferences
 
 - Python (using `uv run python`, never bare `python`)
-- `httpx` or `aiohttp` for HTTP
-- `playwright` for JS-rendered pages where needed
-- `sqlite3` / DuckDB for local manifests and index building
-- `ipfs` CLI via subprocess for IPFS operations
-- `ruff` for linting/formatting
+- Rust for WASM modules
+- DuckDB for data processing and DuckLake
+- `ruff` for Python linting/formatting
+- Docker compose for services
 
-## Important Context
+## Infrastructure
 
-- The Harvard CAP API is already dead (March 2024). Search went dark September 2024.
-- PDFs are the irreplaceable asset — text can be re-derived from PDFs, not vice versa.
-- The Ravel/LexisNexis exclusivity deal on CAP data expired March 2024. Data is public domain.
-- Be respectful when scraping case.law: max 1–2 req/sec, identify in User-Agent.
-- CourtListener's `filepath_pdf_harvard` field provides a complete manifest of Harvard PDFs — use it to avoid scraping the directory structure.
+- **ml-01** (192.168.32.210): k3s node, runs Docker, aria2 mirror
+- **TrueNAS** (truenas.lodenheim.lokkju.com / 192.168.32.200): NFS storage
+  - `mega/codex-publicus`: mirror data (NFS export to 192.168.32.0/24)
+  - `mega/k8s`: k8s persistent volumes
+- Access TrueNAS via NFS mounts and `showmount -e`, not SSH
+
+## Key Context
+
+- Harvard CAP API died March 2024. Search died September 2024. static.case.law still serves bulk data.
+- PDFs + ALTO are the irreplaceable assets — text can be re-derived, scans cannot.
+- Ravel/LexisNexis exclusivity expired March 2024. All data is public domain / CC0.
+- Rate limit scraping: max 1-2 req/sec, identify in User-Agent.
