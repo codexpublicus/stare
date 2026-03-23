@@ -27,9 +27,15 @@ enum Commands {
         volume: u32,
         /// Page number
         page: u32,
-        /// Base path for local data files
-        #[arg(long, default_value = ".")]
-        data_dir: PathBuf,
+        /// Directory containing .bin index files (default: ./data)
+        #[arg(long, default_value = "data")]
+        index_dir: PathBuf,
+        /// Base URL for fetching zip files (default: static.case.law)
+        #[arg(long, default_value = stare::resolve::DEFAULT_BASE_URL)]
+        base_url: String,
+        /// Use local zip files instead of fetching remotely
+        #[arg(long)]
+        local: bool,
     },
 }
 
@@ -65,35 +71,45 @@ fn main() -> anyhow::Result<()> {
             reporter,
             volume,
             page,
-            data_dir,
+            index_dir,
+            base_url,
+            local,
         } => {
-            let result = stare::resolve::resolve_local(&data_dir, &reporter, volume, page)?;
+            let result = if local {
+                stare::resolve::resolve_local(&index_dir, &reporter, volume, page)?
+            } else {
+                stare::resolve::resolve_remote(&index_dir, &base_url, &reporter, volume, page)?
+            };
 
-            let cite = result
-                .case
-                .citations
-                .first()
-                .map(|c| c.cite.as_str())
-                .unwrap_or("—");
-
-            println!("{}", result.case.name_abbreviation);
-            println!(
-                "{}  |  {}  |  {}",
-                cite, result.case.decision_date, result.case.court.name
-            );
-            println!();
-            for opinion in &result.case.casebody.opinions {
-                if let Some(author) = &opinion.author {
-                    println!("[{} — {}]", opinion.opinion_type, author);
-                } else {
-                    println!("[{}]", opinion.opinion_type);
-                }
-                println!();
-                println!("{}", opinion.text);
-                println!();
-            }
+            print_case(&result);
         }
     }
 
     Ok(())
+}
+
+fn print_case(result: &stare::resolve::CaseResult) {
+    let cite = result
+        .case
+        .citations
+        .first()
+        .map(|c| c.cite.as_str())
+        .unwrap_or("—");
+
+    println!("{}", result.case.name_abbreviation);
+    println!(
+        "{}  |  {}  |  {}",
+        cite, result.case.decision_date, result.case.court.name
+    );
+    println!();
+    for opinion in &result.case.casebody.opinions {
+        if let Some(author) = &opinion.author {
+            println!("[{} — {}]", opinion.opinion_type, author);
+        } else {
+            println!("[{}]", opinion.opinion_type);
+        }
+        println!();
+        println!("{}", opinion.text);
+        println!();
+    }
 }
