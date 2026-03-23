@@ -78,13 +78,14 @@ Total: ~4.4 TB across 203K files.
 ## Development Phases
 
 1. **Mirror static.case.law** (in progress) — aria2 downloading all tars, PDFs, zips, metadata
-2. **Build citation index** — process zips → .bin files, build reporter mapping
-3. **Build DuckLake** — process zips into Parquet, build catalog, assign stable case IDs
-4. **Build RoaringBuckets search** — generate bitmaps from DuckLake data
-5. **Build MCP server** — citation resolution tool for LLMs
-6. **Build website** — serverless WASM app on Cloudflare Pages
-7. **IPFS distribution** — pin tars + PDFs from TrueNAS
-8. **CourtListener integration** (phase 2) — citation graph first, then post-2018 cases (text-only), then full pre-2018 merge if warranted. See `search-plan.md` for decision rationale. Worth asking Free Law Project about PDFs/scans before committing to text-only tier.
+2. **Citation index + CLI tool** — reporters.json, .bin index builder, Python CLI (`stare resolve a2d 31 647` → text)
+3. **Web tool (WASM)** — Rust/WASM citation parser, zip extraction, Cloudflare Pages UI; PDF as fallback viewer link
+4. **DuckLake** — process zips into Parquet, build catalog, assign stable case IDs
+5. **RoaringBuckets search** — generate bitmaps from DuckLake data, add search to web UI
+6. **Page viewer** — tar range access + ALTO XML rendering in WASM (deferred; not needed for core text resolution)
+7. **MCP server** — thin wrapper around core once CLI/web are proven (much later)
+8. **IPFS distribution** — pin tars + PDFs from TrueNAS (alongside Phase 6)
+9. **CourtListener integration** (phase 2) — citation graph first, then post-2018 cases (text-only), then full pre-2018 merge if warranted. See `search-plan.md` for decision rationale. Worth asking Free Law Project about PDFs/scans before committing to text-only tier.
 
 ## Language & Tooling Preferences
 

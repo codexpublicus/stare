@@ -316,44 +316,56 @@ The full tier at < $1/month is the target: R2 for the small/hot data, IPFS for t
 - Both are complementary — IPFS for permanent addressing, BitTorrent for fast bulk transfer.
 - Architecture is backend-agnostic — the base URL is configurable per component.
 
+## PDF Role
+
+The volume PDFs (`{vol}.pdf`, ~12 MB each) have selectable OCR text layers per Harvard's docs. However:
+
+- **OCR quality is unverified**: "selectable OCR" is the raw ABBYY FineReader output, not Harvard's post-processed case text. Quality may vary; column handling, footnotes, and archaic fonts are known failure modes. Verify on a sample before relying on it.
+- **No per-case access**: PDFs are volume-level. To show a specific case you need to know its PDF page offset within the volume, which requires parsing the PDF cross-reference table or pre-building a page offset index.
+- **Data transfer**: showing a 3-page case costs ~12 MB (full volume) vs ~130 KB (3 tar range requests). Unless the PDF is linearized and PDF.js does lazy page loading, this is ~100× worse.
+- **Tars are still the right layer for the page viewer**: tar.csv gives exact byte offsets per file; range requests fetch individual page images (~40 KB) and ALTO XML (~2 KB). Efficient and precise.
+
+**Use PDFs as**: a "download/view this volume" fallback link. Not as the primary page viewer.
+
+**Use tars as**: the efficient per-case page access layer (Phase 5, deferred — not needed for core text resolution).
+
 ## Client Interfaces
 
-### MCP Server (LLM citation validation)
-
-```
-Tool: resolve_citation
-Input:  { citation: "31 A.2d 647" }
-Output: {
-  case_name: "D'Elia & Marks Co. v. Lyon",
-  citation: "31 A.2d 647",
-  decision_date: "1943-05-11",
-  court: "District of Columbia Municipal Court of Appeals",
-  text_url: "https://r2.stare.pub/data/a2d/31.zip",
-  pdf_url: "https://r2.stare.pub/data/a2d/31.pdf",
-  case_file: "0647-01",
-  text: "..."
-}
-```
-
-### Local CLI tool
+### 1. CLI tool (Phase 1 — build first)
 
 ```bash
-# Download California reporters (just index + zips for text)
-stare download --reporters cal,cal-2d,cal-3d,cal-4th,cal-5th,cal-app
+# Resolve a citation — structured input, no parsing yet
+stare resolve a2d 31 647
 
-# Resolve a citation
-stare resolve "31 Cal.App.4th 647"
+# Output:
+# D'Elia & Marks Co. v. Lyon
+# 31 A.2d 647  |  1943-05-11  |  D.C. Municipal Court of Appeals
+# <full opinion text>
+
+# Download a reporter locally (index + zips only, ~420 KB/vol)
+stare download --reporters a2d,a3d
 ```
 
-### Serverless website (stare.pub)
+Python, uses the R2 bucket (or local mirror). No citation string parsing initially — structured input only. Tests the full pipeline end-to-end before any UI work.
 
-Static JS/WASM app on Cloudflare Pages:
+### 2. Serverless website (Phase 2)
+
+Static JS/WASM app on Cloudflare Pages (stare.pub):
 - Citation input box
-- Fetches reporter mapping (cached)
+- Rust/WASM citation parser (eyeCite port) → reporter slug + volume + page
 - Range request to citation index
 - Fetches zip, extracts case JSON, displays text
-- Page viewer: range requests into tar for JPG + ALTO, renders with text overlay
-- Download as PDF: WASM PDF generation from JPG + ALTO
+- PDF fallback link: opens volume PDF in browser for page viewing
+- Page viewer with tar-based ALTO rendering added in Phase 5
+
+### 3. MCP server (Phase 6 — much later)
+
+Thin wrapper around the same core once it's proven in the CLI and web tool.
+
+```
+Tool: resolve_case(reporter, volume, page)   ← structured, no parsing
+Tool: resolve_citation(cite_string)          ← adds eyeCite front-end
+```
 
 ## Next Steps
 
