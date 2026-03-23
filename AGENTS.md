@@ -9,11 +9,12 @@
 ## Repository Structure
 
 ```
-cap-preservation-plan.md    — Original plan: outreach, risk assessment, data sources
-static-case-law-mirror.md   — Mirror of static.case.law: status, file formats, aria2 setup
-extraction-plan.md          — Citation index + data pipeline: bin index, R2 layout, WASM client
-search-plan.md              — Search + data products: RoaringBuckets, DuckLake, comparisons
-mirror/                     — Docker compose + config for the aria2 mirror job
+docs/plans/checklist.md             — Master checklist, iterate through this
+docs/plans/cap-preservation-plan.md — Original plan: outreach, risk assessment, data sources
+docs/plans/static-case-law-mirror.md — Mirror of static.case.law: status, file formats, aria2 setup
+docs/plans/extraction-plan.md       — Citation index + data pipeline: bin index, R2 layout, WASM client
+docs/plans/search-plan.md           — Search + data products: RoaringBuckets, DuckLake, comparisons
+mirror/                             — Docker compose + config for the aria2 mirror job
 ```
 
 ## Architecture

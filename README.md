@@ -42,10 +42,11 @@ Target hosting cost: **< $8/month** for everything.
 
 | Document | Contents |
 |----------|----------|
-| `cap-preservation-plan.md` | Original plan: outreach contacts, risk assessment, data sources |
-| `static-case-law-mirror.md` | Mirror status, file format analysis, aria2 setup |
-| `extraction-plan.md` | Citation index design, R2 layout, WASM client architecture |
-| `search-plan.md` | RoaringBuckets vs Tantivy analysis, DuckLake design, cost estimates |
+| `docs/plans/checklist.md` | Master checklist — current status and next steps |
+| `docs/plans/cap-preservation-plan.md` | Original plan: outreach contacts, risk assessment, data sources |
+| `docs/plans/static-case-law-mirror.md` | Mirror status, file format analysis, aria2 setup |
+| `docs/plans/extraction-plan.md` | Citation index design, R2 layout, WASM client architecture |
+| `docs/plans/search-plan.md` | RoaringBuckets vs Tantivy analysis, DuckLake design, cost estimates |
 
 ## License
 
