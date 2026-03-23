@@ -1,5 +1,7 @@
 ---
 import '../styles/theme.css';
+import '../styles/layout.css';
+import '../styles/reader.css';
 ---
 
 <html lang="en">
@@ -17,25 +19,40 @@ import '../styles/theme.css';
 		</script>
 	</head>
 	<body>
-		<h1>stare.pub</h1>
-		<p class="subtitle">U.S. case law citation resolution — all client-side, no server</p>
-
-		<form id="lookup-form">
-			<input name="reporter" placeholder="Reporter (a2d)" required />
-			<input name="volume" type="number" placeholder="Vol" required />
-			<input name="page" type="number" placeholder="Page" required />
-			<button type="submit" id="submit-btn">Resolve</button>
-		</form>
-
-		<div id="status"></div>
-
-		<div id="result">
-			<div class="case-header">
-				<div class="case-name" id="case-name"></div>
-				<div class="case-meta" id="case-meta"></div>
-			</div>
-			<div id="opinions"></div>
+		<!-- Landing state -->
+		<div id="landing" class="landing">
+			<h1 class="landing-brand">stare.pub</h1>
+			<p class="landing-subtitle">U.S. case law citation resolution</p>
+			<form id="landing-form" class="landing-form">
+				<input id="landing-input" type="text" placeholder="a2d 31 647" autocomplete="off" />
+				<button type="submit" id="landing-btn">Resolve</button>
+			</form>
+			<div id="landing-status" class="status-line"></div>
 		</div>
+
+		<!-- Resolved state (hidden initially) -->
+		<div id="resolved" class="hidden">
+			<div class="topbar" id="topbar">
+				<span class="topbar-brand">stare.pub</span>
+				<span class="topbar-divider">|</span>
+				<span class="topbar-cite" id="topbar-cite"></span>
+				<span class="topbar-case" id="topbar-case"></span>
+				<button id="theme-btn" class="theme-toggle" title="Toggle dark mode">&#9790;</button>
+				<button id="edit-btn" class="topbar-edit">Edit</button>
+			</div>
+			<div id="status-bar" class="status-line hidden"></div>
+			<div class="layout">
+				<div class="main">
+					<div class="view-tabs">
+						<div class="view-tab active">Reader</div>
+						<div class="view-tab" style="opacity:0.4;cursor:default" title="Coming soon">Original Pages</div>
+					</div>
+					<div id="reader" class="reader"></div>
+				</div>
+				<div class="sidebar" id="sidebar"></div>
+			</div>
+		</div>
+		<button class="sidebar-toggle hidden" id="sidebar-toggle">&#9776;</button>
 
 		<script is:inline type="module">
 			import init, { lookup_page, extract_case } from '/wasm/stare_wasm.js';
