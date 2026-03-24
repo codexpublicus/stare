@@ -1,156 +1,130 @@
-// Mock eyecite — regex-based citation detection
-// Will be replaced by citare WASM when integrated
+// Citation detection — uses citare WASM when available, regex fallback
 
-// Case law: "31 A.2d 647", "138 U.S. 529"
-const CASE_PATTERN = /(\d{1,4})\s+([A-Z][A-Za-z.]+(?:\s+\d+[a-z]{1,2})?(?:\.\d+[a-z]{0,2})?)\s+(\d{1,4})/g;
+let wasm = null;
 
-// Statutes: "42 U.S.C. § 1983", "42 U.S.C. 1983", "28 U.S.C. §§ 1331"
-const USC_PATTERN = /(\d{1,2})\s+U\.?S\.?C\.?(?:\.?A\.?)?\s*(?:§+\s*)?(\d[\d.a-z-]*)/gi;
+async function getWasm() {
+  if (!wasm) {
+    const mod = await import('/wasm/stare_wasm.js');
+    await mod.default();
+    wasm = mod;
+  }
+  return wasm;
+}
 
-// Statutes at Large: "56 Stat. 195"
-const STAT_PATTERN = /(\d{1,3})\s+Stat\.\s+(\d{1,5})/g;
+// ---------------------------------------------------------------------------
+// External link templates for statutes/regulations
+// ---------------------------------------------------------------------------
 
-// CFR: "40 C.F.R. § 122.1"
-const CFR_PATTERN = /(\d{1,2})\s+C\.?F\.?R\.?\s*(?:§+\s*)?(\d[\d.]*)/gi;
+const EXTERNAL_LINKS = {
+  'U.S.C.': (vol, page) => `https://www.law.cornell.edu/uscode/text/${vol}/${page}`,
+  'Stat.': (vol, page) => `https://www.govinfo.gov/content/pkg/STATUTE-${vol}/pdf/STATUTE-${vol}-Pg${page}.pdf`,
+  'C.F.R.': (vol, page) => `https://www.ecfr.gov/current/title-${vol}/section-${page}`,
+};
+
+function getExternalUrl(reporter, volume, page) {
+  for (const [key, urlFn] of Object.entries(EXTERNAL_LINKS)) {
+    if (reporter && reporter.includes(key.replace(/\./g, ''))) {
+      return urlFn(volume, page);
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Detection — citare WASM or regex fallback
+// ---------------------------------------------------------------------------
 
 /**
- * Detect all citations in text. Returns structured results.
- * Each: { raw, type, volume, reporter, page, start, end, externalUrl? }
+ * Detect citations using citare WASM.
+ * Returns array of { raw, type, harvard_slug, volume, page, reporter, year, start, end, externalUrl? }
  */
-export function detectCitations(text) {
-  const results = [];
+export async function detectCitations(text) {
+  try {
+    const w = await getWasm();
+    const json = w.detect_citations(text);
+    const raw = JSON.parse(json);
 
-  // Case citations
+    return raw.map(c => ({
+      raw: c.matched_text,
+      type: c.citation_type,
+      harvard_slug: c.harvard_slug || null,
+      volume: c.volume ? parseInt(c.volume, 10) : null,
+      page: c.page || null,
+      reporter: c.reporter || null,
+      year: c.year || null,
+      start: c.span[0],
+      end: c.span[1],
+      externalUrl: c.harvard_slug ? null : getExternalUrl(c.reporter, c.volume, c.page),
+    }));
+  } catch (e) {
+    console.warn('Citare WASM failed, falling back to regex:', e);
+    return detectCitationsRegex(text);
+  }
+}
+
+/**
+ * Regex fallback — same patterns as before.
+ */
+const CASE_PATTERN = /(\d{1,4})\s+([A-Z][A-Za-z.]+(?:\s+\d+[a-z]{1,2})?(?:\.\d+[a-z]{0,2})?)\s+(\d{1,4})/g;
+
+function detectCitationsRegex(text) {
+  const results = [];
   let match;
-  const caseRe = new RegExp(CASE_PATTERN.source, 'g');
-  while ((match = caseRe.exec(text)) !== null) {
+  const re = new RegExp(CASE_PATTERN.source, 'g');
+  while ((match = re.exec(text)) !== null) {
     results.push({
       raw: match[0],
       type: 'case',
+      harvard_slug: null,
       volume: parseInt(match[1], 10),
+      page: match[3],
       reporter: match[2].trim(),
-      page: parseInt(match[3], 10),
       start: match.index,
       end: match.index + match[0].length,
+      externalUrl: null,
     });
   }
-
-  // U.S. Code
-  const uscRe = new RegExp(USC_PATTERN.source, 'gi');
-  while ((match = uscRe.exec(text)) !== null) {
-    const title = match[1];
-    const section = match[2];
-    results.push({
-      raw: match[0],
-      type: 'statute',
-      volume: parseInt(title, 10),
-      reporter: 'U.S.C.',
-      page: section,
-      start: match.index,
-      end: match.index + match[0].length,
-      externalUrl: `https://www.law.cornell.edu/uscode/text/${title}/${section}`,
-    });
-  }
-
-  // Statutes at Large
-  const statRe = new RegExp(STAT_PATTERN.source, 'g');
-  while ((match = statRe.exec(text)) !== null) {
-    results.push({
-      raw: match[0],
-      type: 'statute',
-      volume: parseInt(match[1], 10),
-      reporter: 'Stat.',
-      page: match[2],
-      start: match.index,
-      end: match.index + match[0].length,
-      externalUrl: `https://www.govinfo.gov/content/pkg/STATUTE-${match[1]}/pdf/STATUTE-${match[1]}-Pg${match[2]}.pdf`,
-    });
-  }
-
-  // CFR
-  const cfrRe = new RegExp(CFR_PATTERN.source, 'gi');
-  while ((match = cfrRe.exec(text)) !== null) {
-    const title = match[1];
-    const section = match[2];
-    results.push({
-      raw: match[0],
-      type: 'regulation',
-      volume: parseInt(title, 10),
-      reporter: 'C.F.R.',
-      page: section,
-      start: match.index,
-      end: match.index + match[0].length,
-      externalUrl: `https://www.ecfr.gov/current/title-${title}/section-${section}`,
-    });
-  }
-
-  // Sort by position, deduplicate overlapping spans
-  results.sort((a, b) => a.start - b.start);
-  return deduplicateSpans(results);
+  return results;
 }
 
-/**
- * Remove overlapping citations, keeping the longer match.
- */
-function deduplicateSpans(results) {
-  const filtered = [];
-  let lastEnd = -1;
-  for (const r of results) {
-    if (r.start >= lastEnd) {
-      filtered.push(r);
-      lastEnd = r.end;
-    } else if (r.end - r.start > (filtered[filtered.length - 1]?.end - filtered[filtered.length - 1]?.start || 0)) {
-      filtered[filtered.length - 1] = r;
-      lastEnd = r.end;
-    }
-  }
-  return filtered;
-}
+// ---------------------------------------------------------------------------
+// Availability checking
+// ---------------------------------------------------------------------------
 
-/**
- * Attempt to guess a slug from a reporter abbreviation.
- * e.g., "A.2d" → "a2d", "U.S." → "us", "App.D.C." → "appdc"
- * This is a rough heuristic — eyecite-rs will handle this properly.
- */
-export function guessSlug(reporter) {
-  return reporter
-    .toLowerCase()
-    .replace(/\./g, '')
-    .replace(/\s+/g, '');
-}
-
-/**
- * Check if we have an index for a given reporter/volume.
- * Returns true if the .bin file exists (non-404).
- * Results are cached to avoid repeated HEAD requests.
- */
 const availabilityCache = new Map();
 
-export async function checkAvailability(reporter, volume) {
-  const slug = guessSlug(reporter);
+export function guessSlug(reporter) {
+  return reporter.toLowerCase().replace(/\./g, '').replace(/\s+/g, '');
+}
+
+export async function checkAvailability(slug, volume) {
   const key = `${slug}/${volume}`;
   if (availabilityCache.has(key)) return availabilityCache.get(key);
 
   try {
-    const resp = await fetch(`/data/${slug}/${volume}.bin`, { method: 'HEAD' });
-    const available = resp.ok;
-    availabilityCache.set(key, available ? slug : null);
-    return available ? slug : null;
+    const indexUrl = 'https://idx.stare.pub';
+    const resp = await fetch(`${indexUrl}/${slug}/${volume}.bin`, { method: 'HEAD' });
+    availabilityCache.set(key, resp.ok);
+    return resp.ok;
   } catch {
-    availabilityCache.set(key, null);
-    return null;
+    availabilityCache.set(key, false);
+    return false;
   }
 }
 
+// ---------------------------------------------------------------------------
+// Process citations for a case
+// ---------------------------------------------------------------------------
+
 /**
  * Process all citations in a case's opinions.
- * Returns { citations: [...], byReporter: Map } with availability info.
+ * Uses citare for detection, checks availability for each.
  */
 export async function processCitations(caseData) {
   const allCites = [];
 
   for (const op of caseData.casebody?.opinions || []) {
-    const detected = detectCitations(op.text);
+    const detected = await detectCitations(op.text);
     allCites.push(...detected);
   }
 
@@ -162,36 +136,44 @@ export async function processCitations(caseData) {
     return true;
   });
 
-  // Check availability: statutes/regulations already have external URLs,
-  // case citations need a .bin check
+  // Check availability for case citations with harvard_slug
   const checks = unique.map(async (c) => {
     if (c.externalUrl) {
       return { ...c, slug: null, resolvable: false };
     }
-    const slug = await checkAvailability(c.reporter, c.volume);
-    return { ...c, slug, resolvable: slug !== null };
+    if (c.harvard_slug && c.volume && c.page) {
+      const available = await checkAvailability(c.harvard_slug, c.volume);
+      return { ...c, slug: c.harvard_slug, resolvable: available };
+    }
+    // No slug — try guessing
+    if (c.reporter && c.volume) {
+      const slug = guessSlug(c.reporter);
+      const available = await checkAvailability(slug, c.volume);
+      return { ...c, slug: available ? slug : null, resolvable: available };
+    }
+    return { ...c, slug: null, resolvable: false };
   });
 
-  const resolved = await Promise.all(checks);
-  return resolved;
+  return Promise.all(checks);
 }
 
+// ---------------------------------------------------------------------------
+// Highlighting
+// ---------------------------------------------------------------------------
+
 /**
- * Highlight citations in a text string.
- * Returns HTML with citation spans (blue for resolvable, gray for not).
- * `citationMap` is a Map of raw citation string → { slug, volume, page, resolvable }
+ * Highlight citations in escaped text.
+ * citationMap: Map of raw string → { slug, volume, page, resolvable, externalUrl }
  */
 export function highlightCitations(escapedText, citationMap) {
   let result = escapedText;
 
-  // Sort by length descending to avoid partial replacements
   const entries = [...citationMap.entries()].sort((a, b) => b[0].length - a[0].length);
 
   for (const [raw, info] of entries) {
     const escaped = escapeRegex(raw);
     const re = new RegExp(escaped, 'g');
     if (info.externalUrl) {
-      // Statute/regulation — link to external source
       result = result.replace(re,
         `<a class="cite-link cite-external" href="${info.externalUrl}" target="_blank" rel="noopener" title="View on external site">${raw}</a>`
       );
@@ -209,29 +191,26 @@ export function highlightCitations(escapedText, citationMap) {
   return result;
 }
 
-/**
- * Lazy-load case preview (title, date, court) for a citation on hover.
- * Uses the resolve pipeline: fetch .bin → lookup page → fetch .zip → extract case.
- * Results cached per citation so subsequent hovers are instant.
- */
+// ---------------------------------------------------------------------------
+// Hover previews
+// ---------------------------------------------------------------------------
+
 const previewCache = new Map();
 
-export async function fetchCasePreview(slug, volume, page, resolveFn, extractFn) {
+export async function fetchCasePreview(slug, volume, page, resolveFn) {
   const key = `${slug}/${volume}/${page}`;
   if (previewCache.has(key)) return previewCache.get(key);
 
-  // Mark as loading to prevent duplicate fetches
   const promise = (async () => {
     try {
-      const result = await resolveFn(slug, volume, page, () => {});
+      const result = await resolveFn(slug, volume, parseInt(page, 10), () => {});
       const c = result.caseData;
-      const preview = {
+      return {
         name: c.name_abbreviation,
         date: c.decision_date,
         court: c.court?.name || '',
         cite: c.citations?.[0]?.cite || '',
       };
-      return preview;
     } catch {
       return null;
     }
@@ -243,12 +222,8 @@ export async function fetchCasePreview(slug, volume, page, resolveFn, extractFn)
   return result;
 }
 
-/**
- * Set up hover tooltips on cite-link elements.
- * Call this after rendering the reader content.
- */
-export function setupCiteHovers(container, resolveFn, extractFn) {
-  container.querySelectorAll('a.cite-link').forEach(el => {
+export function setupCiteHovers(container, resolveFn) {
+  container.querySelectorAll('a.cite-link:not(.cite-external)').forEach(el => {
     let tooltipEl = null;
 
     el.addEventListener('mouseenter', async () => {
@@ -258,14 +233,12 @@ export function setupCiteHovers(container, resolveFn, extractFn) {
       if (parts.length !== 3) return;
       const [slug, volStr, pageStr] = parts;
       const volume = parseInt(volStr, 10);
-      const page = parseInt(pageStr, 10);
 
-      // Show loading tooltip with spinner
       tooltipEl = createTooltip(el);
       tooltipEl.innerHTML = `<span class="spinner"></span> Loading...`;
 
-      const preview = await fetchCasePreview(slug, volume, page, resolveFn, extractFn);
-      if (!tooltipEl) return; // mouse already left
+      const preview = await fetchCasePreview(slug, volume, pageStr, resolveFn);
+      if (!tooltipEl) return;
 
       if (preview) {
         tooltipEl.innerHTML = `<div><strong>${esc(preview.name)}</strong><br><span style="opacity:0.7">${esc(preview.cite)} &mdash; ${esc(preview.date)}</span></div>`;
@@ -287,7 +260,6 @@ function createTooltip(anchor) {
   const tip = document.createElement('div');
   tip.className = 'cite-tooltip';
   document.body.appendChild(tip);
-
   const rect = anchor.getBoundingClientRect();
   tip.style.left = rect.left + 'px';
   tip.style.top = (rect.bottom + 4) + 'px';
