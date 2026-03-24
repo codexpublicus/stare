@@ -87,10 +87,10 @@ fn parse_case_page(filename: &str) -> Option<usize> {
     if let Ok(n) = chunk.parse::<usize>() {
         return Some(n);
     }
-    // Strip trailing letters (e.g., "428e" → "428", "1028A" → "1028")
-    let numeric_prefix: String = chunk.chars().take_while(|c| c.is_ascii_digit()).collect();
-    if !numeric_prefix.is_empty() {
-        return numeric_prefix.parse::<usize>().ok();
+    // Extract the longest numeric substring (handles both "428e" and "B174")
+    let digits: String = chunk.chars().filter(|c| c.is_ascii_digit()).collect();
+    if !digits.is_empty() {
+        return digits.parse::<usize>().ok();
     }
     None
 }
