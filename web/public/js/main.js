@@ -121,7 +121,7 @@ async function showResolved(result) {
       renderReader(readerContent, result.caseData, citationMap);
       renderSidebar(sidebar, result.caseData, result.reporter, result.volume, result.allCases, detectedCitations);
       wireActions(result);
-      setupCiteHovers(readerContent, resolve, extractCase);
+      setupCiteHovers(readerContent, resolve);
     }
   } catch (e) {
     console.warn('Citation detection failed:', e);

@@ -169,7 +169,7 @@ export function highlightCitations(escapedText, citationMap) {
       );
     } else if (info.resolvable) {
       result = result.replace(re,
-        `<a class="cite-link" href="#${info.slug}/${info.volume}/${info.page}" title="${raw}">${raw}</a>`
+        `<a class="cite-link" href="#${info.slug}/${info.volume}/${info.page}" data-slug="${info.slug}" data-volume="${info.volume}" data-page="${info.page}" title="${raw}">${raw}</a>`
       );
     } else {
       result = result.replace(re,
@@ -212,9 +212,14 @@ export async function fetchCasePreview(slug, volume, page, resolveFn) {
   return result;
 }
 
+/**
+ * Set up hover tooltips and click-to-open on citation links.
+ * Resolvable citations open in a new tab. Hover shows preview tooltip.
+ */
 export function setupCiteHovers(container, resolveFn) {
   container.querySelectorAll('a.cite-link:not(.cite-external)').forEach(el => {
     let tooltipEl = null;
+    let savedTitle = null;
 
     el.addEventListener('mouseenter', async () => {
       const hash = el.getAttribute('href');
@@ -223,6 +228,10 @@ export function setupCiteHovers(container, resolveFn) {
       if (parts.length !== 3) return;
       const [slug, volStr, pageStr] = parts;
       const volume = parseInt(volStr, 10);
+
+      // Suppress browser tooltip while our custom one is showing
+      savedTitle = el.getAttribute('title');
+      el.removeAttribute('title');
 
       tooltipEl = createTooltip(el);
       tooltipEl.innerHTML = `<span class="spinner"></span> Loading...`;
@@ -241,6 +250,20 @@ export function setupCiteHovers(container, resolveFn) {
       if (tooltipEl) {
         tooltipEl.remove();
         tooltipEl = null;
+      }
+      // Restore title for accessibility
+      if (savedTitle !== null) {
+        el.setAttribute('title', savedTitle);
+        savedTitle = null;
+      }
+    });
+
+    // Click opens citation in new tab
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      const href = el.getAttribute('href');
+      if (href) {
+        window.open(window.location.pathname + href, '_blank');
       }
     });
   });
