@@ -8,6 +8,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 #[derive(Parser)]
 #[command(name = "stare-admin", about = "Build tools for stare.pub case law index")]
 struct Cli {
+    /// Show detailed output for each file
+    #[arg(long, short, global = true)]
+    verbose: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -45,10 +49,10 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::BuildIndex { zip_path, output } => {
-            build_index(&zip_path, output.as_deref())?;
+            build_index(&zip_path, output.as_deref(), cli.verbose)?;
         }
         Commands::BatchIndex { dir, output_dir } => {
-            batch_index(&dir, output_dir.as_deref())?;
+            batch_index(&dir, output_dir.as_deref(), cli.verbose)?;
         }
         Commands::BuildManifest {
             index_dir,
@@ -61,26 +65,48 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_index(zip_path: &std::path::Path, output: Option<&std::path::Path>) -> anyhow::Result<()> {
+/// Parse a page number from a case filename.
+///
+/// Handles formats:
+///   "0647-01"       → 647
+///   "1265=1275-01"  → 1265 (takes first number before =)
+///   "105, 106-01"   → 105 (takes first number before comma)
+///   "Supp. 1-01"    → None (non-numeric prefix)
+fn parse_case_page(filename: &str) -> Option<usize> {
+    let page_part = filename.split('-').next()?;
+    // Take the first numeric-looking chunk
+    let num_str = page_part
+        .split(|c: char| c == '=' || c == ',' || c == ' ')
+        .next()?
+        .trim();
+    // Strip any non-digit prefix (e.g., "Supp." would fail)
+    num_str.parse::<usize>().ok()
+}
+
+fn build_index(
+    zip_path: &std::path::Path,
+    output: Option<&std::path::Path>,
+    verbose: bool,
+) -> anyhow::Result<()> {
     let zip_bytes = std::fs::read(zip_path)
         .with_context(|| format!("failed to read {}", zip_path.display()))?;
     let cases = stare::case::list_cases_in_zip(&zip_bytes)?;
+
+    let mut skipped = 0;
     let case_pages: Vec<(&str, usize)> = cases
         .iter()
         .filter_map(|c| {
-            // Filename is like "0647-01" or rarely "1265=1275-01"
-            let page_part = c.split('-').next().unwrap();
-            // Handle "1265=1275" by taking the first number
-            let page_str = page_part.split('=').next().unwrap();
-            match page_str.parse::<usize>() {
-                Ok(page) => Some((c.as_str(), page)),
-                Err(_) => {
-                    eprintln!("Warning: skipping case with unparseable page: {}", c);
+            match parse_case_page(c) {
+                Some(page) => Some((c.as_str(), page)),
+                None => {
+                    skipped += 1;
+                    eprintln!("Warning: skipping case with unparseable page: {} (in {})", c, zip_path.display());
                     None
                 }
             }
         })
         .collect();
+
     let result = stare::index::build(&case_pages);
 
     let out_path = output
@@ -94,18 +120,24 @@ fn build_index(zip_path: &std::path::Path, output: Option<&std::path::Path>) -> 
         let multi_data = stare::index::serialize_multi(&result.multi);
         std::fs::write(&multi_path, &multi_data)
             .with_context(|| format!("failed to write {}", multi_path.display()))?;
+    }
+
+    if verbose {
+        let multi_note = if result.multi.is_empty() {
+            String::new()
+        } else {
+            format!(" ({} multi-case pages)", result.multi.len())
+        };
+        let skip_note = if skipped > 0 {
+            format!(", {} skipped", skipped)
+        } else {
+            String::new()
+        };
         println!(
-            "Built index: {} cases ({} multi-case pages), {} bytes → {} + {}",
-            cases.len(),
-            result.multi.len(),
-            result.bin.len(),
-            out_path.display(),
-            multi_path.display()
-        );
-    } else {
-        println!(
-            "Built index: {} cases, {} bytes → {}",
-            cases.len(),
+            "  {} cases{}{}, {} bytes → {}",
+            case_pages.len(),
+            multi_note,
+            skip_note,
             result.bin.len(),
             out_path.display()
         );
@@ -114,7 +146,11 @@ fn build_index(zip_path: &std::path::Path, output: Option<&std::path::Path>) -> 
     Ok(())
 }
 
-fn batch_index(dir: &std::path::Path, output_dir: Option<&std::path::Path>) -> anyhow::Result<()> {
+fn batch_index(
+    dir: &std::path::Path,
+    output_dir: Option<&std::path::Path>,
+    verbose: bool,
+) -> anyhow::Result<()> {
     let zips: Vec<PathBuf> = walkdir(dir)?
         .into_iter()
         .filter(|p| p.extension().map(|e| e == "zip").unwrap_or(false))
@@ -124,7 +160,6 @@ fn batch_index(dir: &std::path::Path, output_dir: Option<&std::path::Path>) -> a
 
     let count = AtomicUsize::new(0);
     let errors = AtomicUsize::new(0);
-
     // Pre-create output directories (not safe to race on mkdir)
     if let Some(out) = output_dir {
         for zip_path in &zips {
@@ -136,6 +171,8 @@ fn batch_index(dir: &std::path::Path, output_dir: Option<&std::path::Path>) -> a
         }
     }
 
+    let total = zips.len();
+
     zips.par_iter().for_each(|zip_path| {
         let out_path = match output_dir {
             Some(out) => {
@@ -145,25 +182,23 @@ fn batch_index(dir: &std::path::Path, output_dir: Option<&std::path::Path>) -> a
             None => zip_path.with_extension("bin"),
         };
 
-        match build_index(zip_path, Some(&out_path)) {
+        match build_index(zip_path, Some(&out_path), verbose) {
             Ok(()) => {
                 let n = count.fetch_add(1, Ordering::Relaxed) + 1;
-                if n % 1000 == 0 {
-                    eprintln!("Progress: {}/{} indexed", n, zips.len());
+                if n % 100 == 0 || n == total {
+                    eprint!("\rProgress: {}/{} indexed", n, total);
                 }
             }
             Err(e) => {
-                eprintln!("Error indexing {}: {}", zip_path.display(), e);
+                eprintln!("\nError indexing {}: {}", zip_path.display(), e);
                 errors.fetch_add(1, Ordering::Relaxed);
             }
         }
     });
 
-    println!(
-        "\nBatch complete: {} indexed, {} errors",
-        count.load(Ordering::Relaxed),
-        errors.load(Ordering::Relaxed)
-    );
+    let indexed = count.load(Ordering::Relaxed);
+    let errs = errors.load(Ordering::Relaxed);
+    println!("\n\nBatch complete: {} indexed, {} errors", indexed, errs);
     Ok(())
 }
 
@@ -180,14 +215,12 @@ fn build_manifest(
     let files = walkdir(index_dir)?;
     for path in &files {
         if path.extension().map(|e| e == "bin").unwrap_or(false) {
-            // Extract reporter slug and volume from path: {reporter}/{volume}.bin
             if let Some(volume_str) = path.file_stem().and_then(|s| s.to_str()) {
                 if let Ok(volume) = volume_str.parse::<u32>() {
                     if let Some(reporter) = path.parent()
                         .and_then(|p| p.file_name())
                         .and_then(|s| s.to_str())
                     {
-                        // Skip the index_dir itself as a reporter name
                         if path.parent() != Some(index_dir) {
                             manifest
                                 .entry(reporter.to_string())
@@ -200,7 +233,6 @@ fn build_manifest(
         }
     }
 
-    // Sort volumes within each reporter
     for volumes in manifest.values_mut() {
         volumes.sort();
     }
