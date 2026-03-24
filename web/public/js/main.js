@@ -198,11 +198,11 @@ async function doResolve(reporter, volume, page, seq = null) {
 }
 
 // Landing form submit
-landingForm.addEventListener('submit', (e) => {
+landingForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const parsed = parseInput(landingInput.value);
+  const parsed = await parseInput(landingInput.value);
   if (!parsed) {
-    setStatus('Enter a citation as: reporter volume page (e.g., a2d 31 647)', true);
+    setStatus('Enter a citation (e.g., 31 A.2d 647 or a2d 31 647)', true);
     return;
   }
   doResolve(parsed.reporter, parsed.volume, parsed.page, parsed.seq);
@@ -234,10 +234,10 @@ let editSubmitting = false;
 
 topbarCite.addEventListener('click', startEditing);
 
-topbarCiteInput.addEventListener('keydown', (e) => {
+topbarCiteInput.addEventListener('keydown', async (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
-    const parsed = parseInput(topbarCiteInput.value);
+    const parsed = await parseInput(topbarCiteInput.value);
     if (parsed) {
       editSubmitting = true;
       stopEditing();

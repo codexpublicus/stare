@@ -26,19 +26,13 @@ struct Cli {
 enum Commands {
     /// Resolve a citation to case text
     Resolve {
-        /// Reporter slug (e.g., a2d, us, f2d)
-        reporter: String,
-        /// Volume number
-        volume: u32,
-        /// Page number
-        page: u32,
+        /// Citation: "31 A.2d 647" or "a2d 31 647" or slug volume page as separate args
+        citation: Vec<String>,
     },
     /// List all cases in a volume
     List {
-        /// Reporter slug (e.g., a2d, us, f2d)
-        reporter: String,
-        /// Volume number
-        volume: u32,
+        /// Reporter slug and volume: "a2d 31" or separate args
+        args: Vec<String>,
     },
     /// Check citations in a text file (or - for stdin)
     Check {
@@ -110,7 +104,9 @@ fn main() -> Result<()> {
     let src = Sources::from_cli(&cli);
 
     match cli.command {
-        Commands::Resolve { reporter, volume, page } => {
+        Commands::Resolve { citation } => {
+            let input = citation.join(" ");
+            let (reporter, volume, page) = parse_citation_input(&input)?;
             let result = resolve_case(&src, &reporter, volume, page)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&result.case)?);
@@ -118,7 +114,14 @@ fn main() -> Result<()> {
                 print_case(&result);
             }
         }
-        Commands::List { reporter, volume } => {
+        Commands::List { args } => {
+            let input = args.join(" ");
+            let parts: Vec<&str> = input.split_whitespace().collect();
+            if parts.len() != 2 {
+                anyhow::bail!("Usage: stare list <reporter> <volume> (e.g., stare list a2d 31)");
+            }
+            let reporter = parts[0].to_lowercase();
+            let volume: u32 = parts[1].parse().with_context(|| format!("invalid volume: {}", parts[1]))?;
             list_cases(&src, &reporter, volume, json)?;
         }
         Commands::Check { file } => {
@@ -136,6 +139,38 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Citation parsing
+// ---------------------------------------------------------------------------
+
+/// Parse citation input — tries slug format first, then citare.
+///
+/// Accepts:
+///   "a2d 31 647"       → slug format
+///   "31 A.2d 647"      → natural citation (via citare)
+///   "410 U.S. 113"     → natural citation
+fn parse_citation_input(input: &str) -> Result<(String, u32, u32)> {
+    // Try slug format: "a2d 31 647"
+    let parts: Vec<&str> = input.split_whitespace().collect();
+    if parts.len() == 3 {
+        if let (Ok(vol), Ok(page)) = (parts[1].parse::<u32>(), parts[2].parse::<u32>()) {
+            return Ok((parts[0].to_lowercase(), vol, page));
+        }
+    }
+
+    // Try citare
+    let detected = stare::cite::detect_citations(input);
+    for c in &detected {
+        if let (Some(slug), Some(vol_str), Some(page_str)) = (&c.harvard_slug, &c.volume, &c.page) {
+            if let (Ok(vol), Ok(page)) = (vol_str.parse::<u32>(), page_str.parse::<u32>()) {
+                return Ok((slug.clone(), vol, page));
+            }
+        }
+    }
+
+    bail!("Could not parse citation: \"{}\"\nTry: \"31 A.2d 647\" or \"a2d 31 647\"", input)
 }
 
 // ---------------------------------------------------------------------------
