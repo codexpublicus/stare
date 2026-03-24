@@ -1,6 +1,9 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
+use rayon::prelude::*;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Parser)]
 #[command(name = "stare-admin", about = "Build tools for stare.pub case law index")]
@@ -23,9 +26,17 @@ enum Commands {
     BatchIndex {
         /// Directory containing reporter/volume.zip files
         dir: PathBuf,
-        /// Output directory for .bin files (default: same as input)
+        /// Output directory for .bin files (preserves reporter/vol structure)
         #[arg(short, long)]
         output_dir: Option<PathBuf>,
+    },
+    /// Build reporters.json from ReportersMetadata.json
+    BuildReporters {
+        /// Path to ReportersMetadata.json
+        metadata_path: PathBuf,
+        /// Output path (default: reporters.json in current dir)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -39,6 +50,12 @@ fn main() -> anyhow::Result<()> {
         Commands::BatchIndex { dir, output_dir } => {
             batch_index(&dir, output_dir.as_deref())?;
         }
+        Commands::BuildReporters {
+            metadata_path,
+            output,
+        } => {
+            build_reporters(&metadata_path, output.as_deref())?;
+        }
     }
 
     Ok(())
@@ -50,9 +67,18 @@ fn build_index(zip_path: &std::path::Path, output: Option<&std::path::Path>) -> 
     let cases = stare::case::list_cases_in_zip(&zip_bytes)?;
     let case_pages: Vec<(&str, usize)> = cases
         .iter()
-        .map(|c| {
-            let page: usize = c.split('-').next().unwrap().parse().unwrap();
-            (c.as_str(), page)
+        .filter_map(|c| {
+            // Filename is like "0647-01" or rarely "1265=1275-01"
+            let page_part = c.split('-').next().unwrap();
+            // Handle "1265=1275" by taking the first number
+            let page_str = page_part.split('=').next().unwrap();
+            match page_str.parse::<usize>() {
+                Ok(page) => Some((c.as_str(), page)),
+                Err(_) => {
+                    eprintln!("Warning: skipping case with unparseable page: {}", c);
+                    None
+                }
+            }
         })
         .collect();
     let result = stare::index::build(&case_pages);
@@ -89,32 +115,93 @@ fn build_index(zip_path: &std::path::Path, output: Option<&std::path::Path>) -> 
 }
 
 fn batch_index(dir: &std::path::Path, output_dir: Option<&std::path::Path>) -> anyhow::Result<()> {
-    let mut count = 0;
-    let mut errors = 0;
+    let zips: Vec<PathBuf> = walkdir(dir)?
+        .into_iter()
+        .filter(|p| p.extension().map(|e| e == "zip").unwrap_or(false))
+        .collect();
 
-    // Walk directory for .zip files
-    for entry in walkdir(dir)? {
-        let path = entry;
-        if path.extension().map(|e| e == "zip").unwrap_or(false) {
-            let out_dir = output_dir.unwrap_or_else(|| path.parent().unwrap());
-            let out_path = out_dir.join(path.file_stem().unwrap()).with_extension("bin");
+    println!("Found {} zip files, indexing in parallel...", zips.len());
 
-            // Create output directory if needed
+    let count = AtomicUsize::new(0);
+    let errors = AtomicUsize::new(0);
+
+    // Pre-create output directories (not safe to race on mkdir)
+    if let Some(out) = output_dir {
+        for zip_path in &zips {
+            let rel = zip_path.strip_prefix(dir).unwrap_or(zip_path);
+            let out_path = out.join(rel).with_extension("bin");
             if let Some(parent) = out_path.parent() {
                 std::fs::create_dir_all(parent)?;
-            }
-
-            match build_index(&path, Some(&out_path)) {
-                Ok(()) => count += 1,
-                Err(e) => {
-                    eprintln!("Error indexing {}: {}", path.display(), e);
-                    errors += 1;
-                }
             }
         }
     }
 
-    println!("\nBatch complete: {} indexed, {} errors", count, errors);
+    zips.par_iter().for_each(|zip_path| {
+        let out_path = match output_dir {
+            Some(out) => {
+                let rel = zip_path.strip_prefix(dir).unwrap_or(zip_path);
+                out.join(rel).with_extension("bin")
+            }
+            None => zip_path.with_extension("bin"),
+        };
+
+        match build_index(zip_path, Some(&out_path)) {
+            Ok(()) => {
+                let n = count.fetch_add(1, Ordering::Relaxed) + 1;
+                if n % 1000 == 0 {
+                    eprintln!("Progress: {}/{} indexed", n, zips.len());
+                }
+            }
+            Err(e) => {
+                eprintln!("Error indexing {}: {}", zip_path.display(), e);
+                errors.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    });
+
+    println!(
+        "\nBatch complete: {} indexed, {} errors",
+        count.load(Ordering::Relaxed),
+        errors.load(Ordering::Relaxed)
+    );
+    Ok(())
+}
+
+fn build_reporters(
+    metadata_path: &std::path::Path,
+    output: Option<&std::path::Path>,
+) -> anyhow::Result<()> {
+    let data = std::fs::read_to_string(metadata_path)
+        .with_context(|| format!("failed to read {}", metadata_path.display()))?;
+
+    #[derive(serde::Deserialize)]
+    struct Reporter {
+        short_name: String,
+        slug: String,
+    }
+
+    let reporters: Vec<Reporter> = serde_json::from_str(&data)
+        .context("failed to parse ReportersMetadata.json")?;
+
+    let mapping: BTreeMap<&str, &str> = reporters
+        .iter()
+        .map(|r| (r.short_name.as_str(), r.slug.as_str()))
+        .collect();
+
+    let json = serde_json::to_string_pretty(&mapping)?;
+
+    let out_path = output
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("reporters.json"));
+    std::fs::write(&out_path, &json)
+        .with_context(|| format!("failed to write {}", out_path.display()))?;
+
+    println!(
+        "Built reporters.json: {} reporters → {}",
+        mapping.len(),
+        out_path.display()
+    );
+
     Ok(())
 }
 
