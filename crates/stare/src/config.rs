@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+pub const DEFAULT_INDEX_URL: &str = "https://stare.pub/data";
 pub const DEFAULT_DATA_URL: &str = "https://static.case.law";
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -25,7 +26,7 @@ pub struct Sources {
 
 impl Config {
     pub fn index_source(&self) -> &str {
-        self.sources.index.as_deref().unwrap_or("")
+        self.sources.index.as_deref().unwrap_or(DEFAULT_INDEX_URL)
     }
 
     pub fn data_source(&self) -> &str {
