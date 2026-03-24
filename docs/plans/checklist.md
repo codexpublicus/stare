@@ -26,7 +26,8 @@
 ### Remaining
 - [x] `--json` output flag on resolve for machine consumption
 - [x] Handle multi-case pages: `.multi` sidecar for -02, -03 entries
-- [ ] Batch `build-index` across all zips (once mirror has them)
+- [x] Batch `build-index` across all zips (parallel via rayon)
+- [ ] Supplement page indexing — cases with `Supp.` page numbers (e.g., `Supp. 1-01`) are currently skipped. Need a convention for addressing them in the .bin (offset-based or separate file) and a URL scheme (e.g., `#a2d/31/s1-01`). Low volume but real content.
 - [ ] Set up Cloudflare R2 buckets (`codex-index`, `codex-data`)
 - [ ] Upload index + zips to R2
 - [ ] Test full pipeline against live R2 bucket
