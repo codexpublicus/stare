@@ -1,6 +1,6 @@
 import { fetchCached, fetchCachedText } from './cache.js';
 
-const INDEX_URL = '/data';
+const INDEX_URL = 'https://idx.stare.pub';
 const ZIP_URL = 'https://static.case.law';
 
 let wasm = null;
