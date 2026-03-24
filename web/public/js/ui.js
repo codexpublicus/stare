@@ -61,9 +61,10 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
 
     const renderCite = (c) => {
       if (c.resolvable) {
+        const href = `${window.location.pathname}#${c.slug}/${c.volume}/${c.page}`;
         return `<div class="cited-case">
           <span class="cited-status ok">&#10003;</span>
-          <a class="cited-case-link" href="#${c.slug}/${c.volume}/${c.page}">${esc(c.raw)}</a>
+          <a class="cited-case-link" href="${href}" target="_blank" rel="noopener">${esc(c.raw)}</a>
         </div>`;
       } else if (c.externalUrl) {
         return `<div class="cited-case">

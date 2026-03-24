@@ -183,6 +183,7 @@ async function doResolve(reporter, volume, page, seq = null) {
     const result = await resolve(reporter, volume, page, (msg) => setStatus(msg, false), seq);
     currentResult = result;
     setHash(reporter, volume, page, result.seq);
+    lastResolvedHash = window.location.hash;
     showResolved(result);
   } catch (err) {
     setStatus(err.message, true);
@@ -311,10 +312,21 @@ tabPages.addEventListener('click', async () => {
   }
 });
 
-// Hash routing
+// Hash routing — handle back/forward navigation
+let lastResolvedHash = '';
+
 onHashChange((params) => {
+  const currentHash = window.location.hash;
+  if (currentHash === lastResolvedHash) return;
   landingInput.value = `${params.reporter} ${params.volume} ${params.page}`;
   doResolve(params.reporter, params.volume, params.page, params.seq);
+});
+
+// Handle back to empty hash (return to landing)
+window.addEventListener('hashchange', () => {
+  if (!window.location.hash || window.location.hash === '#') {
+    showLanding();
+  }
 });
 
 // Auto-resolve from URL hash on load
