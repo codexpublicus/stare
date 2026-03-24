@@ -1,21 +1,32 @@
 // Mock eyecite — regex-based citation detection
-// Will be replaced by eyecite-rs WASM when available
+// Will be replaced by citare WASM when integrated
 
-// Common reporter abbreviations we might have indexed
-// This is a rough heuristic — eyecite-rs will do this properly
-const CITE_PATTERN = /(\d{1,4})\s+([A-Z][A-Za-z.]+(?:\s+\d+[a-z]{1,2})?(?:\.\d+[a-z]{0,2})?)\s+(\d{1,4})/g;
+// Case law: "31 A.2d 647", "138 U.S. 529"
+const CASE_PATTERN = /(\d{1,4})\s+([A-Z][A-Za-z.]+(?:\s+\d+[a-z]{1,2})?(?:\.\d+[a-z]{0,2})?)\s+(\d{1,4})/g;
+
+// Statutes: "42 U.S.C. § 1983", "42 U.S.C. 1983", "28 U.S.C. §§ 1331"
+const USC_PATTERN = /(\d{1,2})\s+U\.?S\.?C\.?(?:\.?A\.?)?\s*(?:§+\s*)?(\d[\d.a-z-]*)/gi;
+
+// Statutes at Large: "56 Stat. 195"
+const STAT_PATTERN = /(\d{1,3})\s+Stat\.\s+(\d{1,5})/g;
+
+// CFR: "40 C.F.R. § 122.1"
+const CFR_PATTERN = /(\d{1,2})\s+C\.?F\.?R\.?\s*(?:§+\s*)?(\d[\d.]*)/gi;
 
 /**
- * Detect citations in text and return structured results.
- * Each result: { raw, volume, reporter, page, start, end }
+ * Detect all citations in text. Returns structured results.
+ * Each: { raw, type, volume, reporter, page, start, end, externalUrl? }
  */
 export function detectCitations(text) {
   const results = [];
+
+  // Case citations
   let match;
-  const re = new RegExp(CITE_PATTERN.source, 'g');
-  while ((match = re.exec(text)) !== null) {
+  const caseRe = new RegExp(CASE_PATTERN.source, 'g');
+  while ((match = caseRe.exec(text)) !== null) {
     results.push({
       raw: match[0],
+      type: 'case',
       volume: parseInt(match[1], 10),
       reporter: match[2].trim(),
       page: parseInt(match[3], 10),
@@ -23,7 +34,77 @@ export function detectCitations(text) {
       end: match.index + match[0].length,
     });
   }
-  return results;
+
+  // U.S. Code
+  const uscRe = new RegExp(USC_PATTERN.source, 'gi');
+  while ((match = uscRe.exec(text)) !== null) {
+    const title = match[1];
+    const section = match[2];
+    results.push({
+      raw: match[0],
+      type: 'statute',
+      volume: parseInt(title, 10),
+      reporter: 'U.S.C.',
+      page: section,
+      start: match.index,
+      end: match.index + match[0].length,
+      externalUrl: `https://www.law.cornell.edu/uscode/text/${title}/${section}`,
+    });
+  }
+
+  // Statutes at Large
+  const statRe = new RegExp(STAT_PATTERN.source, 'g');
+  while ((match = statRe.exec(text)) !== null) {
+    results.push({
+      raw: match[0],
+      type: 'statute',
+      volume: parseInt(match[1], 10),
+      reporter: 'Stat.',
+      page: match[2],
+      start: match.index,
+      end: match.index + match[0].length,
+      externalUrl: `https://www.govinfo.gov/content/pkg/STATUTE-${match[1]}/pdf/STATUTE-${match[1]}-Pg${match[2]}.pdf`,
+    });
+  }
+
+  // CFR
+  const cfrRe = new RegExp(CFR_PATTERN.source, 'gi');
+  while ((match = cfrRe.exec(text)) !== null) {
+    const title = match[1];
+    const section = match[2];
+    results.push({
+      raw: match[0],
+      type: 'regulation',
+      volume: parseInt(title, 10),
+      reporter: 'C.F.R.',
+      page: section,
+      start: match.index,
+      end: match.index + match[0].length,
+      externalUrl: `https://www.ecfr.gov/current/title-${title}/section-${section}`,
+    });
+  }
+
+  // Sort by position, deduplicate overlapping spans
+  results.sort((a, b) => a.start - b.start);
+  return deduplicateSpans(results);
+}
+
+/**
+ * Remove overlapping citations, keeping the longer match.
+ */
+function deduplicateSpans(results) {
+  const filtered = [];
+  let lastEnd = -1;
+  for (const r of results) {
+    if (r.start >= lastEnd) {
+      filtered.push(r);
+      lastEnd = r.end;
+    } else if (r.end - r.start > (filtered[filtered.length - 1]?.end - filtered[filtered.length - 1]?.start || 0)) {
+      filtered[filtered.length - 1] = r;
+      lastEnd = r.end;
+    }
+  }
+  return filtered;
 }
 
 /**
@@ -81,8 +162,12 @@ export async function processCitations(caseData) {
     return true;
   });
 
-  // Check availability for each (parallel, batched by reporter/volume)
+  // Check availability: statutes/regulations already have external URLs,
+  // case citations need a .bin check
   const checks = unique.map(async (c) => {
+    if (c.externalUrl) {
+      return { ...c, slug: null, resolvable: false };
+    }
     const slug = await checkAvailability(c.reporter, c.volume);
     return { ...c, slug, resolvable: slug !== null };
   });
@@ -105,7 +190,12 @@ export function highlightCitations(escapedText, citationMap) {
   for (const [raw, info] of entries) {
     const escaped = escapeRegex(raw);
     const re = new RegExp(escaped, 'g');
-    if (info.resolvable) {
+    if (info.externalUrl) {
+      // Statute/regulation — link to external source
+      result = result.replace(re,
+        `<a class="cite-link cite-external" href="${info.externalUrl}" target="_blank" rel="noopener" title="View on external site">${raw}</a>`
+      );
+    } else if (info.resolvable) {
       result = result.replace(re,
         `<a class="cite-link" href="#${info.slug}/${info.volume}/${info.page}" title="${raw}">${raw}</a>`
       );

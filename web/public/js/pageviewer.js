@@ -178,14 +178,49 @@ export async function renderPageViewer(container, result, onStatus) {
   }
 
   let currentPage = orders.first;
+  let zoomLevel = 1;
+
+  // Keyboard navigation
+  function handleKey(e) {
+    if (container.classList.contains('hidden')) return;
+    if (e.key === 'ArrowLeft' && currentPage > orders.first) {
+      showPage(currentPage - 1);
+    } else if (e.key === 'ArrowRight' && currentPage < orders.last) {
+      showPage(currentPage + 1);
+    } else if (e.key === '+' || e.key === '=') {
+      adjustZoom(0.25);
+    } else if (e.key === '-') {
+      adjustZoom(-0.25);
+    } else if (e.key === '0') {
+      zoomLevel = 1;
+      applyZoom();
+    }
+  }
+  document.addEventListener('keydown', handleKey);
+
+  function adjustZoom(delta) {
+    zoomLevel = Math.max(0.5, Math.min(3, zoomLevel + delta));
+    applyZoom();
+  }
+
+  function applyZoom() {
+    const img = container.querySelector('.page-viewer-img');
+    if (img) img.style.maxWidth = (100 * zoomLevel) + '%';
+    const zoomInfo = container.querySelector('#pv-zoom');
+    if (zoomInfo) zoomInfo.textContent = Math.round(zoomLevel * 100) + '%';
+  }
 
   async function showPage(pageOrder) {
     currentPage = pageOrder;
     container.innerHTML = `<div class="page-viewer">
       <div class="page-viewer-toolbar">
-        <button class="page-viewer-btn" id="pv-prev" ${pageOrder <= orders.first ? 'disabled' : ''}>&#9664; Prev</button>
+        <button class="page-viewer-btn" id="pv-prev" ${pageOrder <= orders.first ? 'disabled' : ''} title="Previous page (←)">&#9664;</button>
         <span class="page-viewer-info">Page ${pageOrder - orders.first + 1} of ${orders.last - orders.first + 1}</span>
-        <button class="page-viewer-btn" id="pv-next" ${pageOrder >= orders.last ? 'disabled' : ''}>Next &#9654;</button>
+        <button class="page-viewer-btn" id="pv-next" ${pageOrder >= orders.last ? 'disabled' : ''} title="Next page (→)">&#9654;</button>
+        <span class="page-viewer-sep">|</span>
+        <button class="page-viewer-btn" id="pv-zoom-out" title="Zoom out (-)">−</button>
+        <span class="page-viewer-zoom" id="pv-zoom">${Math.round(zoomLevel * 100)}%</span>
+        <button class="page-viewer-btn" id="pv-zoom-in" title="Zoom in (+)">+</button>
       </div>
       <div class="page-viewer-image" id="pv-image">
         <div class="page-viewer-loading"><span class="spinner"></span> Loading page...</div>
@@ -194,6 +229,8 @@ export async function renderPageViewer(container, result, onStatus) {
 
     container.querySelector('#pv-prev')?.addEventListener('click', () => showPage(currentPage - 1));
     container.querySelector('#pv-next')?.addEventListener('click', () => showPage(currentPage + 1));
+    container.querySelector('#pv-zoom-in')?.addEventListener('click', () => adjustZoom(0.25));
+    container.querySelector('#pv-zoom-out')?.addEventListener('click', () => adjustZoom(-0.25));
 
     const imgEl = container.querySelector('#pv-image');
 

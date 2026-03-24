@@ -127,8 +127,17 @@
 
 @media (max-width: 768px) {
   .sidebar { display: none; }
-  .sidebar.open { display: block; position: fixed; right: 0; top: 40px; bottom: 0; z-index: 15; width: 300px; box-shadow: -2px 0 8px rgba(0,0,0,0.2); }
+  .sidebar.open { display: block; position: fixed; right: 0; top: 40px; bottom: 0; z-index: 15; width: 300px; box-shadow: -2px 0 8px rgba(0,0,0,0.2); background: var(--bg-alt); }
   .sidebar-toggle { display: block; }
   .reader { padding: 20px 16px 48px; }
   .topbar-case { display: none; }
+  .topbar { font-size: 13px; padding: 6px 12px; gap: 8px; }
+  .topbar-nav { font-size: 10px; padding: 2px 4px; }
+  .landing { padding: 6vh 1rem 3rem; }
+  .landing-brand { font-size: 2rem; }
+  .landing-form { flex-direction: column; align-items: stretch; width: 100%; max-width: 320px; }
+  .landing-form input { width: 100%; }
+  .landing-tools { flex-direction: column; }
+  .landing-tool { min-width: 0; }
+  .page-viewer-toolbar { flex-wrap: wrap; gap: 8px; }
 }
