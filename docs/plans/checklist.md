@@ -118,9 +118,21 @@ Build a WASM-driven interactive text overlay component ("alto.js"):
 
 Statutes use the same resolve(slug, volume, page) architecture — just different source data.
 
+### External link fallback (now)
+Until we mirror statutes, link out to the least-bad external sources:
+- [ ] U.S. Code → `law.cornell.edu/uscode/text/{title}/{section}` (stable URLs, ugly)
+- [ ] Statutes at Large → `govinfo.gov` (official, URLs are rough)
+- [ ] CFR → `ecfr.gov` (actually decent UI)
+- [ ] Wire into citation detector: statute citations get external links instead of unresolvable gray
+
+### Build pipeline (convert to common format at build time)
+All sources normalized to JSON-in-zip at build time. Viewer only knows one format.
+Common schema: `{ type, title, heading, body, citations, source, effective_date }`
+Page images: included when available (Statutes at Large scans), "Original Pages" tab hidden when not.
+
 ### Federal
 - [ ] Mirror USLM XML from uscode.house.gov (U.S. Code, bulk download, ~1-2 GB)
-- [ ] Build pipeline: USLM XML → zip per title, .bin index (title/section → text)
+- [ ] Build pipeline: USLM XML → common JSON → zip per title, .bin index
 - [ ] Slug: `usc/{title}/{section}` (e.g., `usc/42/1983` → 42 U.S.C. § 1983)
 - [ ] Mirror Statutes at Large from govinfo.gov (session laws cited in case law)
 - [ ] Slug: `stat/{volume}/{page}` (e.g., `stat/56/195` → 56 Stat. 195)
