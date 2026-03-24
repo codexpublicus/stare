@@ -30,11 +30,11 @@ enum Commands {
         #[arg(short, long)]
         output_dir: Option<PathBuf>,
     },
-    /// Build reporters.json from ReportersMetadata.json
-    BuildReporters {
-        /// Path to ReportersMetadata.json
-        metadata_path: PathBuf,
-        /// Output path (default: reporters.json in current dir)
+    /// Build manifest.json listing all indexed reporters and volumes
+    BuildManifest {
+        /// Directory containing .bin index files (reporter/volume.bin structure)
+        index_dir: PathBuf,
+        /// Output path (default: manifest.json in index_dir)
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
@@ -50,11 +50,11 @@ fn main() -> anyhow::Result<()> {
         Commands::BatchIndex { dir, output_dir } => {
             batch_index(&dir, output_dir.as_deref())?;
         }
-        Commands::BuildReporters {
-            metadata_path,
+        Commands::BuildManifest {
+            index_dir,
             output,
         } => {
-            build_reporters(&metadata_path, output.as_deref())?;
+            build_manifest(&index_dir, output.as_deref())?;
         }
     }
 
@@ -167,38 +167,57 @@ fn batch_index(dir: &std::path::Path, output_dir: Option<&std::path::Path>) -> a
     Ok(())
 }
 
-fn build_reporters(
-    metadata_path: &std::path::Path,
+/// Scan an index directory for .bin files and build a manifest.json
+/// listing which reporters and volumes are indexed.
+///
+/// Output: { "a2d": [1, 2, 31, ...], "us": [1, 2, 3, ...], ... }
+fn build_manifest(
+    index_dir: &std::path::Path,
     output: Option<&std::path::Path>,
 ) -> anyhow::Result<()> {
-    let data = std::fs::read_to_string(metadata_path)
-        .with_context(|| format!("failed to read {}", metadata_path.display()))?;
+    let mut manifest: BTreeMap<String, Vec<u32>> = BTreeMap::new();
 
-    #[derive(serde::Deserialize)]
-    struct Reporter {
-        short_name: String,
-        slug: String,
+    let files = walkdir(index_dir)?;
+    for path in &files {
+        if path.extension().map(|e| e == "bin").unwrap_or(false) {
+            // Extract reporter slug and volume from path: {reporter}/{volume}.bin
+            if let Some(volume_str) = path.file_stem().and_then(|s| s.to_str()) {
+                if let Ok(volume) = volume_str.parse::<u32>() {
+                    if let Some(reporter) = path.parent()
+                        .and_then(|p| p.file_name())
+                        .and_then(|s| s.to_str())
+                    {
+                        // Skip the index_dir itself as a reporter name
+                        if path.parent() != Some(index_dir) {
+                            manifest
+                                .entry(reporter.to_string())
+                                .or_default()
+                                .push(volume);
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    let reporters: Vec<Reporter> = serde_json::from_str(&data)
-        .context("failed to parse ReportersMetadata.json")?;
+    // Sort volumes within each reporter
+    for volumes in manifest.values_mut() {
+        volumes.sort();
+    }
 
-    let mapping: BTreeMap<&str, &str> = reporters
-        .iter()
-        .map(|r| (r.short_name.as_str(), r.slug.as_str()))
-        .collect();
-
-    let json = serde_json::to_string_pretty(&mapping)?;
+    let total_volumes: usize = manifest.values().map(|v| v.len()).sum();
+    let json = serde_json::to_string_pretty(&manifest)?;
 
     let out_path = output
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("reporters.json"));
+        .unwrap_or_else(|| index_dir.join("manifest.json"));
     std::fs::write(&out_path, &json)
         .with_context(|| format!("failed to write {}", out_path.display()))?;
 
     println!(
-        "Built reporters.json: {} reporters → {}",
-        mapping.len(),
+        "Built manifest: {} reporters, {} volumes → {}",
+        manifest.len(),
+        total_volumes,
         out_path.display()
     );
 
