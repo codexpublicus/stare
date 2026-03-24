@@ -33,3 +33,24 @@
 
 .status-line { padding: 6px 16px; font-size: 13px; color: var(--status-text); min-height: 1.4em; }
 .status-line.error { color: var(--error-text); background: var(--error-bg); border-bottom: 1px solid var(--error-border); }
+
+.cite-tooltip {
+  position: fixed; z-index: 100;
+  background: var(--topbar-bg); color: var(--topbar-text);
+  padding: 8px 12px; border-radius: 6px;
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 13px; line-height: 1.4;
+  max-width: 320px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  pointer-events: none;
+  display: flex; align-items: center; gap: 8px;
+}
+.cite-tooltip .spinner {
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
