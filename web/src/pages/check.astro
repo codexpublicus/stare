@@ -119,7 +119,7 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 				results.classList.remove('visible');
 
 				try {
-					const citations = detectCitations(text);
+					const citations = await detectCitations(text);
 					if (citations.length === 0) {
 						status.textContent = 'No citations detected in the text.';
 						btn.disabled = false;
@@ -138,12 +138,21 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 
 					// Check availability
 					const checked = await Promise.all(unique.map(async (c) => {
-						const slug = await checkAvailability(c.reporter, c.volume);
-						return { ...c, slug, resolvable: slug !== null };
+						if (c.externalUrl) {
+							return { ...c, slug: null, resolvable: false };
+						}
+						if (c.harvard_slug && c.volume) {
+							const available = await checkAvailability(c.harvard_slug, c.volume);
+							return { ...c, slug: c.harvard_slug, resolvable: available };
+						}
+						const slug = guessSlug(c.reporter || '');
+						const available = c.volume ? await checkAvailability(slug, c.volume) : false;
+						return { ...c, slug: available ? slug : null, resolvable: available };
 					}));
 
 					const resolvable = checked.filter(c => c.resolvable);
-					const unresolvable = checked.filter(c => !c.resolvable);
+					const external = checked.filter(c => c.externalUrl);
+					const unresolvable = checked.filter(c => !c.resolvable && !c.externalUrl);
 
 					// Build citation map for highlighting
 					const citationMap = new Map();

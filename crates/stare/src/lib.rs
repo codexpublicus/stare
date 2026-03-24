@@ -1,5 +1,6 @@
 pub mod alto;
 pub mod case;
+pub mod cite;
 pub mod config;
 pub mod index;
 

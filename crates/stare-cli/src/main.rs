@@ -263,22 +263,24 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
         std::fs::read_to_string(file).with_context(|| format!("failed to read {}", file))?
     };
 
-    let re = regex::Regex::new(r"(\d{1,4})\s+([A-Z][A-Za-z.]+(?:\s+\d+[a-z]{1,2})?(?:\.\d+[a-z]{0,2})?)\s+(\d{1,4})")?;
+    let detected = stare::cite::detect_citations(&text);
 
     let mut citations = Vec::new();
-    for cap in re.captures_iter(&text) {
-        let raw = cap[0].to_string();
-        let volume: u32 = cap[1].parse().unwrap_or(0);
-        let reporter = cap[2].trim().to_string();
-        let page: u32 = cap[3].parse().unwrap_or(0);
-        let slug = reporter.to_lowercase().replace('.', "").replace(' ', "");
-
-        // Check resolvability: try cache, then index source
-        let resolvable = fetch_bin(src, &slug, volume).is_ok();
+    for c in &detected {
+        let slug = c.harvard_slug.clone().unwrap_or_else(|| {
+            c.reporter.as_deref().unwrap_or("").to_lowercase().replace('.', "").replace(' ', "")
+        });
+        let volume: u32 = c.volume.as_deref().and_then(|v| v.parse().ok()).unwrap_or(0);
+        let resolvable = if !slug.is_empty() && volume > 0 {
+            fetch_bin(src, &slug, volume).is_ok()
+        } else {
+            false
+        };
 
         citations.push(serde_json::json!({
-            "raw": raw, "reporter": reporter, "slug": slug,
-            "volume": volume, "page": page, "resolvable": resolvable,
+            "raw": c.matched_text, "type": c.citation_type,
+            "reporter": c.reporter, "slug": slug,
+            "volume": volume, "page": c.page, "resolvable": resolvable,
         }));
     }
 

@@ -60,6 +60,14 @@ pub fn parse_alto(gz_data: &[u8]) -> Result<String, JsError> {
     serde_json::to_string(&page).map_err(|e| JsError::new(&e.to_string()))
 }
 
+/// Detect citations in text using citare. Returns JSON array of DetectedCitation.
+/// Each has: matched_text, citation_type, span, harvard_slug, volume, page, reporter, year.
+#[wasm_bindgen]
+pub fn detect_citations(text: &str) -> Result<String, JsError> {
+    let citations = stare::cite::detect_citations(text);
+    serde_json::to_string(&citations).map_err(|e| JsError::new(&e.to_string()))
+}
+
 /// List all case filenames in a zip. Returns a JSON array of strings.
 #[wasm_bindgen]
 pub fn list_cases(zip_bytes: &[u8]) -> Result<String, JsError> {
