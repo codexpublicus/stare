@@ -114,7 +114,27 @@ Build a WASM-driven interactive text overlay component ("alto.js"):
 - [ ] Full pre-2018 merge with Harvard CAP (only if CL metadata is meaningfully better for specific courts)
 - [ ] Quarterly update pipeline (download new dump → diff → rebuild affected index shards)
 
-## Phase 8: DuckDB Extension (stretch)
+## Phase 8: Statutes as "Reporters"
+
+Statutes use the same resolve(slug, volume, page) architecture — just different source data.
+
+### Federal
+- [ ] Mirror USLM XML from uscode.house.gov (U.S. Code, bulk download, ~1-2 GB)
+- [ ] Build pipeline: USLM XML → zip per title, .bin index (title/section → text)
+- [ ] Slug: `usc/{title}/{section}` (e.g., `usc/42/1983` → 42 U.S.C. § 1983)
+- [ ] Mirror Statutes at Large from govinfo.gov (session laws cited in case law)
+- [ ] Slug: `stat/{volume}/{page}` (e.g., `stat/56/195` → 56 Stat. 195)
+- [ ] Add to eyecite-rs: detect statute citations alongside case citations
+
+### State (per state, as resources allow)
+- [ ] Identify mirrorable sources per state (many states publish XML/HTML)
+- [ ] Same pattern: `{state-code-slug}/{title}/{section}`
+- [ ] e.g., `cal-civ/0/1714` → Cal. Civ. Code § 1714
+
+### Architecture note
+No structural changes needed — website, CLI, MCP server, brief checker all work unchanged. Just more slugs in the index. Bidirectional linking between cases and statutes comes for free.
+
+## Phase 9: DuckDB Extension (stretch)
 
 - [ ] DuckDB extension that queries RoaringBuckets index
 - [ ] `SELECT * FROM caselaw.cases WHERE case_id IN (SELECT * FROM roaring_search('negligence', jurisdiction='cal'))`
