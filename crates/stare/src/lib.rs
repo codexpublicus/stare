@@ -1,3 +1,4 @@
+pub mod alto;
 pub mod case;
 pub mod index;
 

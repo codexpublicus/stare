@@ -82,12 +82,19 @@
 ### Done (basic viewer in Phase 2)
 - [x] Tar range access using tar.csv byte offsets (JS, not WASM — works fine)
 - [x] Page viewer with prev/next navigation, page counter
+- [x] ALTO XML parsing in Rust: parse_alto_gz in stare core crate, WASM binding, 4 tests
+- [x] ALTO fetched in parallel with page image via tar range requests
 
-### Remaining
-- [ ] ALTO XML parsing: fetch gzipped ALTO from tar, parse word bounding boxes
-- [ ] Text overlay on page images using ALTO coordinates
+### Remaining: alto.js component
+Build a WASM-driven interactive text overlay component ("alto.js"):
+- [ ] Rust/WASM canvas or SVG renderer — draws selection highlights from ALTO bounding boxes
+- [ ] Custom selection state machine: mousedown/mousemove on ALTO word rects
+- [ ] Copy to clipboard via Clipboard API
+- [ ] Highlight specific words/passages (for deep linking, search results)
 - [ ] Deep linking: URL fragment encodes text selection → highlight on load
 - [ ] Image/text sync: click text in reader → scroll to that position in page viewer
+
+### Other
 - [ ] IPFS: pin tars + volume PDFs from TrueNAS
 - [ ] BitTorrent: per-reporter torrents for bulk distribution
 
