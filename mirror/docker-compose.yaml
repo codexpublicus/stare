@@ -15,7 +15,7 @@ services:
     volumes:
       - mirror-data:/aria2/data
       - ./aria2.conf:/aria2/conf-copy/aria2.conf:ro
-      - ./urls-aria2.txt:/aria2/urls-aria2.txt:ro
+      - ./urls-aria2-prioritized.txt:/aria2/urls-aria2.txt:ro
       - ./init-input.sh:/aria2/init-input.sh:ro
     restart: unless-stopped
 
