@@ -5,14 +5,51 @@ const ZIP_URL = 'https://static.case.law';
 
 let wasm = null;
 
-export function parseInput(raw) {
-  const parts = raw.trim().replace(/\//g, ' ').split(/\s+/);
+/**
+ * Parse citation input. Tries multiple formats:
+ *   "31 A.2d 647"       → citare parses, gets harvard_slug
+ *   "a2d 31 647"        → slug format (legacy/direct)
+ *   "a2d/31/647"        → URL format
+ *   "a2d 31 647-02"     → with sequence
+ */
+export async function parseInput(raw) {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  // First try slug format: "a2d 31 647" or "a2d/31/647-02"
+  const slugResult = parseSlugFormat(trimmed);
+  if (slugResult) return slugResult;
+
+  // Then try citare: "31 A.2d 647"
+  try {
+    await ensureWasm();
+    const json = wasm.detect_citations(trimmed);
+    const cites = JSON.parse(json);
+    if (cites.length > 0) {
+      const c = cites[0];
+      if (c.harvard_slug && c.volume && c.page) {
+        return {
+          reporter: c.harvard_slug,
+          volume: parseInt(c.volume, 10),
+          page: parseInt(c.page, 10),
+          seq: null,
+        };
+      }
+    }
+  } catch (e) {
+    // citare failed, fall through
+  }
+
+  return null;
+}
+
+function parseSlugFormat(raw) {
+  const parts = raw.replace(/\//g, ' ').split(/\s+/);
   if (parts.length !== 3) return null;
   const [reporter, volStr, pageStr] = parts;
   const volume = parseInt(volStr, 10);
   if (isNaN(volume)) return null;
 
-  // Support "647", "647-01", "647-02"
   const pageMatch = pageStr.match(/^(\d+)(?:-(\d+))?$/);
   if (!pageMatch) return null;
   const page = parseInt(pageMatch[1], 10);
@@ -21,13 +58,17 @@ export function parseInput(raw) {
   return { reporter: reporter.toLowerCase(), volume, page, seq };
 }
 
-export async function resolve(reporter, volume, page, onStatus, seq = null) {
+async function ensureWasm() {
   if (!wasm) {
-    onStatus('Loading...');
     const mod = await import('/wasm/stare_wasm.js');
     await mod.default();
     wasm = mod;
   }
+}
+
+export async function resolve(reporter, volume, page, onStatus, seq = null) {
+  onStatus('Loading...');
+  await ensureWasm();
 
   const binKey = `${reporter}/${volume}.bin`;
   onStatus('Fetching index...');
