@@ -9,6 +9,7 @@ import '../styles/reader.css';
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>stare.pub — U.S. Case Law Citation Resolution</title>
+		<meta name="description" content="Free, serverless U.S. case law citation resolution. Look up any case by citation — all client-side, no server, no tracking." />
 		<script is:inline>
 			try {
 				var theme = localStorage.getItem('stare-theme');
@@ -21,19 +22,80 @@ import '../styles/reader.css';
 	<body>
 		<!-- Landing state -->
 		<div id="landing" class="landing">
-			<h1 class="landing-brand">stare.pub</h1>
-			<p class="landing-subtitle">U.S. case law citation resolution</p>
+			<button class="landing-theme-toggle" id="landing-theme-btn" title="Toggle dark mode">&#9790;</button>
+			<div class="landing-hero">
+				<h1 class="landing-brand">stare.pub</h1>
+				<p class="landing-tagline">Free, open U.S. case law lookup</p>
+				<p class="landing-desc">Resolve legal citations to full case text and original scanned pages.<br>No server. No tracking. No account. Just static files and your browser.</p>
+			</div>
+
 			<form id="landing-form" class="landing-form">
 				<input id="landing-input" type="text" placeholder="a2d 31 647" autocomplete="off" />
 				<button type="submit" id="landing-btn">Resolve</button>
 			</form>
 			<div id="landing-status" class="status-line"></div>
+
+			<div class="landing-examples">
+				<span class="landing-examples-label">Try:</span>
+				<a href="#a2d/31/647-01" class="landing-example">31 A.2d 647</a>
+				<a href="#a2d/31/662-01" class="landing-example">31 A.2d 662</a>
+				<a href="#a2d/31/693-01" class="landing-example">31 A.2d 693</a>
+			</div>
+
+			<div class="landing-features">
+				<div class="landing-feature">
+					<div class="landing-feature-icon">&#128214;</div>
+					<div class="landing-feature-text">
+						<strong>6.7 million cases</strong>
+						<span>1658–2018, from the Harvard Caselaw Access Project</span>
+					</div>
+				</div>
+				<div class="landing-feature">
+					<div class="landing-feature-icon">&#128196;</div>
+					<div class="landing-feature-text">
+						<strong>Original page scans</strong>
+						<span>View the actual reporter pages alongside case text</span>
+					</div>
+				</div>
+				<div class="landing-feature">
+					<div class="landing-feature-icon">&#128274;</div>
+					<div class="landing-feature-text">
+						<strong>Serverless. Actually.</strong>
+						<span>No backend — your browser does the work</span>
+					</div>
+				</div>
+			</div>
+
+			<div class="landing-tools">
+				<a href="/check" class="landing-tool">
+					<div class="landing-tool-icon">&#128203;</div>
+					<div class="landing-tool-text">
+						<strong>Check a brief</strong>
+						<span>Paste any legal text. We'll find every citation and tell you which ones we can resolve to the full case.</span>
+					</div>
+				</a>
+				<div class="landing-tool coming-soon">
+					<div class="landing-tool-icon">&#9000;</div>
+					<div class="landing-tool-text">
+						<strong>CLI + AI skill <span class="coming-soon-badge">coming soon</span></strong>
+						<span>Check citations from your terminal or let your AI assistant verify case references while you write.</span>
+					</div>
+				</div>
+			</div>
+
+			<div class="landing-links">
+				<a href="/about" class="landing-link">About this project</a>
+			</div>
+
+			<div class="landing-footer">
+				Built with &hearts; by <a href="https://github.com/lokkju" target="_blank" rel="noopener">lokkju</a>
+			</div>
 		</div>
 
 		<!-- Resolved state (hidden initially) -->
 		<div id="resolved" class="hidden">
 			<div class="topbar" id="topbar">
-				<span class="topbar-brand">stare.pub</span>
+				<a href="/" class="topbar-brand">stare.pub</a>
 				<span class="topbar-divider">|</span>
 				<span class="topbar-cite" id="topbar-cite"></span>
 				<span class="topbar-case" id="topbar-case"></span>
