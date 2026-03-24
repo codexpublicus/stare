@@ -1,0 +1,207 @@
+---
+import '../styles/theme.css';
+import '../styles/layout.css';
+import '../styles/reader.css';
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Check Citations — stare.pub</title>
+		<meta name="description" content="Paste a legal brief and check all citations against the Harvard Caselaw Access Project corpus." />
+		<script is:inline>
+			try {
+				var theme = localStorage.getItem('stare-theme');
+				if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+					document.documentElement.setAttribute('data-theme', 'dark');
+				}
+			} catch(e) {}
+		</script>
+		<style>
+			.check-container { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
+			.check-header { margin-bottom: 1.5rem; }
+			.check-header h1 { font-family: Georgia, 'Times New Roman', serif; font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem; }
+			.check-header p { font-size: 0.9rem; color: var(--text-secondary); }
+			.check-input-area { margin-bottom: 1rem; }
+			.check-textarea {
+				width: 100%; min-height: 200px; padding: 16px;
+				font-family: Georgia, 'Times New Roman', serif; font-size: 15px; line-height: 1.7;
+				border: 2px solid var(--border); border-radius: 8px;
+				background: var(--bg); color: var(--text);
+				resize: vertical;
+			}
+			.check-textarea:focus { outline: none; border-color: var(--link); }
+			.check-actions { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1.5rem; }
+			.check-btn {
+				padding: 10px 24px; background: var(--topbar-bg); color: var(--topbar-text);
+				border: none; border-radius: 6px; font-size: 14px; font-weight: 500;
+				cursor: pointer; transition: opacity 0.15s;
+			}
+			.check-btn:hover { opacity: 0.85; }
+			.check-btn:disabled { opacity: 0.5; cursor: wait; }
+			.check-status { font-size: 0.85rem; color: var(--text-secondary); }
+			.check-results { display: none; }
+			.check-results.visible { display: flex; gap: 1.5rem; }
+			.check-text-panel { flex: 1; min-width: 0; }
+			.check-cite-panel { width: 280px; min-width: 280px; background: var(--bg-alt); border-radius: 8px; padding: 16px; font-size: 13px; max-height: 60vh; overflow-y: auto; }
+			.check-rendered {
+				font-family: Georgia, 'Times New Roman', serif; font-size: 15px;
+				line-height: 1.8; color: var(--text-body); padding: 16px;
+				border: 1px solid var(--border); border-radius: 8px;
+				background: var(--bg); min-height: 100px;
+			}
+			.check-rendered p { margin-bottom: 1rem; }
+			.check-summary { margin-bottom: 12px; font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+			@media (max-width: 768px) {
+				.check-results.visible { flex-direction: column; }
+				.check-cite-panel { width: 100%; min-width: 0; max-height: none; }
+			}
+		</style>
+	</head>
+	<body>
+		<div class="page-topbar"><a href="/">stare.pub</a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
+		<div class="check-container">
+			<div class="check-header">
+				<h1>Check Citations</h1>
+				<p>Paste a legal brief or any text containing case citations. We'll identify each citation and check whether we can resolve it to the full case text.</p>
+			</div>
+
+			<div class="check-input-area">
+				<textarea id="check-input" class="check-textarea" placeholder="Paste your brief here...
+
+Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App. 1943), held that residence is the test for attachment jurisdiction. See also Robinson v. Morrison, 2 App.D.C. 105; Barney v. Oelrichs, 138 U.S. 529."></textarea>
+			</div>
+
+			<div class="check-actions">
+				<button id="check-btn" class="check-btn">Check Citations</button>
+				<span id="check-status" class="check-status"></span>
+			</div>
+
+			<div id="check-results" class="check-results">
+				<div class="check-text-panel">
+					<div id="check-rendered" class="check-rendered"></div>
+				</div>
+				<div class="check-cite-panel">
+					<div class="check-summary" id="check-summary"></div>
+					<div id="check-cite-list"></div>
+				</div>
+			</div>
+
+			<a href="/" class="back-link" style="display:inline-block;margin-top:2rem;font-size:0.9rem;color:var(--text-secondary);text-decoration:none;">&larr; Back to stare.pub</a>
+			<div class="page-footer" style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--border);font-size:0.8rem;color:var(--text-tertiary);">Built with &hearts; by <a href="https://github.com/lokkju" target="_blank" rel="noopener" style="color:var(--text-secondary);">lokkju</a></div>
+		</div>
+
+		<script is:inline type="module">
+			import { detectCitations, guessSlug, checkAvailability, highlightCitations } from '/js/citations.js';
+
+			const input = document.getElementById('check-input');
+			const btn = document.getElementById('check-btn');
+			const status = document.getElementById('check-status');
+			const results = document.getElementById('check-results');
+			const rendered = document.getElementById('check-rendered');
+			const citeList = document.getElementById('check-cite-list');
+			const summary = document.getElementById('check-summary');
+
+			function esc(str) {
+				const el = document.createElement('span');
+				el.textContent = str;
+				return el.innerHTML;
+			}
+
+			btn.addEventListener('click', async () => {
+				const text = input.value.trim();
+				if (!text) return;
+
+				btn.disabled = true;
+				status.textContent = 'Scanning for citations...';
+				results.classList.remove('visible');
+
+				try {
+					const citations = detectCitations(text);
+					if (citations.length === 0) {
+						status.textContent = 'No citations detected in the text.';
+						btn.disabled = false;
+						return;
+					}
+
+					status.textContent = `Found ${citations.length} citations. Checking availability...`;
+
+					// Deduplicate
+					const seen = new Set();
+					const unique = citations.filter(c => {
+						if (seen.has(c.raw)) return false;
+						seen.add(c.raw);
+						return true;
+					});
+
+					// Check availability
+					const checked = await Promise.all(unique.map(async (c) => {
+						const slug = await checkAvailability(c.reporter, c.volume);
+						return { ...c, slug, resolvable: slug !== null };
+					}));
+
+					const resolvable = checked.filter(c => c.resolvable);
+					const unresolvable = checked.filter(c => !c.resolvable);
+
+					// Build citation map for highlighting
+					const citationMap = new Map();
+					for (const c of checked) {
+						citationMap.set(c.raw, c);
+					}
+
+					// Render highlighted text
+					const paragraphs = text.split(/\n+/).filter(p => p.trim());
+					const html = paragraphs.map(p => {
+						let escaped = esc(p);
+						escaped = highlightCitations(escaped, citationMap);
+						return `<p>${escaped}</p>`;
+					}).join('');
+					rendered.innerHTML = html;
+
+					// Render cite list
+					summary.textContent = `${checked.length} citations found (${resolvable.length} resolvable)`;
+
+					let listHtml = '';
+					if (resolvable.length > 0) {
+						listHtml += resolvable.map(c =>
+							`<div class="cited-case">
+								<span class="cited-status ok">&#10003;</span>
+								<a class="cited-case-link" href="/#${c.slug}/${c.volume}/${c.page}-01" target="_blank">${esc(c.raw)}</a>
+							</div>`
+						).join('');
+					}
+					if (unresolvable.length > 0) {
+						listHtml += unresolvable.map(c =>
+							`<div class="cited-case">
+								<span class="cited-status no">&#10007;</span>
+								<span class="cited-case-unresolved">${esc(c.raw)}</span>
+							</div>`
+						).join('');
+					}
+					citeList.innerHTML = listHtml;
+
+					results.classList.add('visible');
+					status.textContent = '';
+				} catch (e) {
+					status.textContent = 'Error: ' + e.message;
+				} finally {
+					btn.disabled = false;
+				}
+			});
+		</script>
+		<script is:inline>
+			(function() {
+				var btn = document.getElementById('page-theme-btn');
+				if (!btn) return;
+				try { if (localStorage.getItem('stare-theme') === 'dark' || (!localStorage.getItem('stare-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) btn.textContent = '\u2600'; } catch(e) {}
+				btn.addEventListener('click', function(e) {
+					e.preventDefault();
+					var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+					if (isDark) { document.documentElement.removeAttribute('data-theme'); btn.textContent = '\u263E'; try { localStorage.setItem('stare-theme', 'light'); } catch(e) {} }
+					else { document.documentElement.setAttribute('data-theme', 'dark'); btn.textContent = '\u2600'; try { localStorage.setItem('stare-theme', 'dark'); } catch(e) {} }
+				});
+			})();
+		</script>
+	</body>
+</html>
