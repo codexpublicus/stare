@@ -94,9 +94,10 @@ Build a WASM-driven interactive text overlay component ("alto.js"):
 - [ ] Deep linking: URL fragment encodes text selection → highlight on load
 - [ ] Image/text sync: click text in reader → scroll to that position in page viewer
 
-### Other
+### Distribution
 - [ ] IPFS: pin tars + volume PDFs from TrueNAS
 - [ ] BitTorrent: per-reporter torrents for bulk distribution
+- [ ] Fully decentralized hosting: serve stare.pub itself from IPFS (site + WASM + data = one content-addressed bundle, no traditional hosting required)
 
 ## Phase 6: MCP Server
 
