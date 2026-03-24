@@ -9,6 +9,8 @@
 
 .cite-link { color: var(--link); text-decoration: none; border-bottom: 1px dotted var(--link); cursor: pointer; transition: all 0.15s; }
 .cite-link:hover { color: var(--link-hover); border-bottom-style: solid; }
+.cite-external { border-bottom-style: dashed; }
+.cite-external::after { content: ' ↗'; font-size: 0.75em; opacity: 0.5; }
 .cite-unresolved { color: var(--unresolved); border-bottom: 1px dotted var(--unresolved-border); cursor: default; }
 .page-marker { font-family: -apple-system, system-ui, sans-serif; font-size: 11px; color: var(--text-tertiary); display: inline; margin: 0 2px; user-select: none; }
 
@@ -22,6 +24,7 @@
 .cited-case-unresolved { color: var(--unresolved); font-size: 13px; flex: 1; }
 .cited-status { font-size: 11px; width: 14px; text-align: center; }
 .cited-status.ok { color: var(--status-ok); }
+.cited-status.ext { color: var(--link); font-size: 13px; }
 .cited-status.no { color: var(--status-no); }
 
 .sidebar-action { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--sidebar-action); text-decoration: none; font-size: 13px; cursor: pointer; transition: color 0.15s; }
@@ -39,7 +42,9 @@
 .page-viewer-btn { padding: 4px 12px; background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--text); cursor: pointer; font-size: 13px; transition: all 0.15s; }
 .page-viewer-btn:hover:not(:disabled) { border-color: var(--link); color: var(--link); }
 .page-viewer-btn:disabled { opacity: 0.3; cursor: default; }
-.page-viewer-info { font-size: 13px; color: var(--text-secondary); min-width: 120px; text-align: center; }
+.page-viewer-info { font-size: 13px; color: var(--text-secondary); min-width: 100px; text-align: center; }
+.page-viewer-sep { color: var(--border); margin: 0 4px; }
+.page-viewer-zoom { font-size: 12px; color: var(--text-secondary); min-width: 40px; text-align: center; }
 .page-viewer-image { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; background: var(--bg-surface); }
 .page-viewer-img { max-width: 100%; height: auto; box-shadow: 0 2px 12px rgba(0,0,0,0.15); }
 .page-viewer-loading { display: flex; align-items: center; gap: 8px; padding: 48px; color: var(--text-secondary); font-size: 14px; }
