@@ -37,17 +37,25 @@
 
 ### Done
 - [x] Compile stare-core to WASM (index + case modules, 273 KB binary)
-- [x] stare-wasm crate with wasm-bindgen: lookup_page, extract_case, list_cases
+- [x] stare-wasm crate with wasm-bindgen: lookup_page, extract_case, list_cases, extract_file, extract_cases_metadata, get_page_orders
 - [x] WASM: zip extraction + case JSON rendering
-- [x] Astro site: citation slug input → text display (all client-side)
-- [x] IndexedDB caching for .bin and .zip files
-- [x] URL hash support (#reporter/vol/page)
+- [x] Astro site: two-panel reader with dark mode, collapsible sidebar
+- [x] IndexedDB caching for .bin, .multi, .zip, tar.csv files
+- [x] URL hash with case sequence: #reporter/vol/page-seq
+- [x] Mock citation detection (regex): inline highlighting (blue=resolvable, gray=not), sidebar grouping
+- [x] Hover tooltips on citations: lazy-load case name/date with spinner
+- [x] Prev/Next case navigation in topbar (traverses full volume case list)
+- [x] Original Pages tab: tar range requests for individual JPG pages via tar.csv byte offsets
+- [x] Fixed tab bar (Reader/Original Pages tabs stay pinned, content scrolls)
+- [x] Error returns to landing (no stale case display)
+- [x] Core: extract_file_from_zip, extract_cases_metadata, get_page_orders (shared CLI + WASM)
 
 ### Remaining
 - [ ] Rust/WASM citation parser (port eyeCite: Aho-Corasick over `reporters-db` JSON + Harvard slug field) — in progress externally
 - [ ] Deploy to Cloudflare Pages (stare.pub)
+- [ ] Deep linking to text selections (URL fragment → highlight specific passage)
+- [ ] Image/text mapping: overlay OCR text on page images (via ALTO or HTML region data)
 - [ ] PDF fallback: link to `/data/{reporter}/{vol}.pdf` for volume viewing
-- [ ] Verify PDF OCR quality on a sample of volumes before investing further
 
 ## Phase 3: DuckLake (Python + DuckDB)
 
@@ -69,11 +77,17 @@
 - [ ] Add search to web UI
 - [ ] Test query flow: "negligence cases in California 1990-2000" → case IDs
 
-## Phase 5: Page Viewer (tar-based)
+## Phase 5: Page Viewer Enhancements
 
-- [ ] WASM: tar range access using tar.csv byte offsets
-- [ ] WASM: ALTO XML parsing (word-level bounding boxes)
-- [ ] WASM: page viewer — JPG page image + ALTO text overlay
+### Done (basic viewer in Phase 2)
+- [x] Tar range access using tar.csv byte offsets (JS, not WASM — works fine)
+- [x] Page viewer with prev/next navigation, page counter
+
+### Remaining
+- [ ] ALTO XML parsing: fetch gzipped ALTO from tar, parse word bounding boxes
+- [ ] Text overlay on page images using ALTO coordinates
+- [ ] Deep linking: URL fragment encodes text selection → highlight on load
+- [ ] Image/text sync: click text in reader → scroll to that position in page viewer
 - [ ] IPFS: pin tars + volume PDFs from TrueNAS
 - [ ] BitTorrent: per-reporter torrents for bulk distribution
 
