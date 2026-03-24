@@ -27,7 +27,11 @@
 - [x] `--json` output flag on resolve for machine consumption
 - [x] Handle multi-case pages: `.multi` sidecar for -02, -03 entries
 - [x] Batch `build-index` across all zips (parallel via rayon)
-- [ ] Supplement page indexing — cases with `Supp.` page numbers (e.g., `Supp. 1-01`) are currently skipped. Need a convention for addressing them in the .bin (offset-based or separate file) and a URL scheme (e.g., `#a2d/31/s1-01`). Low volume but real content.
+- [ ] Non-standard page number indexing — currently skipped with warnings:
+  - `Supp. 1-01` — supplement pages. Need offset convention or separate file + URL scheme
+  - `LXXXVIII-01` — Roman numeral pages (front matter). Parse roman → integer
+  - `000?-01` — unknown page numbers from Harvard OCR failures. Skip or flag
+  - `428e-01`, `1028A-01` — lettered sub-pages. Now parsed (strips letter, indexes at base page number)
 - [ ] Set up Cloudflare R2 buckets (`codex-index`, `codex-data`)
 - [ ] Upload index + zips to R2
 - [ ] Test full pipeline against live R2 bucket

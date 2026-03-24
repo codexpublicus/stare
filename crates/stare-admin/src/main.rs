@@ -71,16 +71,28 @@ fn main() -> anyhow::Result<()> {
 ///   "0647-01"       → 647
 ///   "1265=1275-01"  → 1265 (takes first number before =)
 ///   "105, 106-01"   → 105 (takes first number before comma)
-///   "Supp. 1-01"    → None (non-numeric prefix)
+///   "428e-01"       → 428 (strips trailing letter suffix)
+///   "1028A-01"      → 1028 (strips trailing letter suffix)
+///   "LXXXVIII-01"   → None (roman numerals — front matter, skipped for now)
+///   "Supp. 1-01"    → None (supplement pages, skipped for now)
+///   "000?-02"       → None (unknown page, skipped)
 fn parse_case_page(filename: &str) -> Option<usize> {
     let page_part = filename.split('-').next()?;
-    // Take the first numeric-looking chunk
-    let num_str = page_part
+    // Take the first chunk (before = or ,)
+    let chunk = page_part
         .split(|c: char| c == '=' || c == ',' || c == ' ')
         .next()?
         .trim();
-    // Strip any non-digit prefix (e.g., "Supp." would fail)
-    num_str.parse::<usize>().ok()
+    // Try parsing directly
+    if let Ok(n) = chunk.parse::<usize>() {
+        return Some(n);
+    }
+    // Strip trailing letters (e.g., "428e" → "428", "1028A" → "1028")
+    let numeric_prefix: String = chunk.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if !numeric_prefix.is_empty() {
+        return numeric_prefix.parse::<usize>().ok();
+    }
+    None
 }
 
 fn build_index(
