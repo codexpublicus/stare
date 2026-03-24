@@ -15,7 +15,6 @@ const landingBtn = document.getElementById('landing-btn');
 const landingStatus = document.getElementById('landing-status');
 const topbarCite = document.getElementById('topbar-cite');
 const topbarCase = document.getElementById('topbar-case');
-const editBtn = document.getElementById('edit-btn');
 const themeBtn = document.getElementById('theme-btn');
 const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
@@ -187,9 +186,9 @@ async function doResolve(reporter, volume, page, seq = null) {
     showResolved(result);
   } catch (err) {
     setStatus(err.message, true);
-    if (!landing.classList.contains('hidden')) {
-      // Already on landing — error shows there
-    } else {
+    // Only go to landing if we're not already showing a case
+    // (i.e., this was a landing page search, not an inline edit)
+    if (landing.classList.contains('hidden') && !currentResult) {
       showLanding();
       setStatus(err.message, true);
     }
@@ -209,11 +208,50 @@ landingForm.addEventListener('submit', (e) => {
   doResolve(parsed.reporter, parsed.volume, parsed.page, parsed.seq);
 });
 
-// Edit button
-editBtn.addEventListener('click', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  showLanding();
+// Inline citation editing in topbar
+const topbarCiteInput = document.getElementById('topbar-cite-input');
+
+function startEditing() {
+  topbarCite.classList.add('hidden');
+  topbarCiteInput.classList.remove('hidden');
+  // Pre-fill with slug format (parseable), not display citation
+  if (currentResult) {
+    const seq = currentResult.seq || 1;
+    topbarCiteInput.value = `${currentResult.reporter} ${currentResult.volume} ${currentResult.page}-${String(seq).padStart(2, '0')}`;
+  } else {
+    topbarCiteInput.value = '';
+  }
+  topbarCiteInput.focus();
+  topbarCiteInput.select();
+}
+
+function stopEditing() {
+  topbarCiteInput.classList.add('hidden');
+  topbarCite.classList.remove('hidden');
+}
+
+let editSubmitting = false;
+
+topbarCite.addEventListener('click', startEditing);
+
+topbarCiteInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const parsed = parseInput(topbarCiteInput.value);
+    if (parsed) {
+      editSubmitting = true;
+      stopEditing();
+      doResolve(parsed.reporter, parsed.volume, parsed.page, parsed.seq);
+      editSubmitting = false;
+    }
+  }
+  if (e.key === 'Escape') {
+    stopEditing();
+  }
+});
+
+topbarCiteInput.addEventListener('blur', () => {
+  if (!editSubmitting) stopEditing();
 });
 
 // Dark mode toggle — shared across landing + resolved topbar
