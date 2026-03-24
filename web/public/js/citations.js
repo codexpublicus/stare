@@ -11,24 +11,7 @@ async function getWasm() {
   return wasm;
 }
 
-// ---------------------------------------------------------------------------
-// External link templates for statutes/regulations
-// ---------------------------------------------------------------------------
-
-const EXTERNAL_LINKS = {
-  'U.S.C.': (vol, page) => `https://www.law.cornell.edu/uscode/text/${vol}/${page}`,
-  'Stat.': (vol, page) => `https://www.govinfo.gov/content/pkg/STATUTE-${vol}/pdf/STATUTE-${vol}-Pg${page}.pdf`,
-  'C.F.R.': (vol, page) => `https://www.ecfr.gov/current/title-${vol}/section-${page}`,
-};
-
-function getExternalUrl(reporter, volume, page) {
-  for (const [key, urlFn] of Object.entries(EXTERNAL_LINKS)) {
-    if (reporter && reporter.includes(key.replace(/\./g, ''))) {
-      return urlFn(volume, page);
-    }
-  }
-  return null;
-}
+// External URL generation is now in Rust (stare::cite::external_url)
 
 // ---------------------------------------------------------------------------
 // Detection — citare WASM or regex fallback
@@ -54,7 +37,7 @@ export async function detectCitations(text) {
       year: c.year || null,
       start: c.span[0],
       end: c.span[1],
-      externalUrl: c.harvard_slug ? null : getExternalUrl(c.reporter, c.volume, c.page),
+      externalUrl: c.external_url || null,
     }));
   } catch (e) {
     console.warn('Citare WASM failed, falling back to regex:', e);

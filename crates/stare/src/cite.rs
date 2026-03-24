@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 pub struct DetectedCitation {
     /// The raw matched text (e.g., "31 A.2d 647")
     pub matched_text: String,
-    /// Citation type: "FullCase", "ShortCase", "FullLaw", "Id", "Supra", etc.
+    /// Citation type: "FullCaseCitation", "FullLawCitation", "IdCitation", etc.
     pub citation_type: String,
     /// Character span in the source text
     pub span: (usize, usize),
@@ -24,6 +24,8 @@ pub struct DetectedCitation {
     pub reporter: Option<String>,
     /// Year if detected
     pub year: Option<i32>,
+    /// External URL for statutes/regulations (Cornell, govinfo, ecfr)
+    pub external_url: Option<String>,
 }
 
 /// Detect all citations in a text using citare-core.
@@ -46,7 +48,7 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
                         .and_then(|e| e.harvard_slug.clone())
                 });
 
-            DetectedCitation {
+            let mut det = DetectedCitation {
                 matched_text: c.matched_text().to_string(),
                 citation_type: c.type_name().to_string(),
                 span: (start, end),
@@ -55,9 +57,53 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
                 page: groups.get("page").cloned().flatten(),
                 reporter: groups.get("reporter").cloned().flatten(),
                 year: c.resource_common().and_then(|r| r.year),
+                external_url: None,
+            };
+            // Generate external URL for statutes/regulations
+            if det.harvard_slug.is_none() {
+                det.external_url = external_url(&det);
             }
+            det
         })
         .collect()
+}
+
+/// Generate an external URL for a statute/regulation citation.
+/// Returns None for case citations (which we resolve ourselves).
+pub fn external_url(citation: &DetectedCitation) -> Option<String> {
+    let text = &citation.matched_text;
+
+    // U.S. Code: "42 U.S.C. § 1983"
+    if let Some(caps) = regex::Regex::new(r"(\d+)\s+U\.?S\.?C\.?\s*(?:§+\s*)?(\d[\d.a-z-]*)")
+        .ok()
+        .and_then(|re| re.captures(text))
+    {
+        let title = caps.get(1)?.as_str();
+        let section = caps.get(2)?.as_str();
+        return Some(format!("https://www.law.cornell.edu/uscode/text/{}/{}", title, section));
+    }
+
+    // Statutes at Large: "56 Stat. 195"
+    if let Some(caps) = regex::Regex::new(r"(\d+)\s+Stat\.\s+(\d+)")
+        .ok()
+        .and_then(|re| re.captures(text))
+    {
+        let vol = caps.get(1)?.as_str();
+        let page = caps.get(2)?.as_str();
+        return Some(format!("https://www.govinfo.gov/content/pkg/STATUTE-{}/pdf/STATUTE-{}-Pg{}.pdf", vol, vol, page));
+    }
+
+    // CFR: "40 C.F.R. § 122.1"
+    if let Some(caps) = regex::Regex::new(r"(\d+)\s+C\.?F\.?R\.?\s*(?:§+\s*)?(\d[\d.]*)")
+        .ok()
+        .and_then(|re| re.captures(text))
+    {
+        let title = caps.get(1)?.as_str();
+        let section = caps.get(2)?.as_str();
+        return Some(format!("https://www.ecfr.gov/current/title-{}/section-{}", title, section));
+    }
+
+    None
 }
 
 /// Filter to only citations that have a Harvard slug (resolvable via our index).
@@ -93,6 +139,30 @@ mod tests {
         assert_eq!(c.harvard_slug.as_deref(), Some("us"));
         assert_eq!(c.volume.as_deref(), Some("410"));
         assert_eq!(c.page.as_deref(), Some("113"));
+    }
+
+    #[test]
+    fn statute_gets_external_url() {
+        let cites = detect_citations("See 42 U.S.C. § 1983 and 56 Stat. 195.");
+        let usc = cites.iter().find(|c| c.matched_text.contains("U.S.C."));
+        let stat = cites.iter().find(|c| c.matched_text.contains("Stat."));
+
+        if let Some(c) = usc {
+            assert!(c.external_url.is_some(), "USC should have external URL");
+            assert!(c.external_url.as_ref().unwrap().contains("cornell.edu"));
+        }
+        if let Some(c) = stat {
+            assert!(c.external_url.is_some(), "Stat should have external URL");
+            assert!(c.external_url.as_ref().unwrap().contains("govinfo.gov"));
+        }
+    }
+
+    #[test]
+    fn case_citation_no_external_url() {
+        let cites = detect_citations("See 31 A.2d 647.");
+        let c = cites.iter().find(|c| c.matched_text.contains("A.2d")).unwrap();
+        assert!(c.external_url.is_none(), "Case citations shouldn't have external URL");
+        assert!(c.harvard_slug.is_some());
     }
 
     #[test]
