@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-pub const DEFAULT_INDEX_URL: &str = "https://stare.pub/data";
+pub const DEFAULT_INDEX_URL: &str = "https://idx.stare.pub";
 pub const DEFAULT_DATA_URL: &str = "https://static.case.law";
 
 #[derive(Debug, Serialize, Deserialize, Default)]
