@@ -47,6 +47,57 @@ pub struct Opinion {
     pub author: Option<String>,
 }
 
+/// Metadata for a case within a volume (from CasesMetadata.json in the zip).
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CaseMetaEntry {
+    pub id: u64,
+    pub name_abbreviation: String,
+    pub decision_date: String,
+    pub first_page: String,
+    pub last_page: String,
+    pub file_name: String,
+    #[serde(default)]
+    pub first_page_order: Option<u32>,
+    #[serde(default)]
+    pub last_page_order: Option<u32>,
+    #[serde(default)]
+    pub citations: Vec<Citation>,
+}
+
+/// Extract and parse CasesMetadata.json from a zip.
+pub fn extract_cases_metadata(zip_bytes: &[u8]) -> Result<Vec<CaseMetaEntry>> {
+    let json_str = extract_file_from_zip(zip_bytes, "metadata/CasesMetadata.json")?;
+    let entries: Vec<CaseMetaEntry> = serde_json::from_str(&json_str)
+        .context("failed to parse CasesMetadata.json")?;
+    Ok(entries)
+}
+
+/// Get the page order range for a specific case file within a volume.
+/// Returns (first_page_order, last_page_order) if available.
+pub fn get_page_orders(zip_bytes: &[u8], case_file: &str) -> Result<Option<(u32, u32)>> {
+    let metadata = extract_cases_metadata(zip_bytes)?;
+    let entry = metadata.iter().find(|e| e.file_name == case_file);
+    match entry {
+        Some(e) => match (e.first_page_order, e.last_page_order) {
+            (Some(first), Some(last)) => Ok(Some((first, last))),
+            _ => Ok(None),
+        },
+        None => Ok(None),
+    }
+}
+
+/// Extract a raw file from a zip by path. Returns the file contents as a string.
+pub fn extract_file_from_zip(zip_bytes: &[u8], path: &str) -> Result<String> {
+    let cursor = std::io::Cursor::new(zip_bytes);
+    let mut archive = zip::ZipArchive::new(cursor)?;
+    let mut file = archive
+        .by_name(path)
+        .with_context(|| format!("{} not found in zip", path))?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(contents)
+}
+
 /// Extract a case JSON from a zip file's bytes by case filename (e.g. "0647-01").
 pub fn extract_from_zip(zip_bytes: &[u8], case_file: &str) -> Result<CaseJson> {
     let cursor = std::io::Cursor::new(zip_bytes);

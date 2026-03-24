@@ -2,6 +2,7 @@ import { parseInput, resolve, extractCase } from './resolve.js';
 import { renderReader, renderSidebar, renderMultiNotice } from './ui.js';
 import { getHashParams, setHash, onHashChange } from './router.js';
 import { processCitations, setupCiteHovers } from './citations.js';
+import { renderPageViewer } from './pageviewer.js';
 
 let currentResult = null;
 
@@ -22,6 +23,10 @@ const statusBar = document.getElementById('status-bar');
 const reader = document.getElementById('reader');
 const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebar-toggle');
+const tabReader = document.getElementById('tab-reader');
+const tabPages = document.getElementById('tab-pages');
+const pageViewerEl = document.getElementById('page-viewer');
+let pageViewerLoaded = false;
 
 function showLanding() {
   landing.classList.remove('hidden');
@@ -80,6 +85,14 @@ async function showResolved(result) {
 
   updateTopbar(result.caseData);
   updatePrevNext(result, result.caseFile);
+
+  // Reset page viewer for new case
+  pageViewerLoaded = false;
+  pageViewerEl.innerHTML = '';
+  pageViewerEl.classList.add('hidden');
+  reader.classList.remove('hidden');
+  tabReader.classList.add('active');
+  tabPages.classList.remove('active');
 
   const multiEl = document.createElement('div');
   reader.innerHTML = '';
@@ -231,6 +244,26 @@ sidebarToggle.addEventListener('click', (e) => {
   e.preventDefault();
   e.stopPropagation();
   sidebar.classList.toggle('open');
+});
+
+// Tab switching
+tabReader.addEventListener('click', () => {
+  tabReader.classList.add('active');
+  tabPages.classList.remove('active');
+  reader.classList.remove('hidden');
+  pageViewerEl.classList.add('hidden');
+});
+
+tabPages.addEventListener('click', async () => {
+  tabPages.classList.add('active');
+  tabReader.classList.remove('active');
+  pageViewerEl.classList.remove('hidden');
+  reader.classList.add('hidden');
+
+  if (!pageViewerLoaded && currentResult) {
+    pageViewerLoaded = true;
+    await renderPageViewer(pageViewerEl, currentResult, (msg) => setStatus(msg, false));
+  }
 });
 
 // Hash routing
