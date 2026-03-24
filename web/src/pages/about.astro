@@ -1,0 +1,94 @@
+---
+import '../styles/theme.css';
+import '../styles/layout.css';
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>About — stare.pub</title>
+		<script is:inline>
+			try {
+				var theme = localStorage.getItem('stare-theme');
+				if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+					document.documentElement.setAttribute('data-theme', 'dark');
+				}
+			} catch(e) {}
+		</script>
+	</head>
+	<body>
+		<div class="page-topbar"><a href="/">stare.pub</a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
+		<div class="page">
+			<h1>About stare.pub</h1>
+			<p><strong>stare.pub</strong> is a free, open tool for resolving U.S. legal citations to full case text and original scanned reporter pages. The entire application is static files served to your browser — there is no backend server, no database, no API to maintain or go down. It could run from IPFS, a USB stick, or any static file host. No tracking, no account required.</p>
+
+			<p>This project is built by <a href="https://github.com/lokkju" target="_blank" rel="noopener">lokkju</a>, motivated by the belief that public law should be permanently, freely accessible — not dependent on any single institution's continued goodwill or funding.</p>
+
+			<h2>The data</h2>
+			<p>The case text and page scans come from the <a href="https://case.law/" target="_blank" rel="noopener">Harvard Caselaw Access Project</a> (CAP), which digitized roughly 40,000 reporter volumes covering 6.7 million cases from 1658 to 2018. All of this data is public domain.</p>
+			<p>Harvard announced in 2024 that they were winding down the CAP project. The API is gone. Search is gone. The bulk data files at <a href="https://static.case.law/" target="_blank" rel="noopener">static.case.law</a> are still available, but for how long is uncertain. This project exists to preserve that data and keep it accessible.</p>
+
+			<h2>How it works</h2>
+			<p>When you look up a citation, your browser:</p>
+			<ul>
+				<li>Fetches a small binary index file (~7 KB per volume) to find the case</li>
+				<li>Fetches the volume's case data (~400 KB zip) from static.case.law</li>
+				<li>Extracts and renders the case text entirely client-side using WebAssembly</li>
+				<li>Caches everything locally so repeat lookups are instant</li>
+			</ul>
+			<p>For the original page viewer, individual page images (~50 KB each) are fetched via HTTP range requests into the volume's tar archive — no need to download the full ~100 MB archive.</p>
+			<p>The total WebAssembly module is about 280 KB. There is no backend server, no database, no compute — just static file hosting. The same files could be served from Cloudflare R2, IPFS, a local directory, or any web host that can serve files.</p>
+
+			<h2>Current status</h2>
+			<p>This is an early-stage project. We're actively working on:</p>
+			<ul>
+				<li><strong>Mirroring all data</strong> — downloading all 40,622 volumes (~4.4 TB) from Harvard to our own storage</li>
+				<li><strong>Building the full index</strong> — currently only a handful of test volumes are indexed; the full corpus index will follow once the mirror completes</li>
+				<li><strong>IPFS distribution</strong> — pinning the volume archives on IPFS for permanent, decentralized access</li>
+				<li><strong>Citation parsing</strong> — a Rust port of <a href="https://github.com/freelawproject/eyecite" target="_blank" rel="noopener">eyeCite</a> to accept natural citation strings like "31 A.2d 647"</li>
+				<li><strong>Full-text search</strong> — serverless search via RoaringBuckets bitmap indexes on Cloudflare R2</li>
+				<li><strong>Fully decentralized hosting</strong> — the site itself (not just the data) served from IPFS, making the entire system uncensorable and permanent</li>
+			</ul>
+
+			<h2>Help preserve case law</h2>
+			<p>This data is at risk. Harvard's hosting is a soft commitment from an academic lab in wind-down mode. The more copies that exist, the safer the data is.</p>
+			<p>If you can help, here's how:</p>
+			<ul>
+				<li><strong>Mirror the data</strong> — the full dataset is ~4.4 TB at <a href="https://static.case.law/" target="_blank" rel="noopener">static.case.law</a>. If you have storage, grab a copy. Eventually, you'll be able to mirror the entire stare.pub system — site, search index, and data — from a single command.</li>
+				<li><strong>Pin on IPFS</strong> — once we publish IPFS CIDs, pin them from your node to help distribute</li>
+				<li><strong>Seed torrents</strong> — per-reporter torrents are planned for bulk distribution</li>
+				<li><strong>Contribute code</strong> — the project is open source on <a href="https://github.com/lokkju/codex-publicus" target="_blank" rel="noopener">GitHub</a></li>
+			</ul>
+
+			<h2>Technical details</h2>
+			<ul>
+				<li><strong>Frontend:</strong> Astro + vanilla JS + CSS custom properties</li>
+				<li><strong>Core:</strong> Rust, compiled to both native (CLI) and WebAssembly</li>
+				<li><strong>Data:</strong> Harvard CAP zip/tar files — static files, hostable anywhere</li>
+				<li><strong>Index:</strong> Custom binary format — 8 bytes per page, direct offset lookup</li>
+				<li><strong>Hosting:</strong> Any static file host works — Cloudflare R2, S3, IPFS, a local web server. The entire system (site, index, and data) is designed to be trivially mirrorable.</li>
+			</ul>
+
+			<h2>Credits</h2>
+			<p>Built on data from the <a href="https://lil.law.harvard.edu/" target="_blank" rel="noopener">Harvard Library Innovation Lab</a>'s Caselaw Access Project. Citation detection uses patterns from the <a href="https://free.law/" target="_blank" rel="noopener">Free Law Project</a>'s eyeCite library. All case law data is public domain (CC0).</p>
+
+			<a href="/" class="back-link">&larr; Back to stare.pub</a>
+
+			<div class="page-footer">Built with &hearts; by <a href="https://github.com/lokkju" target="_blank" rel="noopener">lokkju</a></div>
+		</div>
+	<script is:inline>
+			(function() {
+				var btn = document.getElementById('page-theme-btn');
+				if (!btn) return;
+				try { if (localStorage.getItem('stare-theme') === 'dark' || (!localStorage.getItem('stare-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) btn.textContent = '\u2600'; } catch(e) {}
+				btn.addEventListener('click', function(e) {
+					e.preventDefault();
+					var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+					if (isDark) { document.documentElement.removeAttribute('data-theme'); btn.textContent = '\u263E'; try { localStorage.setItem('stare-theme', 'light'); } catch(e) {} }
+					else { document.documentElement.setAttribute('data-theme', 'dark'); btn.textContent = '\u2600'; try { localStorage.setItem('stare-theme', 'dark'); } catch(e) {} }
+				});
+			})();
+		</script>
+	</body>
+</html>

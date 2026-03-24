@@ -216,26 +216,33 @@ editBtn.addEventListener('click', (e) => {
   showLanding();
 });
 
-// Dark mode toggle
-themeBtn.addEventListener('click', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
+// Dark mode toggle — shared across landing + resolved topbar
+const landingThemeBtn = document.getElementById('landing-theme-btn');
+const allThemeBtns = [themeBtn, landingThemeBtn].filter(Boolean);
+
+function toggleTheme() {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   if (isDark) {
     document.documentElement.removeAttribute('data-theme');
-    themeBtn.textContent = '\u263E';
+    allThemeBtns.forEach(b => b.textContent = '\u263E');
     try { localStorage.setItem('stare-theme', 'light'); } catch(e) {}
   } else {
     document.documentElement.setAttribute('data-theme', 'dark');
-    themeBtn.textContent = '\u2600';
+    allThemeBtns.forEach(b => b.textContent = '\u2600');
     try { localStorage.setItem('stare-theme', 'dark'); } catch(e) {}
   }
-});
+}
+
+allThemeBtns.forEach(b => b.addEventListener('click', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  toggleTheme();
+}));
 
 try {
   if (localStorage.getItem('stare-theme') === 'dark' ||
       (!localStorage.getItem('stare-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    themeBtn.textContent = '\u2600';
+    allThemeBtns.forEach(b => b.textContent = '\u2600');
   }
 } catch(e) {}
 
