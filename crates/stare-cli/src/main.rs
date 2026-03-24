@@ -281,6 +281,7 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             "raw": c.matched_text, "type": c.citation_type,
             "reporter": c.reporter, "slug": slug,
             "volume": volume, "page": c.page, "resolvable": resolvable,
+            "external_url": c.external_url,
         }));
     }
 
@@ -293,8 +294,14 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
     } else {
         println!("Found {} citations ({} resolvable)\n", citations.len(), resolvable_count);
         for c in &citations {
-            let status = if c["resolvable"].as_bool().unwrap_or(false) { "✓" } else { "✗" };
-            println!("  {} {}", status, c["raw"].as_str().unwrap_or(""));
+            let resolvable = c["resolvable"].as_bool().unwrap_or(false);
+            let has_url = c["external_url"].as_str().is_some();
+            let status = if resolvable { "✓" } else if has_url { "↗" } else { "✗" };
+            print!("  {} {}", status, c["raw"].as_str().unwrap_or(""));
+            if let Some(url) = c["external_url"].as_str() {
+                print!("  → {}", url);
+            }
+            println!();
         }
     }
     Ok(())
