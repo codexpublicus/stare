@@ -74,25 +74,32 @@ function detectCitationsRegex(text) {
 // Availability checking
 // ---------------------------------------------------------------------------
 
-const availabilityCache = new Map();
+let manifest = null;
+
+async function loadManifest() {
+  if (manifest) return manifest;
+  try {
+    const resp = await fetch('https://idx.stare.pub/manifest.json');
+    if (resp.ok) {
+      manifest = await resp.json();
+    } else {
+      manifest = {};
+    }
+  } catch {
+    manifest = {};
+  }
+  return manifest;
+}
 
 export function guessSlug(reporter) {
   return reporter.toLowerCase().replace(/\./g, '').replace(/\s+/g, '');
 }
 
 export async function checkAvailability(slug, volume) {
-  const key = `${slug}/${volume}`;
-  if (availabilityCache.has(key)) return availabilityCache.get(key);
-
-  try {
-    const indexUrl = 'https://idx.stare.pub';
-    const resp = await fetch(`${indexUrl}/${slug}/${volume}.bin`, { method: 'HEAD' });
-    availabilityCache.set(key, resp.ok);
-    return resp.ok;
-  } catch {
-    availabilityCache.set(key, false);
-    return false;
-  }
+  const m = await loadManifest();
+  const volumes = m[slug];
+  if (!volumes) return false;
+  return volumes.includes(typeof volume === 'number' ? volume : parseInt(volume, 10));
 }
 
 // ---------------------------------------------------------------------------
