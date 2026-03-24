@@ -1,6 +1,7 @@
 import { parseInput, resolve, extractCase } from './resolve.js';
 import { renderReader, renderSidebar, renderMultiNotice } from './ui.js';
 import { getHashParams, setHash, onHashChange } from './router.js';
+import { processCitations, setupCiteHovers } from './citations.js';
 
 let currentResult = null;
 
@@ -15,6 +16,8 @@ const topbarCite = document.getElementById('topbar-cite');
 const topbarCase = document.getElementById('topbar-case');
 const editBtn = document.getElementById('edit-btn');
 const themeBtn = document.getElementById('theme-btn');
+const prevBtn = document.getElementById('prev-btn');
+const nextBtn = document.getElementById('next-btn');
 const statusBar = document.getElementById('status-bar');
 const reader = document.getElementById('reader');
 const sidebar = document.getElementById('sidebar');
@@ -27,14 +30,56 @@ function showLanding() {
   landingInput.focus();
 }
 
-function showResolved(result) {
+function seqFromFile(caseFile) {
+  return parseInt(caseFile.split('-')[1], 10) || 1;
+}
+
+function pageFromFile(caseFile) {
+  return parseInt(caseFile.split('-')[0], 10);
+}
+
+function updatePrevNext(result, activeCaseFile) {
+  const cases = result.volumeCases || [];
+  const idx = cases.indexOf(activeCaseFile);
+
+  if (idx > 0) {
+    prevBtn.disabled = false;
+    prevBtn.onclick = (e) => {
+      e.preventDefault();
+      const prevFile = cases[idx - 1];
+      doResolve(result.reporter, result.volume, pageFromFile(prevFile), seqFromFile(prevFile));
+    };
+  } else {
+    prevBtn.disabled = true;
+    prevBtn.onclick = null;
+  }
+
+  if (idx >= 0 && idx < cases.length - 1) {
+    nextBtn.disabled = false;
+    nextBtn.onclick = (e) => {
+      e.preventDefault();
+      const nextFile = cases[idx + 1];
+      doResolve(result.reporter, result.volume, pageFromFile(nextFile), seqFromFile(nextFile));
+    };
+  } else {
+    nextBtn.disabled = true;
+    nextBtn.onclick = null;
+  }
+}
+
+function updateTopbar(caseData) {
+  const cite = caseData.citations?.[0]?.cite || '';
+  topbarCite.textContent = cite;
+  topbarCase.textContent = caseData.name_abbreviation;
+}
+
+async function showResolved(result) {
   landing.classList.add('hidden');
   resolved.classList.remove('hidden');
   sidebarToggle.classList.remove('hidden');
 
-  const cite = result.caseData.citations?.[0]?.cite || '';
-  topbarCite.textContent = cite;
-  topbarCase.textContent = result.caseData.name_abbreviation;
+  updateTopbar(result.caseData);
+  updatePrevNext(result, result.caseFile);
 
   const multiEl = document.createElement('div');
   reader.innerHTML = '';
@@ -43,20 +88,46 @@ function showResolved(result) {
   readerContent.className = 'reader';
   reader.appendChild(readerContent);
 
-  function switchCase(caseFile) {
-    const caseData = extractCase(result.zipData, caseFile);
-    renderReader(readerContent, caseData);
-    renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases);
-    renderMultiNotice(multiEl, result.allCases, caseFile, switchCase);
-    wireActions({ ...result, caseData });
+  renderMultiNotice(multiEl, result.allCases, result.caseFile, switchCase);
+  renderReader(readerContent, result.caseData, null);
+  renderSidebar(sidebar, result.caseData, result.reporter, result.volume, result.allCases, null);
+  statusBar.classList.add('hidden');
+  wireActions(result);
+
+  reader.closest('.main')?.scrollTo(0, 0);
+
+  // Process citations in background
+  try {
+    const detectedCitations = await processCitations(result.caseData);
+    if (detectedCitations.length > 0) {
+      const citationMap = new Map();
+      for (const c of detectedCitations) {
+        citationMap.set(c.raw, c);
+      }
+      result.citationMap = citationMap;
+      result.detectedCitations = detectedCitations;
+      renderReader(readerContent, result.caseData, citationMap);
+      renderSidebar(sidebar, result.caseData, result.reporter, result.volume, result.allCases, detectedCitations);
+      wireActions(result);
+      setupCiteHovers(readerContent, resolve, extractCase);
+    }
+  } catch (e) {
+    console.warn('Citation detection failed:', e);
   }
 
-  renderMultiNotice(multiEl, result.allCases, result.caseFile, switchCase);
-  renderReader(readerContent, result.caseData);
-  renderSidebar(sidebar, result.caseData, result.reporter, result.volume, result.allCases);
-  statusBar.classList.add('hidden');
-
-  wireActions(result);
+  function switchCase(caseFile) {
+    const caseData = extractCase(result.zipData, caseFile);
+    const seq = seqFromFile(caseFile);
+    const page = pageFromFile(caseFile);
+    // Update URL to reflect the specific case
+    setHash(result.reporter, result.volume, page, seq);
+    updateTopbar(caseData);
+    updatePrevNext(result, caseFile);
+    renderReader(readerContent, caseData, result.citationMap || null);
+    renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases, result.detectedCitations || null);
+    renderMultiNotice(multiEl, result.allCases, caseFile, switchCase);
+    wireActions({ ...result, caseData, caseFile, seq });
+  }
 }
 
 function wireActions(result) {
@@ -92,17 +163,23 @@ function setStatus(msg, isError) {
   }
 }
 
-async function doResolve(reporter, volume, page) {
+async function doResolve(reporter, volume, page, seq = null) {
   landingBtn.disabled = true;
   setStatus('', false);
 
   try {
-    const result = await resolve(reporter, volume, page, (msg) => setStatus(msg, false));
+    const result = await resolve(reporter, volume, page, (msg) => setStatus(msg, false), seq);
     currentResult = result;
-    setHash(reporter, volume, page);
+    setHash(reporter, volume, page, result.seq);
     showResolved(result);
   } catch (err) {
     setStatus(err.message, true);
+    if (!landing.classList.contains('hidden')) {
+      // Already on landing — error shows there
+    } else {
+      showLanding();
+      setStatus(err.message, true);
+    }
   } finally {
     landingBtn.disabled = false;
   }
@@ -116,10 +193,10 @@ landingForm.addEventListener('submit', (e) => {
     setStatus('Enter a citation as: reporter volume page (e.g., a2d 31 647)', true);
     return;
   }
-  doResolve(parsed.reporter, parsed.volume, parsed.page);
+  doResolve(parsed.reporter, parsed.volume, parsed.page, parsed.seq);
 });
 
-// Edit button — back to landing
+// Edit button
 editBtn.addEventListener('click', (e) => {
   e.preventDefault();
   e.stopPropagation();
@@ -142,7 +219,6 @@ themeBtn.addEventListener('click', (e) => {
   }
 });
 
-// Restore dark mode button state
 try {
   if (localStorage.getItem('stare-theme') === 'dark' ||
       (!localStorage.getItem('stare-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
@@ -160,12 +236,12 @@ sidebarToggle.addEventListener('click', (e) => {
 // Hash routing
 onHashChange((params) => {
   landingInput.value = `${params.reporter} ${params.volume} ${params.page}`;
-  doResolve(params.reporter, params.volume, params.page);
+  doResolve(params.reporter, params.volume, params.page, params.seq);
 });
 
 // Auto-resolve from URL hash on load
 const initial = getHashParams();
 if (initial) {
   landingInput.value = `${initial.reporter} ${initial.volume} ${initial.page}`;
-  doResolve(initial.reporter, initial.volume, initial.page);
+  doResolve(initial.reporter, initial.volume, initial.page, initial.seq);
 }

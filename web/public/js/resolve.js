@@ -10,12 +10,18 @@ export function parseInput(raw) {
   if (parts.length !== 3) return null;
   const [reporter, volStr, pageStr] = parts;
   const volume = parseInt(volStr, 10);
-  const page = parseInt(pageStr, 10);
-  if (isNaN(volume) || isNaN(page)) return null;
-  return { reporter: reporter.toLowerCase(), volume, page };
+  if (isNaN(volume)) return null;
+
+  // Support "647", "647-01", "647-02"
+  const pageMatch = pageStr.match(/^(\d+)(?:-(\d+))?$/);
+  if (!pageMatch) return null;
+  const page = parseInt(pageMatch[1], 10);
+  const seq = pageMatch[2] ? parseInt(pageMatch[2], 10) : null;
+
+  return { reporter: reporter.toLowerCase(), volume, page, seq };
 }
 
-export async function resolve(reporter, volume, page, onStatus) {
+export async function resolve(reporter, volume, page, onStatus, seq = null) {
   if (!wasm) {
     onStatus('Loading...');
     const mod = await import('/wasm/stare_wasm.js');
@@ -58,11 +64,32 @@ export async function resolve(reporter, volume, page, onStatus) {
     throw new Error(`Couldn't reach the server. Check your connection and try again.`);
   }
 
+  // If seq specified, pick that specific case; otherwise default to -01 (first)
+  let activeCaseFile = caseFile;
+  let activeSeq = 1;
+  if (seq !== null && seq > 0) {
+    const target = allCases.find(f => {
+      const s = parseInt(f.split('-')[1], 10);
+      return s === seq;
+    });
+    if (target) {
+      activeCaseFile = target;
+      activeSeq = seq;
+    }
+  } else {
+    // Default to first case (-01), extract seq from filename
+    activeSeq = parseInt(activeCaseFile.split('-')[1], 10) || 1;
+  }
+
   onStatus('Extracting case...');
-  const caseJsonStr = wasm.extract_case(zipData, caseFile);
+  const caseJsonStr = wasm.extract_case(zipData, activeCaseFile);
   const caseData = JSON.parse(caseJsonStr);
 
-  return { reporter, volume, page, caseFile, allCases, caseData, zipData };
+  // Get sorted list of all cases in this volume for prev/next navigation
+  const volumeCasesJson = wasm.list_cases(zipData);
+  const volumeCases = JSON.parse(volumeCasesJson).sort();
+
+  return { reporter, volume, page, caseFile: activeCaseFile, seq: activeSeq, allCases, caseData, zipData, volumeCases };
 }
 
 export function extractCase(zipData, caseFile) {
