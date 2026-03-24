@@ -31,7 +31,8 @@
   - `Supp. 1-01` — supplement pages. Need offset convention or separate file + URL scheme
   - `LXXXVIII-01` — Roman numeral pages (front matter). Parse roman → integer
   - `000?-01` — unknown page numbers from Harvard OCR failures. Skip or flag
-  - `428e-01`, `1028A-01` — lettered sub-pages. Now parsed (strips letter, indexes at base page number)
+  - `428e-01`, `1028A-01` — lettered sub-pages (trailing). Now parsed (strips letter, indexes at base page)
+  - `B174-01`, `A174-01` — lettered section prefixes. Currently extracts digits (174) which collides if both A and B sections exist. Needs section-aware addressing.
 - [ ] Set up Cloudflare R2 buckets (`codex-index`, `codex-data`)
 - [ ] Upload index + zips to R2
 - [ ] Test full pipeline against live R2 bucket
