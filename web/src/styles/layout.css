@@ -12,7 +12,8 @@
 .theme-toggle:hover { color: var(--topbar-text); }
 
 .layout { display: flex; height: calc(100vh - 40px); }
-.main { flex: 1; min-width: 0; border-right: 1px solid var(--border); overflow-y: auto; }
+.main { flex: 1; min-width: 0; border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.main-content { flex: 1; overflow-y: auto; }
 .sidebar { width: 300px; min-width: 300px; background: var(--bg-alt); overflow-y: auto; font-size: 13px; }
 .sidebar-section { padding: 16px; border-bottom: 1px solid var(--border); }
 .sidebar-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); font-weight: 600; margin-bottom: 8px; }
@@ -20,7 +21,7 @@
 .sidebar-meta { color: var(--text-secondary); line-height: 1.5; }
 .sidebar-meta strong { color: var(--sidebar-meta-strong); font-weight: 500; }
 
-.view-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-alt); }
+.view-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-alt); flex-shrink: 0; }
 .view-tab { padding: 8px 20px; font-size: 13px; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; background: none; }
 .view-tab:hover { color: var(--text); }
 .view-tab.active { color: var(--tab-active-text); font-weight: 600; border-bottom-color: var(--tab-active-border); background: var(--bg); }

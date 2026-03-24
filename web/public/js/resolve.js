@@ -97,3 +97,14 @@ export function extractCase(zipData, caseFile) {
   const caseJsonStr = wasm.extract_case(zipData, caseFile);
   return JSON.parse(caseJsonStr);
 }
+
+export function getPageOrders(zipData, caseFile) {
+  if (!wasm) throw new Error('WASM not initialized');
+  const result = wasm.get_page_orders(zipData, caseFile);
+  return JSON.parse(result);
+}
+
+export function extractFile(zipData, path) {
+  if (!wasm) throw new Error('WASM not initialized');
+  return wasm.extract_file(zipData, path);
+}

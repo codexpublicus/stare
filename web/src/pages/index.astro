@@ -46,10 +46,13 @@ import '../styles/reader.css';
 			<div class="layout">
 				<div class="main">
 					<div class="view-tabs">
-						<div class="view-tab active">Reader</div>
-						<div class="view-tab" style="opacity:0.4;cursor:default" title="Coming soon">Original Pages</div>
+						<div class="view-tab active" id="tab-reader">Reader</div>
+						<div class="view-tab" id="tab-pages">Original Pages</div>
 					</div>
-					<div id="reader" class="reader"></div>
+					<div class="main-content">
+						<div id="reader"></div>
+						<div id="page-viewer" class="hidden"></div>
+					</div>
 				</div>
 				<div class="sidebar" id="sidebar"></div>
 			</div>

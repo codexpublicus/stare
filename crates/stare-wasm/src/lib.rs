@@ -25,6 +25,32 @@ pub fn extract_case(zip_bytes: &[u8], case_file: &str) -> Result<String, JsError
     serde_json::to_string(&case).map_err(|e| JsError::new(&e.to_string()))
 }
 
+/// Extract a raw file from a zip by path. Returns the file contents as a string.
+#[wasm_bindgen]
+pub fn extract_file(zip_bytes: &[u8], path: &str) -> Result<String, JsError> {
+    stare::case::extract_file_from_zip(zip_bytes, path)
+        .map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Extract and parse CasesMetadata.json from a zip. Returns JSON array.
+#[wasm_bindgen]
+pub fn extract_cases_metadata(zip_bytes: &[u8]) -> Result<String, JsError> {
+    let metadata = stare::case::extract_cases_metadata(zip_bytes)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    serde_json::to_string(&metadata).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Get page order range for a case. Returns JSON: { first: N, last: N } or null.
+#[wasm_bindgen]
+pub fn get_page_orders(zip_bytes: &[u8], case_file: &str) -> Result<String, JsError> {
+    let orders = stare::case::get_page_orders(zip_bytes, case_file)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    match orders {
+        Some((first, last)) => Ok(format!("{{\"first\":{},\"last\":{}}}", first, last)),
+        None => Ok("null".to_string()),
+    }
+}
+
 /// List all case filenames in a zip. Returns a JSON array of strings.
 #[wasm_bindgen]
 pub fn list_cases(zip_bytes: &[u8]) -> Result<String, JsError> {
