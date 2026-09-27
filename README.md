@@ -32,6 +32,32 @@ Three interfaces to the same data, all static files:
 
 Target hosting cost: **< $8/month** for everything.
 
+## CLI
+
+```bash
+# Resolve a citation to case text
+stare resolve a2d 31 647
+stare resolve "31 A.2d 647"
+
+# List the cases in a volume
+stare list a2d 31
+
+# Check citations found in a text file (or stdin)
+stare check brief.txt
+
+# Download a reporter's index + case data for offline use
+stare download --reporters a2d,a3d
+
+# Configuration and cache
+stare config show
+stare config set index /path/to/local/index
+stare cache status
+```
+
+`--index`/`--data` flags (or `STARE_INDEX`/`STARE_DATA` env vars, or `stare config set`)
+override the default sources (`https://idx.stare.pub` and `https://static.case.law`).
+Downloaded and resolved files are cached under `~/.cache/stare/`.
+
 ## Status
 
 - [x] Data source analysis (`static-case-law-mirror.md`)

@@ -36,8 +36,8 @@
 - [ ] Set up Cloudflare R2 buckets (`codex-index`, `codex-data`)
 - [ ] Upload index + zips to R2
 - [ ] Test full pipeline against live R2 bucket
-- [ ] `stare list <reporter> <vol>` — list cases in a volume
-- [ ] `stare download --reporters <slug>` — fetch index + zips locally
+- [x] `stare list <reporter> <vol>` — list cases in a volume
+- [x] `stare download --reporters <slug>` — fetch index + zips locally
 
 ## Phase 2: Web Tool (WASM)
 

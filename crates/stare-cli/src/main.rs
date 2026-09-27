@@ -49,6 +49,12 @@ enum Commands {
         #[command(subcommand)]
         action: CacheAction,
     },
+    /// Download the citation index and case data for one or more reporters
+    Download {
+        /// Reporter slugs to download, comma-separated (e.g. a2d,a3d)
+        #[arg(long, value_delimiter = ',', required = true)]
+        reporters: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -94,7 +100,7 @@ impl Sources {
     }
 
     fn is_url(s: &str) -> bool {
-        s.starts_with("http://") || s.starts_with("https://") || s.starts_with("ipfs://")
+        stare_cli::is_url(s)
     }
 }
 
@@ -136,6 +142,7 @@ fn main() -> Result<()> {
             CacheAction::Status => cache_status(),
             CacheAction::Clear { kind } => cache_clear(&kind)?,
         },
+        Commands::Download { reporters } => download_reporters(&src, reporters)?,
     }
 
     Ok(())
@@ -401,4 +408,90 @@ fn cache_clear(kind: &str) -> Result<()> {
         _ => bail!("Unknown cache type: {}. Valid: all, bins, zips, tars", kind),
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Download command
+// ---------------------------------------------------------------------------
+
+fn download_reporters(src: &Sources, reporters: Vec<String>) -> Result<()> {
+    // Normalization (lowercasing) happens once, in `download::run`, which is the
+    // library entry point and the only place that needs to match manifest keys.
+    let reporters: Vec<String> = reporters
+        .into_iter()
+        .map(|r| r.trim().to_string())
+        .filter(|r| !r.is_empty())
+        .collect();
+    if reporters.is_empty() {
+        bail!("no reporters specified. Usage: stare download --reporters a2d,a3d");
+    }
+
+    let cache_dir = config::cache_dir();
+    let cfg = stare_cli::download::DownloadConfig {
+        index_source: &src.index,
+        data_source: &src.data,
+        cache_dir: &cache_dir,
+        reporters: &reporters,
+        data_rate_limit: stare_cli::download::DEFAULT_DATA_RATE_LIMIT,
+    };
+
+    println!("Downloading into {}", cache_dir.display());
+    let report = stare_cli::download::run(&cfg, |event| print_download_event(&event))?;
+
+    println!();
+    println!(
+        "Done: {} volumes seen, {} bins downloaded ({} cached), {} zips downloaded ({} cached), {} downloaded",
+        report.volumes_seen,
+        report.bins_downloaded,
+        report.bins_cached,
+        report.zips_downloaded,
+        report.zips_cached,
+        config::format_bytes(report.bytes_downloaded),
+    );
+    if !report.errors.is_empty() {
+        println!("\n{} error(s):", report.errors.len());
+        for err in &report.errors {
+            println!("  - {}", err);
+        }
+    }
+    Ok(())
+}
+
+fn print_download_event(event: &stare_cli::download::Event) {
+    use stare_cli::download::{Event, FileStatus};
+
+    let status_char = |s: &FileStatus| match s {
+        FileStatus::Cached => "=",
+        FileStatus::Downloaded(_) => "↓",
+        FileStatus::Error(_) => "✗",
+    };
+
+    match event {
+        Event::ReporterMissing { reporter } => {
+            println!("{}: not found in manifest, skipping", reporter);
+        }
+        Event::ReporterStart { reporter, volumes } => {
+            println!("{}: {} volumes", reporter, volumes);
+        }
+        Event::Volume { reporter, volume, index, total, bin, zip } => {
+            println!(
+                "  [{}/{}] {}/{}  bin {}  zip {}",
+                index,
+                total,
+                reporter,
+                volume,
+                status_char(bin),
+                status_char(zip),
+            );
+            if let FileStatus::Error(msg) = bin {
+                println!("        bin error: {}", msg);
+            }
+            if let FileStatus::Error(msg) = zip {
+                println!("        zip error: {}", msg);
+            }
+        }
+        Event::ReporterDone { reporter } => {
+            println!("{}: done", reporter);
+        }
+    }
 }
