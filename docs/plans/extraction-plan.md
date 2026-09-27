@@ -348,6 +348,10 @@ stare download --reporters a2d,a3d
 
 Python, uses the R2 bucket (or local mirror). No citation string parsing initially — structured input only. Tests the full pipeline end-to-end before any UI work.
 
+`stare download` looks up each reporter's volumes in `manifest.json` at the root
+of the index source, fetched fresh on every run (never cached), since it grows
+as the index is built out and a stale copy would silently skip new volumes.
+
 ### 2. Serverless website (Phase 2)
 
 Static JS/WASM app on Cloudflare Pages (stare.pub):
