@@ -62,9 +62,16 @@ pub fn parse_alto(gz_data: &[u8]) -> Result<String, JsError> {
 
 /// Detect citations in text using citare. Returns JSON array of DetectedCitation.
 /// Each has: matched_text, citation_type, span, harvard_slug, volume, page, reporter, year.
+///
+/// `span` is converted here, at the WASM boundary, from citare_core's UTF-8
+/// byte offsets to Unicode scalar value (char) offsets, matching how
+/// gorsuch-library's page viewer indexes the same served text. JS callers
+/// that use `span` with `String.prototype.slice` (UTF-16 code units) still
+/// need to convert further; stare's own web UI does not use `span` today.
 #[wasm_bindgen]
 pub fn detect_citations(text: &str) -> Result<String, JsError> {
-    let citations = stare::cite::detect_citations(text);
+    let mut citations = stare::cite::detect_citations(text);
+    stare::cite::spans_to_char_offsets(text, &mut citations);
     serde_json::to_string(&citations).map_err(|e| JsError::new(&e.to_string()))
 }
 

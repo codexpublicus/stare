@@ -12,7 +12,12 @@ pub struct DetectedCitation {
     pub matched_text: String,
     /// Citation type: "FullCaseCitation", "FullLawCitation", "IdCitation", etc.
     pub citation_type: String,
-    /// Character span in the source text
+    /// Byte span (UTF-8) in the source text, as returned by citare_core.
+    /// This is Rust's native string-indexing unit; it is neither Unicode
+    /// scalar values (code points) nor UTF-16 code units. Callers that hand
+    /// spans to JavaScript or to the gorsuch-library page viewer must convert
+    /// first; see `spans_to_char_offsets` below, which stare-wasm applies at
+    /// the WASM boundary.
     pub span: (usize, usize),
     /// Harvard CAP slug if available (e.g., "a2d")
     pub harvard_slug: Option<String>,
@@ -106,6 +111,38 @@ pub fn external_url(citation: &DetectedCitation) -> Option<String> {
     None
 }
 
+/// Convert `DetectedCitation::span` from UTF-8 byte offsets to Unicode scalar
+/// value (char) offsets into `text`, in place.
+///
+/// citare_core's `Citation::span()` returns byte offsets, Rust's native
+/// string-indexing unit. Neither JavaScript (which indexes strings by UTF-16
+/// code unit) nor gorsuch-library's shared page viewer (which defines offsets
+/// as Unicode code points and converts to UTF-16 only where it touches the
+/// DOM) can use bytes directly. This is the boundary conversion: stare-wasm
+/// calls it before serializing citations for JS, so `span` means one thing
+/// (bytes) everywhere inside Rust and another (chars) only once it crosses
+/// into JS, matching the page viewer's convention.
+pub fn spans_to_char_offsets(text: &str, citations: &mut [DetectedCitation]) {
+    // Map every char boundary's byte offset to its Unicode scalar value
+    // index. Citation spans always fall on char boundaries (they come from
+    // regex matches over `text`), so every span endpoint is a key here.
+    let mut char_at_byte: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut count = 0usize;
+    for (byte_offset, _) in text.char_indices() {
+        char_at_byte.insert(byte_offset, count);
+        count += 1;
+    }
+    char_at_byte.insert(text.len(), count);
+
+    for c in citations.iter_mut() {
+        let (start, end) = c.span;
+        c.span = (
+            *char_at_byte.get(&start).unwrap_or(&start),
+            *char_at_byte.get(&end).unwrap_or(&end),
+        );
+    }
+}
+
 /// Filter to only citations that have a Harvard slug (resolvable via our index).
 pub fn resolvable_citations(citations: &[DetectedCitation]) -> Vec<&DetectedCitation> {
     citations
@@ -178,5 +215,41 @@ mod tests {
         // FullCase should be resolvable, Id should not (no slug/volume/page)
         assert!(resolvable.iter().any(|c| c.matched_text == "31 A.2d 647"));
         assert!(!resolvable.iter().any(|c| c.citation_type == "Id"));
+    }
+
+    /// citare_core's span() is a UTF-8 byte span. Non-ASCII text before a
+    /// citation (section sign, curly quotes, an accented name, an emoji)
+    /// pushes the byte offset well past the Unicode scalar value (char)
+    /// offset gorsuch-library's page viewer expects. spans_to_char_offsets
+    /// is the boundary conversion; this asserts it slices the original
+    /// text correctly when indexed by chars, not bytes.
+    #[test]
+    fn spans_to_char_offsets_slices_text_with_multibyte_prefix() {
+        let text = "See \u{a7} 123, \u{201c}curly\u{201d} by Fran\u{e7}ois \u{1f44d}, 31 A.2d 647 (1943).";
+        let mut cites = detect_citations(text);
+        let cite = cites
+            .iter_mut()
+            .find(|c| c.matched_text.contains("A.2d"))
+            .expect("should detect A.2d citation");
+
+        let byte_start = cite.span.0;
+
+        spans_to_char_offsets(text, std::slice::from_mut(cite));
+        let (start, end) = cite.span;
+
+        // The multibyte prefix (section sign, curly quotes, accented e, a
+        // four-byte emoji) makes the byte offset strictly greater than the
+        // char offset; if this fails, nothing was converted.
+        assert!(
+            start < byte_start,
+            "char offset ({start}) should be less than byte offset ({byte_start}) given the multibyte prefix"
+        );
+
+        // The real assertion: char offsets must slice the original text
+        // (indexed by Unicode scalar value, the unit gorsuch-library uses)
+        // back to the exact matched text.
+        let chars: Vec<char> = text.chars().collect();
+        let sliced: String = chars[start..end].iter().collect();
+        assert_eq!(sliced, cite.matched_text);
     }
 }

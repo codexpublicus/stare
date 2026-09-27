@@ -20,6 +20,12 @@ async function getWasm() {
 /**
  * Detect citations using citare WASM.
  * Returns array of { raw, type, harvard_slug, volume, page, reporter, year, start, end, externalUrl? }
+ *
+ * `start`/`end` are Unicode code point offsets into `text`, matching
+ * gorsuch-library's page viewer convention, not UTF-16 code units. Convert
+ * to UTF-16 offsets before using them with String.prototype.slice or any
+ * other native JS string indexing. Unused today (see highlightCitations
+ * below), but callers that start reading them need this.
  */
 export async function detectCitations(text) {
   try {
@@ -62,12 +68,24 @@ function detectCitationsRegex(text) {
       volume: parseInt(match[1], 10),
       page: match[3],
       reporter: match[2].trim(),
-      start: match.index,
-      end: match.index + match[0].length,
+      // match.index and match[0].length are UTF-16 code unit offsets (JS
+      // regex's native unit). Convert to Unicode code point offsets so this
+      // fallback path agrees with the WASM path's span, above.
+      start: codePointOffset(text, match.index),
+      end: codePointOffset(text, match.index + match[0].length),
       externalUrl: null,
     });
   }
   return results;
+}
+
+/**
+ * Convert a UTF-16 code unit offset (a native JS string index) to a Unicode
+ * code point offset. Spreading a string iterates by code point, not code
+ * unit, so this is a correct, if not the fastest, conversion.
+ */
+function codePointOffset(text, utf16Index) {
+  return [...text.slice(0, utf16Index)].length;
 }
 
 // ---------------------------------------------------------------------------
