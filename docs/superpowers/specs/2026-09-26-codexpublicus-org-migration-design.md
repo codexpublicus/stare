@@ -187,6 +187,33 @@ These amend the sections above. The implementation plan follows these where they
 - **The public-fork caveat.** GitHub forks of public repositories are public, so `lokkju/r2-lfs`
   is public. The patches hold no secrets.
 
+## Amendments during execution (2026-09-27)
+
+This section and the one above override the design decisions stated earlier in this document
+where they conflict, in execution order.
+
+- **The operator runs every state-changing command.** Agents stop at `pulumi preview` and hand
+  over the exact `up`, `import`, and `state move` commands; the operator runs them.
+- **stare.pub moved in by state move, not import.** stare.pub was already managed by
+  `lokkju-infra` (its zone, email routing, apex CNAME, `stare-pub` Pages project, and
+  `stare-pub-idx` R2 bucket were live there), so `codexpublicus-infra` took them over with
+  `pulumi state move` (13 resources), not the import this document originally called for.
+- **The Cloudflare provider is pinned to 6.13.0.** `pulumi-cloudflare` 6.21 can't read the older
+  zone state that came over in the state move.
+- **The umbrella site moved from Pages to Workers Static Assets.** Cloudflare recommends Workers
+  Static Assets for new projects; Pages is maintenance-only.
+- **The `METRICS` Analytics Engine binding was dropped from the r2-lfs fork.** The dataset name
+  upstream's queries expect didn't match what was enabled, and the admin UI's Activity page
+  needs Cloudflare Access configured to be useful, which nothing here does yet.
+- **The r2-lfs fork also refuses sessions for GitHub Actions callers and carries a signed
+  principal claim.** A session token minted for an Actions caller drops its principal on its own;
+  the fork closes that gap rather than relying on the allow list alone.
+- **The ml-01 clone updates in place, not by re-cloning.** It's the working directory of the
+  running `codex-mirror` container, so it stays put and gets its remote and history reset there
+  instead (codexpublicus/stare#14).
+- **There's a single contact address, `info@codexpublicus.org`.** codexpublicus/infra#16 tracks
+  wiring its email routing and moving the destination address into secret config.
+
 ## Risks
 
 - **The history rewrite changes every commit SHA** in `codex-publicus`. SHA links in issue text
