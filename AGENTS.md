@@ -6,14 +6,14 @@
 
 **Mission**: Preserve the complete Harvard Caselaw Access Project (CAP) dataset — full text, OCR data, and scanned reporter volumes — and build a permanent, open citation resolution and search system over that data.
 
-**Repository**: `codexpublicus/stare` in the Codex Publicus GitHub org, alongside
-`codexpublicus/gorsuch-library`, `codexpublicus/infra` (shared zones, edge rules and the LFS proxy)
-and `codexpublicus/codexpublicus.org` (umbrella site). Shared Cloudflare values come from the
-Pulumi stack `organization/codexpublicus-infra/prod`.
-
 ## Repository Structure
 
 ```
+crates/stare        — core lookup library (index parsing, zip/case extraction, resolve)
+crates/stare-cli     — `stare` and `stare-admin` binaries
+crates/stare-wasm    — wasm-bindgen bindings for the website (same core as the CLI)
+data/                — committed index files (e.g. a2d/31.bin) and other build artifacts
+web/                 — Astro site: landing, about, brief checker, case viewer
 docs/plans/checklist.md             — Master checklist, iterate through this
 docs/plans/cap-preservation-plan.md — Original plan: outreach, risk assessment, data sources
 docs/plans/static-case-law-mirror.md — Mirror of static.case.law: status, file formats, aria2 setup
@@ -71,14 +71,52 @@ Per volume:
 
 Total: ~4.4 TB across 203K files.
 
+## Organization and infrastructure
+
+This repo is `codexpublicus/stare` in the `codexpublicus` GitHub org, alongside
+`codexpublicus/gorsuch-library`, `codexpublicus/infra` (shared zones, edge rules and the
+LFS proxy) and `codexpublicus/codexpublicus.org` (umbrella site).
+
+Shared Cloudflare values come from the Pulumi stack `organization/codexpublicus-infra/prod`,
+not from any per-site config. That stack currently owns stare.pub's zone, its DNS and email
+routing records, the `stare-pub` Pages project and the `stare-pub-idx` R2 bucket (moved
+there from `lokkju-infra` on 2026-09-27; see codexpublicus/stare#3). This repo has no Pulumi
+project or CI workflow of its own yet; deploys are run by hand with Wrangler.
+
+Sites are moving to Workers Static Assets (`codexpublicus.org` is already there); stare.pub
+follows as part of #3.
+
+The published contact address is moving from `info@stare.pub` to `info@codexpublicus.org`
+(#13), blocked on the email routing work in codexpublicus/infra#16.
+
+For Pulumi, Wrangler and LFS rules that apply across the org, see
+`codexpublicus/infra`'s `AGENTS.md`.
+
 ## Current Status
 
-- **Mirror**: running on ml-01 via Docker (aria2 + AriaNg). Writing to TrueNAS `mega/codex-publicus` via NFS. ~10% complete, ETA ~7 days. Web UI at http://ml-01:8280/
-- **Citation index**: designed, not yet built
-- **DuckLake**: designed, not yet built
-- **RoaringBuckets search**: designed, not yet built
-- **MCP server**: not yet started
-- **Website**: not yet started
+- **Live**: stare.pub serves the Astro site from the hand-deployed `stare-pub` Cloudflare
+  Pages project.
+- **Live**: `idx.stare.pub` (R2 bucket `stare-pub-idx`) serves the citation index files.
+- **Mirror**: still running via aria2/Docker on ml-01 against TrueNAS `mega/codex-publicus`;
+  completion percentage isn't verified for this document. See `docs/plans/checklist.md` and
+  issue #14 for its current state, and don't trust a stale number here over those.
+- **Pending, tracked by issue** (`gh issue list -R codexpublicus/stare`):
+  - #3 — deploy from GitHub Actions with an in-repo Pulumi project; move stare.pub onto
+    Workers Static Assets and the same pattern as gorsuch-library
+  - #13 — switch the published contact address to `info@codexpublicus.org`
+  - #14 — repoint the ml-01 mirror clone at `codexpublicus/stare` (still on the pre-rewrite
+    `lokkju/codex-publicus` remote)
+  - #10 — a computable court record key, a stable identifier for every decision
+  - #9 — statutes and regulations: link out for now, hold them later
+  - #8 — add case sources beyond CAP
+  - #7 — pass-through citation resolver for cases this repo doesn't hold
+  - #6 — offline, self-hosted law reference library, US then other countries
+  - #5 — shared design system review across Codex Publicus sites
+  - #4 — settle the code license and declare it everywhere
+  - #2 — citation spans should be UTF-8 byte offsets, not characters
+  - #1 — adopt the shared Codex Publicus page viewer
+
+  Beyond these, see issues for anything not listed here.
 
 ## Development Phases
 
