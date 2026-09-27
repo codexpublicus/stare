@@ -226,7 +226,7 @@ fn fetch_zip(src: &Sources, reporter: &str, volume: u32) -> Result<Vec<u8>> {
 
 fn fetch_url(url: &str) -> Result<Vec<u8>> {
     let client = reqwest::blocking::Client::builder()
-        .user_agent("stare/0.1.0 (case law tool; github.com/lokkju/codex-publicus)")
+        .user_agent("stare/0.1.0 (case law tool; github.com/codexpublicus/stare)")
         .build()?;
     let response = client.get(url).send()
         .with_context(|| format!("failed to fetch {}", url))?;
