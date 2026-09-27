@@ -155,6 +155,38 @@ GitHub only transfers issues between repos with the same owner.
 - **gorsuch-library#63 and codex-publicus#3:** get their stack reference and prerequisite links
   updated.
 
+## Amendments after reading the r2-lfs and gorsuch-library sources (2026-09-26)
+
+These amend the sections above. The implementation plan follows these where they differ.
+
+- **One LFS bucket for the organization, not one per repository.**
+  - An r2-lfs instance binds one bucket and keeps each repository under an `{owner}/{repo}/`
+    prefix. `codexpublicus-infra` owns that bucket (`codexpublicus-lfs`) and its bucket-scoped
+    key.
+  - gorsuch-library's Pulumi no longer creates an LFS bucket or LFS keys, and
+    `codexpublicus-infra` reads nothing from gorsuch-library's stack.
+- **The allow list is an R2 object the operator uploads.**
+  - It lives at `_allowlist/{owner}/{repo}.txt` in the LFS bucket. Upstream keeps every internal
+    key under a `_` root, which no GitHub owner name can start with.
+  - The format is gorsuch-library's `lfs-policy/ci-readable.txt`: one lowercase 64-hex object id
+    per line, sorted and unique, with a newline after every line.
+  - The operator uploads it with `wrangler r2 object put`, so no consumer stack holds a key to the
+    org's bucket. A missing or malformed list refuses every CI download.
+- **Edge-rule hosts are `codexpublicus-infra` config.** The data hosts the cache and compression
+  rules match (`data.gorsuch.codexpublicus.org` first) are a list in `Pulumi.prod.yaml`, not an
+  output read from gorsuch-library's stack.
+- **Deploying the Worker.** Wrangler deploys it from a pinned tag of `lokkju/r2-lfs`, using a
+  `wrangler.jsonc` kept in `codexpublicus/infra`. The build uses Vite, a Durable Object and admin
+  assets, none of which Pulumi reasonably owns. Pulumi owns the bucket, the Worker's R2 key and the
+  operator token, and its outputs feed `wrangler secret put`. Wrangler creates the custom domain
+  `lfs.codexpublicus.org`.
+- **The operator token** is an `AUTH_TOKENS` entry, `codexpublicus/*:rw:<token>`, with the Worker
+  in `AUTH_MODE=token`.
+- **The history rewrite doesn't re-clone.** The working clone resets to the rewritten `origin/main`
+  and prunes, which keeps its untracked files (`.claude/`, `data/`, `web/node_modules`).
+- **The public-fork caveat.** GitHub forks of public repositories are public, so `lokkju/r2-lfs`
+  is public. The patches hold no secrets.
+
 ## Risks
 
 - **The history rewrite changes every commit SHA** in `codex-publicus`. SHA links in issue text
