@@ -2,6 +2,11 @@
 
 **stare.pub** — Free, serverless U.S. case law citation resolution and search.
 
+**Repository**: `codexpublicus/stare` in the Codex Publicus GitHub org, alongside
+`codexpublicus/gorsuch-library`, `codexpublicus/infra` (shared zones, edge rules and the LFS proxy)
+and `codexpublicus/codexpublicus.org` (umbrella site). Shared Cloudflare values come from the
+Pulumi stack `organization/codexpublicus-infra/prod`.
+
 ## What is this?
 
 A system for resolving legal citations (like `31 A.2d 647`) to full case text and original scanned PDFs — with no backend server. Everything is static files on Cloudflare R2 and IPFS, queried via HTTP range requests.

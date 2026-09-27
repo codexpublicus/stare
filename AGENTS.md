@@ -6,6 +6,11 @@
 
 **Mission**: Preserve the complete Harvard Caselaw Access Project (CAP) dataset — full text, OCR data, and scanned reporter volumes — and build a permanent, open citation resolution and search system over that data.
 
+**Repository**: `codexpublicus/stare` in the Codex Publicus GitHub org, alongside
+`codexpublicus/gorsuch-library`, `codexpublicus/infra` (shared zones, edge rules and the LFS proxy)
+and `codexpublicus/codexpublicus.org` (umbrella site). Shared Cloudflare values come from the
+Pulumi stack `organization/codexpublicus-infra/prod`.
+
 ## Repository Structure
 
 ```
