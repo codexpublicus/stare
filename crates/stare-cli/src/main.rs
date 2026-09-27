@@ -415,9 +415,11 @@ fn cache_clear(kind: &str) -> Result<()> {
 // ---------------------------------------------------------------------------
 
 fn download_reporters(src: &Sources, reporters: Vec<String>) -> Result<()> {
+    // Normalization (lowercasing) happens once, in `download::run`, which is the
+    // library entry point and the only place that needs to match manifest keys.
     let reporters: Vec<String> = reporters
         .into_iter()
-        .map(|r| r.trim().to_lowercase())
+        .map(|r| r.trim().to_string())
         .filter(|r| !r.is_empty())
         .collect();
     if reporters.is_empty() {

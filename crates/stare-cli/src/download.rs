@@ -13,6 +13,12 @@
 ///   HEAD request's Content-Length). No checksum is published for .bin/.zip files
 ///   (only .tar.sha256 exists, and tars aren't part of this command), so size is the
 ///   best available verification. A size mismatch triggers a re-download.
+/// - If the HEAD request itself fails (network error or non-2xx) and a local copy
+///   already exists, that copy is trusted as-is and a warning is printed, rather than
+///   treating a flaky connection as a reason to error out on an already-downloaded
+///   reporter. The error only propagates when there's no local file to fall back on.
+/// - Files are written atomically (temp file + rename via `stare::config::atomic_write`)
+///   so a killed process or a concurrent reader never sees a partial file.
 /// - Requests to the data source (static.case.law) are rate-limited per AGENTS.md
 ///   (max 1-2 req/sec). The index source is our own R2 bucket and isn't rate-limited.
 use anyhow::{bail, Context, Result};
@@ -147,18 +153,35 @@ fn fetch_and_cache(
         if let Some(limiter) = rate_limiter.as_mut() {
             limiter.wait();
         }
-        let head = client
-            .head(&url)
-            .send()
-            .with_context(|| format!("HEAD request failed for {}", url))?;
-        if !head.status().is_success() {
-            bail!("HTTP {} checking {}", head.status(), url);
-        }
-        let expected_len = head
-            .headers()
-            .get(reqwest::header::CONTENT_LENGTH)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.parse::<u64>().ok());
+        // A failed or non-2xx HEAD is only fatal when there's nothing local to fall
+        // back on. If the file is already cached, a flaky connection or a hiccup on
+        // the server shouldn't turn a re-run over an already-downloaded reporter into
+        // a wall of errors: trust the cached copy and warn instead.
+        let expected_len = match client.head(&url).send() {
+            Ok(resp) if resp.status().is_success() => resp
+                .headers()
+                .get(reqwest::header::CONTENT_LENGTH)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok()),
+            Ok(resp) => {
+                if local_path.exists() {
+                    eprintln!(
+                        "warning: HTTP {} checking {}, trusting cached file",
+                        resp.status(),
+                        url
+                    );
+                    return Ok(FileStatus::Cached);
+                }
+                bail!("HTTP {} checking {}", resp.status(), url);
+            }
+            Err(e) => {
+                if local_path.exists() {
+                    eprintln!("warning: failed to verify {} ({}), trusting cached file", url, e);
+                    return Ok(FileStatus::Cached);
+                }
+                return Err(e).with_context(|| format!("HEAD request failed for {}", url));
+            }
+        };
 
         if local_path.exists() {
             let local_len = std::fs::metadata(&local_path)?.len();
@@ -177,7 +200,7 @@ fn fetch_and_cache(
             bail!("HTTP {} fetching {}", resp.status(), url);
         }
         let bytes = resp.bytes().with_context(|| format!("failed to read body of {}", url))?;
-        write_cached(&local_path, &bytes)?;
+        stare::config::atomic_write(&local_path, &bytes)?;
         Ok(FileStatus::Downloaded(bytes.len() as u64))
     } else {
         let src_path = Path::new(source).join(key);
@@ -189,17 +212,9 @@ fn fetch_and_cache(
             }
         }
         let data = std::fs::read(&src_path).with_context(|| format!("source file not found: {}", src_path.display()))?;
-        write_cached(&local_path, &data)?;
+        stare::config::atomic_write(&local_path, &data)?;
         Ok(FileStatus::Downloaded(data.len() as u64))
     }
-}
-
-fn write_cached(path: &Path, data: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(path, data)?;
-    Ok(())
 }
 
 /// Run a download pass: for each requested reporter, look up its volumes in the

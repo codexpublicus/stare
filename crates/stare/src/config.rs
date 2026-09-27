@@ -6,6 +6,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub const DEFAULT_INDEX_URL: &str = "https://idx.stare.pub";
 pub const DEFAULT_DATA_URL: &str = "https://static.case.law";
@@ -104,10 +105,28 @@ pub fn cache_get(kind: &str, key: &str) -> Option<Vec<u8>> {
 /// Write a file to the cache.
 pub fn cache_set(kind: &str, key: &str, data: &[u8]) -> Result<()> {
     let path = cache_path(kind, key);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&path, data)?;
+    atomic_write(&path, data)
+}
+
+static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Write `data` to `path` atomically: write to a temp file in the same directory,
+/// then rename it into place. A process killed mid-write, or a concurrent reader,
+/// never sees a partial file, since rename within a directory is atomic on POSIX
+/// (and NTFS via `MoveFileEx` on Windows).
+pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
+    let dir = path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("failed to create dir {}", dir.display()))?;
+
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    let n = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let tmp_path = dir.join(format!(".{}.tmp-{}-{}", file_name, std::process::id(), n));
+
+    std::fs::write(&tmp_path, data)
+        .with_context(|| format!("failed to write {}", tmp_path.display()))?;
+    std::fs::rename(&tmp_path, path)
+        .with_context(|| format!("failed to rename {} to {}", tmp_path.display(), path.display()))?;
     Ok(())
 }
 
@@ -190,5 +209,45 @@ pub fn format_bytes(bytes: u64) -> String {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     } else {
         format!("{:.2} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atomic_write_creates_file_with_exact_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested/file.bin");
+
+        atomic_write(&path, b"hello world").unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"hello world");
+    }
+
+    #[test]
+    fn atomic_write_overwrites_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file.bin");
+        std::fs::write(&path, b"old contents").unwrap();
+
+        atomic_write(&path, b"new").unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+    }
+
+    #[test]
+    fn atomic_write_leaves_no_temp_file_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file.bin");
+
+        atomic_write(&path, b"data").unwrap();
+
+        let entries: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(entries, vec![std::ffi::OsString::from("file.bin")]);
     }
 }

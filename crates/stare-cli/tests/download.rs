@@ -258,3 +258,87 @@ fn reporter_slugs_are_case_insensitive() {
     assert_eq!(report.zips_downloaded, 1);
     assert!(!FileStatus::Cached.is_error());
 }
+
+#[test]
+fn trusts_cached_file_when_verification_head_fails() {
+    let mut index_server = mockito::Server::new();
+    let mut data_server = mockito::Server::new();
+
+    let _manifest_mock = index_server
+        .mock("GET", "/manifest.json")
+        .with_status(200)
+        .with_body(r#"{"us": [3]}"#)
+        .create();
+
+    let bin_bytes = vec![9u8; 32];
+    let zip_bytes = vec![7u8; 256];
+
+    let cache = tempfile::tempdir().unwrap();
+    let bin_path = cache.path().join("bins/us/3.bin");
+    let zip_path = cache.path().join("zips/us/3.zip");
+    std::fs::create_dir_all(bin_path.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(zip_path.parent().unwrap()).unwrap();
+    std::fs::write(&bin_path, &bin_bytes).unwrap();
+    std::fs::write(&zip_path, &zip_bytes).unwrap();
+
+    // Both HEAD checks return 500 (a flaky server / connection blip). Since a
+    // same-named file already exists locally, that copy should be trusted rather
+    // than reported as an error, and the GET mocks (registered but never expected)
+    // should never be hit.
+    let _bin_head = index_server.mock("HEAD", "/us/3.bin").with_status(500).create();
+    let _zip_head = data_server.mock("HEAD", "/us/3.zip").with_status(500).create();
+    let bin_get_guard = index_server.mock("GET", "/us/3.bin").with_status(200).expect(0).create();
+    let zip_get_guard = data_server.mock("GET", "/us/3.zip").with_status(200).expect(0).create();
+
+    let cfg = DownloadConfig {
+        index_source: &index_server.url(),
+        data_source: &data_server.url(),
+        cache_dir: cache.path(),
+        reporters: &["us".to_string()],
+        data_rate_limit: Duration::ZERO,
+    };
+
+    let mut events = Vec::new();
+    let report = run(&cfg, |e| events.push(e)).unwrap();
+
+    assert_eq!(report.bins_cached, 1, "a failed HEAD with a cached file should count as cached");
+    assert_eq!(report.zips_cached, 1);
+    assert!(report.errors.is_empty(), "a failed verification HEAD on a cached file is not an error: {:?}", report.errors);
+    assert!(events.iter().any(|e| matches!(
+        e,
+        Event::Volume { bin, zip, .. } if *bin == FileStatus::Cached && *zip == FileStatus::Cached
+    )));
+    bin_get_guard.assert();
+    zip_get_guard.assert();
+}
+
+#[test]
+fn head_failure_without_cached_file_is_an_error() {
+    let mut index_server = mockito::Server::new();
+    let data_server = mockito::Server::new();
+
+    let _manifest_mock = index_server
+        .mock("GET", "/manifest.json")
+        .with_status(200)
+        .with_body(r#"{"us": [3]}"#)
+        .create();
+
+    // Nothing cached locally, and no HEAD mock registered at all (mockito 404s by
+    // default for unmocked paths), so both the bin and zip fetch should fail and
+    // be recorded as errors rather than panicking or silently succeeding.
+    let cache = tempfile::tempdir().unwrap();
+    let cfg = DownloadConfig {
+        index_source: &index_server.url(),
+        data_source: &data_server.url(),
+        cache_dir: cache.path(),
+        reporters: &["us".to_string()],
+        data_rate_limit: Duration::ZERO,
+    };
+
+    let report = run(&cfg, |_| {}).unwrap();
+
+    assert_eq!(report.bins_cached, 0);
+    assert_eq!(report.bins_downloaded, 0);
+    assert!(!report.errors.is_empty());
+    assert!(!cache.path().join("bins/us/3.bin").exists());
+}
