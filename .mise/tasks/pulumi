@@ -1,12 +1,30 @@
 #!/usr/bin/env bash
-#MISE description="Run Pulumi on infra/ with the state-backend and infra Cloudflare credentials"
+#MISE description="Run Pulumi on infra/ borrowing codexpublicus/infra's environment"
 #USAGE arg "[args]..." var=#true help="Arguments passed through to pulumi"
 set -euo pipefail
 
-# stare's own AWS_* keys are the s5cmd R2 token for stare-pub-idx, and its
-# CLOUDFLARE_API_TOKEN is the hand-made Pages token, which can't list API token
-# permission groups. Pulumi gets the state backend's keys and the org infra token.
-AWS_ACCESS_KEY_ID="$PULUMI_STATE_AWS_ACCESS_KEY_ID" \
-AWS_SECRET_ACCESS_KEY="$PULUMI_STATE_AWS_SECRET_ACCESS_KEY" \
-CLOUDFLARE_API_TOKEN="$PULUMI_CLOUDFLARE_API_TOKEN" \
-  exec pulumi -C "$MISE_PROJECT_ROOT/infra" "$@"
+# This repo carries no operator secrets for Pulumi. The state backend keys and
+# the org Cloudflare token live only in the codexpublicus/infra checkout; this
+# task borrows that repo's mise env for the pulumi process instead of copying
+# its secrets in here. Point CODEXPUBLICUS_INFRA_DIR at that checkout if it
+# isn't at the default path.
+INFRA_DIR="${CODEXPUBLICUS_INFRA_DIR:-$HOME/projects/lokkju/codexpublicus-infra}"
+
+if [ ! -d "$INFRA_DIR" ]; then
+  echo "error: codexpublicus/infra checkout not found at '$INFRA_DIR'." >&2
+  echo "  Clone it there, or set CODEXPUBLICUS_INFRA_DIR to point at your checkout." >&2
+  exit 1
+fi
+
+# MISE_PROJECT_ROOT is set for file tasks; fall back to deriving it from this
+# script's own path (two levels up from .mise/tasks/) if some future mise
+# version stops setting it.
+ROOT="${MISE_PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+
+# stare's own env still carries AWS_ENDPOINT_URL_S3 (the R2 endpoint for the
+# s5cmd idx-bucket token), which codexpublicus/infra's env never sets. Left
+# alone it survives into the inner `mise exec` and points Pulumi's S3-backend
+# client at the wrong endpoint even though the AWS_* keys themselves get
+# overridden correctly. Strip it explicitly rather than relying on override.
+exec env -u AWS_ENDPOINT_URL_S3 \
+  mise exec --cd "$INFRA_DIR" -- pulumi -C "$ROOT/infra" "$@"

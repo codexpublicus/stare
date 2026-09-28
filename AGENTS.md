@@ -100,10 +100,16 @@ Run Pulumi through `mise run pulumi -- ...`, for example
 `mise run pulumi -- preview --stack prod --diff`. Plain `pulumi` under this repo's env
 fails: `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` here are the s5cmd token for
 `stare-pub-idx`, which gets a 403 on the state bucket, and `CLOUDFLARE_API_TOKEN` is the
-Pages deploy token, which can't read API token permission groups. The task swaps in
-`PULUMI_STATE_AWS_*` (the state backend's keys) and `PULUMI_CLOUDFLARE_API_TOKEN` (the
-org infra token), both age-encrypted in `.mise/config.toml`. Tests run with
-`uv run --directory infra pytest -q`.
+Pages deploy token, which can't read API token permission groups.
+
+No operator secrets for Pulumi live in this repo. The task instead borrows the
+environment of a `codexpublicus/infra` checkout, found at `$CODEXPUBLICUS_INFRA_DIR`
+(default `~/projects/lokkju/codexpublicus-infra`), and runs `pulumi` inside that
+env via `mise exec --cd`. That's where the state backend keys and the org
+Cloudflare token are age-encrypted. The task also strips this repo's own
+`AWS_ENDPOINT_URL_S3` before handing off, since infra's env doesn't set one and
+leaving it in place would point Pulumi's S3 backend client at the R2 endpoint
+instead of the state bucket's. Tests run with `uv run --directory infra pytest -q`.
 
 ## Current Status
 
