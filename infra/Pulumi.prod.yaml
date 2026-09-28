@@ -1,0 +1,9 @@
+encryptionsalt: v1:VpvVRHfTNF0=:v1:r4gLFshenHBv3DCF:d9BOs9vEJzV+box5Acu3M+C9PcxSEQ==
+config:
+  stare-infra:shared_stack: organization/codexpublicus-infra/prod
+  stare-infra:zone: stare.pub
+  stare-infra:worker_name: stare-pub
+  stare-infra:github_repo: codexpublicus/stare
+  stare-infra:citare_repo: codexpublicus/citare
+  stare-infra:data_bucket: codex-data
+  stare-infra:bucket_location: WNAM
