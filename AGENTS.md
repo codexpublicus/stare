@@ -80,8 +80,10 @@ LFS proxy) and `codexpublicus/codexpublicus.org` (umbrella site).
 Shared Cloudflare values come from the Pulumi stack `organization/codexpublicus-infra/prod`,
 not from any per-site config. That stack currently owns stare.pub's zone, its DNS and email
 routing records, the `stare-pub` Pages project and the `stare-pub-idx` R2 bucket (moved
-there from `lokkju-infra` on 2026-09-27; see codexpublicus/stare#3). This repo has no Pulumi
-project or CI workflow of its own yet; deploys are run by hand with Wrangler.
+there from `lokkju-infra` on 2026-09-27; see codexpublicus/stare#3). This repo's own
+Pulumi project, `infra/`, owns the Workers deploy token, the citare deploy key, the repo
+secrets that carry them and the `codex-data` R2 bucket; site deploys are still run by hand
+with Wrangler.
 
 Sites are moving to Workers Static Assets (`codexpublicus.org` is already there); stare.pub
 follows as part of #3.
@@ -91,6 +93,17 @@ The published contact address is moving from `info@stare.pub` to `info@codexpubl
 
 For Pulumi, Wrangler and LFS rules that apply across the org, see
 `codexpublicus/infra`'s `AGENTS.md`.
+
+### Pulumi (`infra/`, stack `organization/stare-infra/prod`)
+
+Run Pulumi through `mise run pulumi -- ...`, for example
+`mise run pulumi -- preview --stack prod --diff`. Plain `pulumi` under this repo's env
+fails: `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` here are the s5cmd token for
+`stare-pub-idx`, which gets a 403 on the state bucket, and `CLOUDFLARE_API_TOKEN` is the
+Pages deploy token, which can't read API token permission groups. The task swaps in
+`PULUMI_STATE_AWS_*` (the state backend's keys) and `PULUMI_CLOUDFLARE_API_TOKEN` (the
+org infra token), both age-encrypted in `.mise/config.toml`. Tests run with
+`uv run --directory infra pytest -q`.
 
 ## Current Status
 
