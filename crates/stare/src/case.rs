@@ -1,4 +1,4 @@
-//! Case data extracted from Harvard CAP zip files.
+/// Case data extracted from Harvard CAP zip files.
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -67,8 +67,8 @@ pub struct CaseMetaEntry {
 /// Extract and parse CasesMetadata.json from a zip.
 pub fn extract_cases_metadata(zip_bytes: &[u8]) -> Result<Vec<CaseMetaEntry>> {
     let json_str = extract_file_from_zip(zip_bytes, "metadata/CasesMetadata.json")?;
-    let entries: Vec<CaseMetaEntry> =
-        serde_json::from_str(&json_str).context("failed to parse CasesMetadata.json")?;
+    let entries: Vec<CaseMetaEntry> = serde_json::from_str(&json_str)
+        .context("failed to parse CasesMetadata.json")?;
     Ok(entries)
 }
 
@@ -145,8 +145,8 @@ mod tests {
         let zip_bytes = std::fs::read("tests/fixtures/a2d-31.zip")
             .expect("test fixture a2d-31.zip missing — run: wget -O tests/fixtures/a2d-31.zip https://static.case.law/a2d/31.zip");
 
-        let case =
-            extract_from_zip(&zip_bytes, "0647-01").expect("should extract case 0647-01 from zip");
+        let case = extract_from_zip(&zip_bytes, "0647-01")
+            .expect("should extract case 0647-01 from zip");
 
         assert_eq!(case.name_abbreviation, "D'Elia & Marks Co. v. Lyon");
         assert_eq!(case.decision_date, "1943-05-11");
@@ -157,8 +157,8 @@ mod tests {
 
     #[test]
     fn extract_nonexistent_case_returns_error() {
-        let zip_bytes =
-            std::fs::read("tests/fixtures/a2d-31.zip").expect("test fixture a2d-31.zip missing");
+        let zip_bytes = std::fs::read("tests/fixtures/a2d-31.zip")
+            .expect("test fixture a2d-31.zip missing");
 
         let result = extract_from_zip(&zip_bytes, "9999-99");
         assert!(result.is_err());
@@ -166,10 +166,11 @@ mod tests {
 
     #[test]
     fn list_cases_from_zip() {
-        let zip_bytes =
-            std::fs::read("tests/fixtures/a2d-31.zip").expect("test fixture a2d-31.zip missing");
+        let zip_bytes = std::fs::read("tests/fixtures/a2d-31.zip")
+            .expect("test fixture a2d-31.zip missing");
 
-        let cases = list_cases_in_zip(&zip_bytes).expect("should list cases");
+        let cases = list_cases_in_zip(&zip_bytes)
+            .expect("should list cases");
 
         // a2d/31 has ~20 cases
         assert!(cases.len() > 10);

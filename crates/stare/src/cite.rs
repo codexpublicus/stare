@@ -1,7 +1,7 @@
-//! Citation detection and resolution using citare-core.
-//!
-//! Wraps citare's get_citations to produce structured results
-//! with Harvard CAP slugs for direct index resolution.
+/// Citation detection and resolution using citare-core.
+///
+/// Wraps citare's get_citations to produce structured results
+/// with Harvard CAP slugs for direct index resolution.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -87,10 +87,7 @@ pub fn external_url(citation: &DetectedCitation) -> Option<String> {
     {
         let title = caps.get(1)?.as_str();
         let section = caps.get(2)?.as_str();
-        return Some(format!(
-            "https://www.law.cornell.edu/uscode/text/{}/{}",
-            title, section
-        ));
+        return Some(format!("https://www.law.cornell.edu/uscode/text/{}/{}", title, section));
     }
 
     // Statutes at Large: "56 Stat. 195"
@@ -100,10 +97,7 @@ pub fn external_url(citation: &DetectedCitation) -> Option<String> {
     {
         let vol = caps.get(1)?.as_str();
         let page = caps.get(2)?.as_str();
-        return Some(format!(
-            "https://www.govinfo.gov/content/pkg/STATUTE-{}/pdf/STATUTE-{}-Pg{}.pdf",
-            vol, vol, page
-        ));
+        return Some(format!("https://www.govinfo.gov/content/pkg/STATUTE-{}/pdf/STATUTE-{}-Pg{}.pdf", vol, vol, page));
     }
 
     // CFR: "40 C.F.R. § 122.1"
@@ -113,10 +107,7 @@ pub fn external_url(citation: &DetectedCitation) -> Option<String> {
     {
         let title = caps.get(1)?.as_str();
         let section = caps.get(2)?.as_str();
-        return Some(format!(
-            "https://www.ecfr.gov/current/title-{}/section-{}",
-            title, section
-        ));
+        return Some(format!("https://www.ecfr.gov/current/title-{}/section-{}", title, section));
     }
 
     None
@@ -139,11 +130,7 @@ pub struct SpanBoundaryError {
 
 impl fmt::Display for SpanBoundaryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "byte offset {} is not on a char boundary",
-            self.byte_offset
-        )
+        write!(f, "byte offset {} is not on a char boundary", self.byte_offset)
     }
 }
 
@@ -211,10 +198,7 @@ mod tests {
     fn detect_case_citation() {
         let cites = detect_citations("See D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (1943).");
         assert!(!cites.is_empty(), "should detect at least one citation");
-        let c = cites
-            .iter()
-            .find(|c| c.matched_text.contains("A.2d"))
-            .expect("should find A.2d citation");
+        let c = cites.iter().find(|c| c.matched_text.contains("A.2d")).expect("should find A.2d citation");
         assert_eq!(c.harvard_slug.as_deref(), Some("a2d"));
         assert_eq!(c.volume.as_deref(), Some("31"));
         assert_eq!(c.page.as_deref(), Some("647"));
@@ -225,15 +209,9 @@ mod tests {
         let cites = detect_citations("Roe v. Wade, 410 U.S. 113 (1973).");
         assert!(!cites.is_empty(), "should detect at least one citation");
         for c in &cites {
-            eprintln!(
-                "  type={} text={:?} slug={:?} vol={:?} page={:?}",
-                c.citation_type, c.matched_text, c.harvard_slug, c.volume, c.page
-            );
+            eprintln!("  type={} text={:?} slug={:?} vol={:?} page={:?}", c.citation_type, c.matched_text, c.harvard_slug, c.volume, c.page);
         }
-        let c = cites
-            .iter()
-            .find(|c| c.matched_text.contains("U.S."))
-            .expect("should find U.S. citation");
+        let c = cites.iter().find(|c| c.matched_text.contains("U.S.")).expect("should find U.S. citation");
         assert_eq!(c.harvard_slug.as_deref(), Some("us"));
         assert_eq!(c.volume.as_deref(), Some("410"));
         assert_eq!(c.page.as_deref(), Some("113"));
@@ -258,14 +236,8 @@ mod tests {
     #[test]
     fn case_citation_no_external_url() {
         let cites = detect_citations("See 31 A.2d 647.");
-        let c = cites
-            .iter()
-            .find(|c| c.matched_text.contains("A.2d"))
-            .unwrap();
-        assert!(
-            c.external_url.is_none(),
-            "Case citations shouldn't have external URL"
-        );
+        let c = cites.iter().find(|c| c.matched_text.contains("A.2d")).unwrap();
+        assert!(c.external_url.is_none(), "Case citations shouldn't have external URL");
         assert!(c.harvard_slug.is_some());
     }
 
@@ -292,8 +264,7 @@ mod tests {
     /// text correctly when indexed by chars, not bytes.
     #[test]
     fn spans_to_char_offsets_slices_text_with_multibyte_prefix() {
-        let text =
-            "See \u{a7} 123, \u{201c}curly\u{201d} by Fran\u{e7}ois \u{1f44d}, 31 A.2d 647 (1943).";
+        let text = "See \u{a7} 123, \u{201c}curly\u{201d} by Fran\u{e7}ois \u{1f44d}, 31 A.2d 647 (1943).";
         let mut cites = detect_citations(text);
         let cite = cites
             .iter_mut()

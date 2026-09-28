@@ -1,7 +1,7 @@
-//! Configuration and caching for stare.
-//!
-//! Config: ~/.config/stare/config.toml
-//! Cache:  ~/.cache/stare/{bins,zips,tars}/
+/// Configuration and caching for stare.
+///
+/// Config: ~/.config/stare/config.toml
+/// Cache:  ~/.cache/stare/{bins,zips,tars}/
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -79,7 +79,8 @@ pub fn save_config(config: &Config) -> Result<()> {
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create config dir {}", dir.display()))?;
     let path = dir.join("config.toml");
-    let contents = toml::to_string_pretty(config).context("failed to serialize config")?;
+    let contents = toml::to_string_pretty(config)
+        .context("failed to serialize config")?;
     std::fs::write(&path, contents)
         .with_context(|| format!("failed to write {}", path.display()))?;
     Ok(())
@@ -114,10 +115,7 @@ static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// never sees a partial file, since rename within a directory is atomic on POSIX
 /// (and NTFS via `MoveFileEx` on Windows).
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
-    let dir = path
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
+    let dir = path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create dir {}", dir.display()))?;
 
@@ -127,13 +125,8 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
 
     std::fs::write(&tmp_path, data)
         .with_context(|| format!("failed to write {}", tmp_path.display()))?;
-    std::fs::rename(&tmp_path, path).with_context(|| {
-        format!(
-            "failed to rename {} to {}",
-            tmp_path.display(),
-            path.display()
-        )
-    })?;
+    std::fs::rename(&tmp_path, path)
+        .with_context(|| format!("failed to rename {} to {}", tmp_path.display(), path.display()))?;
     Ok(())
 }
 

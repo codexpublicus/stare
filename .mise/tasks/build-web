@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Install web dependencies and build the site"
-set -euo pipefail
-
-npm --prefix web ci
-npm --prefix web run build

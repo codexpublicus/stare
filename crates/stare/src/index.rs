@@ -1,8 +1,8 @@
-//! Binary citation index format.
-//!
-//! Each volume gets a `.bin` file where page N maps to byte offset N * ENTRY_SIZE.
-//! Each entry is 8 bytes: a null-padded case filename like "0647-01\0".
-//! An all-zero entry means no case starts at that page.
+/// Binary citation index format.
+///
+/// Each volume gets a `.bin` file where page N maps to byte offset N * ENTRY_SIZE.
+/// Each entry is 8 bytes: a null-padded case filename like "0647-01\0".
+/// An all-zero entry means no case starts at that page.
 
 pub const ENTRY_SIZE: usize = 8;
 
@@ -49,8 +49,7 @@ pub fn build(cases: &[(&str, usize)]) -> BuildResult {
     let mut multi = Vec::new();
 
     // Group by page, sort within each page to ensure -01 is first
-    let mut by_page: std::collections::BTreeMap<usize, Vec<&str>> =
-        std::collections::BTreeMap::new();
+    let mut by_page: std::collections::BTreeMap<usize, Vec<&str>> = std::collections::BTreeMap::new();
     for &(filename, page) in cases {
         by_page.entry(page).or_default().push(filename);
     }
@@ -154,7 +153,11 @@ mod tests {
 
     #[test]
     fn build_bin_from_cases() {
-        let cases = vec![("0647-01", 647), ("0649-01", 649), ("0652-01", 652)];
+        let cases = vec![
+            ("0647-01", 647),
+            ("0649-01", 649),
+            ("0652-01", 652),
+        ];
         let result = build(&cases);
 
         assert_eq!(lookup(&result.bin, 647), Some("0647-01"));
@@ -167,7 +170,11 @@ mod tests {
 
     #[test]
     fn build_keeps_first_case_in_bin_for_multi_page() {
-        let cases = vec![("0657-01", 657), ("0657-02", 657), ("0647-01", 647)];
+        let cases = vec![
+            ("0657-01", 657),
+            ("0657-02", 657),
+            ("0647-01", 647),
+        ];
         let result = build(&cases);
 
         // -01 should be in .bin
@@ -178,7 +185,11 @@ mod tests {
 
     #[test]
     fn build_handles_three_cases_on_same_page() {
-        let cases = vec![("0100-03", 100), ("0100-01", 100), ("0100-02", 100)];
+        let cases = vec![
+            ("0100-03", 100),
+            ("0100-01", 100),
+            ("0100-02", 100),
+        ];
         let result = build(&cases);
 
         assert_eq!(lookup(&result.bin, 100), Some("0100-01"));
@@ -189,20 +200,30 @@ mod tests {
 
     #[test]
     fn lookup_all_returns_primary_and_overflow() {
-        let cases = vec![("0657-01", 657), ("0657-02", 657), ("0647-01", 647)];
+        let cases = vec![
+            ("0657-01", 657),
+            ("0657-02", 657),
+            ("0647-01", 647),
+        ];
         let result = build(&cases);
 
         assert_eq!(
             lookup_all(&result.bin, &result.multi, 657),
             vec!["0657-01", "0657-02"]
         );
-        assert_eq!(lookup_all(&result.bin, &result.multi, 647), vec!["0647-01"]);
+        assert_eq!(
+            lookup_all(&result.bin, &result.multi, 647),
+            vec!["0647-01"]
+        );
         assert!(lookup_all(&result.bin, &result.multi, 648).is_empty());
     }
 
     #[test]
     fn multi_roundtrip_serialization() {
-        let multi = vec![(657, "0657-02".to_string()), (100, "0100-02".to_string())];
+        let multi = vec![
+            (657, "0657-02".to_string()),
+            (100, "0100-02".to_string()),
+        ];
         let serialized = serialize_multi(&multi);
         let parsed = parse_multi(&serialized);
         assert_eq!(parsed, multi);

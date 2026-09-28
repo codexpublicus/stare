@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Build the stare-wasm crate into web/public/wasm"
-set -euo pipefail
-
-wasm-pack build crates/stare-wasm --target web --out-dir ../../web/public/wasm

@@ -6,10 +6,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Parser)]
-#[command(
-    name = "stare-admin",
-    about = "Build tools for stare.pub case law index"
-)]
+#[command(name = "stare-admin", about = "Build tools for stare.pub case law index")]
 struct Cli {
     /// Show detailed output for each file
     #[arg(long, short, global = true)]
@@ -57,7 +54,10 @@ fn main() -> anyhow::Result<()> {
         Commands::BatchIndex { dir, output_dir } => {
             batch_index(&dir, output_dir.as_deref(), cli.verbose)?;
         }
-        Commands::BuildManifest { index_dir, output } => {
+        Commands::BuildManifest {
+            index_dir,
+            output,
+        } => {
             build_manifest(&index_dir, output.as_deref())?;
         }
     }
@@ -79,7 +79,10 @@ fn main() -> anyhow::Result<()> {
 fn parse_case_page(filename: &str) -> Option<usize> {
     let page_part = filename.split('-').next()?;
     // Take the first chunk (before = or ,)
-    let chunk = page_part.split(['=', ',', ' ']).next()?.trim();
+    let chunk = page_part
+        .split(|c: char| c == '=' || c == ',' || c == ' ')
+        .next()?
+        .trim();
     // Try parsing directly
     if let Ok(n) = chunk.parse::<usize>() {
         return Some(n);
@@ -104,16 +107,14 @@ fn build_index(
     let mut skipped = 0;
     let case_pages: Vec<(&str, usize)> = cases
         .iter()
-        .filter_map(|c| match parse_case_page(c) {
-            Some(page) => Some((c.as_str(), page)),
-            None => {
-                skipped += 1;
-                eprintln!(
-                    "Warning: skipping case with unparseable page: {} (in {})",
-                    c,
-                    zip_path.display()
-                );
-                None
+        .filter_map(|c| {
+            match parse_case_page(c) {
+                Some(page) => Some((c.as_str(), page)),
+                None => {
+                    skipped += 1;
+                    eprintln!("Warning: skipping case with unparseable page: {} (in {})", c, zip_path.display());
+                    None
+                }
             }
         })
         .collect();
@@ -196,7 +197,7 @@ fn batch_index(
         match build_index(zip_path, Some(&out_path), verbose) {
             Ok(()) => {
                 let n = count.fetch_add(1, Ordering::Relaxed) + 1;
-                if n.is_multiple_of(100) || n == total {
+                if n % 100 == 0 || n == total {
                     eprint!("\rProgress: {}/{} indexed", n, total);
                 }
             }
@@ -228,8 +229,7 @@ fn build_manifest(
         if path.extension().map(|e| e == "bin").unwrap_or(false) {
             if let Some(volume_str) = path.file_stem().and_then(|s| s.to_str()) {
                 if let Ok(volume) = volume_str.parse::<u32>() {
-                    if let Some(reporter) = path
-                        .parent()
+                    if let Some(reporter) = path.parent()
                         .and_then(|p| p.file_name())
                         .and_then(|s| s.to_str())
                     {
