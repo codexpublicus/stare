@@ -28,15 +28,14 @@ pub fn extract_case(zip_bytes: &[u8], case_file: &str) -> Result<String, JsError
 /// Extract a raw file from a zip by path. Returns the file contents as a string.
 #[wasm_bindgen]
 pub fn extract_file(zip_bytes: &[u8], path: &str) -> Result<String, JsError> {
-    stare::case::extract_file_from_zip(zip_bytes, path)
-        .map_err(|e| JsError::new(&e.to_string()))
+    stare::case::extract_file_from_zip(zip_bytes, path).map_err(|e| JsError::new(&e.to_string()))
 }
 
 /// Extract and parse CasesMetadata.json from a zip. Returns JSON array.
 #[wasm_bindgen]
 pub fn extract_cases_metadata(zip_bytes: &[u8]) -> Result<String, JsError> {
-    let metadata = stare::case::extract_cases_metadata(zip_bytes)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let metadata =
+        stare::case::extract_cases_metadata(zip_bytes).map_err(|e| JsError::new(&e.to_string()))?;
     serde_json::to_string(&metadata).map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -55,8 +54,7 @@ pub fn get_page_orders(zip_bytes: &[u8], case_file: &str) -> Result<String, JsEr
 /// Returns JSON: { width, height, lines: [{ x, y, width, height, words: [{ text, x, y, width, height, confidence }] }] }
 #[wasm_bindgen]
 pub fn parse_alto(gz_data: &[u8]) -> Result<String, JsError> {
-    let page = stare::alto::parse_alto_gz(gz_data)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let page = stare::alto::parse_alto_gz(gz_data).map_err(|e| JsError::new(&e.to_string()))?;
     serde_json::to_string(&page).map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -82,7 +80,7 @@ pub fn detect_citations(text: &str) -> Result<String, JsError> {
 /// List all case filenames in a zip. Returns a JSON array of strings.
 #[wasm_bindgen]
 pub fn list_cases(zip_bytes: &[u8]) -> Result<String, JsError> {
-    let cases = stare::case::list_cases_in_zip(zip_bytes)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let cases =
+        stare::case::list_cases_in_zip(zip_bytes).map_err(|e| JsError::new(&e.to_string()))?;
     serde_json::to_string(&cases).map_err(|e| JsError::new(&e.to_string()))
 }

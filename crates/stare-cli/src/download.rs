@@ -97,7 +97,10 @@ struct RateLimiter {
 
 impl RateLimiter {
     fn new(min_interval: Duration) -> Self {
-        RateLimiter { min_interval, last: None }
+        RateLimiter {
+            min_interval,
+            last: None,
+        }
     }
 
     fn wait(&mut self) {
@@ -116,14 +119,22 @@ impl RateLimiter {
 
 /// Fetch and parse `manifest.json` from the root of the index source.
 /// Format: `{"<reporter-slug>": [<volume>, ...], ...}` (see stare-admin's build-manifest).
-fn fetch_manifest(client: &reqwest::blocking::Client, index_source: &str) -> Result<BTreeMap<String, Vec<u32>>> {
+fn fetch_manifest(
+    client: &reqwest::blocking::Client,
+    index_source: &str,
+) -> Result<BTreeMap<String, Vec<u32>>> {
     let bytes = if stare_cli_is_url(index_source) {
         let url = format!("{}/manifest.json", index_source);
-        let resp = client.get(&url).send().with_context(|| format!("failed to fetch {}", url))?;
+        let resp = client
+            .get(&url)
+            .send()
+            .with_context(|| format!("failed to fetch {}", url))?;
         if !resp.status().is_success() {
             bail!("HTTP {} fetching {}", resp.status(), url);
         }
-        resp.bytes().with_context(|| format!("failed to read body of {}", url))?.to_vec()
+        resp.bytes()
+            .with_context(|| format!("failed to read body of {}", url))?
+            .to_vec()
     } else {
         let path = Path::new(index_source).join("manifest.json");
         std::fs::read(&path).with_context(|| format!("manifest not found: {}", path.display()))?
@@ -176,7 +187,10 @@ fn fetch_and_cache(
             }
             Err(e) => {
                 if local_path.exists() {
-                    eprintln!("warning: failed to verify {} ({}), trusting cached file", url, e);
+                    eprintln!(
+                        "warning: failed to verify {} ({}), trusting cached file",
+                        url, e
+                    );
                     return Ok(FileStatus::Cached);
                 }
                 return Err(e).with_context(|| format!("HEAD request failed for {}", url));
@@ -195,23 +209,31 @@ fn fetch_and_cache(
         if let Some(limiter) = rate_limiter.as_mut() {
             limiter.wait();
         }
-        let resp = client.get(&url).send().with_context(|| format!("failed to fetch {}", url))?;
+        let resp = client
+            .get(&url)
+            .send()
+            .with_context(|| format!("failed to fetch {}", url))?;
         if !resp.status().is_success() {
             bail!("HTTP {} fetching {}", resp.status(), url);
         }
-        let bytes = resp.bytes().with_context(|| format!("failed to read body of {}", url))?;
+        let bytes = resp
+            .bytes()
+            .with_context(|| format!("failed to read body of {}", url))?;
         stare::config::atomic_write(&local_path, &bytes)?;
         Ok(FileStatus::Downloaded(bytes.len() as u64))
     } else {
         let src_path = Path::new(source).join(key);
         if local_path.exists() {
-            if let (Ok(local_meta), Ok(src_meta)) = (std::fs::metadata(&local_path), std::fs::metadata(&src_path)) {
+            if let (Ok(local_meta), Ok(src_meta)) =
+                (std::fs::metadata(&local_path), std::fs::metadata(&src_path))
+            {
                 if local_meta.len() == src_meta.len() {
                     return Ok(FileStatus::Cached);
                 }
             }
         }
-        let data = std::fs::read(&src_path).with_context(|| format!("source file not found: {}", src_path.display()))?;
+        let data = std::fs::read(&src_path)
+            .with_context(|| format!("source file not found: {}", src_path.display()))?;
         stare::config::atomic_write(&local_path, &data)?;
         Ok(FileStatus::Downloaded(data.len() as u64))
     }
@@ -239,12 +261,20 @@ pub fn run(cfg: &DownloadConfig, mut on_event: impl FnMut(Event)) -> Result<Repo
         let volumes = manifest.get(&slug).cloned().unwrap_or_default();
 
         if volumes.is_empty() {
-            report.errors.push(format!("no volumes found for reporter '{}' in manifest", slug));
-            on_event(Event::ReporterMissing { reporter: slug.clone() });
+            report.errors.push(format!(
+                "no volumes found for reporter '{}' in manifest",
+                slug
+            ));
+            on_event(Event::ReporterMissing {
+                reporter: slug.clone(),
+            });
             continue;
         }
 
-        on_event(Event::ReporterStart { reporter: slug.clone(), volumes: volumes.len() });
+        on_event(Event::ReporterStart {
+            reporter: slug.clone(),
+            volumes: volumes.len(),
+        });
 
         let total = volumes.len();
         for (i, volume) in volumes.iter().enumerate() {
@@ -252,11 +282,18 @@ pub fn run(cfg: &DownloadConfig, mut on_event: impl FnMut(Event)) -> Result<Repo
             let bin_key = format!("{}/{}.bin", slug, volume);
             let zip_key = format!("{}/{}.zip", slug, volume);
 
-            let bin_status = match fetch_and_cache(&client, cfg.index_source, &bin_key, &bins_dir, None) {
-                Ok(status) => status,
-                Err(e) => FileStatus::Error(e.to_string()),
-            };
-            let zip_status = match fetch_and_cache(&client, cfg.data_source, &zip_key, &zips_dir, Some(&mut data_limiter)) {
+            let bin_status =
+                match fetch_and_cache(&client, cfg.index_source, &bin_key, &bins_dir, None) {
+                    Ok(status) => status,
+                    Err(e) => FileStatus::Error(e.to_string()),
+                };
+            let zip_status = match fetch_and_cache(
+                &client,
+                cfg.data_source,
+                &zip_key,
+                &zips_dir,
+                Some(&mut data_limiter),
+            ) {
                 Ok(status) => status,
                 Err(e) => FileStatus::Error(e.to_string()),
             };

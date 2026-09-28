@@ -1,7 +1,7 @@
-/// ALTO XML parser for Harvard CAP digitized page scans.
-///
-/// Parses gzipped ALTO v3 XML into structured page data with
-/// word-level bounding boxes for text overlay rendering.
+//! ALTO XML parser for Harvard CAP digitized page scans.
+//!
+//! Parses gzipped ALTO v3 XML into structured page data with
+//! word-level bounding boxes for text overlay rendering.
 
 use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
@@ -134,12 +134,10 @@ pub fn parse_alto_xml(xml: &str) -> Result<AltoPage> {
                     _ => {}
                 }
             }
-            Ok(Event::End(ref e)) => {
-                if e.local_name().as_ref() == b"TextLine" {
-                    if let Some(line) = current_line.take() {
-                        if !line.words.is_empty() {
-                            lines.push(line);
-                        }
+            Ok(Event::End(ref e)) if e.local_name().as_ref() == b"TextLine" => {
+                if let Some(line) = current_line.take() {
+                    if !line.words.is_empty() {
+                        lines.push(line);
                     }
                 }
             }
@@ -192,8 +190,8 @@ mod tests {
 
     #[test]
     fn words_have_bounding_boxes() {
-        let data = std::fs::read("tests/fixtures/alto-sample.xml.gz")
-            .expect("test fixture missing");
+        let data =
+            std::fs::read("tests/fixtures/alto-sample.xml.gz").expect("test fixture missing");
 
         let page = parse_alto_gz(&data).unwrap();
         let first_word = &page.lines[0].words[0];
@@ -205,8 +203,8 @@ mod tests {
 
     #[test]
     fn lines_have_positions() {
-        let data = std::fs::read("tests/fixtures/alto-sample.xml.gz")
-            .expect("test fixture missing");
+        let data =
+            std::fs::read("tests/fixtures/alto-sample.xml.gz").expect("test fixture missing");
 
         let page = parse_alto_gz(&data).unwrap();
 

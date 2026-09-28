@@ -1,6 +1,11 @@
 [tools]
 claude = "latest"
 s5cmd = "latest"
+node = "22"
+"ubi:rustwasm/wasm-pack" = "0.13.1"
+wrangler = "4.141.0"
+pulumi = "latest"
+uv = "latest"
 
 [settings.age]
 identity_files = ["~/.config/mise/age.lokkju.txt"]

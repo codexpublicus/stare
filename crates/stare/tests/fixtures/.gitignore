@@ -1,3 +1,4 @@
 *.zip
 *.tar
 *.pdf
+!a2d-31.zip

@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
 use stare::config;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "stare", about = "Look up U.S. case law by citation")]
@@ -62,10 +62,7 @@ enum ConfigAction {
     /// Show current configuration
     Show,
     /// Set a config value (key: index, data)
-    Set {
-        key: String,
-        value: String,
-    },
+    Set { key: String, value: String },
     /// Reset to defaults
     Reset,
 }
@@ -92,9 +89,13 @@ impl Sources {
     fn from_cli(cli: &Cli) -> Self {
         let cfg = config::load_config();
         Sources {
-            index: cli.index.clone()
+            index: cli
+                .index
+                .clone()
                 .unwrap_or_else(|| cfg.index_source().to_string()),
-            data: cli.data.clone()
+            data: cli
+                .data
+                .clone()
                 .unwrap_or_else(|| cfg.data_source().to_string()),
         }
     }
@@ -127,7 +128,9 @@ fn main() -> Result<()> {
                 anyhow::bail!("Usage: stare list <reporter> <volume> (e.g., stare list a2d 31)");
             }
             let reporter = parts[0].to_lowercase();
-            let volume: u32 = parts[1].parse().with_context(|| format!("invalid volume: {}", parts[1]))?;
+            let volume: u32 = parts[1]
+                .parse()
+                .with_context(|| format!("invalid volume: {}", parts[1]))?;
             list_cases(&src, &reporter, volume, json)?;
         }
         Commands::Check { file } => {
@@ -177,7 +180,10 @@ fn parse_citation_input(input: &str) -> Result<(String, u32, u32)> {
         }
     }
 
-    bail!("Could not parse citation: \"{}\"\nTry: \"31 A.2d 647\" or \"a2d 31 647\"", input)
+    bail!(
+        "Could not parse citation: \"{}\"\nTry: \"31 A.2d 647\" or \"a2d 31 647\"",
+        input
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -199,8 +205,7 @@ fn fetch_bin(src: &Sources, reporter: &str, volume: u32) -> Result<Vec<u8>> {
             fetch_url(&format!("{}/{}", source, key))?
         } else {
             let path = PathBuf::from(source).join(&key);
-            std::fs::read(&path)
-                .with_context(|| format!("index not found: {}", path.display()))?
+            std::fs::read(&path).with_context(|| format!("index not found: {}", path.display()))?
         }
     } else {
         bail!("No index source configured. Run: stare config set index <path-or-url>");
@@ -223,8 +228,7 @@ fn fetch_zip(src: &Sources, reporter: &str, volume: u32) -> Result<Vec<u8>> {
         fetch_url(&format!("{}/{}", source, key))?
     } else {
         let path = PathBuf::from(source).join(&key);
-        std::fs::read(&path)
-            .with_context(|| format!("zip not found: {}", path.display()))?
+        std::fs::read(&path).with_context(|| format!("zip not found: {}", path.display()))?
     };
 
     let _ = config::cache_set("zips", &key, &data);
@@ -235,7 +239,9 @@ fn fetch_url(url: &str) -> Result<Vec<u8>> {
     let client = reqwest::blocking::Client::builder()
         .user_agent("stare/0.1.0 (case law tool; github.com/codexpublicus/stare)")
         .build()?;
-    let response = client.get(url).send()
+    let response = client
+        .get(url)
+        .send()
         .with_context(|| format!("failed to fetch {}", url))?;
     if !response.status().is_success() {
         bail!("HTTP {} fetching {}", response.status(), url);
@@ -247,7 +253,12 @@ fn fetch_url(url: &str) -> Result<Vec<u8>> {
 // Commands
 // ---------------------------------------------------------------------------
 
-fn resolve_case(src: &Sources, reporter: &str, volume: u32, page: u32) -> Result<stare::resolve::CaseResult> {
+fn resolve_case(
+    src: &Sources,
+    reporter: &str,
+    volume: u32,
+    page: u32,
+) -> Result<stare::resolve::CaseResult> {
     let bin_data = fetch_bin(src, reporter, volume)?;
     let case_file = stare::index::lookup(&bin_data, page as usize)
         .with_context(|| format!("no case at page {} in {}/{}", page, reporter, volume))?;
@@ -260,9 +271,17 @@ fn resolve_case(src: &Sources, reporter: &str, volume: u32, page: u32) -> Result
 }
 
 fn print_case(result: &stare::resolve::CaseResult) {
-    let cite = result.case.citations.first().map(|c| c.cite.as_str()).unwrap_or("—");
+    let cite = result
+        .case
+        .citations
+        .first()
+        .map(|c| c.cite.as_str())
+        .unwrap_or("—");
     println!("{}", result.case.name_abbreviation);
-    println!("{}  |  {}  |  {}", cite, result.case.decision_date, result.case.court.name);
+    println!(
+        "{}  |  {}  |  {}",
+        cite, result.case.decision_date, result.case.court.name
+    );
     println!();
     for opinion in &result.case.casebody.opinions {
         if let Some(author) = &opinion.author {
@@ -285,8 +304,15 @@ fn list_cases(src: &Sources, reporter: &str, volume: u32, json: bool) -> Result<
     } else {
         println!("{} vol. {} — {} cases\n", reporter, volume, metadata.len());
         for entry in &metadata {
-            let cite = entry.citations.first().map(|c| c.cite.as_str()).unwrap_or("");
-            println!("  {}  {}  (pp. {}-{})", entry.file_name, entry.name_abbreviation, entry.first_page, entry.last_page);
+            let cite = entry
+                .citations
+                .first()
+                .map(|c| c.cite.as_str())
+                .unwrap_or("");
+            println!(
+                "  {}  {}  (pp. {}-{})",
+                entry.file_name, entry.name_abbreviation, entry.first_page, entry.last_page
+            );
             if !cite.is_empty() {
                 println!("        {}", cite);
             }
@@ -310,9 +336,17 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
     let mut citations = Vec::new();
     for c in &detected {
         let slug = c.harvard_slug.clone().unwrap_or_else(|| {
-            c.reporter.as_deref().unwrap_or("").to_lowercase().replace('.', "").replace(' ', "")
+            c.reporter
+                .as_deref()
+                .unwrap_or("")
+                .to_lowercase()
+                .replace(['.', ' '], "")
         });
-        let volume: u32 = c.volume.as_deref().and_then(|v| v.parse().ok()).unwrap_or(0);
+        let volume: u32 = c
+            .volume
+            .as_deref()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
         let resolvable = if !slug.is_empty() && volume > 0 {
             fetch_bin(src, &slug, volume).is_ok()
         } else {
@@ -329,16 +363,29 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
 
     let mut seen = std::collections::HashSet::new();
     citations.retain(|c| seen.insert(c["raw"].as_str().unwrap_or("").to_string()));
-    let resolvable_count = citations.iter().filter(|c| c["resolvable"].as_bool().unwrap_or(false)).count();
+    let resolvable_count = citations
+        .iter()
+        .filter(|c| c["resolvable"].as_bool().unwrap_or(false))
+        .count();
 
     if json {
         println!("{}", serde_json::to_string_pretty(&citations)?);
     } else {
-        println!("Found {} citations ({} resolvable)\n", citations.len(), resolvable_count);
+        println!(
+            "Found {} citations ({} resolvable)\n",
+            citations.len(),
+            resolvable_count
+        );
         for c in &citations {
             let resolvable = c["resolvable"].as_bool().unwrap_or(false);
             let has_url = c["external_url"].as_str().is_some();
-            let status = if resolvable { "✓" } else if has_url { "↗" } else { "✗" };
+            let status = if resolvable {
+                "✓"
+            } else if has_url {
+                "↗"
+            } else {
+                "✗"
+            };
             print!("  {} {}", status, c["raw"].as_str().unwrap_or(""));
             if let Some(url) = c["external_url"].as_str() {
                 print!("  → {}", url);
@@ -360,7 +407,14 @@ fn config_show() {
 
     println!("Config: {}", config_path.display());
     println!("Cache:  {}\n", cache_dir.display());
-    println!("  index = {}", cfg.index_source().is_empty().then(|| "(not set)").unwrap_or(cfg.index_source()));
+    println!(
+        "  index = {}",
+        if cfg.index_source().is_empty() {
+            "(not set)"
+        } else {
+            cfg.index_source()
+        }
+    );
     println!("  data  = {}", cfg.data_source());
 }
 
@@ -393,10 +447,19 @@ fn cache_status() {
 
     println!("Cache: {}\n", config::cache_dir().display());
     for s in &stats {
-        println!("  {:5}  {:>5} files  {:>10}", s.kind, s.count, config::format_bytes(s.total_bytes));
+        println!(
+            "  {:5}  {:>5} files  {:>10}",
+            s.kind,
+            s.count,
+            config::format_bytes(s.total_bytes)
+        );
     }
     println!("  ─────────────────────────────");
-    println!("  total  {:>5} files  {:>10}", total_count, config::format_bytes(total_bytes));
+    println!(
+        "  total  {:>5} files  {:>10}",
+        total_count,
+        config::format_bytes(total_bytes)
+    );
 }
 
 fn cache_clear(kind: &str) -> Result<()> {
@@ -473,7 +536,14 @@ fn print_download_event(event: &stare_cli::download::Event) {
         Event::ReporterStart { reporter, volumes } => {
             println!("{}: {} volumes", reporter, volumes);
         }
-        Event::Volume { reporter, volume, index, total, bin, zip } => {
+        Event::Volume {
+            reporter,
+            volume,
+            index,
+            total,
+            bin,
+            zip,
+        } => {
             println!(
                 "  [{}/{}] {}/{}  bin {}  zip {}",
                 index,
