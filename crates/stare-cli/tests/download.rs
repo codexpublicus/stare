@@ -67,12 +67,17 @@ fn downloads_missing_files_into_cache_dirs() {
 
     assert_eq!(report.bins_downloaded, 1);
     assert_eq!(report.zips_downloaded, 1);
-    assert_eq!(report.bytes_downloaded, (bin_bytes.len() + zip_bytes.len()) as u64);
+    assert_eq!(
+        report.bytes_downloaded,
+        (bin_bytes.len() + zip_bytes.len()) as u64
+    );
     // volume 32 has no mocks set up, so both its fetches should have failed
     assert!(report.errors.iter().any(|e| e.contains("32")));
 
     assert!(events.iter().any(|e| matches!(e, Event::ReporterStart { reporter, volumes } if reporter == "a2d" && *volumes == 2)));
-    assert!(events.iter().any(|e| matches!(e, Event::ReporterDone { reporter } if reporter == "a2d")));
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, Event::ReporterDone { reporter } if reporter == "a2d")));
 }
 
 #[test]
@@ -110,8 +115,16 @@ fn skips_files_already_cached_at_matching_size() {
         .with_header("content-length", &zip_bytes.len().to_string())
         .create();
     // Explicitly assert these are never called.
-    let bin_get_guard = index_server.mock("GET", "/us/3.bin").with_status(200).expect(0).create();
-    let zip_get_guard = data_server.mock("GET", "/us/3.zip").with_status(200).expect(0).create();
+    let bin_get_guard = index_server
+        .mock("GET", "/us/3.bin")
+        .with_status(200)
+        .expect(0)
+        .create();
+    let zip_get_guard = data_server
+        .mock("GET", "/us/3.zip")
+        .with_status(200)
+        .expect(0)
+        .create();
 
     let cfg = DownloadConfig {
         index_source: &index_server.url(),
@@ -182,7 +195,10 @@ fn redownloads_when_cached_size_differs_from_remote() {
 
     let report = run(&cfg, |_| {}).unwrap();
 
-    assert_eq!(report.bins_downloaded, 1, "size mismatch should trigger a re-download");
+    assert_eq!(
+        report.bins_downloaded, 1,
+        "size mismatch should trigger a re-download"
+    );
     assert_eq!(std::fs::read(&bin_path).unwrap(), fresh_bin);
 }
 
@@ -210,7 +226,10 @@ fn reports_missing_reporter_without_aborting() {
     let report = run(&cfg, |e| events.push(e)).unwrap();
 
     assert_eq!(report.volumes_seen, 0);
-    assert!(report.errors.iter().any(|e| e.contains("not-a-real-reporter")));
+    assert!(report
+        .errors
+        .iter()
+        .any(|e| e.contains("not-a-real-reporter")));
     assert!(matches!(
         &events[0],
         Event::ReporterMissing { reporter } if reporter == "not-a-real-reporter"
@@ -234,7 +253,11 @@ fn reporter_slugs_are_case_insensitive() {
         .with_status(200)
         .with_header("content-length", &bin_bytes.len().to_string())
         .create();
-    index_server.mock("GET", "/a2d/31.bin").with_status(200).with_body(bin_bytes).create();
+    index_server
+        .mock("GET", "/a2d/31.bin")
+        .with_status(200)
+        .with_body(bin_bytes)
+        .create();
 
     let zip_bytes = vec![4u8; 8];
     data_server
@@ -242,7 +265,11 @@ fn reporter_slugs_are_case_insensitive() {
         .with_status(200)
         .with_header("content-length", &zip_bytes.len().to_string())
         .create();
-    data_server.mock("GET", "/a2d/31.zip").with_status(200).with_body(zip_bytes).create();
+    data_server
+        .mock("GET", "/a2d/31.zip")
+        .with_status(200)
+        .with_body(zip_bytes)
+        .create();
 
     let cache = tempfile::tempdir().unwrap();
     let cfg = DownloadConfig {
@@ -285,10 +312,24 @@ fn trusts_cached_file_when_verification_head_fails() {
     // same-named file already exists locally, that copy should be trusted rather
     // than reported as an error, and the GET mocks (registered but never expected)
     // should never be hit.
-    let _bin_head = index_server.mock("HEAD", "/us/3.bin").with_status(500).create();
-    let _zip_head = data_server.mock("HEAD", "/us/3.zip").with_status(500).create();
-    let bin_get_guard = index_server.mock("GET", "/us/3.bin").with_status(200).expect(0).create();
-    let zip_get_guard = data_server.mock("GET", "/us/3.zip").with_status(200).expect(0).create();
+    let _bin_head = index_server
+        .mock("HEAD", "/us/3.bin")
+        .with_status(500)
+        .create();
+    let _zip_head = data_server
+        .mock("HEAD", "/us/3.zip")
+        .with_status(500)
+        .create();
+    let bin_get_guard = index_server
+        .mock("GET", "/us/3.bin")
+        .with_status(200)
+        .expect(0)
+        .create();
+    let zip_get_guard = data_server
+        .mock("GET", "/us/3.zip")
+        .with_status(200)
+        .expect(0)
+        .create();
 
     let cfg = DownloadConfig {
         index_source: &index_server.url(),
@@ -301,9 +342,16 @@ fn trusts_cached_file_when_verification_head_fails() {
     let mut events = Vec::new();
     let report = run(&cfg, |e| events.push(e)).unwrap();
 
-    assert_eq!(report.bins_cached, 1, "a failed HEAD with a cached file should count as cached");
+    assert_eq!(
+        report.bins_cached, 1,
+        "a failed HEAD with a cached file should count as cached"
+    );
     assert_eq!(report.zips_cached, 1);
-    assert!(report.errors.is_empty(), "a failed verification HEAD on a cached file is not an error: {:?}", report.errors);
+    assert!(
+        report.errors.is_empty(),
+        "a failed verification HEAD on a cached file is not an error: {:?}",
+        report.errors
+    );
     assert!(events.iter().any(|e| matches!(
         e,
         Event::Volume { bin, zip, .. } if *bin == FileStatus::Cached && *zip == FileStatus::Cached

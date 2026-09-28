@@ -1,6 +1,6 @@
-/// Core resolve: (reporter_slug, volume, page) → CaseResult
-///
-/// Works against a local filesystem path or remote URL.
+//! Core resolve: (reporter_slug, volume, page) → CaseResult
+//!
+//! Works against a local filesystem path or remote URL.
 
 use crate::case::{self, CaseJson};
 use crate::index;
@@ -64,24 +64,15 @@ pub fn resolve_remote(
     })
 }
 
-fn read_bin_local(
-    base_path: &std::path::Path,
-    reporter: &str,
-    volume: u32,
-) -> Result<Vec<u8>> {
+fn read_bin_local(base_path: &std::path::Path, reporter: &str, volume: u32) -> Result<Vec<u8>> {
     let bin_path = base_path.join(reporter).join(format!("{}.bin", volume));
     std::fs::read(&bin_path)
         .with_context(|| format!("failed to read index: {}", bin_path.display()))
 }
 
-fn read_zip_local(
-    base_path: &std::path::Path,
-    reporter: &str,
-    volume: u32,
-) -> Result<Vec<u8>> {
+fn read_zip_local(base_path: &std::path::Path, reporter: &str, volume: u32) -> Result<Vec<u8>> {
     let zip_path = base_path.join(reporter).join(format!("{}.zip", volume));
-    std::fs::read(&zip_path)
-        .with_context(|| format!("failed to read zip: {}", zip_path.display()))
+    std::fs::read(&zip_path).with_context(|| format!("failed to read zip: {}", zip_path.display()))
 }
 
 fn fetch_url(url: &str) -> Result<Vec<u8>> {
@@ -111,8 +102,7 @@ mod tests {
         let reporter_dir = dir.path().join("a2d");
         std::fs::create_dir_all(&reporter_dir).unwrap();
 
-        let zip_bytes = std::fs::read("tests/fixtures/a2d-31.zip")
-            .expect("test fixture missing");
+        let zip_bytes = std::fs::read("tests/fixtures/a2d-31.zip").expect("test fixture missing");
         let cases = case::list_cases_in_zip(&zip_bytes).unwrap();
         let case_pages: Vec<(&str, usize)> = cases
             .iter()
@@ -146,8 +136,7 @@ mod tests {
         let reporter_dir = dir.path().join("a2d");
         std::fs::create_dir_all(&reporter_dir).unwrap();
 
-        let zip_bytes = std::fs::read("tests/fixtures/a2d-31.zip")
-            .expect("test fixture missing");
+        let zip_bytes = std::fs::read("tests/fixtures/a2d-31.zip").expect("test fixture missing");
         let cases = case::list_cases_in_zip(&zip_bytes).unwrap();
         let case_pages: Vec<(&str, usize)> = cases
             .iter()
@@ -194,14 +183,7 @@ mod tests {
     #[ignore] // requires network access
     fn resolve_remote_from_static_case_law() {
         let dir = setup_index_only_dir();
-        let result = resolve_remote(
-            dir.path(),
-            DEFAULT_BASE_URL,
-            "a2d",
-            31,
-            647,
-        )
-        .unwrap();
+        let result = resolve_remote(dir.path(), DEFAULT_BASE_URL, "a2d", 31, 647).unwrap();
 
         assert_eq!(result.case_file, "0647-01");
         assert_eq!(result.case.name_abbreviation, "D'Elia & Marks Co. v. Lyon");
