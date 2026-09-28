@@ -1,0 +1,27 @@
+[project]
+name = "stare-infra"
+version = "0.1.0"
+requires-python = ">=3.11"
+license = "LicenseRef-PolyForm-Shield-1.0.0"
+dependencies = [
+    "pulumi>=3.0.0,<4.0.0",
+    "pulumi-cloudflare==6.13.0",
+    "pulumi-github>=6.0.0,<7.0.0",
+    "pulumi-tls>=5.0.0,<6.0.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    # pulumi_cloudflare 6.13.0 warns for every deprecated resource class it defines,
+    # at import time, regardless of whether this repo ever instantiates them. Upstream
+    # noise from the pin (infra#20); nothing here to fix on our side.
+    "ignore:.*has been deprecated in favor of.*:DeprecationWarning:pulumi_cloudflare",
+    # pulumi's own runtime creates an asyncio.Future() outside a running loop when a
+    # resource resolves off the main thread, which is how pulumi.runtime.test drives
+    # these tests. Upstream (pulumi/runtime/resource.py), not this repo's code.
+    "ignore:There is no current event loop:DeprecationWarning:pulumi",
+]
