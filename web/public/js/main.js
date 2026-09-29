@@ -104,12 +104,13 @@ async function showResolved(result) {
   // one page re-renders each with its own offsets.
   const citationsByCase = new Map();
   let shownCaseFile = null;
-  // The cited-cases live region for the case currently shown, returned by
-  // renderSidebar. highlightCase updates it in place through
-  // updateCitationStatus rather than calling renderSidebar again, so the
-  // element carrying role="status" aria-live="polite" stays the same node
-  // across the loading -> done/error transition.
-  let citationStatusEl = null;
+  // Handle on the cited-cases section's label/status/list elements for the
+  // case currently shown, returned by renderSidebar. highlightCase updates
+  // them in place through updateCitationStatus rather than calling
+  // renderSidebar again, so the element carrying role="status"
+  // aria-live="polite" stays the same node across the loading ->
+  // done/error transition.
+  let citationStatusHandle = null;
 
   renderMultiNotice(multiEl, result.allCases, result.caseFile, switchCase);
   statusBar.classList.add('hidden');
@@ -121,7 +122,7 @@ async function showResolved(result) {
     shownCaseFile = caseFile;
     const cached = citationsByCase.get(caseFile) || null;
     renderReader(readerContent, caseData, cached);
-    citationStatusEl = renderSidebar(
+    citationStatusHandle = renderSidebar(
       sidebar, caseData, result.reporter, result.volume, result.allCases,
       cached?.unique || null, cached ? 'done' : 'loading'
     );
@@ -141,7 +142,7 @@ async function showResolved(result) {
   // the element announcing the change is the one already on the page, not
   // a freshly created replacement a screen reader never saw appear.
   async function highlightCase(caseFile, caseData, actions) {
-    const statusEl = citationStatusEl;
+    const handle = citationStatusHandle;
     try {
       const { unique, occurrencesByOpinion } = await processCitations(caseData);
       const citationMap = new Map(unique.map(c => [c.raw, c]));
@@ -152,12 +153,12 @@ async function showResolved(result) {
       if (unique.length > 0) {
         renderReader(readerContent, caseData, citations);
       }
-      updateCitationStatus(statusEl, caseData, unique, 'done');
+      updateCitationStatus(handle, caseData, unique, 'done');
       setupCiteHovers(readerContent, resolve);
     } catch (e) {
       console.warn('Citation detection failed:', e);
       if (shownCaseFile !== caseFile) return;
-      updateCitationStatus(statusEl, caseData, null, 'error');
+      updateCitationStatus(handle, caseData, null, 'error');
     }
   }
 

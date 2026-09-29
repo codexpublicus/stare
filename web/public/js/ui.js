@@ -35,26 +35,31 @@ export function renderReader(el, caseData, citations) {
 }
 
 /**
- * Compute the cited-cases section's label and body markup for a given
- * citation status. Shared by renderSidebar (first paint) and
- * updateCitationStatus (in-place update of the same live region), so the
- * two never drift apart.
+ * Compute the cited-cases section's label, short status announcement, and
+ * list markup for a given citation status. Shared by renderSidebar (first
+ * paint) and updateCitationStatus (in-place update), so the two never
+ * drift apart.
+ *
+ * `statusText` is short by design: it is the only piece that lives in the
+ * aria-live region, so it must never contain the list itself, or a screen
+ * reader would read every citation aloud on each transition.
  *
  * @param {Object} caseData - parsed case JSON
  * @param {Array|null} detectedCitations - citation objects from processCitations()
  * @param {'loading'|'error'|'done'|undefined} citationStatus
  */
-function citationStatusContent(caseData, detectedCitations, citationStatus) {
+function citationStatusParts(caseData, detectedCitations, citationStatus) {
   const isLoading = citationStatus === 'loading';
   const isError = citationStatus === 'error';
 
-  let body = '';
+  let listHtml = '';
+  let statusText = '';
   let totalCites = 0;
 
   if (isLoading) {
-    body = `<div class="cited-status-message">Finding citations&hellip;</div>`;
+    statusText = 'Finding citations…';
   } else if (isError) {
-    body = `<div class="cited-status-message cited-status-error">Couldn't check citations.</div>`;
+    statusText = "Couldn't check citations.";
   } else if (detectedCitations && detectedCitations.length > 0) {
     // Use detected citations if available, fall back to cites_to
     const resolvable = detectedCitations.filter(c => c.resolvable);
@@ -82,10 +87,11 @@ function citationStatusContent(caseData, detectedCitations, citationStatus) {
       }
     };
 
-    body = [...resolvable, ...external, ...unresolvable].map(renderCite).join('');
+    listHtml = [...resolvable, ...external, ...unresolvable].map(renderCite).join('');
     totalCites = detectedCitations.length;
+    statusText = `${totalCites} citation${totalCites === 1 ? '' : 's'} found`;
   } else {
-    body = (caseData.cites_to || [])
+    listHtml = (caseData.cites_to || [])
       .map(c => {
         const citeStr = typeof c === 'string' ? c : (c.cite || JSON.stringify(c));
         return `<div class="cited-case">
@@ -95,22 +101,43 @@ function citationStatusContent(caseData, detectedCitations, citationStatus) {
       })
       .join('');
     totalCites = caseData.cites_to?.length || 0;
+    // Nothing was actually detected here (this is the cites_to fallback),
+    // so there is nothing worth announcing.
+    statusText = '';
   }
 
   const label = isLoading || isError ? 'Cited Cases' : `Cited Cases (${totalCites})`;
-  return { label, body };
+  return { label, statusText, listHtml };
 }
 
 /**
- * Fill (or refill) the cited-cases live region's content. Used both for
- * the region's first paint, in renderSidebar, and for later in-place
- * updates, in updateCitationStatus. The region element's identity never
- * changes here, only its contents, which is what lets its
- * role="status" aria-live="polite" actually announce the transition.
+ * A handle on the cited-cases section's three persistent pieces, as
+ * returned by renderSidebar and consumed by updateCitationStatus.
+ * @typedef {Object} CitationStatusHandle
+ * @property {Element} labelEl - "Cited Cases" / "Cited Cases (N)" header
+ * @property {Element} statusEl - role="status" aria-live="polite"; short
+ *   text only ("Finding citations...", "N citations found", the failure
+ *   note). Never holds the list, so a screen reader announces one short
+ *   sentence per transition, not every citation.
+ * @property {Element} listEl - the cited-cases list itself. Not a live
+ *   region; updated in place alongside statusEl, but silently.
  */
-function fillCitationStatus(region, caseData, detectedCitations, citationStatus) {
-  const { label, body } = citationStatusContent(caseData, detectedCitations, citationStatus);
-  region.innerHTML = `<div class="sidebar-label">${label}</div>${body}`;
+
+/**
+ * Fill (or refill) the cited-cases section's three pieces. Used both for
+ * their first paint, in renderSidebar, and for later in-place updates, in
+ * updateCitationStatus. None of the three elements' identity changes here,
+ * only their contents.
+ * @param {CitationStatusHandle} handle
+ */
+function fillCitationStatus(handle, caseData, detectedCitations, citationStatus) {
+  const { label, statusText, listHtml } = citationStatusParts(caseData, detectedCitations, citationStatus);
+  handle.labelEl.textContent = label;
+  handle.statusEl.textContent = statusText;
+  handle.statusEl.className = citationStatus === 'error'
+    ? 'citation-status-text citation-status-error'
+    : 'citation-status-text';
+  handle.listEl.innerHTML = listHtml;
 }
 
 /**
@@ -127,11 +154,12 @@ function fillCitationStatus(region, caseData, detectedCitations, citationStatus)
  *   detection or availability checks threw. 'done' (or omitted, for callers
  *   that never run async detection) renders detectedCitations, falling back
  *   to caseData.cites_to when there are none.
- * @returns {Element} the cited-cases live region element. Pass this to
- *   updateCitationStatus once detection finishes or fails, instead of
- *   calling renderSidebar again, so the same role="status" aria-live="polite"
- *   node is updated in place rather than torn down and recreated (which
- *   would keep screen readers from ever announcing the change).
+ * @returns {CitationStatusHandle} pass this to updateCitationStatus once
+ *   detection finishes or fails, instead of calling renderSidebar again,
+ *   so the same role="status" aria-live="polite" node is updated in place
+ *   rather than torn down and recreated (which would keep screen readers
+ *   from ever announcing the change), and so the list itself, which is not
+ *   a live region, doesn't get read aloud wholesale.
  */
 export function renderSidebar(el, caseData, reporter, volume, allCases, detectedCitations, citationStatus) {
   const citeBadges = (caseData.citations || [])
@@ -172,44 +200,60 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
     </div>
   `;
 
-  // The cited-cases section is built as a real, standalone element (not a
-  // string spliced into the rest of the sidebar's markup) and reserved for
-  // the whole lifetime of this case's render, whatever its status, so
-  // there's no layout shift when the list replaces the loading message.
-  // Everything else in the sidebar is replaced wholesale on every call, as
-  // before; only this element's identity is kept stable across calls, via
-  // updateCitationStatus, so its aria-live actually has something to
-  // observe.
+  // The cited-cases section is built as three real, standalone elements
+  // (not strings spliced into the rest of the sidebar's markup) and
+  // reserved for the whole lifetime of this case's render, whatever its
+  // status, so there's no layout shift when the list replaces the loading
+  // message. Everything else in the sidebar is replaced wholesale on every
+  // call, as before; only these three elements' identity is kept stable
+  // across calls, via updateCitationStatus. Only statusEl carries
+  // role="status" aria-live="polite", and it only ever holds a short
+  // sentence, never the list, which lives in listEl, a plain sibling.
+  const labelEl = document.createElement('div');
+  labelEl.className = 'sidebar-label';
+
+  const statusEl = document.createElement('div');
+  statusEl.setAttribute('role', 'status');
+  statusEl.setAttribute('aria-live', 'polite');
+
+  const listEl = document.createElement('div');
+  listEl.className = 'citation-status-list';
+
+  const handle = { labelEl, statusEl, listEl };
+  fillCitationStatus(handle, caseData, detectedCitations, citationStatus);
+
   const region = document.createElement('div');
   region.className = 'sidebar-section citation-status';
-  region.setAttribute('role', 'status');
-  region.setAttribute('aria-live', 'polite');
-  fillCitationStatus(region, caseData, detectedCitations, citationStatus);
+  region.appendChild(labelEl);
+  region.appendChild(statusEl);
+  region.appendChild(listEl);
 
   el.innerHTML = '';
   el.insertAdjacentHTML('beforeend', beforeHtml);
   el.appendChild(region);
   el.insertAdjacentHTML('beforeend', afterHtml);
 
-  return region;
+  return handle;
 }
 
 /**
- * Update the cited-cases live region in place, after renderSidebar's
- * initial paint, without touching the rest of the sidebar. `region` is the
- * element renderSidebar returned for this case. A screen reader announces
- * this change because the element carrying role="status" aria-live="polite"
- * is the same node throughout, not a replacement.
+ * Update the cited-cases section in place, after renderSidebar's initial
+ * paint, without touching the rest of the sidebar. `handle` is the value
+ * renderSidebar returned for this case. A screen reader announces
+ * statusEl's change because it is the same node throughout, not a
+ * replacement, and announces only its short text, not listEl's markup,
+ * because listEl carries no aria-live of its own.
  *
- * @param {Element|null} region - element returned by renderSidebar; a
- *   no-op if null (e.g. the case changed before detection finished)
+ * @param {CitationStatusHandle|null} handle - value returned by
+ *   renderSidebar; a no-op if null (e.g. the case changed before
+ *   detection finished)
  * @param {Object} caseData - parsed case JSON
  * @param {Array|null} detectedCitations - citation objects from processCitations()
  * @param {'error'|'done'} citationStatus
  */
-export function updateCitationStatus(region, caseData, detectedCitations, citationStatus) {
-  if (!region) return;
-  fillCitationStatus(region, caseData, detectedCitations, citationStatus);
+export function updateCitationStatus(handle, caseData, detectedCitations, citationStatus) {
+  if (!handle) return;
+  fillCitationStatus(handle, caseData, detectedCitations, citationStatus);
 }
 
 export function renderMultiNotice(el, allCases, currentFile, onSwitch) {

@@ -1,8 +1,16 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { escapeHtml, safeExternalUrl } from '../public/js/citations.js';
+import { safeExternalUrl } from '../public/js/citations.js';
 import { renderSidebar, updateCitationStatus } from '../public/js/ui.js';
+
+// Real DOM text-node serialization (what .innerHTML reads back after a
+// .textContent write) only escapes '&', '<' and '>'; unlike attribute
+// escaping, it leaves quotes alone. ui.js's escapeHtml is attribute-style
+// (it also escapes quotes), so it is the wrong function to reuse here.
+function escapeTextNode(str) {
+  return String(str).replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+}
 
 describe('safeExternalUrl', () => {
   test('keeps http and https URLs', () => {
@@ -24,9 +32,9 @@ describe('safeExternalUrl', () => {
 // behave the way the real DOM does: appendChild keeps the appended node's
 // identity, and an element's innerHTML/outerHTML reflect its actual
 // children rather than an opaque string. That identity is exactly what
-// the citation-status live region test below needs to check: that
-// updateCitationStatus mutates the same node renderSidebar created,
-// instead of renderSidebar being called again and building a new one.
+// the citation-status tests below need to check: that updateCitationStatus
+// mutates the same nodes renderSidebar created, instead of renderSidebar
+// being called again and building new ones.
 class FakeElement {
   constructor(tagName = 'div') {
     this.tagName = tagName;
@@ -36,7 +44,7 @@ class FakeElement {
   }
   setAttribute(name, value) { this._attrs[name] = value; }
   getAttribute(name) { return this._attrs[name]; }
-  set textContent(v) { this._parts = [escapeHtml(v)]; }
+  set textContent(v) { this._parts = [escapeTextNode(v)]; }
   set innerHTML(html) { this._parts = [html == null ? '' : html]; }
   get innerHTML() {
     return this._parts.map(p => (typeof p === 'string' ? p : p.outerHTML)).join('');
@@ -104,12 +112,13 @@ describe('renderSidebar citation status', () => {
     assert.doesNotMatch(el.innerHTML, /Finding citations/);
   });
 
-  test('done status with detected citations shows the list, not the loading message', () => {
+  test('done status with detected citations shows the list and a short found count', () => {
     const el = new FakeElement();
     renderSidebar(el, caseData, 'a2d', 1, [], detected, 'done');
     assert.doesNotMatch(el.innerHTML, /Finding citations/);
     assert.match(el.innerHTML, /cited-case-link/);
     assert.match(el.innerHTML, /Cited Cases \(1\)/);
+    assert.match(el.innerHTML, /1 citation found/);
   });
 
   test('a cached hit (status "done" from the first render) never shows the loading message', () => {
@@ -128,13 +137,54 @@ describe('renderSidebar citation status', () => {
       renderSidebar(el, caseData, 'a2d', 1, [], citations, status);
       assert.match(
         el.innerHTML,
-        /<div class="sidebar-section citation-status" role="status" aria-live="polite">\s*<div class="sidebar-label">Cited Cases/
+        /<div class="sidebar-section citation-status">\s*<div class="sidebar-label">Cited Cases/
       );
     }
   });
+
+  test('role="status" aria-live="polite" is on the short status element, never on the list', () => {
+    const el = new FakeElement();
+    const handle = renderSidebar(el, caseData, 'a2d', 1, [], detected, 'done');
+    assert.equal(handle.statusEl.getAttribute('role'), 'status');
+    assert.equal(handle.statusEl.getAttribute('aria-live'), 'polite');
+    assert.equal(handle.listEl.getAttribute('role'), undefined);
+    assert.equal(handle.listEl.getAttribute('aria-live'), undefined);
+  });
 });
 
-describe('updateCitationStatus persists the live region node', () => {
+describe('citation status: the live region holds a short sentence, not the list', () => {
+  let restore;
+  before(() => { restore = installFakeDom(); });
+  after(() => restore());
+
+  const caseData = { name_abbreviation: 'A v. B', citations: [{ cite: '1 A.2d 1' }], cites_to: [] };
+  // 11 citations: the controller's original bug report was a live region
+  // reading a whole 11-link, 1000+ char list aloud on every transition.
+  const detected = Array.from({ length: 11 }, (_, i) => ({
+    raw: `${i + 1} A.2d ${i + 2}`, resolvable: true, slug: 'a2d', volume: 1, page: i + 2, externalUrl: null,
+  }));
+
+  test('statusEl text is short and never contains the list markup', () => {
+    const el = new FakeElement();
+    const handle = renderSidebar(el, caseData, 'a2d', 1, [], detected, 'done');
+
+    assert.doesNotMatch(handle.statusEl.innerHTML, /cited-case-link/);
+    assert.doesNotMatch(handle.statusEl.innerHTML, /<a /);
+    assert.equal(handle.statusEl.innerHTML.length < 40, true, `expected a short status, got: ${handle.statusEl.innerHTML}`);
+    assert.match(handle.statusEl.innerHTML, /11 citations found/);
+  });
+
+  test('the list itself lives in listEl, which has no aria-live', () => {
+    const el = new FakeElement();
+    const handle = renderSidebar(el, caseData, 'a2d', 1, [], detected, 'done');
+
+    const links = handle.listEl.innerHTML.match(/cited-case-link/g) || [];
+    assert.equal(links.length, 11);
+    assert.equal(handle.listEl.getAttribute('aria-live'), undefined);
+  });
+});
+
+describe('updateCitationStatus persists the status and list nodes', () => {
   let restore;
   before(() => { restore = installFakeDom(); });
   after(() => restore());
@@ -142,43 +192,53 @@ describe('updateCitationStatus persists the live region node', () => {
   const caseData = { name_abbreviation: 'A v. B', citations: [{ cite: '1 A.2d 1' }], cites_to: [] };
   const detected = [{ raw: '1 A.2d 2', resolvable: true, slug: 'a2d', volume: 1, page: 2, externalUrl: null }];
 
-  test('loading -> done updates the same node renderSidebar returned, in place', () => {
+  test('loading -> done updates statusEl and listEl in place, by identity', () => {
     const el = new FakeElement();
-    const region = renderSidebar(el, caseData, 'a2d', 1, [], null, 'loading');
+    const handle = renderSidebar(el, caseData, 'a2d', 1, [], null, 'loading');
+    const { statusEl, listEl } = handle;
 
-    assert.match(region.innerHTML, /Finding citations/);
-    assert.match(el.innerHTML, /Finding citations/);
+    assert.match(statusEl.innerHTML, /Finding citations/);
+    assert.equal(listEl.innerHTML, '');
 
-    updateCitationStatus(region, caseData, detected, 'done');
+    updateCitationStatus(handle, caseData, detected, 'done');
 
-    // Same node: the region object identity did not change, but its own
-    // content did, which is what an aria-live element requires in order
-    // for a screen reader to pick up and announce the change.
-    assert.doesNotMatch(region.innerHTML, /Finding citations/);
-    assert.match(region.innerHTML, /cited-case-link/);
-    assert.match(region.innerHTML, /Cited Cases \(1\)/);
-    assert.equal(region.getAttribute('role'), 'status');
-    assert.equal(region.getAttribute('aria-live'), 'polite');
+    // Same node objects throughout: identity did not change, only content,
+    // which is what an aria-live element requires for a screen reader to
+    // pick up and announce the change.
+    assert.equal(handle.statusEl, statusEl);
+    assert.equal(handle.listEl, listEl);
+
+    assert.doesNotMatch(statusEl.innerHTML, /Finding citations/);
+    assert.match(statusEl.innerHTML, /1 citation found/);
+    assert.doesNotMatch(statusEl.innerHTML, /cited-case-link/);
+
+    assert.match(listEl.innerHTML, /cited-case-link/);
+
+    assert.equal(statusEl.getAttribute('role'), 'status');
+    assert.equal(statusEl.getAttribute('aria-live'), 'polite');
+    assert.equal(listEl.getAttribute('role'), undefined);
 
     // el's own innerHTML (computed from its live children, including
-    // `region` by reference) reflects the update too, without el.innerHTML
-    // ever having been reassigned wholesale for this transition.
+    // statusEl/listEl by reference) reflects the update too, without
+    // el.innerHTML ever having been reassigned wholesale for this
+    // transition.
     assert.doesNotMatch(el.innerHTML, /Finding citations/);
     assert.match(el.innerHTML, /cited-case-link/);
   });
 
-  test('loading -> error updates the same node in place', () => {
+  test('loading -> error updates statusEl in place and leaves the list empty', () => {
     const el = new FakeElement();
-    const region = renderSidebar(el, caseData, 'a2d', 1, [], null, 'loading');
+    const handle = renderSidebar(el, caseData, 'a2d', 1, [], null, 'loading');
 
-    updateCitationStatus(region, caseData, null, 'error');
+    updateCitationStatus(handle, caseData, null, 'error');
 
-    assert.doesNotMatch(region.innerHTML, /Finding citations/);
-    assert.match(region.innerHTML, /couldn.t check citations/i);
+    assert.doesNotMatch(handle.statusEl.innerHTML, /Finding citations/);
+    assert.match(handle.statusEl.innerHTML, /couldn.t check citations/i);
     assert.match(el.innerHTML, /couldn.t check citations/i);
+    assert.equal(handle.listEl.innerHTML, '');
   });
 
-  test('is a no-op when passed a null region (case changed before detection finished)', () => {
+  test('is a no-op when passed a null handle (case changed before detection finished)', () => {
     assert.doesNotThrow(() => updateCitationStatus(null, caseData, detected, 'done'));
   });
 });
