@@ -33,7 +33,7 @@ git -C ~/projects/lokkju/codexpublicus/stare archive origin/main:pipelines/archi
 ```
 
 ```sh
-ssh ml-01 'docker image inspect --format "{{.Id}} {{.Size}}" stare-archival:current && docker run --rm --entrypoint sh stare-archival:current -c "jbig2 --version; pdfimages -v 2>&1 | head -1; rclone version | head -1; stare-archival --version; echo \$STARE_ARCHIVAL_REVISION"'
+ssh ml-01 'docker image inspect --format "{{.Id}} {{.Size}}" stare-archival:current && docker run --user 1000:1000 --rm --entrypoint sh stare-archival:current -c "jbig2 --version; pdfimages -v 2>&1 | head -1; rclone version | head -1; stare-archival --version; echo \$STARE_ARCHIVAL_REVISION"'
 ```
 
 Expect jbig2enc 0.28, pdfimages 24.02.0, rclone v1.75.1, stare-archival 0.1.0 and the
@@ -48,17 +48,19 @@ built from a later commit rebuilds everything; rebuild the image only when you m
 The mirror is readable (expect about 400 reporter directories):
 
 ```sh
-ssh ml-01 'docker run --rm --entrypoint rclone -v codexpublicus-cap-mirror:/mirror:ro stare-archival:current lsf --dirs-only /mirror/downloads | wc -l'
+ssh ml-01 'docker run --user 1000:1000 --rm --entrypoint rclone -v codexpublicus-cap-mirror:/mirror:ro stare-archival:current lsf --dirs-only /mirror/downloads | wc -l'
 ```
 
-The output share is writable by the image's user (uid 10001):
+The output share is writable by uid/gid 1000, the datasets' owner and the image's user.
+Every `docker run` here passes `--user 1000:1000` explicitly:
 
 ```sh
-ssh ml-01 'docker run --rm --entrypoint sh -v codexpublicus-derived:/out stare-archival:current -c "id; stat -c \"%u:%g %A\" /out; touch /out/.write-probe && rm /out/.write-probe && echo writable"'
+ssh ml-01 'docker run --user 1000:1000 --rm --entrypoint sh -v codexpublicus-derived:/out stare-archival:current -c "id; stat -c \"%u:%g %A\" /out; touch /out/.write-probe && rm /out/.write-probe && echo writable"'
 ```
 
-If that fails with "Permission denied", add `--user <uid>:<gid>` (the owner `stat` printed)
-right after `--init` in every `docker run` below.
+Expect `1000:1000` from `stat` and `writable`. If the owner has changed, use the uid:gid
+`stat` printed in place of `1000:1000` in every command below; the image runs under any
+uid.
 
 ## 3. Pilot: 20 volumes
 
@@ -92,7 +94,7 @@ The pilot writes to `codexpublicus-derived` like the full run, so the full run s
 20 if they pass.
 
 ```sh
-ssh ml-01 'docker run -d --name archival-pilot --init -e STARE_ARCHIVAL_IMAGE="$(docker image inspect --format "{{.Id}}" stare-archival:current)" -v codexpublicus-cap-mirror:/mirror:ro -v codexpublicus-derived:/out stare-archival:current build-all --src /mirror/downloads --out /out --work /tmp/archival-work --jobs 20 --only us/1 --only us/10 --only kirby/1 --only root/1 --only mass/1 --only pa/1 --only haw/1 --only ark/1 --only f-supp/1 --only a2d/152 --only f2d/500 --only am-samoa/1 --only navajo-rptr/1 --only wash-2d/187 --only ga-app/342 --only ne2d/999 --only ill-app-3d/409 --only f3d/500 --only f-supp-2d/999 --only ny3d/29'
+ssh ml-01 'docker run --user 1000:1000 -d --name archival-pilot --init -e STARE_ARCHIVAL_IMAGE="$(docker image inspect --format "{{.Id}}" stare-archival:current)" -v codexpublicus-cap-mirror:/mirror:ro -v codexpublicus-derived:/out stare-archival:current build-all --src /mirror/downloads --out /out --work /tmp/archival-work --jobs 20 --only us/1 --only us/10 --only kirby/1 --only root/1 --only mass/1 --only pa/1 --only haw/1 --only ark/1 --only f-supp/1 --only a2d/152 --only f2d/500 --only am-samoa/1 --only navajo-rptr/1 --only wash-2d/187 --only ga-app/342 --only ne2d/999 --only ill-app-3d/409 --only f3d/500 --only f-supp-2d/999 --only ny3d/29'
 ```
 
 ```sh
@@ -131,14 +133,14 @@ stare-archival build-all, run 20260929T205448Z: OK
 The newest JSON summary, with per-volume timings:
 
 ```sh
-ssh ml-01 'docker run --rm --entrypoint sh -v codexpublicus-derived:/out:ro stare-archival:current -c "ls -t /out/runs/*.json | head -1 | xargs cat"'
+ssh ml-01 'docker run --user 1000:1000 --rm --entrypoint sh -v codexpublicus-derived:/out:ro stare-archival:current -c "ls -t /out/runs/*.json | head -1 | xargs cat"'
 ```
 
 PDF/A-3b validation with the pinned veraPDF image (the batch doesn't run veraPDF; it takes
 about a minute a volume). Expect one `PASS ... 3b` line per PDF:
 
 ```sh
-ssh ml-01 'docker run --rm --network=none -v codexpublicus-derived:/out:ro verapdf/cli:v1.30.2@sha256:d5ee329657cf9bc4b2400392dd54c7d0a0ce9980ff6fa2da5590eebeec007cdb --flavour 3b --format text --recurse /out/cap-pdf'
+ssh ml-01 'docker run --user 1000:1000 --rm --network=none -v codexpublicus-derived:/out:ro verapdf/cli:v1.30.2@sha256:d5ee329657cf9bc4b2400392dd54c7d0a0ce9980ff6fa2da5590eebeec007cdb --flavour 3b --format text --recurse /out/cap-pdf'
 ```
 
 Then remove the pilot container:
@@ -149,8 +151,14 @@ ssh ml-01 'docker rm archival-pilot'
 
 ## 4. Full run (detached)
 
+ml-01 has 16 physical cores with SMT (2 x Xeon Gold 6134, 32 CPUs), and `--jobs 32` below is
+the CPU count. On the test laptop SMT added only about 11% over one job per core, and the
+pilot's `pages/s per worker` against its `--jobs 20` tells you whether 16 to 24 does as well
+with less memory and I/O pressure; use that number in place of 32 if so. At the laptop's
+per-core rates the full run takes about 3.3 days.
+
 ```sh
-ssh ml-01 'docker run -d --name archival-full --init -e STARE_ARCHIVAL_IMAGE="$(docker image inspect --format "{{.Id}}" stare-archival:current)" -v codexpublicus-cap-mirror:/mirror:ro -v codexpublicus-derived:/out stare-archival:current build-all --src /mirror/downloads --out /out --work /tmp/archival-work --jobs 32'
+ssh ml-01 'docker run --user 1000:1000 -d --name archival-full --init -e STARE_ARCHIVAL_IMAGE="$(docker image inspect --format "{{.Id}}" stare-archival:current)" -v codexpublicus-cap-mirror:/mirror:ro -v codexpublicus-derived:/out stare-archival:current build-all --src /mirror/downloads --out /out --work /tmp/archival-work --jobs 32'
 ```
 
 Progress, one line per volume (`[done/total] STATUS reporter/volume ...`):
@@ -194,7 +202,7 @@ errored and timed-out volumes, the ones that were running when it stopped (their
 files are removed), and any volume whose tar changed. To retry one volume by hand:
 
 ```sh
-ssh ml-01 'docker run --rm --init -e STARE_ARCHIVAL_IMAGE="$(docker image inspect --format "{{.Id}}" stare-archival:current)" -v codexpublicus-cap-mirror:/mirror:ro -v codexpublicus-derived:/out stare-archival:current build a2d/152 --src /mirror/downloads --out /out --work /tmp/archival-work'
+ssh ml-01 'docker run --user 1000:1000 --rm --init -e STARE_ARCHIVAL_IMAGE="$(docker image inspect --format "{{.Id}}" stare-archival:current)" -v codexpublicus-cap-mirror:/mirror:ro -v codexpublicus-derived:/out stare-archival:current build a2d/152 --src /mirror/downloads --out /out --work /tmp/archival-work'
 ```
 
 ## 6. Upload to codex-data
@@ -215,14 +223,14 @@ printf 'RCLONE_CONFIG_R2_TYPE=s3\nRCLONE_CONFIG_R2_PROVIDER=Cloudflare\nRCLONE_C
 Dry run first (lists what it would copy, uploads nothing):
 
 ```sh
-ssh ml-01 'docker run --rm --init --env-file ~/codex-data-rw.env -v codexpublicus-derived:/out:ro --entrypoint rclone stare-archival:current copy /out/cap-pdf r2:codex-data/cap-pdf --dry-run --s3-upload-cutoff 4G 2>&1 | tail -8'
+ssh ml-01 'docker run --user 1000:1000 --rm --init --env-file ~/codex-data-rw.env -v codexpublicus-derived:/out:ro --entrypoint rclone stare-archival:current copy /out/cap-pdf r2:codex-data/cap-pdf --dry-run --s3-upload-cutoff 4G 2>&1 | tail -8'
 ```
 
 The upload, detached. `--s3-upload-cutoff 4G` sends each file as one PUT, so R2's ETag is an
 MD5 it computed itself, which the check below compares; the local copy stays:
 
 ```sh
-ssh ml-01 'docker run -d --name archival-upload --init --env-file ~/codex-data-rw.env -v codexpublicus-derived:/out:ro --entrypoint rclone stare-archival:current copy /out/cap-pdf r2:codex-data/cap-pdf --checksum --s3-upload-cutoff 4G --transfers 16 --checkers 32 --stats 1m --stats-one-line'
+ssh ml-01 'docker run --user 1000:1000 -d --name archival-upload --init --env-file ~/codex-data-rw.env -v codexpublicus-derived:/out:ro --entrypoint rclone stare-archival:current copy /out/cap-pdf r2:codex-data/cap-pdf --checksum --s3-upload-cutoff 4G --transfers 16 --checkers 32 --stats 1m --stats-one-line'
 ```
 
 ```sh
@@ -235,7 +243,7 @@ already there with the same MD5.
 Check every local file against the bucket (expect `0 differences found`):
 
 ```sh
-ssh ml-01 'docker run --rm --init --env-file ~/codex-data-rw.env -v codexpublicus-derived:/out:ro --entrypoint rclone stare-archival:current check --one-way /out/cap-pdf r2:codex-data/cap-pdf 2>&1 | tail -5'
+ssh ml-01 'docker run --user 1000:1000 --rm --init --env-file ~/codex-data-rw.env -v codexpublicus-derived:/out:ro --entrypoint rclone stare-archival:current check --one-way /out/cap-pdf r2:codex-data/cap-pdf 2>&1 | tail -5'
 ```
 
 Remove the key file and the finished container:
@@ -256,7 +264,7 @@ limit, and stops the run (`stopped: disk guard ...`) if nothing is running and t
 no room. For example, into a local directory with a 300 GiB ceiling:
 
 ```sh
-ssh ml-01 'docker run -d --name archival-stream --init --env-file ~/codex-data-rw.env -e STARE_ARCHIVAL_IMAGE="$(docker image inspect --format "{{.Id}}" stare-archival:current)" -v codexpublicus-cap-mirror:/mirror:ro -v /nvme/archival-pdf:/out stare-archival:current build-all --src /mirror/downloads --out /out --work /tmp/archival-work --jobs 32 --upload r2:codex-data --max-local-bytes 300G'
+ssh ml-01 'docker run --user 1000:1000 -d --name archival-stream --init --env-file ~/codex-data-rw.env -e STARE_ARCHIVAL_IMAGE="$(docker image inspect --format "{{.Id}}" stare-archival:current)" -v codexpublicus-cap-mirror:/mirror:ro -v /nvme/archival-pdf:/out stare-archival:current build-all --src /mirror/downloads --out /out --work /tmp/archival-work --jobs 32 --upload r2:codex-data --max-local-bytes 300G'
 ```
 
 In this mode each PDF's record is the size and MD5 check made when it was uploaded, kept in

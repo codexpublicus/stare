@@ -63,10 +63,16 @@ RUN --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
     && jbig2 --version && pdfimages -v && rclone version \
     && /opt/stare-archival/venv/bin/stare-archival --version
 
-RUN useradd --uid 10001 --user-group --create-home --home-dir /home/archival archival
+# uid/gid 1000 owns the NAS datasets (codexpublicus-derived and friends); the base image's
+# own uid 1000 user ("ubuntu") gives way to it. Nothing writes to $HOME, a cache or
+# site-packages at runtime (bytecode is compiled at build time), so any --user works too.
+RUN userdel --remove ubuntu \
+    && groupadd --gid 1000 archival \
+    && useradd --uid 1000 --gid 1000 --create-home --home-dir /home/archival archival
 ENV PATH=/opt/stare-archival/venv/bin:${PATH} \
+    PYTHONDONTWRITEBYTECODE=1 \
     STARE_ARCHIVAL_REVISION=${REVISION}
-USER archival
-WORKDIR /home/archival
+USER 1000:1000
+WORKDIR /tmp
 ENTRYPOINT ["stare-archival"]
 CMD ["--help"]
