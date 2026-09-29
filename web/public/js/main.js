@@ -100,31 +100,47 @@ async function showResolved(result) {
   readerContent.className = 'reader';
   reader.appendChild(readerContent);
 
+  // Citations processed per case file, so switching between the cases on
+  // one page re-renders each with its own offsets.
+  const citationsByCase = new Map();
+  let shownCaseFile = null;
+
   renderMultiNotice(multiEl, result.allCases, result.caseFile, switchCase);
-  renderReader(readerContent, result.caseData, null);
-  renderSidebar(sidebar, result.caseData, result.reporter, result.volume, result.allCases, null);
   statusBar.classList.add('hidden');
-  wireActions(result);
-
+  const shown = showCase(result.caseFile, result.caseData, result);
   reader.closest('.main')?.scrollTo(0, 0);
+  await shown;
 
-  // Process citations in background
-  try {
-    const detectedCitations = await processCitations(result.caseData);
-    if (detectedCitations.length > 0) {
-      const citationMap = new Map();
-      for (const c of detectedCitations) {
-        citationMap.set(c.raw, c);
-      }
-      result.citationMap = citationMap;
-      result.detectedCitations = detectedCitations;
-      renderReader(readerContent, result.caseData, citationMap);
-      renderSidebar(sidebar, result.caseData, result.reporter, result.volume, result.allCases, detectedCitations);
-      wireActions(result);
+  function showCase(caseFile, caseData, actions) {
+    shownCaseFile = caseFile;
+    const cached = citationsByCase.get(caseFile) || null;
+    renderReader(readerContent, caseData, cached);
+    renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases, cached?.unique || null);
+    wireActions(actions);
+    if (cached) {
       setupCiteHovers(readerContent, resolve);
+      return Promise.resolve();
     }
-  } catch (e) {
-    console.warn('Citation detection failed:', e);
+    return highlightCase(caseFile, caseData, actions);
+  }
+
+  // Process citations in background, then re-render with them if this
+  // case is still the one shown.
+  async function highlightCase(caseFile, caseData, actions) {
+    try {
+      const { unique, occurrencesByOpinion } = await processCitations(caseData);
+      if (unique.length === 0) return;
+      const citationMap = new Map(unique.map(c => [c.raw, c]));
+      const citations = { unique, citationMap, occurrencesByOpinion };
+      citationsByCase.set(caseFile, citations);
+      if (shownCaseFile !== caseFile) return;
+      renderReader(readerContent, caseData, citations);
+      renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases, unique);
+      wireActions(actions);
+      setupCiteHovers(readerContent, resolve);
+    } catch (e) {
+      console.warn('Citation detection failed:', e);
+    }
   }
 
   function switchCase(caseFile) {
@@ -135,10 +151,8 @@ async function showResolved(result) {
     setHash(result.reporter, result.volume, page, seq);
     updateTopbar(caseData);
     updatePrevNext(result, caseFile);
-    renderReader(readerContent, caseData, result.citationMap || null);
-    renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases, result.detectedCitations || null);
     renderMultiNotice(multiEl, result.allCases, caseFile, switchCase);
-    wireActions({ ...result, caseData, caseFile, seq });
+    showCase(caseFile, caseData, { ...result, caseData, caseFile, seq });
   }
 }
 

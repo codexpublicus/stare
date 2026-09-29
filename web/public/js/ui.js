@@ -1,12 +1,15 @@
-import { highlightCitations } from './citations.js';
+import { renderTextHtml } from './citations.js';
 
 /**
  * Render the reader view.
  * @param {Element} el - container element
  * @param {Object} caseData - parsed case JSON
- * @param {Map|null} citationMap - map of raw cite string → { slug, volume, page, resolvable }
+ * @param {Object|null} citations - `{ citationMap, occurrencesByOpinion }`:
+ *   citationMap maps raw cite string to its entry from processCitations();
+ *   occurrencesByOpinion is processCitations()' per-opinion occurrence list
+ *   for this same caseData. Null renders without highlighting.
  */
-export function renderReader(el, caseData, citationMap) {
+export function renderReader(el, caseData, citations) {
   const cite = caseData.citations?.[0]?.cite || '';
   const court = caseData.court?.name || '';
 
@@ -17,23 +20,16 @@ export function renderReader(el, caseData, citationMap) {
     </div>
   `;
 
-  for (const op of caseData.casebody?.opinions || []) {
+  (caseData.casebody?.opinions || []).forEach((op, i) => {
     const authorLine = op.author
       ? `<div class="reader-author">${esc(op.author)}</div>`
       : '';
-    const paragraphs = op.text
-      .split(/\n+/)
-      .filter(p => p.trim())
-      .map(p => {
-        let formatted = formatText(p);
-        if (citationMap && citationMap.size > 0) {
-          formatted = highlightCitations(formatted, citationMap);
-        }
-        return `<p>${formatted}</p>`;
-      })
+    const occurrences = citations?.occurrencesByOpinion?.[i] || [];
+    const paragraphs = renderTextHtml(op.text, occurrences, citations?.citationMap || null)
+      .map(p => `<p>${p}</p>`)
       .join('\n');
     html += `${authorLine}<div class="reader-text">${paragraphs}</div>`;
-  }
+  });
 
   el.innerHTML = html;
 }
@@ -146,13 +142,6 @@ export function renderMultiNotice(el, allCases, currentFile, onSwitch) {
       onSwitch(a.dataset.case);
     });
   });
-}
-
-function formatText(text) {
-  return esc(text).replace(
-    /\[\*(\d+)\]/g,
-    '<span class="page-marker">[*$1]</span>'
-  );
 }
 
 function esc(str) {

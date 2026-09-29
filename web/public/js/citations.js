@@ -24,8 +24,8 @@ async function getWasm() {
  * `start`/`end` are Unicode code point offsets into `text`, matching
  * gorsuch-library's page viewer convention, not UTF-16 code units. Convert
  * to UTF-16 offsets before using them with String.prototype.slice or any
- * other native JS string indexing. Unused today (see highlightCitations
- * below), but callers that start reading them need this.
+ * other native JS string indexing. renderTextHtml, below, highlights by
+ * these offsets.
  */
 export async function detectCitations(text) {
   try {
@@ -128,27 +128,37 @@ export async function checkAvailability(slug, volume) {
  * Process all citations in a case's opinions.
  * Uses citare for detection, checks availability for each.
  *
+ * Returns `{ unique, occurrencesByOpinion }`:
+ * - `unique`: one entry per distinct raw citation string, with availability
+ *   (`slug`, `resolvable`) resolved; the sidebar's list.
+ * - `occurrencesByOpinion`: for each opinion in `casebody.opinions`, in
+ *   order, every detected occurrence as `{ raw, start, end }`, where
+ *   `start`/`end` are code point offsets into that opinion's `text`. The
+ *   reader highlights from these, looking each `raw` up in `unique`.
+ *
  * `check` is an injectable replacement for `checkAvailability`, used by
  * tests to stub availability lookups without a network fetch.
  */
 export async function processCitations(caseData, check = checkAvailability) {
   const allCites = [];
+  const occurrencesByOpinion = [];
 
   for (const op of caseData.casebody?.opinions || []) {
     const detected = await detectCitations(op.text);
     allCites.push(...detected);
+    occurrencesByOpinion.push(detected.map(({ raw, start, end }) => ({ raw, start, end })));
   }
 
   // Deduplicate by raw string
   const seen = new Set();
-  const unique = allCites.filter(c => {
+  const deduped = allCites.filter(c => {
     if (seen.has(c.raw)) return false;
     seen.add(c.raw);
     return true;
   });
 
   // Check availability for case citations with harvard_slug
-  const checks = unique.map(async (c) => {
+  const checks = deduped.map(async (c) => {
     if (c.externalUrl) {
       return { ...c, slug: null, resolvable: false };
     }
@@ -165,41 +175,110 @@ export async function processCitations(caseData, check = checkAvailability) {
     return { ...c, slug: null, resolvable: false };
   });
 
-  return Promise.all(checks);
+  return { unique: await Promise.all(checks), occurrencesByOpinion };
 }
 
 // ---------------------------------------------------------------------------
-// Highlighting
+// Highlighting (DOM-free, so node --test covers it)
 // ---------------------------------------------------------------------------
 
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
 /**
- * Highlight citations in escaped text.
- * citationMap: Map of raw string → { slug, volume, page, resolvable, externalUrl }
+ * Escape text for use in HTML element content or a quoted attribute value.
  */
-export function highlightCitations(escapedText, citationMap) {
-  let result = escapedText;
+export function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/[&<>"']/g, ch => HTML_ESCAPES[ch]);
+}
 
-  const entries = [...citationMap.entries()].sort((a, b) => b[0].length - a[0].length);
+/**
+ * Escape opinion text and wrap `[*123]` page markers.
+ */
+export function formatPlainText(text) {
+  return escapeHtml(text).replace(
+    /\[\*(\d+)\]/g,
+    '<span class="page-marker">[*$1]</span>'
+  );
+}
 
-  for (const [raw, info] of entries) {
-    const escaped = escapeRegex(raw);
-    const re = new RegExp(escaped, 'g');
-    if (info.externalUrl) {
-      result = result.replace(re,
-        `<a class="cite-link cite-external" href="${info.externalUrl}" target="_blank" rel="noopener" title="View on external site">${raw}</a>`
-      );
-    } else if (info.resolvable) {
-      result = result.replace(re,
-        `<a class="cite-link" href="#${info.slug}/${info.volume}/${info.page}" data-slug="${info.slug}" data-volume="${info.volume}" data-page="${info.page}" title="${raw}">${raw}</a>`
-      );
-    } else {
-      result = result.replace(re,
-        `<span class="cite-unresolved" title="Not yet indexed">${raw}</span>`
-      );
-    }
+/**
+ * Markup for one citation occurrence. `inner` is the already formatted
+ * citation text; `info` is the citation's entry from processCitations.
+ */
+function citationHtml(raw, inner, info) {
+  if (info.externalUrl) {
+    return `<a class="cite-link cite-external" href="${escapeHtml(info.externalUrl)}" target="_blank" rel="noopener" title="View on external site">${inner}</a>`;
   }
+  if (info.resolvable) {
+    const slug = escapeHtml(info.slug);
+    const volume = escapeHtml(String(info.volume));
+    const page = escapeHtml(String(info.page));
+    return `<a class="cite-link" href="#${slug}/${volume}/${page}" data-slug="${slug}" data-volume="${volume}" data-page="${page}" title="${escapeHtml(raw)}">${inner}</a>`;
+  }
+  return `<span class="cite-unresolved" title="Not yet indexed">${inner}</span>`;
+}
 
-  return result;
+/**
+ * Render one paragraph as HTML, highlighting citations by offset.
+ *
+ * `text` is the paragraph; `paragraphStart` is its code point offset in the
+ * text the occurrences were detected in. `occurrences` are `{ raw, start,
+ * end }` with code point offsets into that same text; only those lying
+ * wholly inside this paragraph are highlighted, and of overlapping ones the
+ * earliest (then longest) wins. `citationMap` maps raw string to citation
+ * info; an occurrence without an entry stays plain. `formatPlain` turns a
+ * raw text segment into HTML.
+ */
+export function renderParagraphHtml(text, paragraphStart, occurrences, citationMap, formatPlain = formatPlainText) {
+  // UTF-16 index of each code point boundary in the paragraph.
+  const utf16At = [0];
+  for (const ch of text) utf16At.push(utf16At[utf16At.length - 1] + ch.length);
+  const length = utf16At.length - 1;
+
+  const inside = (occurrences || [])
+    .map(o => ({ ...o, start: o.start - paragraphStart, end: o.end - paragraphStart }))
+    .filter(o => o.start >= 0 && o.end <= length && o.start < o.end && citationMap?.get(o.raw))
+    .sort((a, b) => a.start - b.start || b.end - a.end);
+
+  let html = '';
+  let cursor = 0;
+  for (const o of inside) {
+    if (o.start < cursor) continue;
+    const from = utf16At[o.start];
+    const to = utf16At[o.end];
+    html += formatPlain(text.slice(utf16At[cursor], from));
+    html += citationHtml(o.raw, formatPlain(text.slice(from, to)), citationMap.get(o.raw));
+    cursor = o.end;
+  }
+  html += formatPlain(text.slice(utf16At[cursor]));
+  return html;
+}
+
+/**
+ * Split `text` into paragraphs on runs of newlines, drop blank ones, and
+ * render each with renderParagraphHtml. Returns the paragraphs' inner HTML.
+ * `occurrences` carry code point offsets into the whole of `text`; one that
+ * crosses a paragraph break is left unhighlighted.
+ */
+export function renderTextHtml(text, occurrences, citationMap, formatPlain = formatPlainText) {
+  const paragraphs = [];
+  const breaks = /\n+/g;
+  let from = 0;
+  let codePoints = 0;
+  for (;;) {
+    const m = breaks.exec(text);
+    const to = m ? m.index : text.length;
+    const p = text.slice(from, to);
+    if (p.trim()) {
+      paragraphs.push(renderParagraphHtml(p, codePoints, occurrences, citationMap, formatPlain));
+    }
+    if (!m) break;
+    // Newlines are one code point each, so the break adds its own length.
+    codePoints += [...p].length + m[0].length;
+    from = breaks.lastIndex;
+  }
+  return paragraphs;
 }
 
 // ---------------------------------------------------------------------------
@@ -305,8 +384,4 @@ function esc(str) {
   const el = document.createElement('span');
   el.textContent = str;
   return el.innerHTML;
-}
-
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

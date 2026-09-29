@@ -93,7 +93,7 @@ describe('processCitations', () => {
 
     const check = mock.fn(async () => true);
 
-    const result = await processCitations(caseData, check);
+    const { unique: result } = await processCitations(caseData, check);
 
     // Two opinions detect the same "123 U.S. 456" twice; dedup by raw
     // string must leave exactly two unique citations.
@@ -105,5 +105,29 @@ describe('processCitations', () => {
     // fetch), was used for availability.
     assert.equal(check.mock.calls.length, 2);
     assert.ok(result.every((c) => c.resolvable === true));
+  });
+
+  test('keeps every occurrence per opinion with its code point offsets', async (t) => {
+    t.mock.method(console, 'warn', () => {});
+
+    const caseData = {
+      casebody: {
+        opinions: [
+          { text: 'See 123 U.S. 456; accord 123 U.S. 456.' },
+          { text: '\u{1F600} 78 N.E.2d 90' },
+        ],
+      },
+    };
+
+    const { unique, occurrencesByOpinion } = await processCitations(caseData, async () => false);
+
+    assert.equal(unique.length, 2);
+    assert.deepEqual(occurrencesByOpinion, [
+      [
+        { raw: '123 U.S. 456', start: 4, end: 16 },
+        { raw: '123 U.S. 456', start: 25, end: 37 },
+      ],
+      [{ raw: '78 N.E.2d 90', start: 2, end: 14 }],
+    ]);
   });
 });
