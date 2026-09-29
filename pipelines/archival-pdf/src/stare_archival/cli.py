@@ -37,6 +37,7 @@ from stare_archival.runner import (
     find_volumes,
     format_summary,
     parse_size,
+    plural,
     process_volume,
     progress_line,
     run_batch,
@@ -271,7 +272,8 @@ def _build_all(args: argparse.Namespace, stdout: TextIO) -> int:
         "toolchain": setup["toolchain"],
     }
     stdout.write(
-        f"run {rid}: {len(jobs)} volumes, {workers} workers, encoder {settings['encoder']}"
+        f"run {rid}: {plural(len(jobs), 'volume')}, {plural(workers, 'worker')}, "
+        f"encoder {settings['encoder']}"
         + (f", uploading to {args.upload}" if args.upload else "")
         + "\n"
     )

@@ -113,6 +113,10 @@ def parse_size(text: str) -> int:
     return int(float(m.group(1)) * 1024**power)
 
 
+def plural(n: int, noun: str) -> str:
+    return f"{n:,} {noun}" + ("" if n == 1 else "s")
+
+
 def format_bytes(n: float) -> str:
     for unit in ("B", "KiB", "MiB", "GiB"):
         if abs(n) < 1024:
@@ -801,9 +805,9 @@ def format_summary(summary: Mapping[str, Any]) -> str:
         f"  selected {c['selected']}: pass {c['pass']}, uploaded {c['uploaded']}, "
         f"skipped {c['skipped']}, fail {c['fail']}, error {c['error']}, "
         f"timeout {c['timeout']}, upload failed {c['upload_failed']}, not run {c['not_run']}",
-        f"  built {t['volumes_built']} volumes, {summary['pages']['built']:,} pages, "
+        f"  built {plural(t['volumes_built'], 'volume')}, {summary['pages']['built']:,} pages, "
         f"{format_bytes(summary['bytes_built'])} in {minutes:.1f} min with "
-        f"{summary['workers']} workers: {t['pages_per_second']:.1f} pages/s, "
+        f"{plural(summary['workers'], 'worker')}: {t['pages_per_second']:.1f} pages/s, "
         f"{t['pages_per_worker_second']:.1f} pages/s per worker "
         f"(build {t['build_ms_per_page']:.1f} ms/page, verify {t['verify_ms_per_page']:.1f} "
         f"ms/page, upload {t['upload_s']:.0f} s in all)",
