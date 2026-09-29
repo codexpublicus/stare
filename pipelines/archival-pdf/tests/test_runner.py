@@ -8,7 +8,7 @@ from pathlib import Path
 
 import jsonschema
 import pytest
-from fixture_paths import FIXTURES
+from fixture_paths import FIXTURES, TIFF_TEXT
 
 from stare_archival.encoders import G4Encoder
 from stare_archival.errors import RunnerError, UploadError
@@ -61,7 +61,7 @@ class FlippingEncoder(G4Encoder):
 
         from PIL import Image
 
-        if "00436" not in path:
+        if path != TIFF_TEXT:
             return super().encode(tiff, path)
         with Image.open(io.BytesIO(tiff)) as im:
             im.load()

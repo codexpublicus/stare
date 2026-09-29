@@ -56,14 +56,25 @@ def _tools(extra: dict[str, str] | None = None) -> dict[str, str]:
     return tools
 
 
-def _pins(jbig2_image: str | None = None, tools: Mapping[str, str] | None = None) -> dict:
+def package_versions() -> dict[str, str]:
+    """This package's version and those of the Python libraries it builds with."""
+    return _tools()
+
+
+def _pins(
+    jbig2_image: str | None = None,
+    tools: Mapping[str, str] | None = None,
+    pipeline_image: str | None = None,
+) -> dict:
     """The container images this volume's build and verification ran, by digest: none for a
-    G4 build or a jbig2 on PATH, verified without veraPDF."""
+    G4 build or a jbig2 on PATH, verified without veraPDF, outside the pipeline image."""
     pins = {}
     if jbig2_image:
         pins["jbig2"] = jbig2_image
     if tools and tools.get("verapdf_image"):
         pins["verapdf"] = tools["verapdf_image"]
+    if pipeline_image:
+        pins["pipeline"] = pipeline_image
     return pins
 
 
@@ -72,11 +83,12 @@ def build_manifest(
     build: BuildResult | None = None,
     *,
     jbig2_image: str | None = None,
+    pipeline_image: str | None = None,
     generated: datetime | None = None,
 ) -> dict[str, Any]:
     """The manifest for a verified volume. `jbig2_image` is the container image the build ran
-    jbig2 from, if it did (`Jbig2Encoder.docker_image`). `generated` (default now) must be
-    timezone-aware."""
+    jbig2 from, if it did (`Jbig2Encoder.docker_image`); `pipeline_image` the pipeline image
+    the batch ran in. `generated` (default now) must be timezone-aware."""
     return {
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "volume_id": report.volume_id,
@@ -106,7 +118,7 @@ def build_manifest(
         },
         "checks": [c.to_dict() for c in report.checks],
         "tools": _tools(dict(report.tools)),
-        "pins": _pins(jbig2_image, report.tools),
+        "pins": _pins(jbig2_image, report.tools, pipeline_image),
         "error": None,
     }
 
@@ -117,6 +129,7 @@ def error_manifest(
     *,
     source_sha256: str | None = None,
     tar: str | None = None,
+    pipeline_image: str | None = None,
     generated: datetime | None = None,
 ) -> dict[str, Any]:
     """The manifest for a volume that couldn't be built or verified."""
@@ -138,7 +151,7 @@ def error_manifest(
         "build": None,
         "checks": [],
         "tools": _tools(),
-        "pins": _pins(),
+        "pins": _pins(pipeline_image=pipeline_image),
         "error": message,
     }
 

@@ -119,9 +119,9 @@
       "additionalProperties": {"type": "string"}
     },
     "pins": {
-      "description": "The container images, by digest, that this volume's build (jbig2) and verification (verapdf) actually ran; empty when neither ran from an image",
+      "description": "The container images, by digest, that this volume's build (jbig2) and verification (verapdf) actually ran, and the pipeline image the batch ran in (pipeline, from $STARE_ARCHIVAL_IMAGE); empty when none of them applies",
       "type": "object",
-      "propertyNames": {"enum": ["jbig2", "verapdf"]},
+      "propertyNames": {"enum": ["jbig2", "verapdf", "pipeline"]},
       "additionalProperties": {"type": "string"}
     },
     "error": {

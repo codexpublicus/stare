@@ -46,7 +46,7 @@ def test_remote_is_joined_without_doubled_slashes():
 def _fake_rclone(tmp_path: Path, *, corrupt: bool = False, fail_copy: bool = False) -> Path:
     """A stand-in rclone: copyto copies (optionally corrupting), lsjson reports size and md5."""
     script = tmp_path / "rclone"
-    corrupt_line = 'printf x >> "$dst"' if corrupt else ":"
+    corrupt_line = 'printf x | dd of="$dst" conv=notrunc 2>/dev/null' if corrupt else ":"
     copy_exit = "exit 5" if fail_copy else ":"
     script.write_text(
         f"""#!/bin/sh
