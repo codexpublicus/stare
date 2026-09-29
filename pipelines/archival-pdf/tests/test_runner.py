@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import shutil
+import tempfile
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -493,3 +494,34 @@ def test_the_disk_guard_stops_the_run_when_local_files_fill_it(tmp_path):
     assert summary["counts"]["not_run"] == 3
     assert summary["ok"] is False
     assert "disk guard" in format_summary(summary)
+
+
+def test_find_volumes_leaves_out_tars_still_downloading(tmp_path):
+    # aria2 keeps a <file>.aria2 control file beside a download until it completes
+    src = tmp_path / "downloads"
+    _touch_volume(src, "us/1")
+    _touch_volume(src, "us/2")
+    (src / "us" / "2.tar.aria2").write_bytes(b"")
+    assert [r.id for r in find_volumes(src)] == ["us/1"]
+    with pytest.raises(RunnerError, match="us/2 .still downloading"):
+        find_volumes(src, only=["us/2"])
+
+
+@pytest.mark.poppler
+def test_scratch_files_can_live_outside_the_output(src, out, toolchain, tmp_path, monkeypatch):
+    # e.g. the output on an NFS share, the scratch space on local disk
+    work = tmp_path / "local-scratch"
+    seen: list[str] = []
+    real_mkdtemp = tempfile.mkdtemp
+
+    def spy(*args, **kwargs):
+        path = real_mkdtemp(*args, **kwargs)
+        seen.append(path)
+        return path
+
+    monkeypatch.setattr(tempfile, "mkdtemp", spy)
+    result = process_volume(_job(src, out, toolchain, work=work))
+    assert result.status == "pass"
+    assert seen and all(Path(p).is_relative_to(work) for p in seen)
+    assert not (out / "work").exists()
+    assert Layout(out, work=work).work(VolumeRef.parse("a2d/152")) == work / "a2d@152"
