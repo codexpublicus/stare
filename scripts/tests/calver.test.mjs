@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { calverDay, nextCalver } from '../calver.mjs';
+import { calverDay, newestCalver, nextCalver } from '../calver.mjs';
 
 const DAY = new Date('2026-09-30T15:04:05Z');
 
@@ -52,5 +52,32 @@ describe('nextCalver', () => {
 
   test('tolerates whitespace and blank lines from `git tag` output', () => {
     assert.equal(nextCalver(DAY, [' v2026.09.30.1 ', '', '\n']), 'v2026.09.30.2');
+  });
+});
+
+describe('recomputing after the checks wait', () => {
+  test('a tag that appeared during the wait moves N on', () => {
+    // release.yml computes the tag only after waiting for the merge commit's
+    // checks, so a same-day tag pushed meanwhile is counted, not collided with.
+    const before = nextCalver(DAY, ['v2026.09.30.1']);
+    assert.equal(before, 'v2026.09.30.2');
+    assert.equal(nextCalver(DAY, ['v2026.09.30.1', before]), 'v2026.09.30.3');
+  });
+});
+
+describe('newestCalver', () => {
+  test('picks the newest release numerically', () => {
+    const tags = ['v2026.09.30.9', 'v2026.09.30.10', 'v2026.09.29.12', 'v2025.12.31.3'];
+    assert.equal(newestCalver(tags), 'v2026.09.30.10');
+  });
+
+  test('a later day beats a higher N', () => {
+    assert.equal(newestCalver(['v2026.09.30.5', 'v2026.10.01.1']), 'v2026.10.01.1');
+    assert.equal(newestCalver(['v2026.10.01.1', 'v2026.09.30.5']), 'v2026.10.01.1');
+  });
+
+  test('ignores tags that are not releases', () => {
+    assert.equal(newestCalver(['v9.9.9', 'v2026.09.30.1-rc', ' v2026.01.01.1 ', '']), 'v2026.01.01.1');
+    assert.equal(newestCalver([]), null);
   });
 });
