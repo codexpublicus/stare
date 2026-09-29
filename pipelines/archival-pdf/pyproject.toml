@@ -26,7 +26,7 @@ addopts = "-ra --strict-markers"
 markers = [
     "jbig2: needs the jbig2 encoder (jbig2enc on PATH, $STARE_JBIG2, or the pinned Docker image)",
     "poppler: needs poppler's pdfimages/pdftotext on PATH",
-    "verapdf: needs veraPDF (verapdf on PATH or a local verapdf/cli Docker image)",
+    "verapdf: needs veraPDF (verapdf on PATH, $STARE_VERAPDF, or the pinned verapdf/cli image)",
 ]
 
 [tool.ruff]

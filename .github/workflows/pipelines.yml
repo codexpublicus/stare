@@ -33,13 +33,13 @@ jobs:
       - name: Install
         run: uv sync --locked
 
-      # external tools for the marked tests: poppler (pdfimages/pdftotext) and jbig2enc from
-      # the pinned image that Jbig2Encoder.locate() picks up (veraPDF tests skip here)
+      # external tools for the marked tests: poppler (pdfimages/pdftotext), plus jbig2enc and
+      # veraPDF from the images pinned in stare_archival.images (the only copy of the digests)
       - name: Test tools
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends poppler-utils
-          docker pull "jbarlow83/ocrmypdf:v16.10.4@sha256:60908d9f007a6f621769f6ecabdbc04e39845b5ca5342debaad504bc8efe050b"
+          for image in $(uv run python -m stare_archival.images); do docker pull -q "$image"; done
 
       - name: ruff check
         run: uv run ruff check .
@@ -50,5 +50,7 @@ jobs:
       - name: pytest
         run: uv run pytest
         env:
-          # use the pulled image, so the jbig2 tests fail rather than skip if it's missing
+          # use the pulled images, so the jbig2 and veraPDF tests fail rather than skip if
+          # either is missing
           STARE_JBIG2: docker
+          STARE_VERAPDF: docker
