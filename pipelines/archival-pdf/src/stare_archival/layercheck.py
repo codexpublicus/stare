@@ -16,6 +16,7 @@ the identity ToUnicode map, every CID drawing glyph 1, and glyph 1 half an em wi
 from __future__ import annotations
 
 import io
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
@@ -23,7 +24,7 @@ import pikepdf
 from fontTools.ttLib import TTFont, TTLibError
 
 from stare_archival.alto import AltoPage
-from stare_archival.textlayer import _TO_UNICODE, layer_text
+from stare_archival.textlayer import layer_text
 
 # the layer's specification, restated here rather than imported from the builder
 LAYER_FONT = "/F0"
@@ -34,6 +35,7 @@ POSITION_TOLERANCE_PT = 0.006  # %.2f rounding of Tm and Tf, with float slack
 ROUNDING = 0.005  # the largest error two-decimal rounding introduces
 IDENTITY = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 CID_TO_GID = b"\x00\x01" * 65536
+UNMODELED_TEXT_OPERATORS = frozenset({"Tc", "Tw", "Ts", "TL", "Td", "TD", "T*", "TJ", "'", '"'})
 FONT_UNITS_PER_EM = 1000
 DEFAULT_WIDTH = 500
 
@@ -90,30 +92,46 @@ def expected_layer(
 
 
 def layer_runs(page: pikepdf.Page) -> tuple[list[LayerRun], list[str]]:
-    """The text runs a page draws, and anything about them that can't be read as a run."""
+    """The text runs a page draws, and anything about them that can't be read as a run.
+
+    q/Q save and restore the CTM and the text state the layer uses (font, size, Tz, Tr), as
+    they do in a viewer. Text operators the layer never writes (character and word spacing,
+    rise, leading, Td/TD/T*, TJ, ' and ") and q/Q/cm inside BT are problems: the runs they'd
+    draw aren't modelled here, so they can't be let through."""
     problems: list[str] = []
     runs: list[LayerRun] = []
     try:
         instructions = pikepdf.parse_content_stream(page)
     except pikepdf.PdfError as exc:
         return [], [f"content stream can't be parsed ({exc})"]
+    # the graphics state q/Q saves: the CTM and the text state parameters the layer uses
     ctm: tuple[float, ...] = IDENTITY
     render_mode = 0
-    saved: list[tuple[tuple[float, ...], int]] = []
-    tm: tuple[float, ...] = IDENTITY
     font: str | None = None
     size = 0.0
     scale = 100.0
+    saved: list[tuple] = []
+    tm: tuple[float, ...] = IDENTITY
+    in_text = False
     for operands, operator in instructions:
         op = str(operator)
-        if op == "q":
-            saved.append((ctm, render_mode))
+        if op in UNMODELED_TEXT_OPERATORS:
+            problems.append(f"the {op} operator isn't part of the text layer")
+        elif op in ("q", "Q", "cm") and in_text:
+            problems.append(f"{op} inside BT")
+        elif op == "q":
+            saved.append((ctm, render_mode, font, size, scale))
         elif op == "Q" and saved:
-            ctm, render_mode = saved.pop()
+            ctm, render_mode, font, size, scale = saved.pop()
         elif op == "cm" and len(operands) == 6:
             ctm = concat([float(v) for v in operands], ctm)
         elif op == "BT":
+            if in_text:
+                problems.append("BT inside BT")
+            in_text = True
             tm = IDENTITY
+        elif op == "ET":
+            in_text = False
         elif op == "Tf":
             font, size = str(operands[0]), float(operands[1])
         elif op == "Tz":
@@ -124,6 +142,8 @@ def layer_runs(page: pikepdf.Page) -> tuple[list[LayerRun], list[str]]:
             tm = tuple(float(v) for v in operands)
         elif op == "Tj":
             data = bytes(operands[0])
+            if not in_text:
+                problems.append("Tj outside BT")
             if font != LAYER_FONT:
                 problems.append(f"text drawn in font {font}, not {LAYER_FONT}")
             try:
@@ -223,6 +243,28 @@ def _font_program_problems(descriptor: pikepdf.Object) -> list[str]:
     return []
 
 
+_CODESPACE = re.compile(rb"\d+\s+begincodespacerange(.*?)endcodespacerange", re.S)
+_BFRANGE = re.compile(rb"\d+\s+beginbfrange(.*?)endbfrange", re.S)
+_HEX = re.compile(rb"<([0-9A-Fa-f]*)>")
+
+
+def to_unicode_problem(cmap: bytes) -> str | None:
+    """None when a ToUnicode CMap is the identity on 2-byte codes: one codespace range
+    <0000> <FFFF>, one bfrange <0000> <FFFF> <0000>, and no bfchar or usecmap. Otherwise what
+    differs."""
+    spaces = [_HEX.findall(block) for block in _CODESPACE.findall(cmap)]
+    if [[h.upper() for h in space] for space in spaces] != [[b"0000", b"FFFF"]]:
+        return f"codespace is {spaces}, not <0000> <FFFF>"
+    if b"beginbfchar" in cmap:
+        return "has bfchar entries"
+    if b"usecmap" in cmap:
+        return "uses another CMap"
+    ranges = [_HEX.findall(block) for block in _BFRANGE.findall(cmap)]
+    if [[h.upper() for h in r] for r in ranges] != [[b"0000", b"FFFF", b"0000"]]:
+        return f"bfrange is {ranges}, not <0000> <FFFF> <0000>"
+    return None
+
+
 def check_layer_font(pdf: pikepdf.Pdf) -> list[str]:
     """Problems with the text layer's font: pages must share one /F0 and have no other font,
     and that font must map codes to text and glyphs as the layer relies on."""
@@ -251,8 +293,12 @@ def check_layer_font(pdf: pikepdf.Pdf) -> list[str]:
             f"the text layer font's encoding is {shared.get('/Encoding')}, not Identity-H"
         )
     to_unicode = shared.get("/ToUnicode")
-    if to_unicode is None or to_unicode.read_bytes() != _TO_UNICODE:
-        problems.append("the text layer font's ToUnicode is not the identity map")
+    if not isinstance(to_unicode, pikepdf.Stream):
+        problems.append("the text layer font has no ToUnicode stream")
+    else:
+        problem = to_unicode_problem(to_unicode.read_bytes())
+        if problem:
+            problems.append(f"the text layer font's ToUnicode {problem}")
     descendants = shared.get("/DescendantFonts")
     if descendants is None or len(descendants) != 1:
         return [*problems, "the text layer font doesn't have exactly one descendant font"]
