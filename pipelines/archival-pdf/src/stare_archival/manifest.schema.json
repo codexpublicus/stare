@@ -100,6 +100,7 @@
               "no_jbig2_globals",
               "image_streams",
               "image_pixels",
+              "text_layer",
               "text_chars",
               "text_positions",
               "pdfa"

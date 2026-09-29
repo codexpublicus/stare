@@ -215,3 +215,10 @@ def test_the_pipeline_image_is_pinned_when_given():
     e = error_manifest("a2d/152", "BuildError: x", pipeline_image=image, generated=GENERATED)
     assert e["pins"] == {"pipeline": image}
     jsonschema.validate(e, manifest_schema())
+
+
+def test_the_schema_names_every_check_verify_runs():
+    from stare_archival.verify import CHECKS
+
+    item = manifest_schema()["properties"]["checks"]["items"]
+    assert tuple(item["properties"]["name"]["enum"]) == CHECKS
