@@ -1,6 +1,5 @@
 /target/
 .superpowers/
 .wrangler/
-infra/.venv/
 __pycache__/
 .pytest_cache/

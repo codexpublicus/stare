@@ -78,12 +78,12 @@ This repo is `codexpublicus/stare` in the `codexpublicus` GitHub org, alongside
 LFS proxy) and `codexpublicus/codexpublicus.org` (umbrella site).
 
 Shared Cloudflare values come from the Pulumi stack `organization/codexpublicus-infra/prod`,
-not from any per-site config. That stack currently owns stare.pub's zone, its DNS and email
-routing records, the `stare-pub` Pages project and the `stare-pub-idx` R2 bucket (moved
-there from `lokkju-infra` on 2026-09-27; see codexpublicus/stare#3). This repo's own
-Pulumi project, `infra/`, owns the Workers deploy token, the citare deploy key, the repo
-secrets that carry them and the `codex-data` R2 bucket; site deploys are still run by hand
-with Wrangler.
+not from any per-site config. That stack owns stare.pub's zone, its DNS and email routing
+records, the `stare-pub` Pages project, the `stare-pub-idx` R2 bucket (moved there from
+`lokkju-infra` on 2026-09-27; see codexpublicus/stare#3), the `codex-data` R2 bucket, the
+Workers deploy token, the citare deploy key and the three Actions secrets that carry them
+(`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CITARE_DEPLOY_KEY`). This repo runs no
+Pulumi of its own; site deploys are still run by hand with Wrangler.
 
 Sites are moving to Workers Static Assets (`codexpublicus.org` is already there); stare.pub
 follows as part of #3.
@@ -91,25 +91,8 @@ follows as part of #3.
 The published contact address is moving from `info@stare.pub` to `info@codexpublicus.org`
 (#13), blocked on the email routing work in codexpublicus/infra#16.
 
-For Pulumi, Wrangler and LFS rules that apply across the org, see
-`codexpublicus/infra`'s `AGENTS.md`.
-
-### Pulumi (`infra/`, stack `organization/stare-infra/prod`)
-
-Run Pulumi through `mise run pulumi -- ...`, for example
-`mise run pulumi -- preview --stack prod --diff`. Plain `pulumi` under this repo's env
-fails: `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` here are the s5cmd token for
-`stare-pub-idx`, which gets a 403 on the state bucket, and `CLOUDFLARE_API_TOKEN` is the
-Pages deploy token, which can't read API token permission groups.
-
-No operator secrets for Pulumi live in this repo. The task instead borrows the
-environment of a `codexpublicus/infra` checkout, found at `$CODEXPUBLICUS_INFRA_DIR`
-(default `~/projects/lokkju/codexpublicus-infra`), and runs `pulumi` inside that
-env via `mise exec --cd`. That's where the state backend keys and the org
-Cloudflare token are age-encrypted. The task also strips this repo's own
-`AWS_ENDPOINT_URL_S3` before handing off, since infra's env doesn't set one and
-leaving it in place would point Pulumi's S3 backend client at the R2 endpoint
-instead of the state bucket's. Tests run with `uv run --directory infra pytest -q`.
+Infrastructure changes go through PRs to codexpublicus/infra, not this repo. See that
+repo's `AGENTS.md` for the Pulumi, Wrangler and LFS rules that apply across the org.
 
 ## Current Status
 
