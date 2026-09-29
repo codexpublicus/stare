@@ -99,7 +99,7 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 		</div>
 
 		<script is:inline type="module">
-			import { detectCitations, guessSlug, checkAvailability, highlightCitations } from '/js/citations.js';
+			import { detectCitations, guessSlug, checkAvailability, escapeHtml, renderTextHtml } from '/js/citations.js';
 
 			const input = document.getElementById('check-input');
 			const btn = document.getElementById('check-btn');
@@ -165,14 +165,10 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 						citationMap.set(c.raw, c);
 					}
 
-					// Render highlighted text
-					const paragraphs = text.split(/\n+/).filter(p => p.trim());
-					const html = paragraphs.map(p => {
-						let escaped = esc(p);
-						escaped = highlightCitations(escaped, citationMap);
-						return `<p>${escaped}</p>`;
-					}).join('');
-					rendered.innerHTML = html;
+					// Render highlighted text; detectCitations' offsets are into `text`
+					rendered.innerHTML = renderTextHtml(text, citations, citationMap, escapeHtml)
+						.map(p => `<p>${p}</p>`)
+						.join('');
 
 					// Render cite list
 					summary.textContent = `${checked.length} citations found (${resolvable.length} resolvable)`;

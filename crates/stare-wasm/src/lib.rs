@@ -65,7 +65,8 @@ pub fn parse_alto(gz_data: &[u8]) -> Result<String, JsError> {
 /// byte offsets to Unicode scalar value (char) offsets, matching how
 /// gorsuch-library's page viewer indexes the same served text. JS callers
 /// that use `span` with `String.prototype.slice` (UTF-16 code units) still
-/// need to convert further; stare's own web UI does not use `span` today.
+/// need to convert further, as `renderParagraphHtml` in
+/// `web/public/js/citations.js` does when it highlights by `span`.
 /// Throws (rejects with a JsError) if a span's byte offset doesn't land on a
 /// char boundary in `text`; that should never happen and is a bug upstream,
 /// not something this function guesses its way past.
