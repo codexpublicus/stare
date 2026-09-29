@@ -47,6 +47,9 @@ jobs:
       - name: cargo test
         run: cargo test --workspace
 
+      - name: JS tests
+        run: node --test 'web/tests/**/*.test.js'
+
       - name: Build stare-wasm
         run: wasm-pack build crates/stare-wasm --target web --out-dir ../../web/public/wasm
 

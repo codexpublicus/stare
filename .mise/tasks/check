@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-#MISE description="Format, lint, and test the Rust workspace"
+#MISE description="Format, lint, and test the Rust workspace and the JS test suite"
 set -euo pipefail
 
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+mise run test-js
