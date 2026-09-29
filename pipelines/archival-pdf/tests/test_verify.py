@@ -215,6 +215,7 @@ def test_a_good_g4_build_passes_every_check(g4_pdf, poppler):
         "no_jbig2_globals": "pass",
         "image_streams": "pass",
         "image_pixels": "pass",
+        "text_layer": "pass",
         "text_chars": "pass",
         "text_positions": "pass",
         "pdfa": "skipped",
@@ -230,7 +231,10 @@ def test_a_good_g4_build_passes_every_check(g4_pdf, poppler):
     assert report.recorded_source_sha256 is None  # the fixture has no .tar.sha256
     pixels = report.check("image_pixels")
     assert pixels.detail["pages_compared"] == 4
-    assert pixels.detail["decoders"] == {"/CCITTFaxDecode": "pikepdf"}
+    assert pixels.detail["decoders"] == {"/CCITTFaxDecode": poppler.version}
+    layer = report.check("text_layer")
+    assert layer.detail["words"] == 302 + 251
+    assert layer.detail["max_position_deviation_pt"] < 0.006
     text = report.check("text_positions")
     assert text.detail["words_exact"] == text.detail["words_extracted"] == 302 + 251
     assert text.detail["tolerance_pt"] == 1.0
@@ -384,7 +388,7 @@ def test_a_missing_page_fails_structure_and_skips_page_checks(g4_pdf, poppler, t
     statuses = _statuses(report)
     assert statuses["structure"] == "fail"
     assert "3 pages, the METS lists 4" in report.check("structure").failures[0].message
-    for name in ("image_streams", "image_pixels", "text_chars", "text_positions"):
+    for name in ("image_streams", "image_pixels", "text_layer", "text_chars", "text_positions"):
         assert statuses[name] == "skipped"
 
 
@@ -449,3 +453,185 @@ def test_verapdf_validation_is_a_check_when_asked_for(g4_pdf, poppler):
     assert pdfa.status == "pass", pdfa.failures
     assert pdfa.detail["flavour"] == "3b"
     assert report.tools["verapdf"].startswith("veraPDF 1.30.2")
+
+
+# --- the exact text layer check ---------------------------------------------------------
+
+HEX_RUN = re.compile(rb"<([0-9a-f]+)> Tj")
+
+
+def _drop_last_comma(content: bytes) -> bytes:
+    # "BONDY," becomes "BONDY"
+    assert b"<0042004f004e00440059002c>" in content
+    return content.replace(b"<0042004f004e00440059002c>", b"<0042004f004e00440059>", 1)
+
+
+def _swap_first_two_runs(content: bytes) -> bytes:
+    a, b = list(HEX_RUN.finditer(content))[:2]
+    return (
+        content[: a.start(1)]
+        + b.group(1)
+        + content[a.end(1) : b.start(1)]
+        + a.group(1)
+        + content[b.end(1) :]
+    )
+
+
+def _shift_first_word(content: bytes) -> bytes:
+    # half a point: within pdftotext's 1 pt tolerance, far outside the layer's 0.006 pt
+    m = TM.search(content)
+    moved = b"1 0 0 1 %.2f %s Tm" % (float(m.group(1)) + 0.5, m.group(2))
+    return content[: m.start()] + moved + content[m.end() :]
+
+
+@pytest.mark.poppler
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [
+        (_drop_last_comma, "the ALTO has 'BONDY,', the layer has 'BONDY'"),
+        (
+            lambda b: b.replace(b"<003800330039>", b"<003800330038>", 1),
+            "word 1 of 302: the ALTO has '839', the layer has '838'",
+        ),
+        (_swap_first_two_runs, "word 1 of 302: the ALTO has '839', the layer has 'Adolph'"),
+        (_shift_first_word, "word 1 of 302 ('839'): x0 is 0.50"),
+    ],
+    ids=["deleted-comma", "changed-letter", "reordered", "shifted"],
+)
+def test_text_layer_edits_fail_text_layer(g4_pdf, poppler, tmp_path, edit, message):
+    pdf = _edit_page_content(g4_pdf, tmp_path / "t.pdf", 1, edit)
+    report = verify_volume(pdf, FIXTURES / "152.tar", poppler=poppler)
+    assert _statuses(report)["text_layer"] == "fail"
+    (failure,) = report.check("text_layer").failures
+    assert (failure.page, failure.order, failure.label) == (2, 871, "839")
+    assert message in failure.message, failure.message
+
+
+@pytest.mark.poppler
+def test_a_changed_font_fails_text_layer(g4_pdf, poppler, tmp_path):
+    with pikepdf.open(g4_pdf) as doc:
+        tu = doc.pages[1].Resources.Font.F0.ToUnicode
+        tu.write(tu.read_bytes().replace(b"<0000> <FFFF> <0000>", b"<0000> <FFFF> <0001>"))
+        doc.save(tmp_path / "f.pdf")
+    report = verify_volume(tmp_path / "f.pdf", FIXTURES / "152.tar", poppler=poppler)
+    failures = report.check("text_layer").failures
+    assert any(f.page is None and "ToUnicode" in f.message for f in failures), failures
+
+
+# --- image and page tampering -----------------------------------------------------------
+
+
+def _edit_pdf(src: Path, dest: Path, edit) -> Path:
+    with pikepdf.open(src) as doc:
+        edit(doc)
+        doc.save(dest)
+    return dest
+
+
+def _image(doc, index):
+    return doc.pages[index].Resources.XObject.Im0
+
+
+def _page_failures(report, check):
+    return {f.page for f in report.check(check).failures}
+
+
+@pytest.mark.poppler
+def test_an_unsupported_ccitt_parameter_fails_rather_than_crashes(g4_pdf, poppler, tmp_path):
+    def byte_align(doc):
+        _image(doc, 1).DecodeParms.EncodedByteAlign = True
+
+    pdf = _edit_pdf(g4_pdf, tmp_path / "t.pdf", byte_align)
+    report = verify_volume(pdf, FIXTURES / "152.tar", poppler=poppler)
+    (failure,) = report.check("image_streams").failures
+    assert failure.page == 2 and "DecodeParms" in failure.message
+    assert _page_failures(report, "image_pixels") == {2}
+
+
+@pytest.mark.poppler
+def test_black_is_1_inverts_the_page_and_fails(g4_pdf, poppler, tmp_path):
+    def black_is_1(doc):
+        _image(doc, 1).DecodeParms.BlackIs1 = True
+
+    report = verify_volume(
+        _edit_pdf(g4_pdf, tmp_path / "t.pdf", black_is_1), FIXTURES / "152.tar", poppler=poppler
+    )
+    assert _page_failures(report, "image_streams") == {2}
+    assert _page_failures(report, "image_pixels") == {2}
+
+
+@pytest.mark.poppler
+def test_an_inverting_decode_array_fails(g4_pdf, poppler, tmp_path):
+    def invert(doc):
+        _image(doc, 1).Decode = pikepdf.Array([1, 0])
+
+    report = verify_volume(
+        _edit_pdf(g4_pdf, tmp_path / "t.pdf", invert), FIXTURES / "152.tar", poppler=poppler
+    )
+    assert _page_failures(report, "image_streams") == {2}
+    assert _page_failures(report, "image_pixels") == {2}
+
+
+@pytest.mark.poppler
+def test_swapped_page_images_fail_both_pages(g4_pdf, poppler, tmp_path):
+    def swap(doc):
+        a, b = doc.pages[1].Resources.XObject, doc.pages[2].Resources.XObject
+        a.Im0, b.Im0 = b.Im0, a.Im0
+
+    report = verify_volume(
+        _edit_pdf(g4_pdf, tmp_path / "t.pdf", swap), FIXTURES / "152.tar", poppler=poppler
+    )
+    assert _page_failures(report, "image_pixels") == {2, 3}
+
+
+@pytest.mark.poppler
+def test_swapped_page_contents_fail_placement_and_text(g4_pdf, poppler, tmp_path):
+    def swap(doc):
+        a, b = doc.pages[1], doc.pages[2]
+        a.Contents, b.Contents = b.Contents, a.Contents
+
+    report = verify_volume(
+        _edit_pdf(g4_pdf, tmp_path / "t.pdf", swap), FIXTURES / "152.tar", poppler=poppler
+    )
+    assert _page_failures(report, "image_streams") == {2, 3}
+    assert _page_failures(report, "text_layer") == {2, 3}
+
+
+@pytest.mark.poppler
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [
+        (lambda page: setattr(page.obj, "Rotate", 90), "/Rotate"),
+        (lambda page: setattr(page.obj, "UserUnit", 2), "/UserUnit"),
+        (lambda page: setattr(page.obj, "CropBox", pikepdf.Array([0, 0, 100, 100])), "CropBox"),
+        (lambda page: setattr(page.obj, "Annots", pikepdf.Array([])), "/Annots"),
+    ],
+    ids=["rotate", "userunit", "cropbox", "annots"],
+)
+def test_page_display_state_fails_image_streams(g4_pdf, poppler, tmp_path, edit, message):
+    pdf = _edit_pdf(g4_pdf, tmp_path / "t.pdf", lambda doc: edit(doc.pages[0]))
+    report = verify_volume(pdf, FIXTURES / "152.tar", poppler=poppler)
+    failures = report.check("image_streams").failures
+    assert {f.page for f in failures} == {1}
+    assert any(message in f.message for f in failures), failures
+
+
+@pytest.mark.poppler
+def test_an_unmatched_q_fails_image_streams(g4_pdf, poppler, tmp_path):
+    pdf = _edit_page_content(g4_pdf, tmp_path / "t.pdf", 0, lambda b: b + b"Q\n")
+    report = verify_volume(pdf, FIXTURES / "152.tar", poppler=poppler)
+    (failure,) = report.check("image_streams").failures
+    assert failure.page == 1 and "unmatched Q" in failure.message
+
+
+# --- inputs that can't be verified ------------------------------------------------------
+
+
+@pytest.mark.poppler
+def test_a_missing_tar_or_csv_raises_verify_error(g4_pdf, poppler, tmp_path):
+    with pytest.raises(VerifyError, match="nope.tar"):
+        verify_volume(g4_pdf, tmp_path / "nope.tar", poppler=poppler)
+    tar = tmp_path / "152.tar"
+    shutil.copyfile(FIXTURES / "152.tar", tar)
+    with pytest.raises(VerifyError, match=r"152\.tar\.csv"):
+        verify_volume(g4_pdf, tar, poppler=poppler)

@@ -92,3 +92,26 @@ def test_verify_error_exits_2(tmp_path):
     )
     assert code == 2
     assert "junk.pdf" in err
+
+
+@pytest.mark.poppler
+def test_verify_a_missing_tar_exits_2(pdf, tmp_path):
+    code, out, err = _run(["verify", str(pdf), "--tar", str(tmp_path / "nope.tar")])
+    assert code == 2
+    assert "nope.tar" in err and "Traceback" not in err
+
+
+def test_a_naive_generated_time_is_rejected_before_verifying(tmp_path):
+    # the tar doesn't exist either: the timestamp must be the error reported
+    code, _, err = _run(
+        [
+            "verify",
+            str(tmp_path / "x.pdf"),
+            "--tar",
+            str(tmp_path / "nope.tar"),
+            "--generated",
+            "2026-09-29T12:00:00",
+        ]
+    )
+    assert code == 2
+    assert "--generated" in err and "timezone" in err

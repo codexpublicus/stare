@@ -25,7 +25,9 @@ SRC = "a" * 64
 OUT = "b" * 64
 
 
-def _report(*, failing: bool = False, recorded: str | None = SRC) -> VerifyReport:
+def _report(
+    *, failing: bool = False, recorded: str | None = SRC, tools: dict | None = None
+) -> VerifyReport:
     failures = (
         (Failure("image_pixels", "1 pixel differs, within x 7-7, y 9-9", 2, 871, "839"),)
         if failing
@@ -52,7 +54,7 @@ def _report(*, failing: bool = False, recorded: str | None = SRC) -> VerifyRepor
         encoder="jbig2enc 0.28",
         encoder_settings="jbig2 -p -d (lossless generic region coding)",
         checks=checks,
-        tools={"pdfimages": "pdfimages version 24.02.0", "pikepdf": "10.15.0"},
+        tools={"pdfimages": "pdfimages version 24.02.0", "pikepdf": "10.15.0", **(tools or {})},
     )
 
 
@@ -123,9 +125,17 @@ def test_manifest_records_tool_versions_and_image_pins():
     assert m["tools"]["stare-archival"] == __version__
     assert m["tools"]["pdfimages"] == "pdfimages version 24.02.0"
     assert {"python", "pikepdf", "qpdf", "pillow", "lxml"} <= set(m["tools"])
-    assert m["pins"] == {"jbig2": PINNED_JBIG2_IMAGE, "verapdf": PINNED_VERAPDF_IMAGE}
     assert m["build"] is None
     _validate(m)
+
+
+def test_pins_list_only_the_images_this_volume_used():
+    # a G4 build, or jbig2 from PATH, verified without veraPDF: no container image involved
+    assert build_manifest(_report(), generated=GENERATED)["pins"] == {}
+    report = _report(tools={"verapdf": "veraPDF 1.30.2", "verapdf_image": PINNED_VERAPDF_IMAGE})
+    m = build_manifest(report, jbig2_image=PINNED_JBIG2_IMAGE, generated=GENERATED)
+    _validate(m)
+    assert m["pins"] == {"jbig2": PINNED_JBIG2_IMAGE, "verapdf": PINNED_VERAPDF_IMAGE}
 
 
 def test_failing_manifest_lists_the_failures_with_their_page():
