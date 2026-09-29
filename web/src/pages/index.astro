@@ -1,4 +1,5 @@
 ---
+import SiteFooter from '../components/SiteFooter.astro';
 import '../styles/theme.css';
 import '../styles/layout.css';
 import '../styles/reader.css';
@@ -97,13 +98,7 @@ import '../styles/reader.css';
 				<a href="/about" class="landing-link">About this project</a>
 			</div>
 
-			<div class="landing-footer">
-				Built with &hearts; by <a href="https://github.com/lokkju" target="_blank" rel="noopener">lokkju</a>
-				<span class="landing-link-sep">&middot;</span>
-				<a href="mailto:info@codexpublicus.org">info@codexpublicus.org</a>
-				<span class="landing-link-sep">&middot;</span>
-				<a href="https://x.com/lokkju" target="_blank" rel="noopener">@lokkju</a>
-			</div>
+			<SiteFooter variant="landing" />
 		</div>
 
 		<!-- Resolved state (hidden initially) -->

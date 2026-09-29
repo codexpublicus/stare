@@ -93,16 +93,18 @@
 }
 
 .landing-links { margin-top: 2rem; font-size: 0.85rem; }
-.landing-footer { margin-top: 3rem; font-size: 0.8rem; color: var(--text-tertiary); }
-.landing-footer a { color: var(--text-secondary); text-decoration: none; }
-.landing-footer a:hover { color: var(--link); }
-
-.page-footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); font-size: 0.8rem; color: var(--text-tertiary); }
-.page-footer a { color: var(--text-secondary); text-decoration: none; }
-.page-footer a:hover { color: var(--link); }
+/* SiteFooter.astro, shared by every page. */
+.site-footer { margin-top: 3rem; font-size: 0.8rem; color: var(--text-tertiary); }
+.site-footer--landing { text-align: center; }
+.site-footer--page { padding-top: 1.5rem; border-top: 1px solid var(--border); }
+.site-footer p, .page .site-footer p { margin: 0; font-size: inherit; line-height: 1.6; color: inherit; }
+.site-footer-build { margin-top: 0.25rem; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.75rem; }
+.site-footer a, .page .site-footer a { color: var(--text-secondary); text-decoration: none; }
+.site-footer a:hover, .page .site-footer a:hover { color: var(--link); text-decoration: none; }
+.site-footer-sep { color: var(--text-tertiary); margin: 0 0.5rem; }
+.site-footer-data::before { content: "\00b7"; margin: 0 0.5rem; }
 .landing-link { color: var(--text-secondary); text-decoration: none; transition: color 0.15s; }
 .landing-link:hover { color: var(--link); }
-.landing-link-sep { color: var(--text-tertiary); margin: 0 0.5rem; }
 
 /* Shared page layout for About, Check, etc. */
 .page { max-width: 680px; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
@@ -112,8 +114,16 @@
 .page a { color: var(--link); text-decoration: none; }
 .page a:hover { text-decoration: underline; }
 .page ul { margin: 0.5rem 0 1rem 1.5rem; font-size: 0.95rem; line-height: 1.7; color: var(--text-body); }
-.page .back-link { display: inline-block; margin-top: 2rem; font-size: 0.9rem; color: var(--text-secondary); }
-.page .back-link:hover { color: var(--link); }
+.page h3 { font-size: 0.95rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.25rem; }
+
+/* /about "What's new", rendered from CHANGELOG.md at build time. */
+.whats-new-release { margin-top: 1.25rem; }
+.whats-new-release h3 { margin-top: 0; }
+.whats-new-date { color: var(--text-tertiary); font-weight: 400; }
+.whats-new-group { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); font-weight: 600; margin: 0.5rem 0 0; }
+.page .whats-new-release ul { margin-top: 0.25rem; font-size: 0.9rem; }
+.back-link, .page .back-link { display: inline-block; margin-top: 2rem; font-size: 0.9rem; color: var(--text-secondary); text-decoration: none; }
+.back-link:hover, .page .back-link:hover { color: var(--link); }
 .page-topbar { background: var(--topbar-bg); color: var(--topbar-text); padding: 8px 16px; font-size: 14px; }
 .page-topbar { display: flex; align-items: center; justify-content: space-between; }
 .page-topbar a, .page-topbar a:visited { color: var(--topbar-text); text-decoration: none; font-weight: 700; letter-spacing: -0.5px; }
