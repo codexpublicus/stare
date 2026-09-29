@@ -35,3 +35,12 @@ def jbig2_encoder():
     if enc is None:
         pytest.skip("jbig2 is not available (no jbig2 on PATH, no $STARE_JBIG2, no local image)")
     return enc
+
+
+@pytest.fixture(autouse=True)
+def _skip_poppler_tests_without_poppler(request):
+    """Tests marked `poppler` skip when pdfimages or pdftotext isn't on PATH."""
+    from stare_archival.external import Poppler
+
+    if request.node.get_closest_marker("poppler") and Poppler.locate() is None:
+        pytest.skip("poppler (pdfimages, pdftotext) is not on PATH")

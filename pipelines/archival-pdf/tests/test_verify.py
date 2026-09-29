@@ -61,16 +61,64 @@ def test_compare_page_text_passes_when_words_and_positions_agree():
     got = [_word("v.", 45.1, 19, 50.1, 31), _word("Bondy", 10, 18.6, 40, 31.2)]
     result = compare_page_text(expected, got, tolerance=1.0)
     assert result.chars_ok and result.positions_ok
-    assert result.matched == 2 and result.unmatched == 0
+    assert (result.exact, result.split, result.merged) == (2, 0, 0)
     assert result.max_deviation == pytest.approx(0.1)
+    assert result.characters == 7 and result.at_risk == 0
 
 
 def test_compare_page_text_ignores_whitespace_and_hyphens():
     expected = [_word("argu-", 0, 0, 10, 10), _word("ment", 0, 12, 10, 22)]
-    got = [_word("argument", 0, 0, 20, 10)]
+    got = [_word("argu\u00ad", 0, 0, 10, 10), _word(" ment", 0, 12, 10, 22)]
+    assert compare_page_text(expected, got, tolerance=1.0).chars_ok
+
+
+def test_words_pdftotext_merges_are_placed_across_their_alto_boxes():
+    expected = [_word("of", 126.5, 72.0, 135.6, 79.7), _word("the", 139.2, 70.8, 151.7, 79.7)]
+    got = [_word("ofthe", 126.5, 70.4, 151.7, 80.1)]
     result = compare_page_text(expected, got, tolerance=1.0)
-    assert result.chars_ok
-    assert result.unmatched == 2  # words pdftotext merged can't be positioned
+    assert result.chars_ok and result.positions_ok
+    assert result.merged == 1
+
+
+def test_words_pdftotext_splits_are_placed_inside_their_alto_box():
+    # an OCR'd margin note: several words in one squeezed ALTO String
+    expected = [_word("on the part", 40.08, 444.0, 53.76, 449.76)]
+    got = [
+        _word("on", 40.08, 443.5, 42.6, 450.3),
+        _word("the", 42.6, 443.5, 46.3, 450.3),
+        _word("part", 46.3, 443.5, 53.76, 450.3),
+    ]
+    result = compare_page_text(expected, got, tolerance=1.0)
+    assert result.chars_ok and result.positions_ok
+    assert result.split == 3
+
+
+def test_characters_poppler_drops_as_duplicates_are_allowed_not_required():
+    # "appointed" squeezed to under 0.1 em per glyph: poppler drops one overlapping "p"
+    squeezed = _word("appointed", 76.8, 343.92, 87.12, 355.68)
+    got = [_word("ap", 76.8, 343.5, 79.1, 356.1), _word("ointed", 79.4, 343.5, 87.12, 356.1)]
+    result = compare_page_text([squeezed], got, tolerance=1.0)
+    assert result.chars_ok and result.positions_ok
+    assert (result.at_risk, result.dropped) == (9, 1)
+    # a word the ALTO lists twice at one place: poppler keeps one copy
+    twice = [_word(".", 77.8, 175.4, 79.0, 176.9), _word(".", 77.8, 175.4, 79.0, 176.9)]
+    result = compare_page_text(twice, [_word(".", 77.8, 175.2, 79.0, 177.2)], tolerance=1.0)
+    assert result.chars_ok and (result.at_risk, result.dropped) == (1, 1)
+    # but a normal word's characters are required
+    result = compare_page_text(
+        [_word("appointed", 10, 0, 60, 10)], [_word("apointed", 10, 0, 60, 10)], tolerance=1.0
+    )
+    assert result.missing == {"p": 1}
+
+
+def test_poppler_may_drop_characters_but_never_adds_them():
+    squeezed = _word("1***VL", 74.6, 79.4, 80.6, 90.2)
+    got = [_word("1*", 74.6, 77.8, 76.6, 92.4), _word("*VL", 77.6, 77.8, 80.6, 92.4)]
+    assert compare_page_text([squeezed], got, tolerance=1.0).chars_ok
+    # four stars where the ALTO has three
+    star = _word("*", 78, 77.8, 79, 92.4)
+    result = compare_page_text([squeezed], [*got, star, star], tolerance=1.0)
+    assert result.extra == {"*": 1}
 
 
 def test_compare_page_text_reports_missing_and_extra_characters():
@@ -184,7 +232,7 @@ def test_a_good_g4_build_passes_every_check(g4_pdf, poppler):
     assert pixels.detail["pages_compared"] == 4
     assert pixels.detail["decoders"] == {"/CCITTFaxDecode": "pikepdf"}
     text = report.check("text_positions")
-    assert text.detail["words_positioned"] == 302 + 251
+    assert text.detail["words_exact"] == text.detail["words_extracted"] == 302 + 251
     assert text.detail["tolerance_pt"] == 1.0
     assert text.detail["max_deviation_pt"] < 0.5
     assert report.tools["pdftotext"].startswith("pdftotext version")
