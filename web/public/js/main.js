@@ -1,5 +1,5 @@
 import { parseInput, resolve, extractCase } from './resolve.js';
-import { renderReader, renderSidebar, renderMultiNotice } from './ui.js';
+import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } from './ui.js';
 import { getHashParams, setHash, onHashChange } from './router.js';
 import { processCitations, setupCiteHovers } from './citations.js';
 import { renderPageViewer } from './pageviewer.js';
@@ -104,6 +104,13 @@ async function showResolved(result) {
   // one page re-renders each with its own offsets.
   const citationsByCase = new Map();
   let shownCaseFile = null;
+  // Handle on the cited-cases section's label/status/list elements for the
+  // case currently shown, returned by renderSidebar. highlightCase updates
+  // them in place through updateCitationStatus rather than calling
+  // renderSidebar again, so the element carrying role="status"
+  // aria-live="polite" stays the same node across the loading ->
+  // done/error transition.
+  let citationStatusHandle = null;
 
   renderMultiNotice(multiEl, result.allCases, result.caseFile, switchCase);
   statusBar.classList.add('hidden');
@@ -115,7 +122,10 @@ async function showResolved(result) {
     shownCaseFile = caseFile;
     const cached = citationsByCase.get(caseFile) || null;
     renderReader(readerContent, caseData, cached);
-    renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases, cached?.unique || null);
+    citationStatusHandle = renderSidebar(
+      sidebar, caseData, result.reporter, result.volume, result.allCases,
+      cached?.unique || null, cached ? 'done' : 'loading'
+    );
     wireActions(actions);
     if (cached) {
       setupCiteHovers(readerContent, resolve);
@@ -125,21 +135,30 @@ async function showResolved(result) {
   }
 
   // Process citations in background, then re-render with them if this
-  // case is still the one shown.
+  // case is still the one shown. Always updates the cited-cases live
+  // region on completion (success or failure), so the "Finding
+  // citations..." state never gets stuck. Updates the region in place
+  // (updateCitationStatus) rather than re-rendering the whole sidebar, so
+  // the element announcing the change is the one already on the page, not
+  // a freshly created replacement a screen reader never saw appear.
   async function highlightCase(caseFile, caseData, actions) {
+    const handle = citationStatusHandle;
     try {
       const { unique, occurrencesByOpinion } = await processCitations(caseData);
       const citationMap = new Map(unique.map(c => [c.raw, c]));
       const citations = { unique, citationMap, occurrencesByOpinion };
       // Cache empty results too, so switching back doesn't detect again.
       citationsByCase.set(caseFile, citations);
-      if (unique.length === 0 || shownCaseFile !== caseFile) return;
-      renderReader(readerContent, caseData, citations);
-      renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases, unique);
-      wireActions(actions);
+      if (shownCaseFile !== caseFile) return;
+      if (unique.length > 0) {
+        renderReader(readerContent, caseData, citations);
+      }
+      updateCitationStatus(handle, caseData, unique, 'done');
       setupCiteHovers(readerContent, resolve);
     } catch (e) {
       console.warn('Citation detection failed:', e);
+      if (shownCaseFile !== caseFile) return;
+      updateCitationStatus(handle, caseData, null, 'error');
     }
   }
 

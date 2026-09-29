@@ -27,6 +27,10 @@
 .cited-status.ext { color: var(--link); font-size: 13px; }
 .cited-status.no { color: var(--status-no); }
 
+.citation-status-text { padding: 4px 0; font-size: 13px; color: var(--text-secondary); min-height: 1.2em; }
+.citation-status-text.citation-status-error { color: var(--error-text); }
+.citation-status-text:empty { padding: 0; min-height: 0; }
+
 .sidebar-action { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--sidebar-action); text-decoration: none; font-size: 13px; cursor: pointer; transition: color 0.15s; }
 .sidebar-action:hover { color: var(--text); }
 .sidebar-action-icon { width: 16px; text-align: center; font-size: 14px; }
