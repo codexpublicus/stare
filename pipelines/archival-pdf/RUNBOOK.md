@@ -11,7 +11,7 @@ What's where on ml-01:
 | Docker volume | Mounted at | Holds |
 |---|---|---|
 | `codexpublicus-cap-mirror` | `/mirror` (read-only) | the mirror, `downloads/<reporter>/<volume>.{tar,tar.csv,tar.sha256}` |
-| `codexpublicus-derived` | `/out` | the output: `cap-pdf/<reporter>/<volume>.pdf`, `cap-pdf/_manifests/<reporter>/<volume>.json`, plus `failed/`, `runs/` |
+| `codexpublicus-derived` | `/out` | the output: `cap-pdf/<reporter>/<volume>.pdf`, `cap-pdf/_manifests/<reporter>/<volume>.json`, plus `.staging/` (volumes being verified), `failed/`, `runs/` |
 
 Scratch files (jbig2's page files, pdfimages' chunks) go to `/tmp/archival-work` inside the
 container, which is ml-01's local disk, not the share. The whole output is about 1.6 TB and
@@ -29,19 +29,21 @@ git -C ~/projects/lokkju/codexpublicus/stare fetch origin
 ```
 
 ```sh
-git -C ~/projects/lokkju/codexpublicus/stare archive origin/main:pipelines/archival-pdf | ssh ml-01 "DOCKER_BUILDKIT=1 docker build --build-arg REVISION=$(git -C ~/projects/lokkju/codexpublicus/stare rev-parse origin/main) -t stare-archival:$(git -C ~/projects/lokkju/codexpublicus/stare rev-parse --short=12 origin/main) -t stare-archival:current -"
+git -C ~/projects/lokkju/codexpublicus/stare archive origin/main:pipelines/archival-pdf | ssh ml-01 "DOCKER_BUILDKIT=1 docker build --build-arg REVISION=$(git -C ~/projects/lokkju/codexpublicus/stare rev-parse origin/main:pipelines/archival-pdf) --build-arg COMMIT=$(git -C ~/projects/lokkju/codexpublicus/stare rev-parse origin/main) -t stare-archival:$(git -C ~/projects/lokkju/codexpublicus/stare rev-parse --short=12 origin/main) -t stare-archival:current -"
 ```
 
 ```sh
 ssh ml-01 'docker image inspect --format "{{.Id}} {{.Size}}" stare-archival:current && docker run --user 1000:1000 --rm --entrypoint sh stare-archival:current -c "jbig2 --version; pdfimages -v 2>&1 | head -1; rclone version | head -1; stare-archival --version; echo \$STARE_ARCHIVAL_REVISION"'
 ```
 
-Expect jbig2enc 0.28, pdfimages 24.02.0, rclone v1.75.1, stare-archival 0.1.0 and the
-commit you built.
+Expect jbig2enc 0.28, pdfimages 24.02.0, rclone v1.75.1, stare-archival 0.1.0 and the git
+tree hash of `pipelines/archival-pdf` you built (the image's `org.opencontainers.image.revision`
+label has the commit).
 
-The run records the image id in every manifest (`pins.pipeline`) and the commit in its tools
-(`stare-archival-revision`). A volume counts as done only for the same commit, so an image
-built from a later commit rebuilds everything; rebuild the image only when you mean that.
+The run records the image id in every manifest (`pins.pipeline`) and that tree hash in its
+tools (`stare-archival-revision`). A volume counts as done only for the same tree hash, so an
+image built after a change to `pipelines/archival-pdf` rebuilds everything, while a rebuild
+after commits elsewhere in the repo doesn't.
 
 ## 2. Preflight
 
@@ -55,10 +57,12 @@ The output share is writable by uid/gid 1000, the datasets' owner and the image'
 Every `docker run` here passes `--user 1000:1000` explicitly:
 
 ```sh
-ssh ml-01 'docker run --user 1000:1000 --rm --entrypoint sh -v codexpublicus-derived:/out stare-archival:current -c "id; stat -c \"%u:%g %A\" /out; touch /out/.write-probe && rm /out/.write-probe && echo writable"'
+ssh ml-01 'docker run --user 1000:1000 --rm --entrypoint sh -v codexpublicus-derived:/out stare-archival:current -c "id; stat -c \"%u:%g %A\" /out; touch /out/.write-probe && rm /out/.write-probe && echo writable; df -h /out /tmp"'
 ```
 
-Expect `1000:1000` from `stat` and `writable`. If the owner has changed, use the uid:gid
+Expect `1000:1000` from `stat`, `writable`, at least 1.8 TB available on `/out` (the output
+is about 1.6 TB, plus up to 32 volumes in `.staging/`), and a few GB on `/tmp` (scratch, up to
+about 100 MB per worker). If the owner has changed, use the uid:gid
 `stat` printed in place of `1000:1000` in every command below; the image runs under any
 uid.
 
@@ -115,7 +119,11 @@ stare-archival build-all, run 20260929T205448Z: OK
 ```
 
 - `OK` means every selected volume passed or was already done. `INCOMPLETE` lists each
-  problem below the counts.
+  problem below the counts; `stopped:` says why a run ended early (`interrupted`, `disk
+  guard: ...`, or `crashed: ...` when the runner itself failed, which exits 2).
+- `pass` is a volume built and verified here and kept on disk. `uploaded` (streaming mode
+  only) is one uploaded and checked remotely, whether built in this run or only uploaded
+  after an earlier upload failed. `skipped` was already done.
 - `fail` is a volume that built but failed a check. Its line names the checks with their
   failure counts, e.g. `FAIL a2d/152: image_pixels (1)`. The manifest, with every failure's
   page, METS order, printed label and message, is `failed/<reporter>/<volume>.json`, and the
@@ -207,6 +215,11 @@ ssh ml-01 'docker run --user 1000:1000 --rm --init -e STARE_ARCHIVAL_IMAGE="$(do
 
 ## 6. Upload to codex-data
 
+Upload only after the last `build-all` exited 0 (`docker wait` printed 0), or use the
+streaming mode below. `cap-pdf/` only ever holds verified PDFs and their manifests (volumes
+are built in `.staging/` and moved in once they pass), and the commands below also exclude
+temp and staging files as a second guard.
+
 Pulumi only from a checkout on current `origin/main` (codexpublicus/infra's rule):
 
 ```sh
@@ -223,14 +236,14 @@ printf 'RCLONE_CONFIG_R2_TYPE=s3\nRCLONE_CONFIG_R2_PROVIDER=Cloudflare\nRCLONE_C
 Dry run first (lists what it would copy, uploads nothing):
 
 ```sh
-ssh ml-01 'docker run --user 1000:1000 --rm --init --env-file ~/codex-data-rw.env -v codexpublicus-derived:/out:ro --entrypoint rclone stare-archival:current copy /out/cap-pdf r2:codex-data/cap-pdf --dry-run --s3-upload-cutoff 4G 2>&1 | tail -8'
+ssh ml-01 'docker run --user 1000:1000 --rm --init --env-file ~/codex-data-rw.env -v codexpublicus-derived:/out:ro --entrypoint rclone stare-archival:current copy /out/cap-pdf r2:codex-data/cap-pdf --exclude "*.tmp" --exclude ".staging/**" --dry-run --s3-upload-cutoff 4G 2>&1 | tail -8'
 ```
 
 The upload, detached. `--s3-upload-cutoff 4G` sends each file as one PUT, so R2's ETag is an
 MD5 it computed itself, which the check below compares; the local copy stays:
 
 ```sh
-ssh ml-01 'docker run --user 1000:1000 -d --name archival-upload --init --env-file ~/codex-data-rw.env -v codexpublicus-derived:/out:ro --entrypoint rclone stare-archival:current copy /out/cap-pdf r2:codex-data/cap-pdf --checksum --s3-upload-cutoff 4G --transfers 16 --checkers 32 --stats 1m --stats-one-line'
+ssh ml-01 'docker run --user 1000:1000 -d --name archival-upload --init --env-file ~/codex-data-rw.env -v codexpublicus-derived:/out:ro --entrypoint rclone stare-archival:current copy /out/cap-pdf r2:codex-data/cap-pdf --exclude "*.tmp" --exclude ".staging/**" --checksum --s3-upload-cutoff 4G --transfers 16 --checkers 32 --stats 1m --stats-one-line'
 ```
 
 ```sh
@@ -243,10 +256,11 @@ already there with the same MD5.
 Check every local file against the bucket (expect `0 differences found`):
 
 ```sh
-ssh ml-01 'docker run --user 1000:1000 --rm --init --env-file ~/codex-data-rw.env -v codexpublicus-derived:/out:ro --entrypoint rclone stare-archival:current check --one-way /out/cap-pdf r2:codex-data/cap-pdf 2>&1 | tail -5'
+ssh ml-01 'docker run --user 1000:1000 --rm --init --env-file ~/codex-data-rw.env -v codexpublicus-derived:/out:ro --entrypoint rclone stare-archival:current check --one-way /out/cap-pdf r2:codex-data/cap-pdf --exclude "*.tmp" --exclude ".staging/**" 2>&1 | tail -5'
 ```
 
-Remove the key file and the finished container:
+Remove the key file and the finished container (its config holds the keys from
+`--env-file`):
 
 ```sh
 ssh ml-01 'shred -u ~/codex-data-rw.env && docker rm archival-upload'
@@ -259,14 +273,34 @@ its manifest, each checked by remote size and MD5. The runner writes a receipt t
 `uploaded/<reporter>/<volume>.json` and deletes the local PDF, keeping the manifest. A
 volume with a matching receipt counts as done without its PDF; a failed upload keeps the
 PDF, and the next run uploads it without rebuilding. `--max-local-bytes` holds new volumes
-back while the PDFs waiting on local disk plus each running volume's tar size would pass the
-limit, and stops the run (`stopped: disk guard ...`) if nothing is running and there's still
-no room. For example, into a local directory with a 300 GiB ceiling:
+back while the PDFs on local disk plus the tar size of each running volume that has to build
+would pass the limit, and stops the run (`stopped: disk guard ...`) if nothing is running and
+there's still no room. Volumes that only need an upload reserve nothing and run first, so a
+run after an upload outage uploads before it builds.
+
+The output directory must exist and belong to uid 1000 (Docker would create a missing one as
+root):
+
+```sh
+ssh -t ml-01 'sudo install -d -o 1000 -g 1000 /nvme/archival-pdf'
+```
+
+Create the key file with step 6's Pulumi command, then start the run, here with a 300 GiB
+ceiling:
 
 ```sh
 ssh ml-01 'docker run --user 1000:1000 -d --name archival-stream --init --env-file ~/codex-data-rw.env -e STARE_ARCHIVAL_IMAGE="$(docker image inspect --format "{{.Id}}" stare-archival:current)" -v codexpublicus-cap-mirror:/mirror:ro -v /nvme/archival-pdf:/out stare-archival:current build-all --src /mirror/downloads --out /out --work /tmp/archival-work --jobs 32 --upload r2:codex-data --max-local-bytes 300G'
 ```
 
+Watch it with `docker logs --tail 20 archival-stream`, stop and resume it as in step 5 (with
+this container's name and command).
+
 In this mode each PDF's record is the size and MD5 check made when it was uploaded, kept in
-its receipt; the PDFs are gone from local disk, so the `rclone check --one-way` of step 6
-covers only the manifests still there.
+its receipt; the PDFs are gone from local disk, so a `rclone check --one-way` of
+`/out/cap-pdf` covers only the manifests still there.
+
+When it has finished, remove the key file and the container, whose config holds the keys:
+
+```sh
+ssh ml-01 'shred -u ~/codex-data-rw.env && docker rm archival-stream'
+```
