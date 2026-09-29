@@ -205,3 +205,13 @@ def test_manifest_succeeded_needs_a_pass_for_the_same_source():
     assert not manifest_succeeded(build_manifest(_report(failing=True), generated=GENERATED), SRC)
     err = error_manifest("a2d/152", "boom", source_sha256=SRC, generated=GENERATED)
     assert not manifest_succeeded(err, SRC)
+
+
+def test_the_pipeline_image_is_pinned_when_given():
+    image = "stare-archival@sha256:" + "e" * 64
+    m = build_manifest(_report(), pipeline_image=image, generated=GENERATED)
+    assert m["pins"] == {"pipeline": image}
+    jsonschema.validate(m, manifest_schema())
+    e = error_manifest("a2d/152", "BuildError: x", pipeline_image=image, generated=GENERATED)
+    assert e["pins"] == {"pipeline": image}
+    jsonschema.validate(e, manifest_schema())
