@@ -8,6 +8,9 @@
 //   node scripts/calver.mjs [YYYY-MM-DD]
 //     prints the next tag, reading existing tags from `git tag`; the date
 //     defaults to today (UTC)
+//   node scripts/calver.mjs --next [YYYY-MM-DD] < tags
+//     the same, reading the existing tags from stdin (release.yml lists them
+//     through the API, since its checkout can't fetch)
 //   node scripts/calver.mjs --newest < tags
 //     prints the newest release tag in a newline-separated list on stdin, or
 //     nothing when there is none
@@ -58,8 +61,11 @@ export function newestCalver(tags) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  if (process.argv[2] === '--newest') {
-    const newest = newestCalver(readFileSync(0, 'utf8').split('\n'));
+  const stdinTags = () => readFileSync(0, 'utf8').split('\n');
+  if (process.argv[2] === '--next') {
+    process.stdout.write(`${nextCalver(process.argv[3] ?? new Date(), stdinTags())}\n`);
+  } else if (process.argv[2] === '--newest') {
+    const newest = newestCalver(stdinTags());
     if (newest) process.stdout.write(`${newest}\n`);
   } else {
     const date = process.argv[2] ?? new Date();

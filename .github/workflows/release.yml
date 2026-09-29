@@ -1,20 +1,28 @@
 name: release
 
-# The one path to production. Runs when the release PR (branch release/next,
-# kept up to date by release-prepare.yml) is merged:
+# The sanctioned path to production. Runs when the bot's release PR (branch
+# release/next, kept up to date by release-prepare.yml) is merged into main:
 #
-#   1. compute vYYYY.MM.DD.N at merge time (scripts/calver.mjs; N is one more
-#      than the day's highest existing release);
-#   2. wait for the merge commit's push checks (site.yml) and refuse if any failed;
-#   3. build and check the merge commit, with a changelog regenerated for the tag;
-#   4. tag the merge commit and create the GitHub Release with git-cliff notes;
-#   5. deploy production (stare.pub) with wrangler.
+# build (contents: read, no git credentials on disk):
+#   1. wait for the merge commit's push checks (site.yml) and refuse if any failed;
+#   2. compute vYYYY.MM.DD.N from the tags as they are after the wait
+#      (scripts/calver.mjs; N is one more than the day's highest release);
+#   3. build and check the merge commit, with a changelog regenerated for the tag,
+#      and hand web/dist and the notes to the next job as an artifact.
+# release (contents: write, runs no build code):
+#   4. create the tag on the merge commit through the API, refusing if it exists
+#      elsewhere, and the GitHub Release with the git-cliff notes;
+#   5. refuse if a newer release tag exists, so a re-run can't roll production back;
+#   6. deploy production (stare.pub) with wrangler;
+#   7. dispatch release-prepare.yml so the release PR and CHANGELOG.md catch up.
 #
-# All of it is one job because a tag or release created with GITHUB_TOKEN doesn't
-# trigger other workflows; nothing listens for `push: tags` or `release`.
+# The tag, release and deploy share one job, and nothing listens for
+# `push: tags` or `release`, because a tag or release created with GITHUB_TOKEN
+# doesn't trigger other workflows.
 #
-# Re-running a failed run is safe: if the merge commit already has a release tag,
-# the run reuses it instead of cutting a new one, and only creates what's missing.
+# Re-running is safe: if the merge commit already has a release tag, the build
+# reuses it (and only while it's still the newest release), and the release job
+# only creates what's missing.
 
 on:
   pull_request:
@@ -23,53 +31,46 @@ on:
     branches:
       - main
 
+# Only real release runs share the group; every other PR closure gets a group of
+# its own, so it can't displace a queued release.
 concurrency:
-  group: site-release
+  group: >-
+    ${{ (github.event.pull_request.merged == true &&
+    github.event.pull_request.head.ref == 'release/next')
+    && 'site-release' || format('release-skip-{0}', github.run_id) }}
   cancel-in-progress: false
 
 permissions: {}
 
+env:
+  SHA: ${{ github.event.pull_request.merge_commit_sha }}
+  GH_REPO: ${{ github.repository }}
+
 jobs:
-  release:
-    name: Release and deploy production
+  build:
+    name: Build the release
     if: >-
       github.event.pull_request.merged == true &&
       github.event.pull_request.head.ref == 'release/next' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == 'github-actions[bot]'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       actions: read
-    env:
-      SHA: ${{ github.event.pull_request.merge_commit_sha }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
-
-      - name: Compute the release tag
-        id: version
-        run: |
-          set -euo pipefail
-          existing=$(git tag --points-at HEAD --list 'v[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9].*' | head -n1)
-          if [ -n "$existing" ]; then
-            echo "Merge commit is already tagged $existing (a re-run); reusing it."
-            version=$existing
-          else
-            version=$(node scripts/calver.mjs)
-            if git rev-parse --verify --quiet "refs/tags/$version" >/dev/null; then
-              echo "::error::Tag $version already exists on another commit"
-              exit 1
-            fi
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Release: $version at $SHA"
+          persist-credentials: false
 
       - name: Wait for the merge commit's checks
         env:
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           # The merge commit's push to main runs site.yml (and the other push
@@ -78,7 +79,7 @@ jobs:
           # failure: release-prepare, say, may be cancelled by a newer push.
           deadline=$(( $(date +%s) + 60 * 60 ))
           while :; do
-            runs=$(gh api "repos/$REPO/actions/runs?head_sha=$SHA&event=push&per_page=100" \
+            runs=$(gh api "repos/$GH_REPO/actions/runs?head_sha=$SHA&event=push&per_page=100" \
               --jq '[.workflow_runs[] | {name, status, conclusion, url: .html_url}]')
             echo "$runs" | jq -r '.[] | "\(.name): \(.status)/\(.conclusion // "pending")"'
             site_done=$(echo "$runs" | jq '[.[] | select(.name == "site" and .status == "completed")] | length')
@@ -103,6 +104,40 @@ jobs:
             exit 1
           fi
 
+      - name: Compute the release tag
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Read the tags now, after the wait, through the API; the checkout's
+          # tags are as old as the start of the job.
+          gh api --paginate "repos/$GH_REPO/git/matching-refs/tags/v" \
+            --jq '.[] | "\(.ref | sub("^refs/tags/"; "")) \(.object.sha)"' > "$RUNNER_TEMP/tags.txt"
+          cut -d' ' -f1 "$RUNNER_TEMP/tags.txt" > "$RUNNER_TEMP/tag-names.txt"
+          newest=$(node scripts/calver.mjs --newest < "$RUNNER_TEMP/tag-names.txt")
+          existing=$(awk -v sha="$SHA" '$2 == sha { print $1 }' "$RUNNER_TEMP/tags.txt" \
+            | node scripts/calver.mjs --newest)
+          if [ -n "$existing" ]; then
+            if [ "$existing" != "$newest" ]; then
+              echo "::error::$SHA is $existing, but $newest is newer; re-running would roll production back"
+              exit 1
+            fi
+            echo "Merge commit is already tagged $existing (a re-run); reusing it."
+            version=$existing
+            rerun=true
+          else
+            version=$(node scripts/calver.mjs --next < "$RUNNER_TEMP/tag-names.txt")
+            if [ -n "$newest" ] && [ "$(printf '%s\n%s\n' "$newest" "$version" | node scripts/calver.mjs --newest)" != "$version" ]; then
+              echo "::error::$newest is newer than the computed $version"
+              exit 1
+            fi
+            rerun=false
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "rerun=$rerun" >> "$GITHUB_OUTPUT"
+          echo "Release: $version at $SHA"
+
       - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
         with:
           tool: git-cliff@2.14.2
@@ -110,19 +145,27 @@ jobs:
       - name: Release notes and changelog
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          RERUN: ${{ steps.version.outputs.rerun }}
         run: |
           set -euo pipefail
-          # On a re-run the tag may already exist; describe the range that ends at it.
-          if git rev-parse --verify --quiet "refs/tags/$VERSION" >/dev/null; then
-            git cliff --latest --strip all > "$RUNNER_TEMP/release-notes.md"
+          mkdir -p "$RUNNER_TEMP/release"
+          if [ "$RERUN" = true ]; then
+            # The tag exists; describe exactly the range that ends at it.
+            if prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$VERSION^" 2>/dev/null); then
+              git cliff "$prev..$VERSION" --strip all > "$RUNNER_TEMP/release/notes.md"
+            else
+              # The first release: no earlier tag, and the check above made sure
+              # it's the newest, so --latest is exactly this tag's range.
+              git cliff --latest --strip all > "$RUNNER_TEMP/release/notes.md"
+            fi
             git cliff --output CHANGELOG.md
           else
-            git cliff --unreleased --tag "$VERSION" --strip all > "$RUNNER_TEMP/release-notes.md"
+            git cliff --unreleased --tag "$VERSION" --strip all > "$RUNNER_TEMP/release/notes.md"
             # Not committed: /about renders this build's changelog, headed with the
             # real tag even if the release PR previewed a different date.
             git cliff --tag "$VERSION" --output CHANGELOG.md
           fi
-          cat "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release/notes.md"
 
       - uses: ./.github/actions/build-site
         with:
@@ -130,28 +173,94 @@ jobs:
           release: ${{ steps.version.outputs.version }}
           commit: ${{ github.event.pull_request.merge_commit_sha }}
 
-      - name: Tag and create the GitHub Release
+      - name: Collect the release files
+        run: |
+          set -euo pipefail
+          cp -R web/dist "$RUNNER_TEMP/release/dist"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release
+          path: ${{ runner.temp }}/release
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Release and deploy production
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      # For wrangler.jsonc and scripts/calver.mjs; nothing here builds or installs
+      # the repo's code.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release
+          path: ${{ runner.temp }}/release
+
+      - name: Tag the merge commit
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/$VERSION" -f sha="$SHA" >/dev/null 2>&1; then
+            echo "Created $VERSION at $SHA"
+          else
+            actual=$(gh api "repos/$GH_REPO/git/ref/tags/$VERSION" --jq .object.sha)
+            if [ "$actual" != "$SHA" ]; then
+              echo "::error::$VERSION already exists on $actual, not $SHA; re-run to compute a new tag"
+              exit 1
+            fi
+            echo "$VERSION already points at $SHA (a re-run)"
+          fi
+
+      - name: Refuse if a newer release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          newest=$(gh api --paginate "repos/$GH_REPO/git/matching-refs/tags/v" \
+            --jq '.[].ref | sub("^refs/tags/"; "")' | node scripts/calver.mjs --newest)
+          if [ "$newest" != "$VERSION" ]; then
+            echo "::error::$newest is newer than $VERSION; not deploying an older release"
+            exit 1
+          fi
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if gh release view "$VERSION" >/dev/null 2>&1; then
             echo "Release $VERSION already exists (a re-run)."
           else
-            # Creates the tag on the merge commit when it doesn't exist yet.
-            gh release create "$VERSION" \
-              --target "$SHA" \
+            gh release create "$VERSION" --verify-tag \
               --title "$VERSION" \
-              --notes-file "$RUNNER_TEMP/release-notes.md"
+              --notes-file "$RUNNER_TEMP/release/notes.md"
           fi
 
       - name: Deploy production
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
+          rm -rf web/dist
+          mkdir -p web
+          cp -R "$RUNNER_TEMP/release/dist" web/dist
           npx --yes wrangler@4.141.0 deploy --tag "$VERSION" --message "Release $VERSION"
           echo "Deployed $VERSION ($SHA) to https://stare.pub" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Refresh the release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release-prepare.yml --ref main
