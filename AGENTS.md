@@ -20,6 +20,7 @@ docs/plans/static-case-law-mirror.md — Mirror of static.case.law: status, file
 docs/plans/extraction-plan.md       — Citation index + data pipeline: bin index, R2 layout, WASM client
 docs/plans/search-plan.md           — Search + data products: RoaringBuckets, DuckLake, comparisons
 mirror/                             — Docker compose + config for the aria2 mirror job
+pipelines/archival-pdf/             - archival per-volume PDF builder (#51): uv project, image, RUNBOOK.md
 ```
 
 ## Architecture
@@ -110,6 +111,23 @@ its declaration.
 
 Infrastructure changes go through PRs to codexpublicus/infra, not this repo. See that
 repo's `AGENTS.md` for the Pulumi, Wrangler and LFS rules that apply across the org.
+
+### Archival PDF pipeline (`pipelines/archival-pdf/`, #51)
+
+`stare-archival` builds one PDF/A-3b per volume from the mirror's tars (lossless JBIG2
+generic region images, the ALTO words as an invisible text layer, METS page labels, a
+bookmark per case), verifies every page's pixels and text against the tar, and writes a
+manifest per volume. `build-all` runs volumes in parallel and resumes from passing
+manifests for the same tar SHA-256, commit and tool versions. `mise run archival-test`
+runs ruff and pytest; `mise run archival-image` builds the pipeline image (native jbig2,
+poppler, rclone; bases pinned by digest) and `mise run archival-image-test` builds the
+fixture volume inside it. CI (`.github/workflows/pipelines.yml`) runs both.
+
+The operator runs it on ml-01 from `pipelines/archival-pdf/RUNBOOK.md`: the mirror is the
+read-only Docker volume `codexpublicus-cap-mirror`, the output goes to
+`codexpublicus-derived` (`cap-pdf/<reporter>/<volume>.pdf`,
+`cap-pdf/_manifests/<reporter>/<volume>.json`), and rclone uploads `cap-pdf/` to
+`codex-data/cap-pdf/`. Nothing in the pipeline writes to the mirror.
 
 ## Current Status
 
