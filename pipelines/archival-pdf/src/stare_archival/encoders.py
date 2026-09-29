@@ -24,7 +24,7 @@ from typing import Protocol, runtime_checkable
 
 import pikepdf
 import PIL
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageChops, UnidentifiedImageError
 
 from stare_archival.errors import EncodeError
 from stare_archival.images import PINNED_JBIG2_IMAGE
@@ -184,9 +184,10 @@ class ImageEncoder(Protocol):
 class G4Encoder:
     """Lossless CCITT G4 re-encode of the whole page into one strip (Pillow's libtiff).
 
-    Pillow writes mode "1" as MinIsBlack, which a PDF's CCITTFaxDecode (BlackIs1 false) would
-    show inverted, so the TIFF is written WhiteIsZero (PhotometricInterpretation 0). Each page
-    is decoded again and compared with the source pixels before it's returned.
+    CCITTFaxDecode with BlackIs1 false reads a 0 bit as black, the TIFF's WhiteIsZero. Pillow
+    writes mode "1" as MinIsBlack, so the page is inverted before it's written: the strip is
+    then the WhiteIsZero coding of the page. Each page is decoded again and compared with the
+    (inverted) source pixels before it's returned.
     """
 
     @property
@@ -201,9 +202,13 @@ class G4Encoder:
         with _open_tiff(tiff, path) as im:
             if im.mode != "1":
                 raise EncodeError(f"{path}: expected a bitonal (mode 1) page, got mode {im.mode}")
+            # Writing the inverted page with Pillow's default MinIsBlack gives the same G4
+            # strip as writing the page WhiteIsZero, about 30 times faster (libtiff through
+            # Pillow is slow with a PhotometricInterpretation override).
+            inverted = ImageChops.invert(im)
             buf = io.BytesIO()
-            im.save(buf, "TIFF", compression="group4", strip_size=2**31 - 1, tiffinfo={262: 0})
-            source_pixels = im.tobytes()
+            inverted.save(buf, "TIFF", compression="group4", strip_size=2**31 - 1)
+            source_pixels = inverted.tobytes()
             width, height = im.size
         encoded = buf.getvalue()
         with Image.open(io.BytesIO(encoded)) as out:

@@ -1,4 +1,4 @@
-"""Errors raised while reading a volume's tar and metadata."""
+"""Errors raised while reading, building and verifying a volume."""
 
 
 class ArchivalError(Exception):
@@ -27,3 +27,15 @@ class EncodeError(ArchivalError):
 
 class BuildError(ArchivalError):
     """A volume's PDF could not be assembled from its tar."""
+
+
+class ToolError(ArchivalError):
+    """An external tool (poppler, veraPDF) is missing or could not run."""
+
+
+class VerifyError(ArchivalError):
+    """A volume's PDF could not be verified at all (as opposed to failing a check)."""
+
+
+class ManifestError(ArchivalError):
+    """A volume manifest is unreadable or has an unknown schema version."""
