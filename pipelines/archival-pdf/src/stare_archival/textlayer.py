@@ -18,7 +18,7 @@ from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from pikepdf import Array, Dictionary, Name, String
 
-from stare_archival.alto import AltoPage
+from stare_archival.alto import AltoPage, Word
 
 FONT_RESOURCE = "/F0"
 GLYPH_WIDTH = 0.5  # em
@@ -104,6 +104,15 @@ def add_glyphless_font(pdf: pikepdf.Pdf) -> pikepdf.Object:
     )
 
 
+def layer_text(word: Word) -> str:
+    """The text a word gets in the layer: its CONTENT without characters outside the BMP (the
+    glyphless font's CIDs are UTF-16 code units), or "" when the word is left out because its
+    box has no width or height. Verification reads the ALTO through this too."""
+    if word.width <= 0 or word.height <= 0:
+        return ""
+    return "".join(ch for ch in word.content if ord(ch) < 0x10000)
+
+
 def text_operators(page: AltoPage, *, page_height: float, dpi: tuple[float, float]) -> bytes:
     """Content stream operators for the page's words; empty when it has none.
 
@@ -120,9 +129,7 @@ def text_operators(page: AltoPage, *, page_height: float, dpi: tuple[float, floa
         width = page.to_points(word.width, dpi[0])
         top = page.to_points(word.vpos, dpi[1])
         size = page.to_points(word.height, dpi[1])
-        if width <= 0 or size <= 0:
-            continue
-        text = "".join(ch for ch in word.content if ord(ch) < 0x10000)
+        text = layer_text(word)
         if not text:
             continue
         encoded = text.encode("utf-16-be")
