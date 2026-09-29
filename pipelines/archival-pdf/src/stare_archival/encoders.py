@@ -27,18 +27,71 @@ import PIL
 from PIL import Image, UnidentifiedImageError
 
 from stare_archival.errors import EncodeError
+from stare_archival.images import PINNED_JBIG2_IMAGE
 
 # CAP scanned at 300 ppi; used only when a TIFF has no usable resolution tags
 DEFAULT_DPI = 300.0
 
-# the container image that ships jbig2enc 0.28, pinned by digest (tag kept for readability)
-PINNED_JBIG2_IMAGE = (
-    "jbarlow83/ocrmypdf:v16.10.4"
-    "@sha256:60908d9f007a6f621769f6ecabdbc04e39845b5ca5342debaad504bc8efe050b"
-)
 # -p: PDF-ready output (no file header); -d: TPGD in the generic region coder. Never -s.
 JBIG2_FLAGS = ("-p", "-d")
 JBIG2_FILE_MAGIC = b"\x97JB2\r\n\x1a\n"
+
+# JBIG2 segment types (ITU T.88 7.3) allowed in an archival page stream: page information,
+# immediate (lossless) generic region, end of page, end of stripe. Anything else (symbol
+# dictionaries, text, pattern, halftone or refinement regions) means lossy-prone coding.
+JBIG2_PAGE_INFORMATION = 48
+JBIG2_GENERIC_REGIONS = frozenset({38, 39})
+JBIG2_ALLOWED_SEGMENTS = frozenset({JBIG2_PAGE_INFORMATION, *JBIG2_GENERIC_REGIONS, 49, 50})
+
+
+def _segments(data: bytes, path: str) -> list[tuple[int, int]]:
+    """(type, referred-to segment count) of each segment of an embedded JBIG2 stream: short-
+    form headers as in 7.2 of ITU T.88, with no file header (PDF 7.4.7)."""
+    segments = []
+    pos = 0
+    while pos < len(data) or not segments:
+        if pos + 6 > len(data):
+            raise EncodeError(f"{path}: JBIG2 stream truncated in a segment header at {pos}")
+        number = int.from_bytes(data[pos : pos + 4], "big")
+        flags = data[pos + 4]
+        refs = data[pos + 5] >> 5
+        if refs > 4:
+            raise EncodeError(f"{path}: JBIG2 segment {number} refers to {refs} segments")
+        pos += 6
+        pos += refs * (1 if number <= 256 else 2 if number <= 65536 else 4)
+        pos += 4 if flags & 0x40 else 1
+        if pos + 4 > len(data):
+            raise EncodeError(f"{path}: JBIG2 stream truncated in segment {number}'s header")
+        length = int.from_bytes(data[pos : pos + 4], "big")
+        pos += 4
+        if length == 0xFFFFFFFF or pos + length > len(data):
+            raise EncodeError(f"{path}: JBIG2 stream truncated in segment {number}'s data")
+        pos += length
+        segments.append((flags & 0x3F, refs))
+    return segments
+
+
+def jbig2_segment_types(data: bytes, path: str = "<JBIG2>") -> list[int]:
+    """The segment types of an embedded (PDF) JBIG2 stream, in order."""
+    return [kind for kind, _refs in _segments(data, path)]
+
+
+def check_jbig2_generic(data: bytes, path: str = "<JBIG2>") -> None:
+    """Raise EncodeError unless the stream is one page coded as an immediate generic region:
+    page information first, no segment that refers to another (so no JBIG2Globals), and no
+    symbol, text, pattern, halftone or refinement segments."""
+    segments = _segments(data, path)
+    if segments[0][0] != JBIG2_PAGE_INFORMATION:
+        raise EncodeError(f"{path}: JBIG2 stream doesn't start with page information")
+    for kind, refs in segments:
+        if refs:
+            raise EncodeError(f"{path}: a JBIG2 segment (type {kind}) refers to others")
+        if kind not in JBIG2_ALLOWED_SEGMENTS:
+            raise EncodeError(
+                f"{path}: JBIG2 segment type {kind} is not lossless generic region coding"
+            )
+    if not any(kind in JBIG2_GENERIC_REGIONS for kind, _ in segments):
+        raise EncodeError(f"{path}: JBIG2 stream has no generic region")
 
 
 @dataclass(frozen=True)
@@ -182,18 +235,21 @@ class Jbig2Encoder:
         binary: str = "jbig2",
         *,
         docker_image: str | None = None,
+        docker_bin: str = "docker",
         extra_env: Mapping[str, str] | None = None,
         timeout: float = 300.0,
     ) -> None:
         self.binary = binary
         self.docker_image = docker_image
+        self.docker_bin = docker_bin
         self._env = {**os.environ, **extra_env} if extra_env else None
         self._timeout = timeout
 
     @classmethod
-    def docker(cls, image: str = PINNED_JBIG2_IMAGE) -> Jbig2Encoder:
-        """jbig2 from the pinned container image (the image must be pulled already)."""
-        return cls(docker_image=image)
+    def docker(cls, image: str = PINNED_JBIG2_IMAGE, docker_bin: str = "docker") -> Jbig2Encoder:
+        """jbig2 from the pinned container image (the image must be pulled already), run by
+        `docker_bin`."""
+        return cls(docker_image=image, docker_bin=docker_bin)
 
     @classmethod
     def locate(
@@ -204,22 +260,21 @@ class Jbig2Encoder:
         there's no jbig2."""
         env = os.environ if env is None else env
         search_path = env.get("PATH", "")
+        docker_bin = shutil.which("docker", path=search_path)
         chosen = env.get("STARE_JBIG2")
         if chosen:
             if chosen == "none":
                 return None
             if chosen == "docker":
-                return cls.docker()
+                return cls.docker(docker_bin=docker_bin or "docker")
             if not (os.path.isfile(chosen) and os.access(chosen, os.X_OK)):
                 raise EncodeError(f"STARE_JBIG2={chosen!r} is not an executable file")
             return cls(chosen)
         found = shutil.which("jbig2", path=search_path)
         if found:
             return cls(found)
-        if docker:
-            docker_bin = shutil.which("docker", path=search_path)
-            if docker_bin and _docker_has_image(docker_bin, PINNED_JBIG2_IMAGE):
-                return cls.docker()
+        if docker and docker_bin and _docker_has_image(docker_bin, PINNED_JBIG2_IMAGE):
+            return cls.docker(docker_bin=docker_bin)
         return None
 
     def command(self, args: Sequence[str], input_path: str | None = None) -> list[str]:
@@ -231,7 +286,7 @@ class Jbig2Encoder:
         if input_path is not None:
             script = f"cat > /tmp/page.tif && {script} /tmp/page.tif"
         return [
-            "docker",
+            self.docker_bin,
             "run",
             "--rm",
             "-i",
@@ -276,6 +331,7 @@ class Jbig2Encoder:
             raise EncodeError(f"{path}: jbig2 wrote no output")
         if data.startswith(JBIG2_FILE_MAGIC):
             raise EncodeError(f"{path}: jbig2 wrote a JBIG2 file header, not PDF-ready data")
+        check_jbig2_generic(data, path)
         return EncodedImage(data, info.width, info.height, "/JBIG2Decode", None)
 
     def _run(self, argv: list[str], stdin: bytes) -> subprocess.CompletedProcess[bytes]:

@@ -214,7 +214,11 @@ def _attach_sources(
     pdf: pikepdf.Pdf, vt: VolumeTar, volume: Volume, created: datetime
 ) -> tuple[str, ...]:
     """Attach the METS, every CASEMETS and the BOXES (when present) as they are in the tar
-    (gzipped where the tar has them gzipped), as associated files with AFRelationship Source."""
+    (gzipped where the tar has them gzipped), as associated files with AFRelationship Source.
+
+    /F and /UF hold the member's file name only, since some readers treat "/" there as a
+    directory. The path below the tar's root is the name tree key, and /Desc ends with
+    the full tar path."""
     members = [(volume.mets_path, "Volume METS")]
     members += [(ref.path, f"CASEMETS of case {ref.order}") for ref, _ in volume.cases]
     if volume.boxes_path is not None:
@@ -229,8 +233,8 @@ def _attach_sources(
         spec = pikepdf.AttachedFileSpec(
             pdf,
             data,
-            description=description,
-            filename=name,
+            description=f"{description} ({path})",
+            filename=name.rsplit("/", 1)[-1],
             mime_type=mime,
             creation_date=date,
             mod_date=date,

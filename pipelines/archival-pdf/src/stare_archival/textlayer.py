@@ -109,6 +109,10 @@ def text_operators(page: AltoPage, *, page_height: float, dpi: tuple[float, floa
 
     `page_height` is the PDF page height in points; `dpi` the scan's (x, y) resolution, used
     only when the ALTO is in pixels. ALTO boxes have a top-left origin; PDF's is bottom-left.
+
+    `page.transform` (the R.E.D. deskew matrix) is deliberately not applied: the bitonal TIFFs
+    are in the same deskewed coordinate space as the ALTO (the spike's text positions matched
+    within 0.22 pt without it). Only a layer over the color JPGs would need the transform.
     """
     runs = []
     for word in page.words:
