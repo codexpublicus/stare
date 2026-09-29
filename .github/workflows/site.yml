@@ -66,14 +66,32 @@ jobs:
           set -o pipefail
           npx --yes wrangler@4.141.0 versions upload --message "PR #${{ github.event.number }}" | tee wrangler-output.txt
           url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev[^[:space:]]*' wrangler-output.txt | head -n1)
+          if [ -z "$url" ]; then
+            echo "::error::no preview URL found in wrangler versions upload output"
+            echo "--- last 20 lines of wrangler output ---"
+            tail -n 20 wrangler-output.txt
+            exit 1
+          fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
       - name: Comment preview URL
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.number }}
         run: |
-          gh pr comment "${{ github.event.number }}" --body "Preview: ${{ steps.preview.outputs.url }}" --repo "${{ github.repository }}"
+          set -euo pipefail
+          marker="<!-- stare-preview -->"
+          body=$(printf '%s\nPreview: %s' "$marker" "$PREVIEW_URL")
+          comment_id=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq "[.[] | select(.body | startswith(\"$marker\"))][0].id // empty")
+          if [ -n "$comment_id" ]; then
+            gh api "repos/$REPO/issues/comments/$comment_id" -X PATCH -f body="$body"
+          else
+            gh api "repos/$REPO/issues/$PR_NUMBER/comments" -X POST -f body="$body"
+          fi
 
       - name: Deploy
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
