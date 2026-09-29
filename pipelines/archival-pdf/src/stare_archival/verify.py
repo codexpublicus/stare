@@ -9,23 +9,30 @@ every problem it finds:
 - structure: the PDF has one page per METS page, labelled as the METS labels it.
 - no_jbig2_globals: no object anywhere in the PDF has a /JBIG2Globals entry.
 - image_streams: each page draws exactly one 1-bit DeviceGray image (JBIG2Decode or
-  CCITTFaxDecode, no Decode array or masks) the size of its TIFF, scaled to a MediaBox of the
-  TIFF's size at its resolution; JBIG2 streams are generic region coding only; and the page
-  draws nothing else (any text is in render mode 3, invisible).
-- image_pixels: every page image decodes bit-for-bit to its TIFF. JBIG2 is decoded by poppler
-  (`pdfimages -png`), CCITT G4 by pikepdf.
-- text_chars: per page, the characters `pdftotext -bbox` extracts equal, as a multiset, the
-  ALTO words' characters as the text layer writes them, after NFKC normalization and with
-  whitespace and hyphens removed (reading order and word breaks differ between the two).
-  poppler drops glyphs it takes for fake bold, which the layer produces only in words
-  squeezed below 0.1 em per character and in words the ALTO lists twice at one place; those
-  words' characters may go missing (`at_risk_words`), but nothing may be added.
-- text_positions: per page, every word pdftotext extracts must be accounted for by the ALTO
-  at its position, within `tolerance` points (default 1.0) on its left and right edges and
-  its vertical centre: a word with the same text and box, a part of one word inside that
-  word's box, or several adjacent words run together. pdftotext's vertical extent comes from
-  the font's ascent and descent, not the box, so the top and bottom edges aren't compared.
-  On the fixture and on two full volumes (a2d/152, us/10) every exact match is within 0.85 pt.
+  CCITTFaxDecode, no Decode array or masks; G4 DecodeParms exactly K -1, Columns and Rows) the
+  size of its TIFF, at full page (the CTM is composed through q/Q/cm), on a MediaBox of the
+  TIFF's size at its resolution; JBIG2 streams are generic region coding only; the page has
+  no /Rotate, /UserUnit, other boxes or /Annots; and it draws nothing else (text only in
+  render mode 3, no unmatched Q).
+- image_pixels: every page image, decoded by poppler (`pdfimages -tiff`, whatever encoded it),
+  equals its TIFF bit for bit.
+- text_layer, the exact text check: per page, the runs the content stream draws (see
+  `layercheck`) equal the runs the ALTO calls for, recomputed from the ALTO alone: same count,
+  order and exact text, render mode 3, x0, baseline and size within 0.006 pt, width within a
+  bound that grows with the run. The layer's font must be the one shared Type0 font with
+  Identity-H, the identity ToUnicode map, every CID on glyph 1 and glyph 1 half an em wide.
+- text_chars, secondary: a real extractor reads the layer. Per page, the characters
+  `pdftotext -bbox` extracts equal, as a multiset, the ALTO words' characters, after NFKC
+  normalization and with whitespace and hyphens removed. poppler drops glyphs it takes for
+  fake bold, which the layer produces only in words squeezed below 0.1 em per character and in
+  words the ALTO lists twice at one place; those words' characters may go missing
+  (`at_risk_words`), but nothing may be added. That allowance can't pass a volume by itself:
+  text_layer has already required every character.
+- text_positions, secondary: every word pdftotext extracts must be accounted for by the ALTO
+  at its position, within `tolerance` points (default 1.0) on its left and right edges and its
+  vertical centre: a word with the same text and box, a part of one word inside that word's
+  box, or several adjacent words run together. pdftotext's vertical extent comes from the
+  font's ascent and descent, not the box, so the top and bottom edges aren't compared.
 - pdfa: veraPDF validates the file as PDF/A-3b, when a `VeraPdf` is given; skipped otherwise.
 
 When the page count is wrong, the per-page checks are skipped rather than compared against
@@ -52,10 +59,18 @@ import pikepdf
 from lxml import etree
 from PIL import Image, ImageChops
 
-from stare_archival.alto import parse_alto
+from stare_archival.alto import AltoPage, parse_alto
 from stare_archival.encoders import check_jbig2_generic, read_tiff
 from stare_archival.errors import ArchivalError, ToolError, VerifyError
 from stare_archival.external import Poppler, VeraPdf
+from stare_archival.layercheck import (
+    POSITION_TOLERANCE_PT,
+    check_layer_font,
+    compare_layer,
+    concat,
+    expected_layer,
+    layer_runs,
+)
 from stare_archival.mets import Page
 from stare_archival.pdfa import STARE_NS
 from stare_archival.tarindex import VolumeTar
@@ -68,11 +83,12 @@ CHECKS = (
     "no_jbig2_globals",
     "image_streams",
     "image_pixels",
+    "text_layer",
     "text_chars",
     "text_positions",
     "pdfa",
 )
-PAGE_CHECKS = ("image_streams", "image_pixels", "text_chars", "text_positions")
+PAGE_CHECKS = ("image_streams", "image_pixels", "text_layer", "text_chars", "text_positions")
 DEFAULT_TOLERANCE_PT = 1.0
 DUP_PRI_DELTA = 0.1  # poppler's dupMaxPriDelta: along the line, in em
 DUP_SEC_DELTA = 0.2  # poppler's dupMaxSecDelta: across it
@@ -80,7 +96,8 @@ BOX_TOLERANCE_PT = 0.01
 HYPHENS = "-\u00ad\u2010\u2011"  # hyphen-minus, soft, hyphen, non-breaking
 _IGNORED = re.compile(rf"[\s{re.escape(HYPHENS)}]")
 _SHA256_LINE = re.compile(r"([0-9a-fA-F]{64})(?:(?:  | \*).+)?")
-_PDFIMAGES_FILE = re.compile(r"-(\d+)-(\d+)\.png$")
+_PDFIMAGES_FILE = re.compile(r"-(\d+)-(\d+)\.tif$")
+PDFIMAGES_CHUNK = 100  # pages per pdfimages run, to bound the temp files
 _XHTML = "{http://www.w3.org/1999/xhtml}"
 _XMP_NS = {
     "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
@@ -588,6 +605,8 @@ def _image_problems(
     size = (int(image.get("/Width", 0)), int(image.get("/Height", 0)))
     if size != (width, height):
         problems.append(f"the image is {size[0]}x{size[1]}, the TIFF is {width}x{height}")
+    if filter_ == "/CCITTFaxDecode":
+        problems += _ccitt_problems(image.get("/DecodeParms"), width, height)
     if filter_ == "/JBIG2Decode":
         parms = image.get("/DecodeParms")
         if parms is not None and "/JBIG2Globals" in parms:
@@ -606,22 +625,45 @@ def _image_problems(
         problems.append(
             f"MediaBox {box}, the TIFF at {dpi[0]:g}x{dpi[1]:g} ppi is {page_w:.4f}x{page_h:.4f}"
         )
+    problems += _display_problems(pdf_page, box)
     problems += _content_problems(pdf_page, str(name), (page_w, page_h))
     return problems, image, filter_
 
 
-def _concat(m: Sequence[float], ctm: Sequence[float]) -> tuple[float, ...]:
-    """m x ctm, for PDF's [a b c d e f] matrices (the `cm` operator)."""
-    a, b, c, d, e, f = m
-    a2, b2, c2, d2, e2, f2 = ctm
-    return (
-        a * a2 + b * c2,
-        a * b2 + b * d2,
-        c * a2 + d * c2,
-        c * b2 + d * d2,
-        e * a2 + f * c2 + e2,
-        e * b2 + f * d2 + f2,
-    )
+def _ccitt_problems(parms: pikepdf.Object | None, width: int, height: int) -> list[str]:
+    """A G4 image's DecodeParms must be exactly K -1, Columns and Rows (BlackIs1 and
+    EncodedByteAlign may appear only as false): anything else changes how it decodes."""
+    expected = {"/K": -1, "/Columns": width, "/Rows": height}
+    if not isinstance(parms, pikepdf.Dictionary):
+        return [f"the G4 image's DecodeParms is {parms}, not a dictionary"]
+    got = {str(k): parms[k] for k in parms.keys()}  # noqa: SIM118 (a pikepdf Dictionary)
+    for key in ("/BlackIs1", "/EncodedByteAlign"):
+        if key in got and got[key] is False:
+            del got[key]
+    if got != expected:
+        shown = {k: (v if isinstance(v, bool | int) else str(v)) for k, v in got.items()}
+        return [f"the G4 image's DecodeParms is {shown}, not {expected}"]
+    return []
+
+
+def _display_problems(pdf_page: pikepdf.Page, mediabox: list[float]) -> list[str]:
+    """Page attributes that change what a viewer shows besides the content stream."""
+    problems = []
+    obj = pdf_page.obj
+    if int(obj.get("/Rotate", 0)) % 360:
+        problems.append(f"the page has /Rotate {obj.get('/Rotate')}")
+    if "/UserUnit" in obj and float(obj.UserUnit) != 1.0:
+        problems.append(f"the page has /UserUnit {obj.UserUnit}")
+    for key in ("/CropBox", "/BleedBox", "/TrimBox", "/ArtBox"):
+        if key in obj:
+            box = [float(v) for v in obj[key]]
+            if len(box) != 4 or any(
+                abs(a - b) > BOX_TOLERANCE_PT for a, b in zip(box, mediabox, strict=False)
+            ):
+                problems.append(f"the page's {key[1:]} {box} differs from its MediaBox")
+    if "/Annots" in obj:
+        problems.append("the page has /Annots")
+    return problems
 
 
 def _content_problems(
@@ -646,13 +688,15 @@ def _content_problems(
         elif op == "q":
             saved.append((ctm, render_mode))
         elif op == "Q":
-            if saved:
-                ctm, render_mode = saved.pop()
+            if not saved:
+                problems.append("an unmatched Q")
+                continue
+            ctm, render_mode = saved.pop()
         elif op == "cm":
             if len(operands) != 6:
                 problems.append(f"cm with {len(operands)} operands")
                 continue
-            ctm = _concat([float(v) for v in operands], ctm)
+            ctm = concat([float(v) for v in operands], ctm)
         elif op == "Do":
             draws += 1
             if str(operands[0]) != image_name:
@@ -669,15 +713,53 @@ def _content_problems(
     return list(dict.fromkeys(problems))  # each kind of problem once per page
 
 
-def _pdfimages_pages(poppler: Poppler, pdf_path: Path, out_dir: Path) -> dict[int, list[Path]]:
-    """Every image poppler extracts, as PNG files, by 1-based page number."""
-    poppler.run([poppler.pdfimages, "-png", "-p", str(pdf_path), str(out_dir / "img")])
-    by_page: dict[int, list[Path]] = defaultdict(list)
-    for path in sorted(out_dir.glob("img-*.png")):
-        m = _PDFIMAGES_FILE.search(path.name)
-        if m:
-            by_page[int(m.group(1))].append(path)
-    return by_page
+class _PopplerImages:
+    """Page images decoded by poppler (`pdfimages -tiff -p`), a chunk of pages at a time, so
+    the temporary TIFFs of a large volume never all exist at once. Pages are asked for in
+    order."""
+
+    def __init__(self, poppler: Poppler, pdf_path: Path, out_dir: Path, page_count: int):
+        self.poppler, self.pdf_path, self.out_dir = poppler, pdf_path, out_dir
+        self.page_count = page_count
+        self.first = self.last = 0
+        self.by_page: dict[int, list[Path]] = {}
+
+    def _load(self, number: int) -> None:
+        for paths in self.by_page.values():
+            for path in paths:
+                path.unlink(missing_ok=True)
+        self.first = number
+        self.last = min(number + PDFIMAGES_CHUNK - 1, self.page_count)
+        prefix = self.out_dir / f"img{number}"
+        self.poppler.run(
+            [
+                self.poppler.pdfimages,
+                "-tiff",
+                "-p",
+                "-f",
+                str(self.first),
+                "-l",
+                str(self.last),
+                str(self.pdf_path),
+                str(prefix),
+            ]
+        )
+        self.by_page = defaultdict(list)
+        for path in sorted(self.out_dir.glob(f"img{number}-*.tif")):
+            m = _PDFIMAGES_FILE.search(path.name)
+            if m:
+                self.by_page[int(m.group(1))].append(path)
+
+    def image(self, number: int) -> Image.Image:
+        """Page `number`'s only image; VerifyError when poppler extracted another count."""
+        if not self.first <= number <= self.last:
+            self._load(number)
+        found = self.by_page.get(number, [])
+        if len(found) != 1:
+            raise VerifyError(f"pdfimages extracted {len(found)} images from the page")
+        with Image.open(found[0]) as im:
+            im.load()
+            return im.copy()
 
 
 def _pdftotext_pages(poppler: Poppler, pdf_path: Path, out_dir: Path) -> list[list]:
@@ -705,10 +787,7 @@ def _pdftotext_pages(poppler: Poppler, pdf_path: Path, out_dir: Path) -> list[li
     return pages
 
 
-def _alto_words(vt: VolumeTar, page: Page, dpi: tuple[float, float]) -> list[ExtractedWord]:
-    if page.alto is None:
-        return []
-    alto = parse_alto(vt.read(page.alto), page.alto)
+def _alto_words(alto: AltoPage, dpi: tuple[float, float]) -> list[ExtractedWord]:
     words = []
     for w in alto.words:
         text = layer_text(w)
@@ -756,6 +835,9 @@ def _check_pages(
     pixels: list[Failure] = []
     chars: list[Failure] = []
     positions: list[Failure] = []
+    layer = [Failure("text_layer", p) for p in check_layer_font(pdf)]
+    layer_words = 0
+    layer_worst = 0.0
     filters: Counter[str] = Counter()
     decoders: dict[str, str] = {}
     compared = characters = at_risk = dropped = 0
@@ -769,7 +851,7 @@ def _check_pages(
             raise ToolError(
                 f"pdftotext found {len(extracted)} pages in {pdf_path}, pikepdf {len(pages)}"
             )
-        poppler_images: dict[int, list[Path]] | None = None
+        poppler_images = _PopplerImages(poppler, pdf_path, tmp_dir, len(pages))
 
         for i, (pdf_page, page) in enumerate(zip(pdf.pages, pages, strict=True)):
             number = i + 1
@@ -788,38 +870,38 @@ def _check_pages(
             if filter_:
                 filters[filter_] += 1
 
-            # pixels
+            # pixels: every page decoded by poppler, independent of the encoders
             if image is None:
                 fail(pixels, "image_pixels", "no single page image to compare")
             else:
                 try:
-                    if filter_ == "/JBIG2Decode":
-                        if poppler_images is None:
-                            poppler_images = _pdfimages_pages(poppler, pdf_path, tmp_dir)
-                        found = poppler_images.get(number, [])
-                        if len(found) != 1:
-                            raise VerifyError(f"pdfimages extracted {len(found)} images")
-                        decoders[filter_] = poppler.version
-                        with Image.open(found[0]) as im:
-                            decoded = im.copy()
-                    else:
-                        decoders[filter_ or str(image.get("/Filter"))] = "pikepdf"
-                        decoded = pikepdf.PdfImage(image).as_pil_image()
+                    decoded = poppler_images.image(number)
+                    decoders[filter_ or str(image.get("/Filter"))] = poppler.version
                     with Image.open(io.BytesIO(tiff_bytes)) as src:
                         src.load()
                         problem = compare_bitonal(src, decoded)
                     compared += 1
                     if problem:
                         fail(pixels, "image_pixels", problem)
-                except (ArchivalError, pikepdf.PdfError, OSError, ValueError) as exc:
+                except (ArchivalError, OSError, ValueError) as exc:
                     fail(pixels, "image_pixels", f"the page image can't be decoded ({exc})")
 
-            # text
+            # text: the layer exactly, then as pdftotext reads it
             try:
-                want = _alto_words(vt, page, info.dpi)
+                alto = parse_alto(vt.read(page.alto), page.alto) if page.alto else None
             except ArchivalError as exc:
-                fail(chars, "text_chars", f"the ALTO can't be read ({exc})")
+                fail(layer, "text_layer", f"the ALTO can't be read ({exc})")
                 continue
+            runs, run_problems = layer_runs(pdf_page)
+            expected = (
+                expected_layer(alto, page_height=info.page_size[1], dpi=info.dpi) if alto else []
+            )
+            layer_result = compare_layer(expected, runs)
+            layer_words += len(expected)
+            layer_worst = max(layer_worst, layer_result.max_position_deviation)
+            for problem in run_problems + layer_result.problems:
+                fail(layer, "text_layer", problem)
+            want = _alto_words(alto, info.dpi) if alto else []
             result = compare_page_text(want, extracted[i], tolerance=tolerance)
             characters += result.characters
             at_risk += result.at_risk
@@ -840,6 +922,15 @@ def _check_pages(
     return [
         _result("image_streams", streams, {"filters": dict(filters)}),
         _result("image_pixels", pixels, {"pages_compared": compared, "decoders": decoders}),
+        _result(
+            "text_layer",
+            layer,
+            {
+                "words": layer_words,
+                "tolerance_pt": POSITION_TOLERANCE_PT,
+                "max_position_deviation_pt": round(layer_worst, 4),
+            },
+        ),
         _result(
             "text_chars",
             chars,
@@ -905,7 +996,12 @@ def verify_volume(
         raise VerifyError(f"{pdf_path}: not a readable PDF ({exc})") from exc
 
     tools = poppler.tool_versions()
-    with pdf, VolumeTar.open(tar_path, csv_path) as vt:
+    try:
+        vt = VolumeTar.open(tar_path, csv_path)
+    except OSError as exc:
+        pdf.close()
+        raise VerifyError(f"{tar_path}: can't open the tar or its index ({exc})") from exc
+    with pdf, vt:
         volume = load_volume(vt)
         pages = volume.mets.pages
         xmp = _read_xmp(pdf)

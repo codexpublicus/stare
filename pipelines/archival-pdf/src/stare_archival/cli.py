@@ -48,15 +48,26 @@ def _parser() -> argparse.ArgumentParser:
     )
     verify.add_argument("--manifest", help="write the volume manifest (JSON) here")
     verify.add_argument(
-        "--generated",
-        type=datetime.fromisoformat,
-        help="the manifest's generated time (ISO 8601 with a zone; default now)",
+        "--generated", help="the manifest's generated time (ISO 8601 with a zone; default now)"
     )
     verify.add_argument("--json", action="store_true", help="print the manifest, not a summary")
     return parser
 
 
+def _generated(value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        when = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"--generated {value!r} is not an ISO 8601 time") from exc
+    if when.tzinfo is None:
+        raise ValueError(f"--generated {value!r} needs a timezone (e.g. Z)")
+    return when
+
+
 def _verify(args: argparse.Namespace, stdout: TextIO) -> int:
+    generated = _generated(args.generated)  # before the (slow) verification
     verapdf = None
     if args.verapdf:
         verapdf = VeraPdf.locate()
@@ -70,7 +81,7 @@ def _verify(args: argparse.Namespace, stdout: TextIO) -> int:
         verapdf=verapdf,
         tolerance=args.tolerance,
     )
-    manifest = build_manifest(report, generated=args.generated)
+    manifest = build_manifest(report, generated=generated)
     if args.manifest:
         write_manifest(args.manifest, manifest)
     if args.json:

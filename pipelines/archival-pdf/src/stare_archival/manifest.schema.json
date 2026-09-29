@@ -118,9 +118,9 @@
       "additionalProperties": {"type": "string"}
     },
     "pins": {
-      "description": "The container images the external tools are pinned to, by digest",
+      "description": "The container images, by digest, that this volume's build (jbig2) and verification (verapdf) actually ran; empty when neither ran from an image",
       "type": "object",
-      "required": ["jbig2", "verapdf"],
+      "propertyNames": {"enum": ["jbig2", "verapdf"]},
       "additionalProperties": {"type": "string"}
     },
     "error": {

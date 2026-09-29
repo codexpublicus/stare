@@ -120,19 +120,19 @@ def _with_font_edit(built: Path, dest: Path, edit) -> Path:
     ("edit", "message"),
     [
         (
-            lambda pdf, f: f.ToUnicode.write(
+            lambda _pdf, f: f.ToUnicode.write(
                 f.ToUnicode.read_bytes().replace(b"<0000> <FFFF> <0000>", b"<0000> <FFFF> <0001>")
             ),
             "ToUnicode",
         ),
-        (lambda pdf, f: setattr(f, "Encoding", pikepdf.Name("/Identity-V")), "Identity-H"),
-        (lambda pdf, f: setattr(f.DescendantFonts[0], "DW", 600), "DW"),
+        (lambda _pdf, f: setattr(f, "Encoding", pikepdf.Name("/Identity-V")), "Identity-H"),
+        (lambda _pdf, f: setattr(f.DescendantFonts[0], "DW", 600), "DW"),
         (
-            lambda pdf, f: f.DescendantFonts[0].CIDToGIDMap.write(b"\x00\x02" * 65536),
+            lambda _pdf, f: f.DescendantFonts[0].CIDToGIDMap.write(b"\x00\x02" * 65536),
             "CIDToGIDMap",
         ),
         (
-            lambda pdf, f: setattr(f.DescendantFonts[0], "W", pikepdf.Array([0, [700]])),
+            lambda _pdf, f: setattr(f.DescendantFonts[0], "W", pikepdf.Array([0, [700]])),
             "/W",
         ),
     ],

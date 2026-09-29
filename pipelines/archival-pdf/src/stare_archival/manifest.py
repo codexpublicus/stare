@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
@@ -25,7 +26,6 @@ import PIL
 from stare_archival import __version__
 from stare_archival.build import BuildResult
 from stare_archival.errors import ManifestError
-from stare_archival.images import PINNED_JBIG2_IMAGE, PINNED_VERAPDF_IMAGE
 from stare_archival.verify import VerifyReport
 
 MANIFEST_SCHEMA_VERSION = 1
@@ -56,17 +56,27 @@ def _tools(extra: dict[str, str] | None = None) -> dict[str, str]:
     return tools
 
 
-def _pins() -> dict[str, str]:
-    return {"jbig2": PINNED_JBIG2_IMAGE, "verapdf": PINNED_VERAPDF_IMAGE}
+def _pins(jbig2_image: str | None = None, tools: Mapping[str, str] | None = None) -> dict:
+    """The container images this volume's build and verification ran, by digest: none for a
+    G4 build or a jbig2 on PATH, verified without veraPDF."""
+    pins = {}
+    if jbig2_image:
+        pins["jbig2"] = jbig2_image
+    if tools and tools.get("verapdf_image"):
+        pins["verapdf"] = tools["verapdf_image"]
+    return pins
 
 
 def build_manifest(
     report: VerifyReport,
     build: BuildResult | None = None,
     *,
+    jbig2_image: str | None = None,
     generated: datetime | None = None,
 ) -> dict[str, Any]:
-    """The manifest for a verified volume. `generated` (default now) must be timezone-aware."""
+    """The manifest for a verified volume. `jbig2_image` is the container image the build ran
+    jbig2 from, if it did (`Jbig2Encoder.docker_image`). `generated` (default now) must be
+    timezone-aware."""
     return {
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "volume_id": report.volume_id,
@@ -96,7 +106,7 @@ def build_manifest(
         },
         "checks": [c.to_dict() for c in report.checks],
         "tools": _tools(dict(report.tools)),
-        "pins": _pins(),
+        "pins": _pins(jbig2_image, report.tools),
         "error": None,
     }
 

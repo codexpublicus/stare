@@ -80,7 +80,9 @@ def test_verify_failure_names_the_check_and_page(pdf, tmp_path):
     code, out, _ = _run(["verify", str(bad), "--tar", str(FIXTURES / "152.tar")])
     assert code == 1
     lines = out.splitlines()
-    assert lines[-1] == "FAIL a2d/152 (4 pages): 1 failure"
+    # visible text fails both the page's drawing check and the exact layer check
+    assert lines[-1] == "FAIL a2d/152 (4 pages): 2 failures"
+    assert any(line.startswith("text_layer: page 2 (order 871, label 839): ") for line in lines)
     assert any(line.startswith("image_streams: page 2 (order 871, label 839): ") for line in lines)
 
 
