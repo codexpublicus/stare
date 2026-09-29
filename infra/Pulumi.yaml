@@ -1,6 +1,0 @@
-name: stare-infra
-runtime:
-  name: python
-  options:
-    toolchain: uv
-description: Cloudflare Worker and DNS infrastructure for stare.pub
