@@ -63,13 +63,16 @@ All rendering runs client-side. Server serves only static files.
 Plain HTML directory listings served via Cloudflare (not JS-rendered). ~40,622 volumes across hundreds of reporter series.
 
 Per volume:
-- `.tar` (~97 MB): ALTO OCR XML, page images (JPG), METS, CASEMETS
-- `.pdf` (~12 MB): full volume scan
-- `.zip` (~400 KB): per-case JSON + HTML + metadata
+- `.tar`: per page, a color JPG scan, a bitonal (1-bit G4) TIFF, ALTO OCR XML (every word with
+  coordinates), plus METS and CASEMETS (which pages belong to which case)
+- `.pdf`: the bitonal TIFFs re-wrapped by ReportLab; no text layer, no color, no case structure
+- `.zip`: per-case JSON + HTML + metadata
 - `.tar.csv`: tar byte offset manifest
 - `.tar.sha256`: tar checksum
 
-Total: ~4.4 TB across 203K files.
+Measured on the mirror 2026-09-29: 40,622 zips (76.7 GiB), 39,964 `.tar.csv` (9.7 GiB), 39,964
+PDFs (1.79 TiB, about 49 MB on average), and the tars making up most of the rest of the ~10.4 TB.
+Sizes vary widely by volume: a2d/31's tar is 102 MB (83 MB of it JPGs) and its PDF 12 MB.
 
 ## Organization and infrastructure
 
@@ -162,10 +165,15 @@ repo's `AGENTS.md` for the Pulumi, Wrangler and LFS rules that apply across the 
   - `mega/codex-publicus`: mirror data (NFS export to 192.168.32.0/24)
   - `mega/k8s`: k8s persistent volumes
 - Access TrueNAS via NFS mounts and `showmount -e`, not SSH
+- Inspect corpus files from the mirror, never from static.case.law: on ml-01 the Docker volume
+  `mirror_mirror-data` is the NFS share, with files at `downloads/<reporter>/<volume>.<ext>`.
+  Mount it read-only, e.g.
+  `ssh ml-01 'docker run --rm -v mirror_mirror-data:/data:ro rclone/rclone:latest cat /data/downloads/a2d/31.tar.csv'`.
+  Never write to it.
 
 ## Key Context
 
 - Harvard CAP API died March 2024. Search died September 2024. static.case.law still serves bulk data.
-- PDFs + ALTO are the irreplaceable assets — text can be re-derived, scans cannot.
+- The tars are the irreplaceable assets: the color scans, the bitonal images and the ALTO word geometry exist only there. The PDFs can be regenerated from the tars' TIFFs; the text can be re-derived.
 - Ravel/LexisNexis exclusivity expired March 2024. All data is public domain / CC0.
 - Rate limit scraping: max 1-2 req/sec, identify in User-Agent.
