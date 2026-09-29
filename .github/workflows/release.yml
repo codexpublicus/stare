@@ -10,9 +10,9 @@ name: release
 #   3. build and check the merge commit, with a changelog regenerated for the tag,
 #      and hand web/dist and the notes to the next job as an artifact.
 # release (contents: write, runs no build code):
-#   4. create the tag on the merge commit through the API, refusing if it exists
+#   4. refuse if a newer release tag exists, so a re-run can't roll production back;
+#   5. create the tag on the merge commit through the API, refusing if it exists
 #      elsewhere, and the GitHub Release with the git-cliff notes;
-#   5. refuse if a newer release tag exists, so a re-run can't roll production back;
 #   6. deploy production (stare.pub) with wrangler;
 #   7. dispatch release-prepare.yml so the release PR and CHANGELOG.md catch up.
 #
@@ -149,6 +149,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/release"
+          # Load the tag list read after the wait into the clone, so git-cliff
+          # measures from the real previous release even if it was tagged after
+          # checkout. Tags on commits this clone doesn't have are skipped.
+          while read -r name sha; do
+            if git cat-file -e "$sha^{commit}" 2>/dev/null; then
+              git tag -f "$name" "$sha" >/dev/null
+            fi
+          done < "$RUNNER_TEMP/tags.txt"
           if [ "$RERUN" = true ]; then
             # The tag exists; describe exactly the range that ends at it.
             if prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$VERSION^" 2>/dev/null); then
@@ -184,6 +192,8 @@ jobs:
           path: ${{ runner.temp }}/release
           if-no-files-found: error
           retention-days: 7
+          # A re-run of all jobs uploads again under the same name.
+          overwrite: true
 
   release:
     name: Release and deploy production
@@ -207,6 +217,19 @@ jobs:
           name: release
           path: ${{ runner.temp }}/release
 
+      - name: Refuse if a newer release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Checked before tagging, so a refused release leaves no tag behind.
+          newest=$( { gh api --paginate "repos/$GH_REPO/git/matching-refs/tags/v" \
+            --jq '.[].ref | sub("^refs/tags/"; "")'; echo "$VERSION"; } | node scripts/calver.mjs --newest)
+          if [ "$newest" != "$VERSION" ]; then
+            echo "::error::$newest is newer than $VERSION; not deploying an older release"
+            exit 1
+          fi
+
       - name: Tag the merge commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -217,22 +240,10 @@ jobs:
           else
             actual=$(gh api "repos/$GH_REPO/git/ref/tags/$VERSION" --jq .object.sha)
             if [ "$actual" != "$SHA" ]; then
-              echo "::error::$VERSION already exists on $actual, not $SHA; re-run to compute a new tag"
+              echo "::error::$VERSION already exists on $actual, not $SHA; use 'Re-run all jobs' so the build computes a new tag"
               exit 1
             fi
             echo "$VERSION already points at $SHA (a re-run)"
-          fi
-
-      - name: Refuse if a newer release exists
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          newest=$(gh api --paginate "repos/$GH_REPO/git/matching-refs/tags/v" \
-            --jq '.[].ref | sub("^refs/tags/"; "")' | node scripts/calver.mjs --newest)
-          if [ "$newest" != "$VERSION" ]; then
-            echo "::error::$newest is newer than $VERSION; not deploying an older release"
-            exit 1
           fi
 
       - name: Create the GitHub Release
