@@ -141,6 +141,19 @@ describe('renderParagraphHtml', () => {
     assert.equal(renderParagraphHtml(text, 0, occ, new Map()), 'See 123 U.S. 456.');
   });
 
+  test('ignores occurrences with non-integer offsets', () => {
+    const text = 'See 123 U.S. 456.';
+    const map = new Map([['123 U.S. 456', RESOLVABLE]]);
+    const occ = [{ raw: '123 U.S. 456', start: 4.5, end: 16 }];
+    assert.equal(renderParagraphHtml(text, 0, occ, map), 'See 123 U.S. 456.');
+  });
+
+  test('renders an external citation without an http(s) URL as unresolved', () => {
+    const text = 'See 5 Ext. 6.';
+    const map = new Map([['5 Ext. 6', { ...EXTERNAL, externalUrl: 'javascript:alert(1)' }]]);
+    assert.equal(renderParagraphHtml(text, 0, occurrencesIn(text), map), `See ${unresolvedFor('5 Ext. 6')}.`);
+  });
+
   test('drops an occurrence that overlaps an earlier one', () => {
     const text = 'See 123 U.S. 456.';
     const map = new Map([

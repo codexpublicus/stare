@@ -207,7 +207,8 @@ export function formatPlainText(text) {
  * citation text; `info` is the citation's entry from processCitations.
  */
 function citationHtml(raw, inner, info) {
-  if (info.externalUrl) {
+  // Only http(s) links; any other scheme renders as unresolved.
+  if (info.externalUrl && /^https?:\/\//i.test(info.externalUrl)) {
     return `<a class="cite-link cite-external" href="${escapeHtml(info.externalUrl)}" target="_blank" rel="noopener" title="View on external site">${inner}</a>`;
   }
   if (info.resolvable) {
@@ -238,6 +239,7 @@ export function renderParagraphHtml(text, paragraphStart, occurrences, citationM
 
   const inside = (occurrences || [])
     .map(o => ({ ...o, start: o.start - paragraphStart, end: o.end - paragraphStart }))
+    .filter(o => Number.isInteger(o.start) && Number.isInteger(o.end))
     .filter(o => o.start >= 0 && o.end <= length && o.start < o.end && citationMap?.get(o.raw))
     .sort((a, b) => a.start - b.start || b.end - a.end);
 

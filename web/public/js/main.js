@@ -129,11 +129,11 @@ async function showResolved(result) {
   async function highlightCase(caseFile, caseData, actions) {
     try {
       const { unique, occurrencesByOpinion } = await processCitations(caseData);
-      if (unique.length === 0) return;
       const citationMap = new Map(unique.map(c => [c.raw, c]));
       const citations = { unique, citationMap, occurrencesByOpinion };
+      // Cache empty results too, so switching back doesn't detect again.
       citationsByCase.set(caseFile, citations);
-      if (shownCaseFile !== caseFile) return;
+      if (unique.length === 0 || shownCaseFile !== caseFile) return;
       renderReader(readerContent, caseData, citations);
       renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases, unique);
       wireActions(actions);
