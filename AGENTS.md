@@ -93,7 +93,12 @@ stare.pub has no email of its own. The published contact address is `info@codexp
 ### Site releases and deploys (`.github/workflows/`, `cliff.toml`, `wrangler.jsonc`)
 
 stare.pub is the `stare-pub` Worker (Workers Static Assets, `web/dist`), attached to the apex
-as a Wrangler custom domain. There is one path to production: merging the release PR.
+as a Wrangler custom domain. The one sanctioned path to production is merging the release PR.
+It is not the only possible one: this private repo is on GitHub Free, so `main` has no branch
+protection and there are no environment protection rules, and a same-repo PR runs its own copy
+of `site.yml` with `CLOUDFLARE_API_TOKEN`. A PR that edits a workflow to run `wrangler deploy`
+would deploy production without a release, and a Workers token can't be scoped to preview
+uploads only. Review workflow changes in PRs with that in mind.
 
 - **Pull requests** (`site.yml`, job "Preview PR") run `cargo fmt --check`, clippy with
   `-D warnings`, `cargo test --workspace`, the JS tests, the WASM build and the Astro build,
@@ -108,14 +113,23 @@ as a Wrangler custom domain. There is one path to production: merging the releas
   `perf` commits touching the site (`web/`, `crates/stare`, `crates/stare-wasm`,
   `wrangler.jsonc`) are releasable; docs, chore, ci, test, build, style and refactor are
   hidden, and with nothing releasable there's no PR. The version in the PR is a preview.
-- **Releasing** (`release.yml`, when the release PR merges): computes the tag at merge time,
-  `vYYYY.MM.DD.N` in UTC with N one more than the day's highest existing release
-  (`scripts/calver.mjs`); waits for the merge commit's push checks and refuses if any failed;
-  rebuilds with the same checks (the composite action `.github/actions/build-site`); tags the
-  merge commit and creates the GitHub Release with the git-cliff notes; and runs
-  `wrangler deploy`. It's one job because tags and releases made with `GITHUB_TOKEN` don't
-  trigger other workflows, so nothing may depend on `on: push: tags` or `on: release`.
-  Re-running a failed release reuses the tag already on the merge commit.
+- **Releasing** (`release.yml`, when the bot's release PR from `release/next` merges into
+  `main`): a read-only build job waits for the merge commit's push checks and refuses if any
+  failed, then computes the tag from the tags as they stand after the wait, `vYYYY.MM.DD.N` in
+  UTC with N one more than the day's highest existing release (`scripts/calver.mjs`), and
+  rebuilds with the same checks (the composite action `.github/actions/build-site`), with no
+  git credentials on disk while cargo and npm run. A second job, which runs no build code,
+  creates the tag on the merge commit through the API (refusing if it exists elsewhere),
+  refuses if a newer release tag exists, creates the GitHub Release with the git-cliff notes,
+  runs `wrangler deploy` on the built `web/dist`, and dispatches `release-prepare.yml`. The
+  tag, release and deploy share a job because tags and releases made with `GITHUB_TOKEN`
+  don't trigger other workflows, so nothing may depend on `on: push: tags` or `on: release`.
+  Re-running a failed release reuses the tag already on the merge commit, and refuses once a
+  newer release exists, so an old run can't roll production back.
+- **After a release**, the dispatched `release-prepare.yml` closes a release PR with nothing
+  left in it, and if the merged `CHANGELOG.md` kept a preview heading that turned out wrong
+  (the PR merged on a later day), opens "chore(release): sync CHANGELOG.md with the release
+  tags" from `release/changelog-sync`. Merging that releases nothing.
 
 The footer on every page (`web/src/components/SiteFooter.astro`) shows the build: the release
 tag, short SHA and commit date for a release, `main-<sha>` on the main preview, `pr-<n>` on PR
