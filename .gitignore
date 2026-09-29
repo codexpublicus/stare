@@ -3,3 +3,4 @@
 .wrangler/
 __pycache__/
 .pytest_cache/
+*.rclone.conf
