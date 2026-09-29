@@ -78,34 +78,49 @@ This repo is `codexpublicus/stare` in the `codexpublicus` GitHub org, alongside
 LFS proxy) and `codexpublicus/codexpublicus.org` (umbrella site).
 
 Shared Cloudflare values come from the Pulumi stack `organization/codexpublicus-infra/prod`,
-not from any per-site config. That stack owns stare.pub's zone, its DNS and email routing
-records, the `stare-pub` Pages project, the `stare-pub-idx` R2 bucket (moved there from
+not from any per-site config. That stack owns stare.pub's zone and DNS, the `stare-pub-idx`
+R2 bucket and `idx.stare.pub` (moved there from
 `lokkju-infra` on 2026-09-27; see codexpublicus/stare#3), the `codex-data` R2 bucket, the
 Workers deploy token, the citare deploy key and the three Actions secrets that carry them
 (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CITARE_DEPLOY_KEY`). This repo runs no
-Pulumi of its own; site deploys are still run by hand with Wrangler.
+Pulumi of its own.
 
-Sites are moving to Workers Static Assets (`codexpublicus.org` is already there); stare.pub
-follows as part of #3.
+stare.pub has no email of its own. The published contact address is `info@codexpublicus.org`.
 
-The published contact address is moving from `info@stare.pub` to `info@codexpublicus.org`
-(#13), blocked on the email routing work in codexpublicus/infra#16.
+### Site deploys (`.github/workflows/site.yml`, `wrangler.jsonc`)
+
+stare.pub is the `stare-pub` Worker (Workers Static Assets, `web/dist`), attached to the apex
+as a Wrangler custom domain. Every pull request runs `cargo fmt --check`, clippy with
+`-D warnings`, `cargo test --workspace`, the WASM build and the Astro build, then uploads a
+preview version and comments its URL (`https://<version>-stare-pub.nick-441.workers.dev`).
+A push to `main` runs the same checks and `wrangler deploy`. Wrangler is pinned to 4.141.0,
+and Actions are pinned by commit SHA. Locally, `mise run check`, `mise run build-wasm` and
+`mise run build-web` run the same steps. Nobody deploys by hand; the one exception was the
+first deploy that created the Worker.
+
+`idx.stare.pub`'s CORS allows `stare.pub`, its subdomains and the account's workers.dev
+subdomain, so previews resolve citations too.
+
+`stare-pub-idx` holds the deployed index. It is protected and `retain_on_delete` in
+codexpublicus-infra and must never be deleted or recreated; back it up before any change to
+its declaration.
 
 Infrastructure changes go through PRs to codexpublicus/infra, not this repo. See that
 repo's `AGENTS.md` for the Pulumi, Wrangler and LFS rules that apply across the org.
 
 ## Current Status
 
-- **Live**: stare.pub serves the Astro site from the hand-deployed `stare-pub` Cloudflare
-  Pages project.
+- **Live**: stare.pub serves the Astro site from the `stare-pub` Worker, deployed by CI on
+  every push to `main` (since 2026-09-29; the old Pages project is deleted by #41).
 - **Live**: `idx.stare.pub` (R2 bucket `stare-pub-idx`) serves the citation index files.
 - **Mirror**: still running via aria2/Docker on ml-01 against TrueNAS `mega/codex-publicus`;
   completion percentage isn't verified for this document. See `docs/plans/checklist.md` and
   issue #14 for its current state, and don't trust a stale number here over those.
 - **Pending, tracked by issue** (`gh issue list -R codexpublicus/stare`):
-  - #3 — deploy from GitHub Actions with an in-repo Pulumi project; move stare.pub onto
-    Workers Static Assets and the same pattern as gorsuch-library
-  - #13 — switch the published contact address to `info@codexpublicus.org`
+  - #41: delete the retired `stare-pub` Pages project and its token (on or after 2026-10-06)
+  - #42: upload the mirror to `codex-data`; decide `data.stare.pub` exposure
+  - #43: triage npm audit findings in `web/`
+  - #44: site workflow polish (preview-URL failure message, one updating PR comment)
   - #14 — repoint the ml-01 mirror clone at `codexpublicus/stare` (still on the pre-rewrite
     `lokkju/codex-publicus` remote)
   - #10 — a computable court record key, a stable identifier for every decision
