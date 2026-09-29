@@ -1,5 +1,6 @@
 import hashlib
 import io
+import tarfile
 import re
 import subprocess
 from datetime import UTC, datetime
@@ -145,7 +146,11 @@ def test_volume_metadata_is_attached_as_source_files(pdf):
     assert len(af) == len(expected)
     for name, spec in pdf.attachments.items():
         assert spec.obj.AFRelationship == pikepdf.Name.Source
-        assert name == spec.obj.UF
+        # /F and /UF are plain file names (no "/"); the tar path is the key and in /Desc
+        basename = name.rsplit("/", 1)[-1]
+        assert str(spec.obj.UF) == basename
+        assert str(spec.obj.F) == basename
+        assert str(spec.obj.Desc).endswith(f"({expected[name]})")
         ef = spec.obj.EF.F
         assert ef.read_bytes() == _member_bytes(expected[name])
         assert ef.Subtype == pikepdf.Name("/application/gzip")
@@ -331,3 +336,31 @@ def _case(**kw) -> Case:
 )
 def test_bookmark_title(case, title):
     assert bookmark_title(7, case) == title
+
+
+def _with_boxes(tar_path: Path, dest: Path) -> tuple[Path, bytes]:
+    """A copy of the fixture tar with a (synthetic) volume BOXES member, and its .tar.csv."""
+    boxes = b"\x1f\x8b" + b"synthetic BOXES"
+    out = dest / "152.tar"
+    out.write_bytes(tar_path.read_bytes())
+    with tarfile.open(out, "a", format=tarfile.GNU_FORMAT) as tf:
+        info = tarfile.TarInfo(f"{ROOT}/{ROOT}_BOXES.xml.gz")
+        info.size = len(boxes)
+        tf.addfile(info, io.BytesIO(boxes))
+    with tarfile.open(out) as tf:
+        rows = [f"{m.name},{m.offset_data},{m.size}" for m in tf.getmembers()]
+    Path(f"{out}.csv").write_text("path,offset,size\r\n" + "\r\n".join(rows) + "\r\n")
+    return out, boxes
+
+
+def test_boxes_is_attached_when_the_tar_has_one(tar_path, tmp_path):
+    src, boxes = _with_boxes(tar_path, tmp_path)
+    result = _build(src, None, tmp_path / "boxes.pdf")
+    name = f"{ROOT}_BOXES.xml.gz"
+    assert result.attachments[-1] == name
+    with pikepdf.open(tmp_path / "boxes.pdf") as doc:
+        spec = doc.attachments[name]
+        assert spec.obj.AFRelationship == pikepdf.Name.Source
+        assert spec.obj.EF.F.read_bytes() == boxes
+        assert str(spec.obj.Desc).startswith("Volume BOXES")
+        assert any(af.objgen == spec.obj.objgen for af in doc.Root.AF)

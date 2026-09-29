@@ -9,14 +9,16 @@ from PIL import Image
 
 from stare_archival.encoders import (
     JBIG2_FILE_MAGIC,
-    PINNED_JBIG2_IMAGE,
     EncodedImage,
     G4Encoder,
     ImageEncoder,
     Jbig2Encoder,
+    check_jbig2_generic,
+    jbig2_segment_types,
     read_tiff,
 )
 from stare_archival.errors import EncodeError
+from stare_archival.images import PINNED_JBIG2_IMAGE
 from stare_archival.tarindex import VolumeTar
 
 
@@ -104,31 +106,96 @@ def test_stream_dict_has_image_xobject_keys():
 # Jbig2Encoder: argument handling is tested against a stand-in script, so it runs without jbig2
 
 
-def _fake_jbig2(tmp_path: Path, body: str) -> Path:
-    script = tmp_path / "jbig2"
+def _segment(number: int, kind: int, data: bytes = b"", refs: tuple[int, ...] = ()) -> bytes:
+    """One JBIG2 segment as embedded in a PDF (ITU T.88 7.2): short-form header, 1-byte page
+    association."""
+    return (
+        number.to_bytes(4, "big")
+        + bytes([kind, len(refs) << 5, *refs, 1])
+        + len(data).to_bytes(4, "big")
+        + data
+    )
+
+
+PAGE_INFO = _segment(0, 48, bytes(19))
+GENERIC = _segment(1, 38, b"\x01\x02\x03")
+END_OF_PAGE = _segment(2, 49)
+VALID_STREAM = PAGE_INFO + GENERIC + END_OF_PAGE
+
+
+def _fake_jbig2(tmp_path: Path, body: str, name: str = "jbig2") -> Path:
+    script = tmp_path / name
     script.write_text("#!/bin/sh\n" + body)
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
     return script
 
 
+def _emitting(tmp_path: Path, stream: bytes) -> Path:
+    """A stand-in jbig2 that writes `stream` to stdout."""
+    (tmp_path / "out.jb2").write_bytes(stream)
+    return _fake_jbig2(tmp_path, f'cat "{tmp_path / "out.jb2"}"\n')
+
+
+def test_segment_walk_reads_types():
+    assert jbig2_segment_types(VALID_STREAM) == [48, 38, 49]
+
+
+def test_generic_region_stream_passes_the_check():
+    check_jbig2_generic(VALID_STREAM, "<ok>")
+
+
+@pytest.mark.parametrize(
+    ("stream", "message"),
+    [
+        (PAGE_INFO + _segment(1, 0, b"x") + GENERIC, "segment type 0"),  # symbol dictionary
+        (PAGE_INFO + _segment(1, 6, b"x"), "segment type 6"),  # text region
+        (PAGE_INFO + _segment(1, 42, b"x"), "segment type 42"),  # refinement region
+        (PAGE_INFO + _segment(1, 38, b"x", refs=(0,)), "refers to"),  # would need globals
+        (GENERIC + END_OF_PAGE, "page information"),
+        (PAGE_INFO + END_OF_PAGE, "no generic region"),
+        (PAGE_INFO + GENERIC[:-2], "truncated"),
+        (b"", "truncated"),
+    ],
+)
+def test_non_generic_or_malformed_streams_are_rejected(stream, message):
+    with pytest.raises(EncodeError, match=message):
+        check_jbig2_generic(stream, "<bad>")
+
+
 def test_jbig2_encoder_runs_lossless_generic_mode(tmp_path, tiff_bytes):
+    (tmp_path / "out.jb2").write_bytes(VALID_STREAM)
     fake = _fake_jbig2(
         tmp_path,
         'if [ "$1" = "--version" ]; then echo "jbig2enc 9.99" >&2; exit 0; fi\n'
-        'printf "%s|" "$@"; cmp -s "$3" "$STARE_TEST_TIFF" && printf "same"\n',
+        'printf "%s|" "$@" > "$STARE_TEST_ARGS"\n'
+        'cmp -s "$3" "$STARE_TEST_TIFF" && cat "$STARE_TEST_OUT"\n',
     )
     src = tmp_path / "page.tif"
     src.write_bytes(tiff_bytes)
-    enc = Jbig2Encoder(str(fake), extra_env={"STARE_TEST_TIFF": str(src)})
+    args_file = tmp_path / "args"
+    enc = Jbig2Encoder(
+        str(fake),
+        extra_env={
+            "STARE_TEST_TIFF": str(src),
+            "STARE_TEST_ARGS": str(args_file),
+            "STARE_TEST_OUT": str(tmp_path / "out.jb2"),
+        },
+    )
     encoded = enc.encode(tiff_bytes, TIFF_TEXT)
-    args = encoded.data.decode().split("|")
+    assert encoded.data == VALID_STREAM  # written only if the TIFF reached jbig2 unchanged
+    args = args_file.read_text().split("|")
     assert args[:2] == ["-p", "-d"]
-    assert args[-1] == "same"  # the TIFF reached jbig2 unchanged
     assert "-s" not in args
     assert encoded.filter == "/JBIG2Decode"
     assert encoded.decode_parms is None
     assert enc.name == "jbig2enc 9.99"
     assert enc.settings.startswith("jbig2 -p -d")
+
+
+def test_jbig2_encoder_rejects_symbol_coded_output(tmp_path, tiff_bytes):
+    fake = _emitting(tmp_path, PAGE_INFO + _segment(1, 0, b"x") + _segment(2, 6, b"y"))
+    with pytest.raises(EncodeError, match=r"32044109578831_00436_0.tif.*segment type 0"):
+        Jbig2Encoder(str(fake)).encode(tiff_bytes, TIFF_TEXT)
 
 
 def test_jbig2_encoder_reports_failures(tmp_path, tiff_bytes):
@@ -139,7 +206,7 @@ def test_jbig2_encoder_reports_failures(tmp_path, tiff_bytes):
 
 def test_jbig2_encoder_rejects_a_jbig2_file_header(tmp_path, tiff_bytes):
     # a JBIG2 *file* (not -p "PDF ready" data) can't be embedded as-is
-    fake = _fake_jbig2(tmp_path, "printf '\\227JB2\\r\\n\\032\\n'\n")
+    fake = _emitting(tmp_path, JBIG2_FILE_MAGIC + VALID_STREAM)
     with pytest.raises(EncodeError, match="file header"):
         Jbig2Encoder(str(fake)).encode(tiff_bytes, TIFF_TEXT)
     assert JBIG2_FILE_MAGIC == b"\x97JB2\r\n\x1a\n"
@@ -168,10 +235,21 @@ def test_locate_prefers_the_env_var(tmp_path):
     assert enc.binary == str(fake)
 
 
-def test_locate_env_var_docker_selects_the_image():
-    enc = Jbig2Encoder.locate(env={"STARE_JBIG2": "docker", "PATH": ""})
+def test_locate_env_var_docker_selects_the_image(tmp_path):
+    docker = _fake_jbig2(tmp_path, "exit 0\n", name="docker")
+    enc = Jbig2Encoder.locate(env={"STARE_JBIG2": "docker", "PATH": str(tmp_path)})
     assert enc is not None
     assert enc.docker_image == PINNED_JBIG2_IMAGE
+    assert enc.command(["--version"])[0] == str(docker)
+
+
+def test_locate_runs_the_docker_it_probed(tmp_path):
+    # no jbig2 on PATH, but a docker that has the image: the same docker runs it
+    docker = _fake_jbig2(tmp_path, 'test "$1 $2" = "image inspect" || exit 1\n', "docker")
+    enc = Jbig2Encoder.locate(env={"PATH": str(tmp_path)})
+    assert enc is not None
+    assert enc.docker_image == PINNED_JBIG2_IMAGE
+    assert enc.command(["-p", "-d"], "-")[0] == str(docker)
 
 
 def test_locate_env_var_none_opts_out(tmp_path):
@@ -197,38 +275,11 @@ def test_locate_returns_none_without_jbig2(tmp_path):
 
 @pytest.mark.jbig2
 def test_real_jbig2_output_is_pdf_ready_generic_region(jbig2_encoder, tiff_bytes):
+    # encode() itself rejects anything but page info + generic region (+ end of page/stripe)
     encoded = jbig2_encoder.encode(tiff_bytes, TIFF_TEXT)
     assert encoded.filter == "/JBIG2Decode"
     assert not encoded.data.startswith(JBIG2_FILE_MAGIC)
-    # segment 0 is the page information segment (type 48), then an immediate lossless
-    # generic region (type 38 or 39); a text region (6/7) or symbol dictionary (0) would
-    # mean symbol coding
-    types = _segment_types(encoded.data)
+    types = jbig2_segment_types(encoded.data)
     assert types[0] == 48
     assert set(types) & {38, 39}
-    assert not set(types) & {0, 4, 6, 7}
     assert jbig2_encoder.name.startswith("jbig2enc ")
-
-
-def _segment_types(data: bytes) -> list[int]:
-    """Segment types of an embedded (PDF) JBIG2 stream (7.2 of ITU T.88)."""
-    types, pos = [], 0
-    while pos < len(data):
-        flags = data[pos + 4]
-        types.append(flags & 0x3F)
-        page_assoc_4 = bool(flags & 0x40)
-        count_byte = data[pos + 5]
-        n_refs = count_byte >> 5
-        if n_refs == 7:
-            raise AssertionError("long-form referred-to segment count not expected")
-        pos += 6
-        seg_no = int.from_bytes(data[pos - 6 : pos - 2], "big")
-        ref_size = 1 if seg_no <= 256 else 2 if seg_no <= 65536 else 4
-        pos += n_refs * ref_size
-        pos += 4 if page_assoc_4 else 1
-        length = int.from_bytes(data[pos : pos + 4], "big")
-        pos += 4
-        if length == 0xFFFFFFFF:
-            raise AssertionError("unknown-length segment not expected")
-        pos += length
-    return types

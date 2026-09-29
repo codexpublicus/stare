@@ -100,3 +100,17 @@ def test_text_operators_of_a_page_without_words_is_empty():
     with VolumeTar.open(FIXTURES / "152.tar") as vt:
         page = parse_alto(vt.read(ALTO_EMPTY), ALTO_EMPTY)
     assert text_operators(page, page_height=792.0, dpi=(300.0, 300.0)) == b""
+
+
+def test_hyphenated_words_keep_each_lines_content():
+    # ALTO's HypPart1/HypPart2 halves are drawn as printed; SUBS_CONTENT isn't substituted
+    first = Word("argu-", 100, 100, 50, 20, subs_type="HypPart1", subs_content="argument")
+    second = Word("ment", 10, 130, 40, 20, subs_type="HypPart2", subs_content="argument")
+    page = AltoPage(
+        unit="pixel",
+        width=300,
+        height=300,
+        lines=(Line(100, 100, 50, 20, (first,)), Line(10, 130, 40, 20, (second,))),
+    )
+    runs = TJ.findall(text_operators(page, page_height=72.0, dpi=(300.0, 300.0)))
+    assert [bytes.fromhex(r[4].decode()).decode("utf-16-be") for r in runs] == ["argu-", "ment"]
