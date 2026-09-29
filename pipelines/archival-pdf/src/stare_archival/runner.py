@@ -32,8 +32,10 @@ failed upload leaves the PDF for the next run to upload without rebuilding.
 `max_local_bytes` it counts the PDFs on local disk (walked once, then changed by what each
 volume actually added or removed) plus, for each running volume that may build, its tar's
 size (an upper bound on its PDF), and starts such a volume only while that stays under the
-limit. Volumes that only need an upload reserve nothing and go first, so an upload outage
-can't leave the next run unable to start.
+limit. A volume whose passing manifest matches this run (toolchain and recorded tar
+SHA-256) and only needs an upload reserves nothing and goes first, and one that's simply
+done reserves nothing; those still start when the disk is over the limit, since they free
+space or take none, so an upload outage can't leave the next run unable to start.
 """
 
 from __future__ import annotations
@@ -57,7 +59,7 @@ from typing import Any
 
 from stare_archival.build import build_volume
 from stare_archival.encoders import G4Encoder, ImageEncoder, Jbig2Encoder
-from stare_archival.errors import ManifestError, RunnerError, UploadError
+from stare_archival.errors import ArchivalError, ManifestError, RunnerError, UploadError
 from stare_archival.external import Poppler
 from stare_archival.manifest import (
     build_manifest,
@@ -631,24 +633,26 @@ def _kill(run: _Running) -> None:
     run.conn.close()
 
 
-def _only_uploads(job: VolumeJob, lay: Layout) -> bool:
-    """A cheap guess, from file names alone, that the job only needs an upload: a manifest
-    and a PDF on disk with no receipt. The worker checks properly."""
+def _plan(job: VolumeJob, lay: Layout) -> tuple[str, int]:
+    """What a job will most likely do, judged in the parent without hashing: ("upload", 0)
+    when its passing manifest matches this run (toolchain and the recorded tar sha256) and
+    the PDF waits locally with no receipt; ("skip", 0) when it matches and the PDF is on disk
+    or uploaded; otherwise ("build", the tar's size). A tar without a `.tar.sha256` counts
+    as a build here (checking it means hashing the tar); the worker decides properly."""
     ref = job.ref
-    return (
-        job.uploader is not None
-        and lay.manifest(ref).is_file()
-        and lay.pdf(ref).is_file()
-        and not lay.receipt(ref).is_file()
-    )
-
-
-def _reservation(job: VolumeJob, lay: Layout) -> int:
-    """Bytes a job may add to local disk: none if it looks done or only needs an upload, else
-    its tar's size."""
-    ref = job.ref
-    done = lay.manifest(ref).is_file() and (lay.pdf(ref).is_file() or lay.receipt(ref).is_file())
-    return 0 if done else job.reserve_bytes()
+    manifest = _passing_manifest(lay.manifest(ref))
+    if manifest is not None and toolchain_matches(manifest, job.toolchain):
+        try:
+            recorded = read_sha256_file(job.sha256_path) if job.sha256_path.is_file() else None
+        except (OSError, ValueError, ArchivalError):
+            recorded = None
+        if recorded is not None and manifest_succeeded(manifest, recorded):
+            pdf, receipt = lay.pdf(ref).is_file(), lay.receipt(ref).is_file()
+            if job.uploader is not None and pdf and not receipt:
+                return "upload", 0
+            if pdf or receipt:
+                return "skip", 0
+    return "build", job.reserve_bytes()
 
 
 def _child(worker: Callable[[VolumeJob], VolumeResult], job: VolumeJob, conn) -> None:
@@ -685,9 +689,10 @@ def run_batch(
     ctx = multiprocessing.get_context("fork")
     guard = max_local_bytes is not None
     layouts = {id(j): Layout(j.out, j.work) for j in jobs}
-    ordered = list(jobs)
-    if any(j.uploader is not None for j in jobs):
-        ordered.sort(key=lambda j: not _only_uploads(j, layouts[id(j)]))  # stable
+    plans = {}
+    if guard or any(j.uploader is not None for j in jobs):
+        plans = {id(j): _plan(j, layouts[id(j)]) for j in jobs}
+    ordered = sorted(jobs, key=lambda j: plans.get(id(j), ("",))[0] != "upload")  # stable
     pending = deque(ordered)
     running: list[_Running] = []
     results: list[VolumeResult] = []
@@ -718,8 +723,9 @@ def run_batch(
             while pending and stopped is None and len(running) < workers:
                 job = pending[0]
                 lay = layouts[id(job)]
-                need = _reservation(job, lay) if guard else 0
-                if guard and need and local + reserved + need > max_local_bytes:
+                kind, need = plans.get(id(job), ("build", 0))
+                # uploads free space and skips take none; only a build is held back
+                if guard and kind == "build" and local + reserved + need > max_local_bytes:
                     if not running:
                         stopped = (
                             f"disk guard: {format_bytes(local)} on local disk, and "
@@ -728,13 +734,13 @@ def run_batch(
                         )
                     break
                 pending.popleft()
+                before = lay.volume_bytes(job.ref) if guard else 0  # before the fork
                 receiver, sender = ctx.Pipe(duplex=False)
                 process = ctx.Process(
                     target=_child, args=(worker, job, sender), name=f"volume {job.ref.id}"
                 )
                 process.start()
                 sender.close()
-                before = lay.volume_bytes(job.ref) if guard else 0
                 running.append(
                     _Running(job, process, receiver, time.monotonic() + timeout, need, before)
                 )
