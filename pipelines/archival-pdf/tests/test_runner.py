@@ -9,7 +9,7 @@ from pathlib import Path
 
 import jsonschema
 import pytest
-from fixture_paths import FIXTURES, TIFF_TEXT
+from fixture_paths import TIFF_TEXT, add_volume
 
 from stare_archival.encoders import G4Encoder
 from stare_archival.errors import RunnerError, UploadError
@@ -19,7 +19,6 @@ from stare_archival.runner import (
     VolumeJob,
     VolumeRef,
     VolumeResult,
-    current_toolchain,
     find_volumes,
     format_summary,
     parse_size,
@@ -73,39 +72,6 @@ class FlippingEncoder(G4Encoder):
 
 
 # --- fixtures ----------------------------------------------------------------------------
-
-
-def _add_volume(src: Path, ref: str, *, sha256: bool = True) -> None:
-    reporter, volume = ref.split("/")
-    d = src / reporter
-    d.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(FIXTURES / "152.tar", d / f"{volume}.tar")
-    shutil.copyfile(FIXTURES / "152.tar.csv", d / f"{volume}.tar.csv")
-    if sha256:
-        digest = hashlib.sha256((FIXTURES / "152.tar").read_bytes()).hexdigest()
-        (d / f"{volume}.tar.sha256").write_text(digest + "\n")
-
-
-@pytest.fixture
-def src(tmp_path) -> Path:
-    s = tmp_path / "mirror"
-    _add_volume(s, "a2d/152")
-    return s
-
-
-@pytest.fixture
-def out(tmp_path) -> Path:
-    return tmp_path / "out"
-
-
-@pytest.fixture(scope="module")
-def toolchain() -> dict:
-    from stare_archival.external import Poppler
-
-    poppler = Poppler.locate()
-    if poppler is None:
-        pytest.skip("poppler (pdfimages, pdftotext) is not on PATH")
-    return current_toolchain(G4Encoder(), poppler)
 
 
 def _job(src, out, toolchain, ref="a2d/152", **kw) -> VolumeJob:
@@ -292,8 +258,9 @@ def test_a_volume_that_cant_be_built_gets_an_error_manifest(src, out):
 def test_streaming_uploads_verifies_and_deletes_the_local_pdf(src, out, toolchain, tmp_path):
     remote = tmp_path / "remote"
     result = process_volume(_job(src, out, toolchain, uploader=FakeUploader(remote)))
-    assert result.status == "pass", result
-    assert result.upload_s > 0
+    # built and uploaded in the same run: "uploaded", with its build time
+    assert result.status == "uploaded", result
+    assert result.build_s > 0 and result.upload_s > 0
     lay = Layout(out)
     ref = VolumeRef.parse("a2d/152")
     assert not lay.pdf(ref).exists()
@@ -327,8 +294,12 @@ def test_a_failed_upload_keeps_the_pdf_and_the_next_run_only_uploads(src, out, t
     assert result.local_bytes == lay.pdf(ref).stat().st_size
     assert not lay.receipt(ref).exists()
     manifest_before = lay.manifest(ref).read_bytes()
+    # a timeout during the upload left an error manifest beside the passing one
+    lay.failed_manifest(ref).parent.mkdir(parents=True, exist_ok=True)
+    lay.failed_manifest(ref).write_text("{}")
     again = process_volume(_job(src, out, toolchain, uploader=FakeUploader(remote)))
     assert again.status == "uploaded"
+    assert not lay.failed_manifest(ref).exists()
     assert again.build_s == 0
     assert lay.manifest(ref).read_bytes() == manifest_before
     assert (remote / "cap-pdf/a2d/152.pdf").is_file()
@@ -341,7 +312,7 @@ def test_a_failed_upload_keeps_the_pdf_and_the_next_run_only_uploads(src, out, t
 
 @pytest.mark.poppler
 def test_run_batch_builds_in_parallel_and_summarizes(src, out, toolchain):
-    _add_volume(src, "us/10", sha256=False)
+    add_volume(src, "us/10", sha256=False)
     jobs = [_job(src, out, toolchain, r.id) for r in find_volumes(src)]
     lines: list[str] = []
     outcome = run_batch(jobs, workers=2, timeout=300, log=lines.append)
