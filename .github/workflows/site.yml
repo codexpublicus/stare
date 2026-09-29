@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           marker="<!-- stare-preview -->"
-          body=$(printf '%s\nPreview: %s' "$marker" "$PREVIEW_URL")
+          body=$(printf '%s\nPreview: %s\n' "$marker" "$PREVIEW_URL")
           comment_id=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
             --jq "[.[] | select(.body | startswith(\"$marker\"))][0].id // empty")
           if [ -n "$comment_id" ]; then
