@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Build archival per-volume PDFs from the CAP tars (codexpublicus/stare#51)"
 requires-python = ">=3.12"
 dependencies = [
+    "fonttools>=4.66.1",
     "lxml>=6.1.3",
+    "pikepdf>=10.15.0",
     "pillow>=12.3.0",
 ]
 
@@ -21,6 +23,11 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+markers = [
+    "jbig2: needs the jbig2 encoder (jbig2enc on PATH, $STARE_JBIG2, or the pinned Docker image)",
+    "poppler: needs poppler's pdfimages/pdftotext on PATH",
+    "verapdf: needs veraPDF (verapdf on PATH or a local verapdf/cli Docker image)",
+]
 
 [tool.ruff]
 line-length = 100
@@ -31,4 +38,4 @@ select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "S", "ARG", "SIM"]
 ignore = []
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101"]
+"tests/*" = ["S101", "S603", "S607"]
