@@ -1,5 +1,5 @@
 import { parseInput, resolve, extractCase } from './resolve.js';
-import { renderReader, renderSidebar, renderMultiNotice } from './ui.js';
+import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } from './ui.js';
 import { getHashParams, setHash, onHashChange } from './router.js';
 import { processCitations, setupCiteHovers } from './citations.js';
 import { renderPageViewer } from './pageviewer.js';
@@ -104,6 +104,12 @@ async function showResolved(result) {
   // one page re-renders each with its own offsets.
   const citationsByCase = new Map();
   let shownCaseFile = null;
+  // The cited-cases live region for the case currently shown, returned by
+  // renderSidebar. highlightCase updates it in place through
+  // updateCitationStatus rather than calling renderSidebar again, so the
+  // element carrying role="status" aria-live="polite" stays the same node
+  // across the loading -> done/error transition.
+  let citationStatusEl = null;
 
   renderMultiNotice(multiEl, result.allCases, result.caseFile, switchCase);
   statusBar.classList.add('hidden');
@@ -115,7 +121,7 @@ async function showResolved(result) {
     shownCaseFile = caseFile;
     const cached = citationsByCase.get(caseFile) || null;
     renderReader(readerContent, caseData, cached);
-    renderSidebar(
+    citationStatusEl = renderSidebar(
       sidebar, caseData, result.reporter, result.volume, result.allCases,
       cached?.unique || null, cached ? 'done' : 'loading'
     );
@@ -128,10 +134,14 @@ async function showResolved(result) {
   }
 
   // Process citations in background, then re-render with them if this
-  // case is still the one shown. Always re-renders the sidebar on
-  // completion (success or failure), so the "Finding citations..." state
-  // never gets stuck.
+  // case is still the one shown. Always updates the cited-cases live
+  // region on completion (success or failure), so the "Finding
+  // citations..." state never gets stuck. Updates the region in place
+  // (updateCitationStatus) rather than re-rendering the whole sidebar, so
+  // the element announcing the change is the one already on the page, not
+  // a freshly created replacement a screen reader never saw appear.
   async function highlightCase(caseFile, caseData, actions) {
+    const statusEl = citationStatusEl;
     try {
       const { unique, occurrencesByOpinion } = await processCitations(caseData);
       const citationMap = new Map(unique.map(c => [c.raw, c]));
@@ -142,14 +152,12 @@ async function showResolved(result) {
       if (unique.length > 0) {
         renderReader(readerContent, caseData, citations);
       }
-      renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases, unique, 'done');
-      wireActions(actions);
+      updateCitationStatus(statusEl, caseData, unique, 'done');
       setupCiteHovers(readerContent, resolve);
     } catch (e) {
       console.warn('Citation detection failed:', e);
       if (shownCaseFile !== caseFile) return;
-      renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases, null, 'error');
-      wireActions(actions);
+      updateCitationStatus(statusEl, caseData, null, 'error');
     }
   }
 
