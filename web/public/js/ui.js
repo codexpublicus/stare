@@ -42,15 +42,30 @@ export function renderReader(el, caseData, citations) {
  * @param {number} volume - volume number
  * @param {Array} allCases - list of case files on this page
  * @param {Array|null} detectedCitations - citation objects from processCitations()
+ * @param {'loading'|'error'|'done'|undefined} citationStatus - state of async
+ *   citation detection. 'loading' shows a "Finding citations..." status in
+ *   place of the cited-cases list; 'error' shows a short failure note when
+ *   detection or availability checks threw. 'done' (or omitted, for callers
+ *   that never run async detection) renders detectedCitations, falling back
+ *   to caseData.cites_to when there are none.
  */
-export function renderSidebar(el, caseData, reporter, volume, allCases, detectedCitations) {
+export function renderSidebar(el, caseData, reporter, volume, allCases, detectedCitations, citationStatus) {
   const citeBadges = (caseData.citations || [])
     .map((c, i) => `<span class="cite-badge${i === 0 ? ' primary' : ''}">${esc(c.cite)}</span>`)
     .join(' ');
 
-  // Use detected citations if available, fall back to cites_to
+  const isLoading = citationStatus === 'loading';
+  const isError = citationStatus === 'error';
+
   let citedCasesHtml = '';
-  if (detectedCitations && detectedCitations.length > 0) {
+  let totalCites = 0;
+
+  if (isLoading) {
+    citedCasesHtml = `<div class="cited-status-message">Finding citations&hellip;</div>`;
+  } else if (isError) {
+    citedCasesHtml = `<div class="cited-status-message cited-status-error">Couldn't check citations.</div>`;
+  } else if (detectedCitations && detectedCitations.length > 0) {
+    // Use detected citations if available, fall back to cites_to
     const resolvable = detectedCitations.filter(c => c.resolvable);
     // Only http(s) external URLs are linked; others list as unresolved.
     const external = detectedCitations.filter(c => !c.resolvable && safeExternalUrl(c.externalUrl));
@@ -77,6 +92,7 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
     };
 
     citedCasesHtml = [...resolvable, ...external, ...unresolvable].map(renderCite).join('');
+    totalCites = detectedCitations.length;
   } else {
     citedCasesHtml = (caseData.cites_to || [])
       .map(c => {
@@ -87,11 +103,11 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
         </div>`;
       })
       .join('');
+    totalCites = caseData.cites_to?.length || 0;
   }
 
-  const totalCites = detectedCitations
-    ? detectedCitations.length
-    : (caseData.cites_to?.length || 0);
+  const showCitedSection = isLoading || isError || citedCasesHtml;
+  const citedSectionLabel = isLoading || isError ? 'Cited Cases' : `Cited Cases (${totalCites})`;
 
   const pdfUrl = `https://static.case.law/${reporter}/${volume}.pdf`;
 
@@ -110,8 +126,8 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
       <div class="sidebar-label">Citations</div>
       ${citeBadges}
     </div>
-    ${citedCasesHtml ? `<div class="sidebar-section">
-      <div class="sidebar-label">Cited Cases (${totalCites})</div>
+    ${showCitedSection ? `<div class="sidebar-section" role="status" aria-live="polite">
+      <div class="sidebar-label">${citedSectionLabel}</div>
       ${citedCasesHtml}
     </div>` : ''}
     <div class="sidebar-section">

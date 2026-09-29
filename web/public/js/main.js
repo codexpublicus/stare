@@ -115,7 +115,10 @@ async function showResolved(result) {
     shownCaseFile = caseFile;
     const cached = citationsByCase.get(caseFile) || null;
     renderReader(readerContent, caseData, cached);
-    renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases, cached?.unique || null);
+    renderSidebar(
+      sidebar, caseData, result.reporter, result.volume, result.allCases,
+      cached?.unique || null, cached ? 'done' : 'loading'
+    );
     wireActions(actions);
     if (cached) {
       setupCiteHovers(readerContent, resolve);
@@ -125,7 +128,9 @@ async function showResolved(result) {
   }
 
   // Process citations in background, then re-render with them if this
-  // case is still the one shown.
+  // case is still the one shown. Always re-renders the sidebar on
+  // completion (success or failure), so the "Finding citations..." state
+  // never gets stuck.
   async function highlightCase(caseFile, caseData, actions) {
     try {
       const { unique, occurrencesByOpinion } = await processCitations(caseData);
@@ -133,13 +138,18 @@ async function showResolved(result) {
       const citations = { unique, citationMap, occurrencesByOpinion };
       // Cache empty results too, so switching back doesn't detect again.
       citationsByCase.set(caseFile, citations);
-      if (unique.length === 0 || shownCaseFile !== caseFile) return;
-      renderReader(readerContent, caseData, citations);
-      renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases, unique);
+      if (shownCaseFile !== caseFile) return;
+      if (unique.length > 0) {
+        renderReader(readerContent, caseData, citations);
+      }
+      renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases, unique, 'done');
       wireActions(actions);
       setupCiteHovers(readerContent, resolve);
     } catch (e) {
       console.warn('Citation detection failed:', e);
+      if (shownCaseFile !== caseFile) return;
+      renderSidebar(sidebar, caseData, result.reporter, result.volume, result.allCases, null, 'error');
+      wireActions(actions);
     }
   }
 

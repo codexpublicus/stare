@@ -27,6 +27,9 @@
 .cited-status.ext { color: var(--link); font-size: 13px; }
 .cited-status.no { color: var(--status-no); }
 
+.cited-status-message { padding: 6px 0; font-size: 13px; color: var(--text-secondary); }
+.cited-status-message.cited-status-error { color: var(--error-text); }
+
 .sidebar-action { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--sidebar-action); text-decoration: none; font-size: 13px; cursor: pointer; transition: color 0.15s; }
 .sidebar-action:hover { color: var(--text); }
 .sidebar-action-icon { width: 16px; text-align: center; font-size: 14px; }
