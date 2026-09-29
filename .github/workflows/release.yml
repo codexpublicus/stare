@@ -1,0 +1,151 @@
+name: release
+
+# The one path to production. Runs when the release PR (branch release/next,
+# kept up to date by release-prepare.yml) is merged:
+#
+#   1. compute vYYYY.MM.DD.N at merge time (scripts/calver.mjs; N is one more
+#      than the day's highest existing release);
+#   2. wait for the merge commit's push checks (site.yml) and refuse if any failed;
+#   3. build and check the merge commit, with a changelog regenerated for the tag;
+#   4. tag the merge commit and create the GitHub Release with git-cliff notes;
+#   5. deploy production (stare.pub) with wrangler.
+#
+# All of it is one job because a tag or release created with GITHUB_TOKEN doesn't
+# trigger other workflows; nothing listens for `push: tags` or `release`.
+#
+# Re-running a failed run is safe: if the merge commit already has a release tag,
+# the run reuses it instead of cutting a new one, and only creates what's missing.
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+concurrency:
+  group: site-release
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release:
+    name: Release and deploy production
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'release/next' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      SHA: ${{ github.event.pull_request.merge_commit_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Compute the release tag
+        id: version
+        run: |
+          set -euo pipefail
+          existing=$(git tag --points-at HEAD --list 'v[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9].*' | head -n1)
+          if [ -n "$existing" ]; then
+            echo "Merge commit is already tagged $existing (a re-run); reusing it."
+            version=$existing
+          else
+            version=$(node scripts/calver.mjs)
+            if git rev-parse --verify --quiet "refs/tags/$version" >/dev/null; then
+              echo "::error::Tag $version already exists on another commit"
+              exit 1
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Release: $version at $SHA"
+
+      - name: Wait for the merge commit's checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # The merge commit's push to main runs site.yml (and the other push
+          # workflows); this run is a pull_request event, so it isn't in the list.
+          deadline=$(( $(date +%s) + 60 * 60 ))
+          while :; do
+            runs=$(gh api "repos/$REPO/actions/runs?head_sha=$SHA&event=push&per_page=100" \
+              --jq '[.workflow_runs[] | {name, status, conclusion, url: .html_url}]')
+            echo "$runs" | jq -r '.[] | "\(.name): \(.status)/\(.conclusion // "pending")"'
+            site=$(echo "$runs" | jq '[.[] | select(.name == "site")] | length')
+            pending=$(echo "$runs" | jq '[.[] | select(.status != "completed")] | length')
+            if [ "$site" -gt 0 ] && [ "$pending" -eq 0 ]; then
+              break
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Timed out waiting for the merge commit's checks"
+              exit 1
+            fi
+            sleep 30
+          done
+          failed=$(echo "$runs" | jq -r '[.[] | select(.conclusion as $c | ["success", "skipped", "neutral"] | index($c) | not)] | map("\(.name) (\(.conclusion)): \(.url)") | join("\n")')
+          if [ -n "$failed" ]; then
+            echo "::error::Checks failed on $SHA; refusing to release"
+            echo "$failed"
+            exit 1
+          fi
+
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        with:
+          tool: git-cliff@2.14.2
+
+      - name: Release notes and changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # On a re-run the tag may already exist; describe the range that ends at it.
+          if git rev-parse --verify --quiet "refs/tags/$VERSION" >/dev/null; then
+            git cliff --latest --strip all > "$RUNNER_TEMP/release-notes.md"
+            git cliff --output CHANGELOG.md
+          else
+            git cliff --unreleased --tag "$VERSION" --strip all > "$RUNNER_TEMP/release-notes.md"
+            # Not committed: /about renders this build's changelog, headed with the
+            # real tag even if the release PR previewed a different date.
+            git cliff --tag "$VERSION" --output CHANGELOG.md
+          fi
+          cat "$RUNNER_TEMP/release-notes.md"
+
+      - uses: ./.github/actions/build-site
+        with:
+          ssh-private-key: ${{ secrets.CITARE_DEPLOY_KEY }}
+          release: ${{ steps.version.outputs.version }}
+          commit: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Tag and create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists (a re-run)."
+          else
+            # Creates the tag on the merge commit when it doesn't exist yet.
+            gh release create "$VERSION" \
+              --target "$SHA" \
+              --title "$VERSION" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
+
+      - name: Deploy production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.141.0 deploy --tag "$VERSION" --message "Release $VERSION"
+          echo "Deployed $VERSION ($SHA) to https://stare.pub" >> "$GITHUB_STEP_SUMMARY"

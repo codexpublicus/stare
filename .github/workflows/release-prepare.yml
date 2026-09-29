@@ -1,0 +1,97 @@
+name: release-prepare
+
+# Keeps one open release PR (branch release/next) whose CHANGELOG.md carries the
+# notes for everything releasable since the last vYYYY.MM.DD.N tag. Merging it
+# runs release.yml, which tags, releases and deploys production.
+#
+# The version in the PR's CHANGELOG.md is a preview computed from today's date;
+# release.yml fixes the real version at merge time and builds with a changelog
+# regenerated for it, and the next run of this workflow rewrites CHANGELOG.md
+# from the tags, so a PR merged on a later day doesn't leave a wrong heading.
+#
+# Needs "Allow GitHub Actions to create and approve pull requests" enabled for
+# the repo. The PR is opened with GITHUB_TOKEN, so no pull_request workflows run
+# on it; the checks that gate a release run on the merge commit instead.
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: release-prepare
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  RELEASE_BRANCH: release/next
+
+jobs:
+  prepare:
+    name: Update the release PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Skip the release PR's own merge
+        id: gate
+        env:
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          # Merge commit, squash and rebase merges of the release PR respectively.
+          first_line=$(printf '%s\n' "$MESSAGE" | head -n1)
+          case "$first_line" in
+            "Merge pull request #"*" from ${GITHUB_REPOSITORY_OWNER}/${RELEASE_BRANCH}" | "chore(release):"*)
+              echo "Head commit is the release PR landing; release.yml handles it."
+              echo "skip=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "skip=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.skip != 'true'
+        with:
+          fetch-depth: 0
+
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        if: steps.gate.outputs.skip != 'true'
+        with:
+          tool: git-cliff@2.14.2
+
+      - name: Compute the unreleased notes
+        id: notes
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          count=$(git cliff --unreleased --context | jq '[.[].commits[]] | length')
+          if [ "$count" -eq 0 ]; then
+            echo "No releasable commits (only hidden types) since the last release."
+            echo "releasable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          version=$(node scripts/calver.mjs)
+          git cliff --tag "$version" --output CHANGELOG.md
+          notes=$(git cliff --unreleased --tag "$version" --strip all)
+          {
+            echo "Merging this PR releases the site and deploys it to production (stare.pub)."
+            echo
+            echo "The version below is a preview from today's date. The real \`vYYYY.MM.DD.N\` is computed when this PR merges; release.yml tags the merge commit, creates the GitHub Release with these notes and deploys."
+            echo
+            echo "$notes"
+          } > "$RUNNER_TEMP/release-pr-body.md"
+          echo "releasable=true" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "$count releasable commit(s); previewing as $version"
+
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        if: steps.notes.outputs.releasable == 'true'
+        with:
+          branch: ${{ env.RELEASE_BRANCH }}
+          base: main
+          add-paths: CHANGELOG.md
+          commit-message: "chore(release): update CHANGELOG.md for the next site release"
+          title: "chore(release): next site release"
+          body-path: ${{ runner.temp }}/release-pr-body.md
+          delete-branch: true
