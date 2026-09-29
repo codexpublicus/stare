@@ -74,14 +74,16 @@ jobs:
           set -euo pipefail
           # The merge commit's push to main runs site.yml (and the other push
           # workflows); this run is a pull_request event, so it isn't in the list.
+          # site must succeed. Any other run fails the release only on an actual
+          # failure: release-prepare, say, may be cancelled by a newer push.
           deadline=$(( $(date +%s) + 60 * 60 ))
           while :; do
             runs=$(gh api "repos/$REPO/actions/runs?head_sha=$SHA&event=push&per_page=100" \
               --jq '[.workflow_runs[] | {name, status, conclusion, url: .html_url}]')
             echo "$runs" | jq -r '.[] | "\(.name): \(.status)/\(.conclusion // "pending")"'
-            site=$(echo "$runs" | jq '[.[] | select(.name == "site")] | length')
+            site_done=$(echo "$runs" | jq '[.[] | select(.name == "site" and .status == "completed")] | length')
             pending=$(echo "$runs" | jq '[.[] | select(.status != "completed")] | length')
-            if [ "$site" -gt 0 ] && [ "$pending" -eq 0 ]; then
+            if [ "$site_done" -gt 0 ] && [ "$pending" -eq 0 ]; then
               break
             fi
             if [ "$(date +%s)" -ge "$deadline" ]; then
@@ -90,7 +92,11 @@ jobs:
             fi
             sleep 30
           done
-          failed=$(echo "$runs" | jq -r '[.[] | select(.conclusion as $c | ["success", "skipped", "neutral"] | index($c) | not)] | map("\(.name) (\(.conclusion)): \(.url)") | join("\n")')
+          failed=$(echo "$runs" | jq -r '
+            [.[] | select(
+              (.name == "site" and .conclusion != "success") or
+              (.conclusion as $c | ["failure", "timed_out", "action_required", "startup_failure"] | index($c))
+            )] | map("\(.name) (\(.conclusion)): \(.url)") | join("\n")')
           if [ -n "$failed" ]; then
             echo "::error::Checks failed on $SHA; refusing to release"
             echo "$failed"
