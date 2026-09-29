@@ -184,12 +184,10 @@ read-only Docker volume `codexpublicus-cap-mirror`, the output goes to
   - `mega/k8s`: k8s persistent volumes
 - Access TrueNAS via NFS mounts and `showmount -e`, not SSH
 - Inspect corpus files from the mirror, never from static.case.law: on ml-01 the Docker volume
-  `codexpublicus-cap-mirror` is the NFS share (read-only at the export and the ZFS dataset),
-  with files at `downloads/<reporter>/<volume>.<ext>`. Mount it read-only, e.g.
-  `ssh ml-01 'docker run --rm -v codexpublicus-cap-mirror:/data:ro rclone/rclone:latest cat /data/downloads/a2d/31.tar.csv'`.
-  The old `mirror_mirror-data` volume no longer mounts. Derived output goes to the
-  read-write volume `codexpublicus-derived`; `codexpublicus-index` and
-  `codexpublicus-backups` are the other read-write volumes.
+  `mirror_mirror-data` is the NFS share, with files at `downloads/<reporter>/<volume>.<ext>`.
+  Mount it read-only, e.g.
+  `ssh ml-01 'docker run --rm -v mirror_mirror-data:/data:ro rclone/rclone:latest cat /data/downloads/a2d/31.tar.csv'`.
+  Never write to it.
 
 ## Key Context
 
