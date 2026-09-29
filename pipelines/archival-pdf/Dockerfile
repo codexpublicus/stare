@@ -23,21 +23,33 @@ ARG APT_SNAPSHOT=20260928T000000Z
 ARG POPPLER_VERSION=24.02.0-1ubuntu9.9
 ARG LEPTONICA_VERSION=1.82.0-3build4
 ARG PYTHON_VERSION=3.12.3-1ubuntu0.17
-ARG REVISION=unknown
+ARG CA_CERTIFICATES_VERSION=20260601~24.04.1
+# REVISION: the git tree hash of pipelines/archival-pdf (`git rev-parse <commit>:pipelines/
+# archival-pdf`), the resume key, so only a change to the pipeline itself rebuilds volumes.
+# COMMIT: the repository commit, for provenance only.
+ARG REVISION
+ARG COMMIT=unknown
+
+RUN test -n "${REVISION}" && test "${REVISION}" != unknown \
+    || { echo "build with --build-arg REVISION=\$(git rev-parse HEAD:pipelines/archival-pdf)" >&2; exit 1; }
 
 LABEL org.opencontainers.image.title="stare-archival" \
       org.opencontainers.image.description="Archival per-volume CAP PDFs: build, verify, upload" \
       org.opencontainers.image.source="https://github.com/codexpublicus/stare" \
-      org.opencontainers.image.revision="${REVISION}"
+      org.opencontainers.image.revision="${COMMIT}" \
+      pub.stare.archival.pipeline-tree="${REVISION}"
 
-# the snapshot service is HTTPS only, so the CA bundle comes first, from the live archive
-# (apt still checks every index against the archive's signing keys)
+# the snapshot service is HTTPS only, so a CA bundle comes first, from the live archive
+# (apt still checks every index against the archive's signing keys); the snapshot's pinned
+# version then replaces it
 RUN apt-get update -q \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
         ca-certificates \
     && echo "APT::Snapshot \"${APT_SNAPSHOT}\";" > /etc/apt/apt.conf.d/50snapshot \
     && apt-get update -q \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+        --allow-downgrades \
+        ca-certificates="${CA_CERTIFICATES_VERSION}" \
         liblept5="${LEPTONICA_VERSION}" \
         poppler-utils="${POPPLER_VERSION}" \
         python3.12="${PYTHON_VERSION}" \
