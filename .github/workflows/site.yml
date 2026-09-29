@@ -1,6 +1,6 @@
 name: site
 
-# Checks and previews. Nothing here deploys production: the one path to
+# Checks and previews. Nothing here deploys production: the sanctioned path to
 # production is merging the release PR, which runs release.yml.
 #
 # - pull requests: build, upload a Worker version, and comment its preview URL
