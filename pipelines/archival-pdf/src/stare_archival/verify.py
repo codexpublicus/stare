@@ -610,30 +610,56 @@ def _image_problems(
     return problems, image, filter_
 
 
-def _content_problems(pdf_page: pikepdf.Page, image_name: str, size: tuple[float, float]) -> list:
+def _concat(m: Sequence[float], ctm: Sequence[float]) -> tuple[float, ...]:
+    """m x ctm, for PDF's [a b c d e f] matrices (the `cm` operator)."""
+    a, b, c, d, e, f = m
+    a2, b2, c2, d2, e2, f2 = ctm
+    return (
+        a * a2 + b * c2,
+        a * b2 + b * d2,
+        c * a2 + d * c2,
+        c * b2 + d * d2,
+        e * a2 + f * c2 + e2,
+        e * b2 + f * d2 + f2,
+    )
+
+
+def _content_problems(
+    pdf_page: pikepdf.Page, image_name: str, size: tuple[float, float]
+) -> list[str]:
+    """What the page's content stream draws besides its image at full page and invisible
+    text. The CTM and text render mode are tracked through q/Q."""
     problems: list[str] = []
     try:
         instructions = pikepdf.parse_content_stream(pdf_page)
     except pikepdf.PdfError as exc:
         return [f"content stream can't be parsed ({exc})"]
     draws = 0
+    ctm: tuple[float, ...] = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     render_mode = 0
-    matrix: list[float] | None = None
+    saved: list[tuple[tuple[float, ...], int]] = []
+    full_page = (size[0], 0.0, 0.0, size[1], 0.0, 0.0)
     for operands, operator in instructions:
         op = str(operator)
         if op not in _ALLOWED_OPERATORS:
             problems.append(f"the content stream uses the {op} operator")
+        elif op == "q":
+            saved.append((ctm, render_mode))
+        elif op == "Q":
+            if saved:
+                ctm, render_mode = saved.pop()
         elif op == "cm":
-            matrix = [float(v) for v in operands]
+            if len(operands) != 6:
+                problems.append(f"cm with {len(operands)} operands")
+                continue
+            ctm = _concat([float(v) for v in operands], ctm)
         elif op == "Do":
             draws += 1
             if str(operands[0]) != image_name:
                 problems.append(f"draws {operands[0]}, not the page image")
-            expected = [size[0], 0, 0, size[1], 0, 0]
-            if matrix is None or any(
-                abs(a - b) > BOX_TOLERANCE_PT for a, b in zip(matrix, expected, strict=True)
-            ):
-                problems.append(f"the image is drawn with matrix {matrix}, not the full page")
+            if any(abs(a - b) > BOX_TOLERANCE_PT for a, b in zip(ctm, full_page, strict=True)):
+                shown = [round(v, 4) for v in ctm]
+                problems.append(f"the image is drawn with matrix {shown}, not the full page")
         elif op == "Tr":
             render_mode = int(operands[0])
         elif op == "Tj" and render_mode != 3:

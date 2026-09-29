@@ -346,6 +346,24 @@ def test_a_visible_text_layer_fails_image_streams(g4_pdf, poppler, tmp_path):
 
 
 @pytest.mark.poppler
+@pytest.mark.parametrize(
+    ("prefix", "message"),
+    [
+        # scale the whole page, then draw the image with the usual full-page matrix
+        (b"0.5 0 0 0.5 0 0 cm\n", "not the full page"),
+        # paint over part of the page image
+        (b"0 0 50 50 re f\n", "uses the re operator"),
+    ],
+)
+def test_drawing_anything_but_the_full_page_image_fails(g4_pdf, poppler, tmp_path, prefix, message):
+    pdf = _edit_page_content(g4_pdf, tmp_path / "t.pdf", 0, lambda b: prefix + b)
+    report = verify_volume(pdf, FIXTURES / "152.tar", poppler=poppler)
+    failures = report.check("image_streams").failures
+    assert {f.page for f in failures} == {1}
+    assert any(message in f.message for f in failures), failures
+
+
+@pytest.mark.poppler
 def test_jbig2_globals_anywhere_fail(g4_pdf, poppler, tmp_path):
     with pikepdf.open(g4_pdf) as doc:
         globals_ = doc.make_indirect(pikepdf.Stream(doc, b"\x00" * 16))
