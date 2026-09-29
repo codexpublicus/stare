@@ -115,8 +115,10 @@ conditional-get=true
 ### Storage
 
 - **Target**: TrueNAS at `truenas.lodenheim.lokkju.com`
-- **Dataset**: `mega/codex-publicus`
-- **NFS export**: `/mnt/mega/codex-publicus` to `192.168.32.0/24` (MapRoot: root)
+- **Dataset**: `mega/codexpublicus/cap-mirror` (renamed from `mega/codex-publicus` on
+  2026-09-29; read-only since the mirror completed)
+- **NFS export**: `/mnt/mega/codexpublicus/cap-mirror` to `192.168.32.0/24` (MapRoot: root,
+  read-only)
 - **Docker NFS volume**: mounted directly via `driver_opts` in compose — no host mount needed
 - **Download path**: `/aria2/data/downloads/{reporter}/{volume}.{ext}`
 
