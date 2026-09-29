@@ -131,3 +131,59 @@ Worker custom domain won't attach while a CNAME exists.
 - **The deploy token's reach.** Workers Scripts Write can redeploy any Worker in the account,
   including `codexpublicus-lfs`. That's the same accepted risk as infra#17, and the same mitigation
   applies before any repo goes public.
+
+## Amendment, 2026-09-29: the central infra repo
+
+This replaces the "In-repo Pulumi" and "The zone moves too" decisions above, and the parked secrets
+redesign (the closed stare#36).
+
+**The model.** Infra repos provision, and app repos only deploy.
+- `codexpublicus/infra` (stack `codexpublicus-infra/prod`) owns every Pulumi resource that carries
+  the Codex Publicus name. That includes everything stare.pub needs: the zone, the idx bucket, the
+  Worker deploy token, the citare deploy key, the stare Actions secrets and `codex-data`.
+- This repo runs no Pulumi. Its CI holds only what the infra stack pushes into its Actions secrets
+  (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CITARE_DEPLOY_KEY`), and it deploys with
+  Wrangler.
+- A stare.pub infrastructure change is a PR in `codexpublicus/infra`.
+
+**Why.** Running Pulumi in each app repo means handing every repo state-backend credentials and a
+passphrase. Each way of scoping those was either custom code (derived passphrases, a vending chain)
+or a paid service: Pulumi Cloud gives per-stack CI tokens only on Pro. In the central model, stare's
+CI holds one deploy token and one read-only deploy key. It can't read any state or decrypt
+anything, and it can't touch a sibling. Everything uses stock Pulumi resources; codexpublicus-infra's
+`site.py` already works this way for codexpublicus.org.
+
+**Two roots, not a hierarchy.**
+- `lokkju-infra` and `codexpublicus-infra` are peers. The Cloudflare account and the GitHub org were
+  created by hand, and neither stack can create them.
+- codexpublicus-infra reads nothing from lokkju-infra. `account_id` becomes plain stack config, and
+  the `lokkju-infra` StackReference in `shared.py` goes away.
+- codexpublicus-infra also owns the codexpublicus GitHub org's configuration: repos, settings,
+  Actions secrets, deploy keys and rulesets, through `pulumi-github` with `owner=codexpublicus`. The
+  org setting `deploy_keys_enabled_for_repositories` has no pulumi-github field; it's a one-time
+  `gh api -X PATCH orgs/codexpublicus -F deploy_keys_enabled_for_repositories=true`, recorded in
+  codexpublicus/infra's AGENTS.md.
+- Secrets stay as they are today: age-encrypted mise env in each infra repo, with Pulumi run
+  locally by the operator. Giving each root its own passphrase and state bucket, and running an
+  infra repo's Pulumi in CI, come later and don't change this model. A GitOps controller (the
+  Pulumi Kubernetes Operator with Flux and SOPS) fits the same shape; it isn't planned yet.
+
+**What changes in this spec.**
+- **`stare-infra/prod` is retired.**
+  - `r2-codex-data` moves to codexpublicus-infra by `pulumi state move`. It's protected and
+    `retain_on_delete`, and it must never be deleted.
+  - The other resources are recreated there: the Workers deploy token, the three Actions secrets,
+    the citare TLS key and deploy key, and the explicit GitHub provider. None of them holds data.
+  - stare-infra is destroyed, then removed with `stack rm`. `infra/` and `.mise/tasks/pulumi` leave
+    this repo.
+- **The stare.pub zone and idx resources stay in codexpublicus-infra.** The "Move the survivors"
+  step (plan Task 9) is cancelled. The Pages cutover and the email removal (Tasks 7 and 8) were
+  already edits to codexpublicus-infra, so they're unchanged.
+- **Done means,** revised: codexpublicus-infra owns every stare.pub resource; this repo has no
+  `infra/` and no Pulumi credentials; the other criteria stand.
+- **Outputs:** codexpublicus-infra exports `worker_name_stare-pub` and `r2_bucket_codex-data`, both
+  plain.
+
+**Tickets revised:** lokkju/infra#19, codexpublicus/infra#31 and codexpublicus/gorsuch-library#74
+describe this model in place of derived passphrases. gorsuch's own un-applied `infra/` folds into
+codexpublicus-infra the same way. The Workers KMS idea is parked as lokkju/meta#3.
