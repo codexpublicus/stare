@@ -161,10 +161,13 @@ def test_read_checks_the_tar_header_before_the_member(tar_path, csv_path):
     real = index[TIFF_TEXT]
     # point the TIFF's entry at the ALTO member's data: header name and size won't match
     alto = index[ALTO_TEXT]
-    wrong = TarIndex([*(m for m in index if m.path != TIFF_TEXT), Member(TIFF_TEXT, alto.offset, real.size)])
-    with VolumeTar(open(tar_path, "rb"), wrong) as vt:  # noqa: SIM115
-        with pytest.raises(MemberReadError, match="header"):
-            vt.read(TIFF_TEXT)
+    others = [m for m in index if m.path != TIFF_TEXT]
+    wrong = TarIndex([*others, Member(TIFF_TEXT, alto.offset, real.size)])
+    with (
+        VolumeTar(open(tar_path, "rb"), wrong) as vt,  # noqa: SIM115
+        pytest.raises(MemberReadError, match="header"),
+    ):
+        vt.read(TIFF_TEXT)
     with VolumeTar(open(tar_path, "rb"), wrong, check_headers=False) as vt:  # noqa: SIM115
         assert len(vt.read(TIFF_TEXT)) == real.size
 
