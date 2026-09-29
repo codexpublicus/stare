@@ -531,7 +531,7 @@ def test_a_different_pipeline_revision_is_a_different_toolchain():
     from stare_archival.runner import TOOLCHAIN_TOOLS, toolchain_matches
 
     assert "stare-archival-revision" in TOOLCHAIN_TOOLS
-    tools = {k: "1" for k in TOOLCHAIN_TOOLS}
+    tools = dict.fromkeys(TOOLCHAIN_TOOLS, "1")
     manifest = {"tools": tools, "encoder": {"name": "jbig2enc 0.28"}}
     same = {**tools, "encoder": "jbig2enc 0.28"}
     assert toolchain_matches(manifest, same)

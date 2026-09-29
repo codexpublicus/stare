@@ -52,12 +52,16 @@ def _tools(extra: dict[str, str] | None = None) -> dict[str, str]:
         "pillow": PIL.__version__,
         "lxml": lxml.etree.__version__,
     }
+    revision = os.environ.get("STARE_ARCHIVAL_REVISION")
+    if revision:  # set in the pipeline image: the commit it was built from
+        tools["stare-archival-revision"] = revision
     tools.update(extra or {})
     return tools
 
 
 def package_versions() -> dict[str, str]:
-    """This package's version and those of the Python libraries it builds with."""
+    """This package's version (and, in the pipeline image, the git revision it was built
+    from) and those of the Python libraries it builds with."""
     return _tools()
 
 

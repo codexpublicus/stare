@@ -64,7 +64,8 @@ RUN --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
     && /opt/stare-archival/venv/bin/stare-archival --version
 
 RUN useradd --uid 10001 --user-group --create-home --home-dir /home/archival archival
-ENV PATH=/opt/stare-archival/venv/bin:${PATH}
+ENV PATH=/opt/stare-archival/venv/bin:${PATH} \
+    STARE_ARCHIVAL_REVISION=${REVISION}
 USER archival
 WORKDIR /home/archival
 ENTRYPOINT ["stare-archival"]

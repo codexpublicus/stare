@@ -76,9 +76,11 @@ LABELS = {
 }
 _PROBLEMS = ("fail", "error", "timeout", "upload_failed")
 
-# the tool versions a finished volume must share with this run to be skipped
+# the tool versions a finished volume must share with this run to be skipped; the revision
+# (from the pipeline image) makes a new image of changed code rebuild everything
 TOOLCHAIN_TOOLS = (
     "stare-archival",
+    "stare-archival-revision",
     "python",
     "pikepdf",
     "qpdf",
