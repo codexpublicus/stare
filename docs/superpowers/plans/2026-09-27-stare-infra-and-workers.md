@@ -1,5 +1,7 @@
 # stare.pub Infrastructure, CI and Workers Implementation Plan
 
+> **Amended 2026-09-29 (central infra repo; see the spec's Amendment section).** Run Tasks 5R and 5S, at the end of this file, before Task 6. Task 9 is cancelled. Task 10 changes as noted there. Where Tasks 6-8 say `stare-infra`, read `codexpublicus-infra`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** stare.pub builds and deploys from GitHub Actions to Workers Static Assets. Its infrastructure lives in this repo's `stare-infra/prod` stack. `codexpublicus-infra` keeps nothing stare-specific. The deployed index data in `stare-pub-idx` is never at risk.
@@ -338,7 +340,9 @@ Tasks 1, 2 and 3 start together.
 
 ---
 
-### Task 9: Move the survivors into `stare-infra`
+### Task 9: Move the survivors into `stare-infra` (CANCELLED 2026-09-29)
+
+> Cancelled by the central-infra amendment: the stare.pub zone and idx resources stay in `codexpublicus-infra`. Kept for the record only; do not execute.
 
 **Files:**
 - codexpublicus/stare, new: `infra/stare_infra/zone.py`, `infra/stare_infra/index_bucket.py`, and their tests. They declare, with identical logical names and inputs:
@@ -386,3 +390,81 @@ Tasks 1, 2 and 3 start together.
   - stare: "Triage 12 npm audit findings in web/" (npm ci reported 1 critical and 10 high).
 - [ ] **Close stare#3** with a summary comment.
 - [ ] **Memory:** trim anything superseded.
+
+---
+
+## Amendment 2026-09-29: fold stare-infra into codexpublicus-infra
+
+Spec: the "Amendment, 2026-09-29: the central infra repo" section. These tasks run after Task 5 and before Task 6. They supersede Task 5's operator `up`, which ran partially: 7 created, and the citare deploy key failed on the org policy.
+
+**Global constraints added:**
+- `r2-codex-data` is never deleted or recreated. It moves by `pulumi state move` only.
+- `stare-pub-idx` protection is untouched.
+- The operator runs every `state move`, `destroy`, `stack rm`, `up` and `gh api -X PATCH`.
+
+### Task 5R: codexpublicus-infra absorbs stare's deploy credentials and codex-data (codexpublicus/infra)
+
+Worktree from fresh `origin/main` of `codexpublicus/infra`, branch `lokkju/absorb-stare-infra`.
+
+**Files:**
+- Create:
+  - `pulumi/codexpublicus_infra/providers.py`: `github_provider(owner: str) -> github.Provider`, cached per owner, logical name `github-<owner>`, with the same inputs `site.py` uses today, so the existing provider is unchanged.
+  - `pulumi/codexpublicus_infra/stare_deploy.py`: a port of stare's `infra/stare_infra/deploy.py`, with identical logical names (`workers-token-stare-pub`, `gh-secret-cf-token-stare-pub`, `gh-secret-cf-account-stare-pub`, `citare-deploy-key` for both the TLS key and the deploy key, `gh-secret-citare-deploy-key-stare-pub`) and the same token policies. It uses the local stare.pub zone id (`zones["stare.pub"].id`) instead of a StackReference, and the shared `github_provider("codexpublicus")`.
+  - `pulumi/codexpublicus_infra/data.py`: a port of `infra/stare_infra/data.py` (`r2-codex-data`, `protect=True, retain_on_delete=True`, export `r2_bucket_codex-data`).
+  - Tests ported from stare's `infra/tests/test_deploy.py` and `test_data.py`, onto this repo's `tests/conftest.py` mocks.
+- Modify:
+  - `settings.py`: `shared_stack` becomes `account_id`. Add a `stare` settings block (`worker_name`, `github_repo`, `citare_repo`, `data_bucket`) validated like `site`.
+  - `Pulumi.prod.yaml`: replace `shared_stack` with `codexpublicus-infra:account_id: 441c9b9997aeedf42f0c48d5bdb996cb`, and add the `stare` block with the values from stare's `infra/Pulumi.prod.yaml`.
+  - `__main__.py`: drop `read_shared`, use `pulumi.Output.from_input(settings.account_id)`, call `declare_stare_deploy` and `declare_data`.
+  - `site.py`: use `github_provider(owner)`.
+  - `AGENTS.md`: what the stack owns now, including stare's deploy credentials and `codex-data`; the org-owner rule ("codexpublicus-infra owns all Codex Publicus Pulumi resources; app repos run no Pulumi"); the one-time `deploy_keys_enabled_for_repositories` PATCH; `account_id` as config.
+- Delete: `pulumi/codexpublicus_infra/shared.py`, `pulumi/tests/test_shared.py`.
+
+- [ ] **Step 1:** Port the tests first and watch them fail. Then port the code until they pass. Run `uv run --directory <wt>/pulumi pytest -q`, and keep the 6.13.0 pin test green.
+- [ ] **Step 2:** Commit (`feat(pulumi): own stare deploy credentials and codex-data`) and push. Open the PR, and don't merge it yet.
+- [ ] **Step 3:** The controller previews on the branch, **before** the operator's moves. Expect:
+  - `r2-codex-data` as a create, which becomes "unchanged" after the move;
+  - the six recreated resources as creates;
+  - the `lokkju-infra` StackReference read gone;
+  - `github-codexpublicus` unchanged;
+  - no update, replace or delete of any existing resource.
+
+  Anything else stops the task.
+
+### Operator runbook for 5R (the controller hands over one command at a time)
+
+M = `/home/lokkju/projects/lokkju/codexpublicus-infra` (main checkout, the env source); W = the 5R worktree; S = `/home/lokkju/projects/lokkju/codex-publicus`.
+
+1. `! gh api -X PATCH orgs/codexpublicus -F deploy_keys_enabled_for_repositories=true`. The controller verifies with `gh api orgs/codexpublicus --jq .deploy_keys_enabled_for_repositories` (expect `true`).
+2. The controller confirms `codex-data` is still empty (0 objects), then inspects both stacks' exports for the default cloudflare provider's version and inputs. The move needs parity, per codexpublicus/infra's AGENTS.md; if they differ, stop and rule.
+3. Move the bucket:
+   `! mise -C M exec -- pulumi -C S/infra state move --source organization/stare-infra/prod --dest organization/codexpublicus-infra/prod --yes 'urn:pulumi:prod::stare-infra::cloudflare:index/r2Bucket:R2Bucket::r2-codex-data'`.
+   Expect "Planning to move" to list exactly that URN, and stop on "already exists". The controller confirms `protect` and `retainOnDelete` in codexpublicus-infra's export.
+4. The controller re-previews W. Expect `r2-codex-data` unchanged and exactly six creates.
+5. Destroy what remains of stare-infra:
+   `! mise -C M exec -- pulumi -C S/infra destroy --stack prod --yes`.
+   Expect five deletes (the token, the two created Actions secrets, the TLS key and the GitHub provider) and no R2 resource. Then:
+   `! mise -C M exec -- pulumi -C S/infra stack rm prod --yes`.
+6. Merge the 5R PR; then `! git -C M pull --ff-only`, then `! mise -C M exec -- pulumi -C M/pulumi up --stack prod --yes`. Expect six creates.
+7. The controller verifies:
+   - `gh secret list -R codexpublicus/stare` shows the three secrets;
+   - `gh api repos/codexpublicus/citare/keys` shows the read-only key;
+   - the idx object count equals the baseline;
+   - `codex-data` still exists.
+
+Rollback before step 5: a reverse `state move` of the one URN. After step 5, stare-infra holds nothing of value, and the six resources are recreated by step 6.
+
+### Task 5S: stare stops running Pulumi (codexpublicus/stare)
+
+Runs after runbook step 5. Branch `lokkju/drop-stare-infra` from fresh `origin/main`.
+
+- [ ] Delete `infra/` and `.mise/tasks/pulumi`. Remove any `infra` entries from `.gitignore`, `.mise/config.toml` and CI.
+- [ ] `AGENTS.md`: replace the "Pulumi (`infra/` ...)" subsection with two sentences. codexpublicus/infra owns all of stare.pub's infrastructure (zone, idx bucket, `codex-data`, deploy credentials); changes are PRs there. This repo's CI only deploys with the Actions secrets that stack pushes.
+- [ ] Grep for `stare-infra` and `mise run pulumi`: nothing left except history in `docs/superpowers`.
+- [ ] Commit (`chore: drop in-repo Pulumi; infra lives in codexpublicus/infra`) and open a PR.
+
+### Task 10 changes
+
+- The stare AGENTS.md "stare-infra ownership" item is replaced by Task 5S's text.
+- The infra AGENTS.md item becomes: codexpublicus-infra owns every Codex Publicus resource, stare.pub included.
+- Add: rewrite lokkju/infra#19, codexpublicus/infra#31 and codexpublicus/gorsuch-library#74 to the central model. File a codexpublicus/infra ticket to fold gorsuch-library's un-applied `infra/` into this stack.
