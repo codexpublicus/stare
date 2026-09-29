@@ -116,16 +116,14 @@ repo's `AGENTS.md` for the Pulumi, Wrangler and LFS rules that apply across the 
 - **Live**: stare.pub serves the Astro site from the `stare-pub` Worker, deployed by CI on
   every push to `main` (since 2026-09-29; the old Pages project is deleted by #41).
 - **Live**: `idx.stare.pub` (R2 bucket `stare-pub-idx`) serves the citation index files.
-- **Mirror**: still running via aria2/Docker on ml-01 against TrueNAS `mega/codex-publicus`;
-  completion percentage isn't verified for this document. See `docs/plans/checklist.md` and
-  issue #14 for its current state, and don't trust a stale number here over those.
+- **Mirror**: complete. TrueNAS `mega/codexpublicus/cap-mirror` holds 40,622 zips and 39,964
+  each of tars, `.tar.csv` and PDFs (verified 2026-09-29); the dataset is read-only and the
+  aria2 `codex-mirror` container is stopped.
 - **Pending, tracked by issue** (`gh issue list -R codexpublicus/stare`):
-  - #41: delete the retired `stare-pub` Pages project and its token (on or after 2026-10-06)
-  - #42: upload the mirror to `codex-data`; decide `data.stare.pub` exposure
-  - #43: triage npm audit findings in `web/`
-  - #44: site workflow polish (preview-URL failure message, one updating PR comment)
-  - #14 — repoint the ml-01 mirror clone at `codexpublicus/stare` (still on the pre-rewrite
-    `lokkju/codex-publicus` remote)
+  - #42: `codex-data` contents and `data.stare.pub` exposure (tier 1 uploaded 2026-09-29)
+  - #51: archival per-volume PDFs (pipeline in `pipelines/archival-pdf/`)
+  - #52, #61: Akoma Ntoso case text (profile in codexpublicus/exemplar); parallel-citation display
+  - #60, #63: CalVer releases and version display; the index manifest
   - #10 — a computable court record key, a stable identifier for every decision
   - #9 — statutes and regulations: link out for now, hold them later
   - #8 — add case sources beyond CAP
@@ -133,7 +131,6 @@ repo's `AGENTS.md` for the Pulumi, Wrangler and LFS rules that apply across the 
   - #6 — offline, self-hosted law reference library, US then other countries
   - #5 — shared design system review across Codex Publicus sites
   - #4 — settle the code license and declare it everywhere
-  - #2 — citation spans should be UTF-8 byte offsets, not characters
   - #1 — adopt the shared Codex Publicus page viewer
 
   Beyond these, see issues for anything not listed here.
@@ -162,14 +159,22 @@ repo's `AGENTS.md` for the Pulumi, Wrangler and LFS rules that apply across the 
 
 - **ml-01** (192.168.32.210): k3s node, runs Docker, aria2 mirror
 - **TrueNAS** (truenas.lodenheim.lokkju.com / 192.168.32.200): NFS storage
-  - `mega/codex-publicus`: mirror data (NFS export to 192.168.32.0/24)
+  - `mega/codexpublicus/`: one parent dataset for the org's data, each child its own NFS
+    export to 192.168.32.0/24 (MapRoot: root):
+    - `cap-mirror`: the static.case.law mirror, **read-only** (ZFS `readonly=on` and a
+      read-only export). Renamed from `mega/codex-publicus` on 2026-09-29.
+    - `derived`: pipeline outputs (archival PDFs and manifests, later Akoma Ntoso documents)
+    - `index`: citation index builds (`stare-pub-idx/`, the files served at idx.stare.pub)
+    - `backups`: restore points (e.g. `stare/stare-pub-idx-2026-09-27`)
   - `mega/k8s`: k8s persistent volumes
 - Access TrueNAS via NFS mounts and `showmount -e`, not SSH
-- Inspect corpus files from the mirror, never from static.case.law: on ml-01 the Docker volume
-  `mirror_mirror-data` is the NFS share, with files at `downloads/<reporter>/<volume>.<ext>`.
-  Mount it read-only, e.g.
-  `ssh ml-01 'docker run --rm -v mirror_mirror-data:/data:ro rclone/rclone:latest cat /data/downloads/a2d/31.tar.csv'`.
-  Never write to it.
+- Inspect corpus files from the mirror, never from static.case.law. On ml-01 the Docker volumes
+  `codexpublicus-cap-mirror` (read-only), `codexpublicus-derived`, `codexpublicus-index` and
+  `codexpublicus-backups` mount those exports; corpus files are at
+  `downloads/<reporter>/<volume>.<ext>`, e.g.
+  `ssh ml-01 'docker run --rm -v codexpublicus-cap-mirror:/data:ro rclone/rclone:latest cat /data/downloads/a2d/31.tar.csv'`.
+  The read-write datasets are owned by uid 1000; run containers that write to them as
+  `--user 1000:1000`.
 
 ## Key Context
 

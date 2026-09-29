@@ -19,10 +19,15 @@ services:
       - ./init-input.sh:/aria2/init-input.sh:ro
     restart: unless-stopped
 
+# The mirror finished downloading (2026-09-27 count: 40,622 zips; 39,964 each of tars,
+# tar.csv and PDFs). Its dataset, mega/codexpublicus/cap-mirror, is now read-only at both the
+# NFS export and ZFS (readonly=on), so this service is stopped and mounts it read-only. To
+# resume downloading, first turn readonly off on the dataset and the export, then change
+# `ro` to `rw` below.
 volumes:
   mirror-data:
     driver: local
     driver_opts:
       type: nfs
-      o: addr=truenas.lodenheim.lokkju.com,rw,nfsvers=4
-      device: ":/mnt/mega/codex-publicus"
+      o: addr=truenas.lodenheim.lokkju.com,ro,nfsvers=4
+      device: ":/mnt/mega/codexpublicus/cap-mirror"

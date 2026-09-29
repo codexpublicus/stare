@@ -5,7 +5,7 @@
 - [x] Analyze static.case.law structure and file formats
 - [x] Design mirror architecture (aria2 + Docker + NFS)
 - [x] Generate URL list (203,113 URLs across 40,622 volumes)
-- [x] Deploy mirror on ml-01 → TrueNAS `mega/codex-publicus`
+- [x] Deploy mirror on ml-01 → TrueNAS `mega/codex-publicus` (now `mega/codexpublicus/cap-mirror`, read-only)
 - [ ] Mirror complete (~10% as of 2026-03-22, ETA ~7 days)
 - [ ] Verify completeness: all 40,622 volumes × 5 file types present
 - [ ] Verify checksums: sha256sum against `.tar.sha256` files
