@@ -19,3 +19,11 @@ class MemberReadError(ArchivalError):
 
 class MetadataError(ArchivalError):
     """A METS, CASEMETS or ALTO member (or its gzip wrapper) is malformed."""
+
+
+class EncodeError(ArchivalError):
+    """A page image could not be read or encoded for the PDF."""
+
+
+class BuildError(ArchivalError):
+    """A volume's PDF could not be assembled from its tar."""

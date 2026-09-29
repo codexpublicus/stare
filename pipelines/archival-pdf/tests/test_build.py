@@ -14,7 +14,8 @@ from tools import require, verapdf_command
 
 from stare_archival import __version__
 from stare_archival.alto import parse_alto
-from stare_archival.build import BuildResult, build_volume
+from stare_archival.build import BuildResult, bookmark_title, build_volume
+from stare_archival.casemets import Case
 from stare_archival.encoders import G4Encoder
 from stare_archival.tarindex import VolumeTar
 from stare_archival.volume import load_volume
@@ -107,7 +108,7 @@ def test_pages_are_sized_from_the_tiff_at_its_resolution(pdf, volume):
 
 def test_each_page_has_one_lossless_bitonal_image(pdf):
     for page in pdf.pages:
-        images = list(page.images.values())
+        images = list(page.Resources.XObject.values())
         assert len(images) == 1
         img = images[0]
         assert img.BitsPerComponent == 1
@@ -119,7 +120,7 @@ def test_each_page_has_one_lossless_bitonal_image(pdf):
 def test_images_decode_to_the_tiff_pixels(pdf, volume):
     vt, vol = volume
     for page, meta in zip(pdf.pages, vol.mets.pages, strict=True):
-        img = pikepdf.PdfImage(next(iter(page.images.values()))).as_pil_image()
+        img = pikepdf.PdfImage(page.Resources.XObject.Im0).as_pil_image()
         with Image.open(io.BytesIO(vt.read(meta.tiff))) as src:
             assert img.convert("1").tobytes() == src.convert("1").tobytes(), meta.tiff
 
@@ -166,6 +167,7 @@ def test_text_layer_holds_the_alto_words_in_order(pdf, volume):
             assert "/F0" in page.Resources.Font
 
 
+@pytest.mark.poppler
 def test_text_layer_is_extractable_by_a_reader(built, volume):
     pdftotext = require("pdftotext")
     vt, vol = volume
@@ -259,7 +261,7 @@ def test_jbig2_build(jbig2_encoder, tar_path, csv_path, tmp_path):
     assert result.encoder == jbig2_encoder.name
     with pikepdf.open(tmp_path / "jb2.pdf") as doc:
         for page in doc.pages:
-            (img,) = page.images.values()
+            (img,) = page.Resources.XObject.values()
             assert img.Filter == pikepdf.Name.JBIG2Decode
             assert "/DecodeParms" not in img
         tree = _xmp(doc)
@@ -267,14 +269,10 @@ def test_jbig2_build(jbig2_encoder, tar_path, csv_path, tmp_path):
     assert b"/JBIG2Globals" not in (tmp_path / "jb2.pdf").read_bytes()
 
 
-@pytest.mark.jbig2
-@pytest.mark.poppler
-def test_jbig2_pages_decode_to_the_tiff_pixels(jbig2_encoder, tar_path, csv_path, tmp_path, volume):
+def _assert_poppler_decodes_to_tiffs(pdf_path: Path, tmp_path: Path, volume) -> None:
+    """poppler's pdfimages extracts each page image pixel-identical to its TIFF."""
     pdfimages = require("pdfimages")
-    _build(tar_path, csv_path, tmp_path / "jb2.pdf", jbig2_encoder)
-    subprocess.run(
-        [pdfimages, "-png", str(tmp_path / "jb2.pdf"), str(tmp_path / "img")], check=True
-    )
+    subprocess.run([pdfimages, "-png", str(pdf_path), str(tmp_path / "img")], check=True)
     vt, vol = volume
     for i, meta in enumerate(vol.mets.pages):
         with (
@@ -284,8 +282,52 @@ def test_jbig2_pages_decode_to_the_tiff_pixels(jbig2_encoder, tar_path, csv_path
             assert got.convert("1").tobytes() == src.convert("1").tobytes(), meta.tiff
 
 
+@pytest.mark.poppler
+def test_g4_pages_decode_to_the_tiff_pixels_in_poppler(built, tmp_path, volume):
+    _assert_poppler_decodes_to_tiffs(built[1], tmp_path, volume)
+
+
+@pytest.mark.jbig2
+@pytest.mark.poppler
+def test_jbig2_pages_decode_to_the_tiff_pixels(jbig2_encoder, tar_path, csv_path, tmp_path, volume):
+    require("pdfimages")
+    _build(tar_path, csv_path, tmp_path / "jb2.pdf", jbig2_encoder)
+    _assert_poppler_decodes_to_tiffs(tmp_path / "jb2.pdf", tmp_path, volume)
+
+
 @pytest.mark.verapdf
 def test_output_validates_as_pdfa_3b(built):
     cmd = verapdf_command(built[1])
     out = subprocess.run(cmd, capture_output=True, check=False).stdout.decode()
     assert out.startswith("PASS"), out
+
+
+def _case(**kw) -> Case:
+    base = {
+        "case_id": None,
+        "name": None,
+        "name_abbreviation": None,
+        "citation": None,
+        "first_page": "5",
+        "last_page": "9",
+        "duplicative": False,
+        "page_orders": (),
+        "tiff_file_ids": (),
+    }
+    return Case(**{**base, **kw})
+
+
+@pytest.mark.parametrize(
+    ("case", "title"),
+    [
+        (
+            _case(name="A v. B", name_abbreviation="A v. B.", citation="1 U.S. 1"),
+            "A v. B., 1 U.S. 1",
+        ),
+        (_case(name="Full Name v. Other"), "Full Name v. Other"),
+        (_case(), "Case 7 (pp. 5-9)"),
+        (_case(duplicative=True, last_page=None), "Case 7 (pp. 5, duplicative)"),
+    ],
+)
+def test_bookmark_title(case, title):
+    assert bookmark_title(7, case) == title

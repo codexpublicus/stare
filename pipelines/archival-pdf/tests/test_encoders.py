@@ -153,7 +153,7 @@ def test_jbig2_encoder_rejects_empty_output(tmp_path, tiff_bytes):
 
 def test_jbig2_docker_command_uses_the_pinned_image():
     enc = Jbig2Encoder.docker()
-    cmd = enc.command(["-p", "-d"])
+    cmd = enc.command(["-p", "-d"], "-")
     assert cmd[:4] == ["docker", "run", "--rm", "-i"]
     assert "--network=none" in cmd
     assert PINNED_JBIG2_IMAGE in cmd
@@ -172,6 +172,11 @@ def test_locate_env_var_docker_selects_the_image():
     enc = Jbig2Encoder.locate(env={"STARE_JBIG2": "docker", "PATH": ""})
     assert enc is not None
     assert enc.docker_image == PINNED_JBIG2_IMAGE
+
+
+def test_locate_env_var_none_opts_out(tmp_path):
+    _fake_jbig2(tmp_path, "exit 0\n")
+    assert Jbig2Encoder.locate(env={"STARE_JBIG2": "none", "PATH": str(tmp_path)}) is None
 
 
 def test_locate_env_var_must_point_at_an_executable(tmp_path):

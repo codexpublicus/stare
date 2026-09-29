@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -38,6 +39,8 @@ def verapdf_command(pdf: Path) -> list[str]:
                 "run",
                 "--rm",
                 "--network=none",
+                "--user",
+                f"{os.getuid()}:{os.getgid()}",
                 "-v",
                 f"{pdf.parent}:/work:ro",
                 image,
