@@ -7,13 +7,15 @@
 //   - web: some change ([abc1234](https://github.com/.../commit/...)) ([#58](...))
 //
 // Item text is split into segments ({ text } or { text, href }) so the page can
-// render links as elements; nothing here produces HTML. Only http(s) links are
-// kept as links.
+// render links as elements; nothing here produces HTML. Only links into this
+// repo on GitHub (every link cliff.toml writes) are kept as links; anything else,
+// such as a link typed into a commit subject, renders as its text.
 
-const RELEASE_HEADING = /^##\s+\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)(?:\s+-\s+(\d{4}-\d{2}-\d{2}))?\s*$/;
+const RELEASE_HEADING = /^##\s+\[([^\]]+)\]\((https:\/\/github\.com\/codexpublicus\/stare\/[^)\s]+)\)(?:\s+-\s+(\d{4}-\d{2}-\d{2}))?\s*$/;
 const UNRELEASED_HEADING = /^##\s+Unreleased\s*$/i;
 const GROUP_HEADING = /^###\s+(.+?)\s*$/;
 const ITEM = /^[-*]\s+(.+?)\s*$/;
+const REPO_PREFIX = 'https://github.com/codexpublicus/stare/';
 const LINK = /\[([^\]]+)\]\(([^)\s]+)\)/g;
 
 export function inlineSegments(text) {
@@ -22,7 +24,7 @@ export function inlineSegments(text) {
   for (const match of text.matchAll(LINK)) {
     if (match.index > last) segments.push({ text: text.slice(last, match.index) });
     const [, label, href] = match;
-    segments.push(/^https?:\/\//i.test(href) ? { text: label, href } : { text: label });
+    segments.push(href.startsWith(REPO_PREFIX) ? { text: label, href } : { text: label });
     last = match.index + match[0].length;
   }
   if (last < text.length) segments.push({ text: text.slice(last) });

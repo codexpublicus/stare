@@ -40,12 +40,22 @@ Site releases of stare.pub. Each release is tagged \`vYYYY.MM.DD.N\` and deploye
 `;
 
 describe('inlineSegments', () => {
-  test('splits text and links', () => {
-    assert.deepEqual(inlineSegments('fix it ([abc](https://x.test/c)) now'), [
+  test('splits text and links into this repo', () => {
+    assert.deepEqual(inlineSegments(`fix it ([abc](${REPO}/commit/abc)) now`), [
       { text: 'fix it (' },
-      { text: 'abc', href: 'https://x.test/c' },
+      { text: 'abc', href: `${REPO}/commit/abc` },
       { text: ') now' },
     ]);
+  });
+
+  test('renders links anywhere else as text', () => {
+    assert.deepEqual(inlineSegments('see [docs](https://example.com/x)'), [
+      { text: 'see ' },
+      { text: 'docs' },
+    ]);
+    assert.deepEqual(inlineSegments('[x](https://github.com/someone/else/pull/1)'), [{ text: 'x' }]);
+    assert.deepEqual(inlineSegments('[x](https://github.com/codexpublicus/stare.evil/pull/1)'), [{ text: 'x' }]);
+    assert.deepEqual(inlineSegments('[x](http://github.com/codexpublicus/stare/pull/1)'), [{ text: 'x' }]);
   });
 
   test('keeps plain text as one segment', () => {
