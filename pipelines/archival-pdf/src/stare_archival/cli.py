@@ -75,6 +75,11 @@ def _add_build_options(p: argparse.ArgumentParser) -> None:
     )
     p.add_argument("--rclone", default="rclone", help="the rclone binary (default: on PATH)")
     p.add_argument("--force", action="store_true", help="rebuild volumes that are done")
+    p.add_argument(
+        "--work",
+        help="scratch directory for page files while a volume runs (default: <out>/work); "
+        "put it on local disk when --out is a network share",
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -225,6 +230,7 @@ def _jobs_setup(args: argparse.Namespace) -> dict:
         "uploader": uploader,
         "pipeline_image": os.environ.get("STARE_ARCHIVAL_IMAGE") or None,
         "force": args.force,
+        "work": Path(args.work) if args.work else None,
     }
 
 
@@ -244,7 +250,7 @@ def _build_all(args: argparse.Namespace, stdout: TextIO) -> int:
     refs = find_volumes(args.src, only=args.only, limit=args.limit)
     setup = _jobs_setup(args)
     jobs = [VolumeJob(ref=ref, **setup) for ref in refs]
-    layout = Layout(setup["out"])
+    layout = Layout(setup["out"], setup["work"])
     layout.runs.mkdir(parents=True, exist_ok=True)
     rid = run_id()
     log_path = layout.runs / f"{rid}.jsonl"
@@ -260,6 +266,7 @@ def _build_all(args: argparse.Namespace, stdout: TextIO) -> int:
         "only": args.only,
         "limit": args.limit,
         "force": args.force,
+        "work": args.work,
         "pipeline_image": setup["pipeline_image"],
         "toolchain": setup["toolchain"],
     }

@@ -145,20 +145,27 @@ def _sort_key(ref: VolumeRef) -> tuple:
 def find_volumes(
     src: str | os.PathLike[str], only: Iterable[str] = (), limit: int | None = None
 ) -> list[VolumeRef]:
-    """The volumes under `src` (every `<reporter>/<volume>.tar`), in natural order.
+    """The volumes under `src` (every `<reporter>/<volume>.tar`), in natural order, leaving
+    out any tar aria2 is still downloading (it has a `.tar.aria2` control file beside it).
 
     `only` keeps the listed reporters (`us`) and volumes (`a2d/152`); an entry that isn't in
     `src` is a RunnerError. `limit` keeps the first N of what's left."""
     src = Path(src)
     if not src.is_dir():
         raise RunnerError(f"{src}: no such directory")
-    refs = [
-        VolumeRef(reporter.name, tar.stem)
-        for reporter in src.iterdir()
-        if _NAME.match(reporter.name) and reporter.is_dir()
-        for tar in reporter.glob("*.tar")
-        if _NAME.match(tar.stem)
-    ]
+    refs, downloading = [], set()
+    for reporter in src.iterdir():
+        if not (_NAME.match(reporter.name) and reporter.is_dir()):
+            continue
+        names = {p.name for p in reporter.iterdir()}
+        for name in names:
+            stem = name.removesuffix(".tar")
+            if name.endswith(".tar") and _NAME.match(stem):
+                ref = VolumeRef(reporter.name, stem)
+                if f"{name}.aria2" in names:
+                    downloading.add(ref.id)
+                else:
+                    refs.append(ref)
     refs.sort(key=_sort_key)
     only = list(only)
     if only:
@@ -171,7 +178,10 @@ def find_volumes(
                     ref = VolumeRef.parse(item)
                 except ValueError as exc:
                     raise RunnerError(str(exc)) from exc
-                (want_ids.add(ref.id) if ref.id in ids else missing.append(item))
+                if ref.id in ids:
+                    want_ids.add(ref.id)
+                else:
+                    missing.append(f"{item} (still downloading)" if item in downloading else item)
             else:
                 (want_reporters.add(item) if item in reporters else missing.append(item))
         if missing:
@@ -181,14 +191,18 @@ def find_volumes(
 
 
 class Layout:
-    """Where the runner keeps each volume's files under the output directory."""
+    """Where the runner keeps each volume's files under the output directory. Scratch space
+    goes under `work` (default `<out>/work`), which can be on another disk."""
 
     PDF_ROOT = "cap-pdf"
 
-    def __init__(self, out: str | os.PathLike[str]) -> None:
+    def __init__(
+        self, out: str | os.PathLike[str], work: str | os.PathLike[str] | None = None
+    ) -> None:
         self.out = Path(out)
         self.root = self.out / self.PDF_ROOT
         self.runs = self.out / "runs"
+        self.work_root = Path(work) if work is not None else self.out / "work"
 
     def pdf_key(self, ref: VolumeRef) -> str:
         return f"{self.PDF_ROOT}/{ref.reporter}/{ref.volume}.pdf"
@@ -212,7 +226,7 @@ class Layout:
         return self.out / "uploaded" / ref.reporter / f"{ref.volume}.json"
 
     def work(self, ref: VolumeRef) -> Path:
-        return self.out / "work" / f"{ref.reporter}@{ref.volume}"
+        return self.work_root / f"{ref.reporter}@{ref.volume}"
 
     def local_bytes(self) -> int:
         """Bytes of PDFs (finished, failed or half-written) and scratch files on disk."""
@@ -221,7 +235,7 @@ class Layout:
             (self.root, "*.pdf"),
             (self.root, "*.tmp"),
             (self.out / "failed", "*.pdf"),
-            (self.out / "work", "*"),
+            (self.work_root, "*"),
         ):
             if base.is_dir():
                 total += sum(p.stat().st_size for p in base.rglob(pattern) if p.is_file())
@@ -254,7 +268,8 @@ def toolchain_matches(manifest: Mapping[str, Any], toolchain: Mapping[str, str])
 class VolumeJob:
     """One volume for `process_volume`. `encoder` is "g4", a path to (or the name of) a
     native jbig2 binary, or an `ImageEncoder`. `created` fixes the PDF's dates and the
-    manifest's time (tests); `force` rebuilds a finished volume."""
+    manifest's time (tests); `force` rebuilds a finished volume. `work` is the scratch
+    directory (default `<out>/work`)."""
 
     ref: VolumeRef
     src: Path
@@ -265,6 +280,7 @@ class VolumeJob:
     pipeline_image: str | None = None
     created: datetime | None = None
     force: bool = False
+    work: Path | None = None
 
     @property
     def tar(self) -> Path:
@@ -351,7 +367,7 @@ def _message(exc: BaseException) -> str:
 def record_error(job: VolumeJob, message: str) -> None:
     """Write an error manifest for a volume that couldn't be built or verified, and remove
     what it left half done (a PDF without a passing manifest, scratch files)."""
-    lay = Layout(job.out)
+    lay = Layout(job.out, job.work)
     ref = job.ref
     if _passing_manifest(lay.manifest(ref)) is None:
         lay.pdf(ref).unlink(missing_ok=True)
@@ -373,7 +389,7 @@ def process_volume(job: VolumeJob) -> VolumeResult:
     """Build, verify and (with an uploader) upload one volume, unless it's already done.
     Never raises for a problem with the volume: that's a result with status "error"."""
     try:
-        return _process(job, Layout(job.out))
+        return _process(job, Layout(job.out, job.work))
     except Exception as exc:  # noqa: BLE001 (one volume's failure must not stop the batch)
         message = _message(exc)
         with contextlib.suppress(Exception):
@@ -609,7 +625,8 @@ def run_batch(
     stopped: str | None = None
     local = 0
     if max_local_bytes is not None:
-        local = sum(Layout(out).local_bytes() for out in {Path(j.out) for j in jobs})
+        dirs = {(Path(j.out), j.work) for j in jobs}
+        local = sum(Layout(out, work).local_bytes() for out, work in dirs)
     reserved = 0
     started = time.monotonic()
     total = len(jobs)
