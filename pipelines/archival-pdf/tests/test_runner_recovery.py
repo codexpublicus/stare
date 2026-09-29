@@ -1,6 +1,7 @@
 """The runner's recovery paths (A4 review): the disk guard's accounting, staging before
 cap-pdf/, parent-side failures, and timeouts that kill a worker's own children."""
 
+import json
 import multiprocessing
 import os
 import subprocess
@@ -48,6 +49,60 @@ def test_skipped_volumes_with_pdfs_on_disk_dont_stop_the_run(tmp_path):
     assert [r.status for r in outcome.results] == ["skipped"] * 3
 
 
+SHA = "0" * 64
+
+
+def _matching_manifest(lay: Layout, src: Path, ref: VolumeRef, *, revision=None) -> None:
+    """A passing manifest for the tar's recorded sha256 and (with revision None) the empty
+    toolchain the stand-in jobs carry."""
+    (src / ref.reporter / f"{ref.volume}.tar.sha256").write_text(SHA + "\n")
+    tools = {} if revision is None else {"stare-archival-revision": revision}
+    manifest = {
+        "schema_version": 1,
+        "status": "pass",
+        "source": {"sha256": SHA},
+        "tools": tools,
+        "encoder": {},
+    }
+    lay.manifest(ref).parent.mkdir(parents=True, exist_ok=True)
+    lay.manifest(ref).write_text(json.dumps(manifest))
+
+
+def _rebuild_upload_fails(job: VolumeJob) -> VolumeResult:
+    _put(Layout(job.out).pdf(job.ref), 1000)
+    return VolumeResult(job.ref.id, "upload_failed", build_s=0.1, local_bytes=1000)
+
+
+def test_volumes_that_only_look_done_still_reserve_space(tmp_path):
+    # a new pipeline tree plus an upload outage: every volume has a manifest and a receipt,
+    # but for another revision, so each rebuilds and leaves its PDF behind
+    src = tmp_path / "src"
+    for i in range(1, 6):
+        _touch_volume(src, f"a/{i}", 100)
+    lay = Layout(tmp_path / "out")
+    refs = find_volumes(src)
+    for ref in refs:
+        _matching_manifest(lay, src, ref, revision="an older tree")
+        _put(lay.receipt(ref), 10)
+    jobs = [
+        VolumeJob(
+            ref=r,
+            src=src,
+            out=tmp_path / "out",
+            toolchain={},
+            encoder="g4",
+            uploader=FakeUploader(tmp_path / "remote"),
+        )
+        for r in refs
+    ]
+    outcome = run_batch(
+        jobs, workers=1, timeout=30, max_local_bytes=1500, worker=_rebuild_upload_fails
+    )
+    assert outcome.stopped is not None and "disk guard" in outcome.stopped
+    assert len(outcome.results) == 2
+    assert lay.local_bytes() <= 2000
+
+
 def _upload_or_build(job: VolumeJob) -> VolumeResult:
     lay = Layout(job.out)
     pdf = lay.pdf(job.ref)
@@ -67,7 +122,7 @@ def test_a_run_at_the_limit_uploads_waiting_pdfs_first(tmp_path):
     refs = find_volumes(src)
     for ref in refs[1:]:
         _put(lay.pdf(ref), 600)
-        _put(lay.manifest(ref), 10)
+        _matching_manifest(lay, src, ref)
     jobs = [
         VolumeJob(
             ref=r,
