@@ -1,4 +1,4 @@
-import { renderTextHtml } from './citations.js';
+import { escapeHtml, renderTextHtml, safeExternalUrl } from './citations.js';
 
 /**
  * Render the reader view.
@@ -52,8 +52,9 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
   let citedCasesHtml = '';
   if (detectedCitations && detectedCitations.length > 0) {
     const resolvable = detectedCitations.filter(c => c.resolvable);
-    const external = detectedCitations.filter(c => c.externalUrl);
-    const unresolvable = detectedCitations.filter(c => !c.resolvable && !c.externalUrl);
+    // Only http(s) external URLs are linked; others list as unresolved.
+    const external = detectedCitations.filter(c => !c.resolvable && safeExternalUrl(c.externalUrl));
+    const unresolvable = detectedCitations.filter(c => !c.resolvable && !safeExternalUrl(c.externalUrl));
 
     const renderCite = (c) => {
       if (c.resolvable) {
@@ -62,10 +63,10 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
           <span class="cited-status ok">&#10003;</span>
           <a class="cited-case-link" href="${href}" target="_blank" rel="noopener">${esc(c.raw)}</a>
         </div>`;
-      } else if (c.externalUrl) {
+      } else if (safeExternalUrl(c.externalUrl)) {
         return `<div class="cited-case">
           <span class="cited-status ext">&#8599;</span>
-          <a class="cited-case-link" href="${c.externalUrl}" target="_blank" rel="noopener">${esc(c.raw)}</a>
+          <a class="cited-case-link" href="${escapeHtml(c.externalUrl)}" target="_blank" rel="noopener">${esc(c.raw)}</a>
         </div>`;
       } else {
         return `<div class="cited-case">

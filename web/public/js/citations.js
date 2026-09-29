@@ -203,13 +203,21 @@ export function formatPlainText(text) {
 }
 
 /**
+ * `url` if it is an http(s) URL, else null. External citation links, in
+ * the reader and the sidebar, are emitted only for URLs this accepts.
+ */
+export function safeExternalUrl(url) {
+  return typeof url === 'string' && /^https?:\/\//i.test(url) ? url : null;
+}
+
+/**
  * Markup for one citation occurrence. `inner` is the already formatted
  * citation text; `info` is the citation's entry from processCitations.
  */
 function citationHtml(raw, inner, info) {
-  // Only http(s) links; any other scheme renders as unresolved.
-  if (info.externalUrl && /^https?:\/\//i.test(info.externalUrl)) {
-    return `<a class="cite-link cite-external" href="${escapeHtml(info.externalUrl)}" target="_blank" rel="noopener" title="View on external site">${inner}</a>`;
+  const externalUrl = safeExternalUrl(info.externalUrl);
+  if (externalUrl) {
+    return `<a class="cite-link cite-external" href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener" title="View on external site">${inner}</a>`;
   }
   if (info.resolvable) {
     const slug = escapeHtml(info.slug);
