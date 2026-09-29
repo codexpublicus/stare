@@ -525,3 +525,14 @@ def test_scratch_files_can_live_outside_the_output(src, out, toolchain, tmp_path
     assert seen and all(Path(p).is_relative_to(work) for p in seen)
     assert not (out / "work").exists()
     assert Layout(out, work=work).work(VolumeRef.parse("a2d/152")) == work / "a2d@152"
+
+
+def test_a_different_pipeline_revision_is_a_different_toolchain():
+    from stare_archival.runner import TOOLCHAIN_TOOLS, toolchain_matches
+
+    assert "stare-archival-revision" in TOOLCHAIN_TOOLS
+    tools = {k: "1" for k in TOOLCHAIN_TOOLS}
+    manifest = {"tools": tools, "encoder": {"name": "jbig2enc 0.28"}}
+    same = {**tools, "encoder": "jbig2enc 0.28"}
+    assert toolchain_matches(manifest, same)
+    assert not toolchain_matches(manifest, {**same, "stare-archival-revision": "2"})

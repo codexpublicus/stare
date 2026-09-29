@@ -222,3 +222,15 @@ def test_the_schema_names_every_check_verify_runs():
 
     item = manifest_schema()["properties"]["checks"]["items"]
     assert tuple(item["properties"]["name"]["enum"]) == CHECKS
+
+
+def test_the_image_revision_is_recorded_with_the_tools(monkeypatch):
+    from stare_archival.manifest import package_versions
+
+    monkeypatch.delenv("STARE_ARCHIVAL_REVISION", raising=False)
+    assert "stare-archival-revision" not in package_versions()
+    monkeypatch.setenv("STARE_ARCHIVAL_REVISION", "8d49c78" + "0" * 33)
+    assert package_versions()["stare-archival-revision"] == "8d49c78" + "0" * 33
+    m = build_manifest(_report(), generated=GENERATED)
+    assert m["tools"]["stare-archival-revision"] == "8d49c78" + "0" * 33
+    jsonschema.validate(m, manifest_schema())
