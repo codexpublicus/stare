@@ -1,0 +1,43 @@
+name: pipelines
+
+on:
+  pull_request:
+    paths:
+      - "pipelines/**"
+      - ".github/workflows/pipelines.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "pipelines/**"
+      - ".github/workflows/pipelines.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  archival-pdf:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pipelines/archival-pdf
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          working-directory: pipelines/archival-pdf
+          enable-cache: true
+          cache-dependency-glob: pipelines/archival-pdf/uv.lock
+
+      - name: Install
+        run: uv sync --locked
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format
+        run: uv run ruff format --check .
+
+      - name: pytest
+        run: uv run pytest

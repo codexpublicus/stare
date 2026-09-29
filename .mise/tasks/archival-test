@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Lint, format-check and test the archival PDF pipeline (pipelines/archival-pdf)"
+set -euo pipefail
+
+dir="${MISE_PROJECT_ROOT}/pipelines/archival-pdf"
+uv --directory "$dir" sync --locked
+uv --directory "$dir" run ruff check .
+uv --directory "$dir" run ruff format --check .
+uv --directory "$dir" run pytest
