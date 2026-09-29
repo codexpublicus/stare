@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -14,8 +15,10 @@ from stare_archival.layercheck import (
     compare_layer,
     expected_layer,
     layer_runs,
+    to_unicode_problem,
 )
 from stare_archival.tarindex import VolumeTar
+from stare_archival.textlayer import _TO_UNICODE
 from stare_archival.volume import load_volume
 
 CREATED = datetime(2026, 9, 29, 12, 0, 0, tzinfo=UTC)
@@ -153,3 +156,75 @@ def test_a_second_font_is_a_layer_problem(built, tmp_path):
     with pikepdf.open(path) as pdf:
         problems = check_layer_font(pdf)
     assert any("not the shared text layer font" in p for p in problems), problems
+
+
+# --- graphics state and operators the check must not be fooled by ------------------------
+
+FIRST_RUN = re.compile(rb"(/F0 [0-9.]+ Tf) ([0-9.]+) Tz ")
+
+
+def _scale_outside_bt(content: bytes) -> bytes:
+    """The re-review's exploit: drop the first run's own Tz and set it through q/Q before BT,
+    leaving Tz 33 in force when the run is drawn."""
+    m = FIRST_RUN.search(content)
+    assert m is not None
+    edited = content[: m.start()] + m.group(1) + b" " + content[m.end() :]
+    return edited.replace(b"BT\n", b"33 Tz q " + m.group(2) + b" Tz Q\nBT\n", 1)
+
+
+def _edited_page(built: Path, tmp_path: Path, edit) -> list:
+    dest = tmp_path / "e.pdf"
+    with pikepdf.open(built) as pdf:
+        page = pdf.pages[1]
+        page.Contents.write(edit(page.Contents.read_bytes()))
+        pdf.save(dest)
+    return dest
+
+
+def test_text_state_restored_by_q_q_is_the_state_a_run_is_drawn_with(built, tmp_path):
+    dest = _edited_page(built, tmp_path, _scale_outside_bt)
+    with pikepdf.open(dest) as pdf:
+        runs, problems = layer_runs(pdf.pages[1])
+    assert problems == []
+    assert runs[0].width == pytest.approx(3 * 0.5 * runs[0].size * 0.33)
+    (problem, *_) = compare_layer(_expected(1), runs).problems
+    assert problem.startswith("word 1 of 302 ('839'): width is")
+
+
+@pytest.mark.parametrize(
+    ("insert", "message"),
+    [
+        (b"0.5 Tc\n", "Tc"),
+        (b"1 Tw\n", "Tw"),
+        (b"2 Ts\n", "Ts"),
+        (b"12 TL\n", "TL"),
+        (b"1 1 Td\n", "Td"),
+        (b"T*\n", "T*"),
+        (b"[<0041>] TJ\n", "TJ"),
+        (b"q\n", "q inside BT"),
+        (b"1 0 0 1 5 5 cm\n", "cm inside BT"),
+    ],
+)
+def test_operators_the_check_does_not_model_are_problems(built, tmp_path, insert, message):
+    dest = _edited_page(built, tmp_path, lambda b: b.replace(b"3 Tr\n", b"3 Tr\n" + insert, 1))
+    with pikepdf.open(dest) as pdf:
+        _, problems = layer_runs(pdf.pages[1])
+    assert any(message in p for p in problems), problems
+
+
+def test_the_builders_to_unicode_is_the_identity_map():
+    assert to_unicode_problem(_TO_UNICODE) is None
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        (b"<0000> <FFFF> <0000>", b"<0000> <FFFF> <0001>", "bfrange"),
+        (b"endbfrange\n", b"endbfrange\n1 beginbfchar\n<0041> <0042>\nendbfchar\n", "bfchar"),
+        (b"<0000> <FFFF>\nendcodespacerange", b"<00> <FF>\nendcodespacerange", "codespace"),
+    ],
+)
+def test_other_to_unicode_maps_are_problems(old, new, message):
+    assert old in _TO_UNICODE
+    problem = to_unicode_problem(_TO_UNICODE.replace(old, new))
+    assert problem is not None and message in problem

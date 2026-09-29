@@ -635,3 +635,13 @@ def test_a_missing_tar_or_csv_raises_verify_error(g4_pdf, poppler, tmp_path):
     shutil.copyfile(FIXTURES / "152.tar", tar)
     with pytest.raises(VerifyError, match=r"152\.tar\.csv"):
         verify_volume(g4_pdf, tar, poppler=poppler)
+
+
+@pytest.mark.poppler
+def test_a_run_scaled_through_q_q_outside_bt_fails_text_layer(g4_pdf, poppler, tmp_path):
+    from test_layercheck import _scale_outside_bt
+
+    pdf = _edit_page_content(g4_pdf, tmp_path / "t.pdf", 1, _scale_outside_bt)
+    report = verify_volume(pdf, FIXTURES / "152.tar", poppler=poppler)
+    (failure,) = report.check("text_layer").failures
+    assert failure.page == 2 and "('839'): width is" in failure.message
