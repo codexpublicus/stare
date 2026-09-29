@@ -65,7 +65,7 @@ jobs:
         run: |
           set -o pipefail
           npx --yes wrangler@4.141.0 versions upload --message "PR #${{ github.event.number }}" | tee wrangler-output.txt
-          url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev[^[:space:]]*' wrangler-output.txt | head -n1)
+          url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev[^[:space:]]*' wrangler-output.txt | head -n1 || true)
           if [ -z "$url" ]; then
             echo "::error::no preview URL found in wrangler versions upload output"
             echo "--- last 20 lines of wrangler output ---"
