@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "stare-pub",
+  "account_id": "441c9b9997aeedf42f0c48d5bdb996cb",
+  "compatibility_date": "2026-09-01",
+  "assets": { "directory": "./web/dist" },
+  "workers_dev": true,
+  "preview_urls": true
+}
