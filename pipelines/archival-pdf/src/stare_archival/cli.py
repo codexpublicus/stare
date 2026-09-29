@@ -302,6 +302,8 @@ def _build_all(args: argparse.Namespace, stdout: TextIO) -> int:
     stdout.write(f"  summary: {json_path}\n")
     if outcome.stopped == "interrupted":
         return EXIT_INTERRUPTED
+    if outcome.stopped and outcome.stopped.startswith("crashed"):
+        return EXIT_ERROR
     return EXIT_PASS if summary["ok"] else EXIT_FAIL
 
 

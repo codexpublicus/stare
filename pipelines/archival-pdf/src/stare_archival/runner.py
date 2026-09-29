@@ -6,13 +6,16 @@ directory:
 
     cap-pdf/<reporter>/<volume>.pdf              a verified PDF (the upload tree)
     cap-pdf/_manifests/<reporter>/<volume>.json  its passing manifest
+    .staging/<reporter>/<volume>.pdf             a PDF being built and verified
     failed/<reporter>/<volume>.json              the manifest of a failed or broken volume
     failed/<reporter>/<volume>.pdf               a PDF that failed verification, for study
     uploaded/<reporter>/<volume>.json            receipt: uploaded and checked remotely
     work/<reporter>@<volume>/                    scratch space while a volume runs
     runs/<run id>.{json,txt,jsonl}               run summaries and per-volume records
 
-Only passing volumes enter `cap-pdf/`, so the whole tree can be copied as it is.
+A volume is built and verified in `.staging/` (on the output's filesystem) and renamed into
+`cap-pdf/` only once it passes, so `cap-pdf/` never holds an unverified PDF or a temp file,
+even after a crash, and can be copied as it is.
 
 A volume is done, and skipped on the next run, when its passing manifest records the source
 tar's current SHA-256 (from `.tar.sha256`, else computed) and the same toolchain (this
@@ -24,10 +27,13 @@ Streaming mode (an `Uploader`) uploads each passing volume's PDF and manifest as
 verifies, checks the remote size and MD5, writes the receipt and deletes the local PDF; a
 failed upload leaves the PDF for the next run to upload without rebuilding.
 
-`run_batch` runs each volume in its own forked process, at most `workers` at a time, and
-kills one that runs past `timeout`. With `max_local_bytes` it counts the PDFs waiting on
-local disk plus, for each running volume, its tar's size (an upper bound on its PDF and
-scratch files), and starts a volume only while that stays under the limit.
+`run_batch` runs each volume in its own forked process (its own process group), at most
+`workers` at a time, and kills the group of one that runs past `timeout`. With
+`max_local_bytes` it counts the PDFs on local disk (walked once, then changed by what each
+volume actually added or removed) plus, for each running volume that may build, its tar's
+size (an upper bound on its PDF), and starts such a volume only while that stays under the
+limit. Volumes that only need an upload reserve nothing and go first, so an upload outage
+can't leave the next run unable to start.
 """
 
 from __future__ import annotations
@@ -231,6 +237,14 @@ class Layout:
     def receipt(self, ref: VolumeRef) -> Path:
         return self.out / "uploaded" / ref.reporter / f"{ref.volume}.json"
 
+    def staging(self, ref: VolumeRef) -> Path:
+        return self.out / ".staging" / ref.reporter / f"{ref.volume}.pdf"
+
+    def volume_bytes(self, ref: VolumeRef) -> int:
+        """Bytes of this volume's PDFs on local disk: finished, failed, staged or half written."""
+        paths = (self.pdf(ref), self.failed_pdf(ref), self.staging(ref))
+        return sum(_size(p) + _size(p.with_name(p.name + ".tmp")) for p in paths)
+
     def work(self, ref: VolumeRef) -> Path:
         return self.work_root / f"{ref.reporter}@{ref.volume}"
 
@@ -241,6 +255,7 @@ class Layout:
             (self.root, "*.pdf"),
             (self.root, "*.tmp"),
             (self.out / "failed", "*.pdf"),
+            (self.out / ".staging", "*"),
             (self.work_root, "*"),
         ):
             if base.is_dir():
@@ -254,19 +269,22 @@ def current_toolchain(encoder: ImageEncoder, poppler: Poppler) -> dict[str, str]
     toolchain = {k: versions[k] for k in TOOLCHAIN_TOOLS if k in versions}
     toolchain.update(poppler.tool_versions())
     toolchain["encoder"] = encoder.name
+    toolchain["encoder_settings"] = encoder.settings
     return toolchain
 
 
 def manifest_toolchain(manifest: Mapping[str, Any]) -> dict[str, str | None]:
     tools = manifest.get("tools") or {}
     toolchain = {k: tools.get(k) for k in TOOLCHAIN_TOOLS}
-    toolchain["encoder"] = (manifest.get("encoder") or {}).get("name")
+    encoder = manifest.get("encoder") or {}
+    toolchain["encoder"] = encoder.get("name")
+    toolchain["encoder_settings"] = encoder.get("settings")
     return toolchain
 
 
 def toolchain_matches(manifest: Mapping[str, Any], toolchain: Mapping[str, str]) -> bool:
     return manifest_toolchain(manifest) == {
-        k: toolchain.get(k) for k in (*TOOLCHAIN_TOOLS, "encoder")
+        k: toolchain.get(k) for k in (*TOOLCHAIN_TOOLS, "encoder", "encoder_settings")
     }
 
 
@@ -377,7 +395,9 @@ def record_error(job: VolumeJob, message: str) -> None:
     ref = job.ref
     if _passing_manifest(lay.manifest(ref)) is None:
         lay.pdf(ref).unlink(missing_ok=True)
-    lay.pdf(ref).with_name(f"{ref.volume}.pdf.tmp").unlink(missing_ok=True)
+    for half_done in (lay.pdf(ref), lay.staging(ref)):
+        half_done.with_name(half_done.name + ".tmp").unlink(missing_ok=True)
+    lay.staging(ref).unlink(missing_ok=True)
     shutil.rmtree(lay.work(ref), ignore_errors=True)
     write_manifest(
         lay.failed_manifest(ref),
@@ -446,16 +466,18 @@ def _process(job: VolumeJob, lay: Layout) -> VolumeResult:
         done = _done(job, lay)
         if done is not None:
             return done
-    pdf = lay.pdf(ref)
+    pdf, staged = lay.pdf(ref), lay.staging(ref)
     for stale in (
         lay.manifest(ref),
         lay.receipt(ref),
         pdf,
         lay.failed_manifest(ref),
         lay.failed_pdf(ref),
+        staged,
+        staged.with_name(staged.name + ".tmp"),
     ):
         stale.unlink(missing_ok=True)
-    pdf.parent.mkdir(parents=True, exist_ok=True)
+    staged.parent.mkdir(parents=True, exist_ok=True)
     work = lay.work(ref)
     work.mkdir(parents=True, exist_ok=True)
     tempdir = tempfile.tempdir
@@ -466,7 +488,7 @@ def _process(job: VolumeJob, lay: Layout) -> VolumeResult:
         build = build_volume(
             job.tar,
             None,
-            pdf,
+            staged,
             _encoder(job.encoder),
             volume_id=ref.id,
             source_sha256=source_sha256,
@@ -474,7 +496,7 @@ def _process(job: VolumeJob, lay: Layout) -> VolumeResult:
         )
         build_s = time.monotonic() - started
         started = time.monotonic()
-        report = verify_volume(pdf, job.tar)
+        report = verify_volume(staged, job.tar)
         verify_s = time.monotonic() - started
     finally:
         tempfile.tempdir = tempdir
@@ -495,7 +517,7 @@ def _process(job: VolumeJob, lay: Layout) -> VolumeResult:
         }
         write_manifest(lay.failed_manifest(ref), manifest)
         lay.failed_pdf(ref).parent.mkdir(parents=True, exist_ok=True)
-        os.replace(pdf, lay.failed_pdf(ref))
+        os.replace(staged, lay.failed_pdf(ref))
         return VolumeResult(
             ref.id,
             "fail",
@@ -503,10 +525,12 @@ def _process(job: VolumeJob, lay: Layout) -> VolumeResult:
             failed_checks=failed_checks,
             **common,
         )
+    pdf.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(staged, pdf)  # verified: into the upload tree, then its manifest
     write_manifest(lay.manifest(ref), manifest)
     if job.uploader is None:
         return VolumeResult(ref.id, "pass", local_bytes=_size(pdf), **common)
-    uploaded = _upload(job, lay, report.page_count, report.output_sha256, "pass")
+    uploaded = _upload(job, lay, report.page_count, report.output_sha256, "uploaded")
     return VolumeResult(
         ref.id,
         uploaded.status,
@@ -556,6 +580,7 @@ def _upload(job: VolumeJob, lay: Layout, pages: int, sha256: str, status: str) -
         },
     )
     pdf.unlink()
+    lay.failed_manifest(ref).unlink(missing_ok=True)  # e.g. from an upload that timed out
     return VolumeResult(
         ref.id,
         status,
@@ -594,9 +619,40 @@ class _Running:
     conn: Any
     deadline: float
     reserved: int
+    bytes_before: int
+
+
+def _kill(run: _Running) -> None:
+    """SIGKILL the worker's whole process group (jbig2, pdfimages), then the worker."""
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(run.process.pid, signal.SIGKILL)
+    run.process.kill()
+    run.process.join()
+    run.conn.close()
+
+
+def _only_uploads(job: VolumeJob, lay: Layout) -> bool:
+    """A cheap guess, from file names alone, that the job only needs an upload: a manifest
+    and a PDF on disk with no receipt. The worker checks properly."""
+    ref = job.ref
+    return (
+        job.uploader is not None
+        and lay.manifest(ref).is_file()
+        and lay.pdf(ref).is_file()
+        and not lay.receipt(ref).is_file()
+    )
+
+
+def _reservation(job: VolumeJob, lay: Layout) -> int:
+    """Bytes a job may add to local disk: none if it looks done or only needs an upload, else
+    its tar's size."""
+    ref = job.ref
+    done = lay.manifest(ref).is_file() and (lay.pdf(ref).is_file() or lay.receipt(ref).is_file())
+    return 0 if done else job.reserve_bytes()
 
 
 def _child(worker: Callable[[VolumeJob], VolumeResult], job: VolumeJob, conn) -> None:
+    os.setpgrp()  # the parent kills the whole group on a timeout
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # the parent stops us
     signal.signal(signal.SIGTERM, signal.SIG_DFL)
     try:
@@ -623,14 +679,21 @@ def run_batch(
     record: Callable[[VolumeResult], None] | None = None,
 ) -> BatchOutcome:
     """Run `worker` (default `process_volume`) on every job, each in a forked process, at
-    most `workers` at a time, killing any that runs longer than `timeout` seconds."""
+    most `workers` at a time, killing any that runs longer than `timeout` seconds. Any
+    failure in this loop stops the run: the running volumes are killed and recorded, and
+    `stopped` says why ("interrupted", "crashed: ...", "disk guard: ...")."""
     ctx = multiprocessing.get_context("fork")
-    pending = deque(jobs)
+    guard = max_local_bytes is not None
+    layouts = {id(j): Layout(j.out, j.work) for j in jobs}
+    ordered = list(jobs)
+    if any(j.uploader is not None for j in jobs):
+        ordered.sort(key=lambda j: not _only_uploads(j, layouts[id(j)]))  # stable
+    pending = deque(ordered)
     running: list[_Running] = []
     results: list[VolumeResult] = []
     stopped: str | None = None
     local = 0
-    if max_local_bytes is not None:
+    if guard:
         dirs = {(Path(j.out), j.work) for j in jobs}
         local = sum(Layout(out, work).local_bytes() for out, work in dirs)
     reserved = 0
@@ -641,7 +704,8 @@ def run_batch(
         nonlocal local, reserved
         running.remove(run)
         reserved -= run.reserved
-        local += result.local_bytes
+        if guard:  # what the volume actually added to or removed from local disk
+            local += layouts[id(run.job)].volume_bytes(run.job.ref) - run.bytes_before
         results.append(result)
         if record:
             record(result)
@@ -653,8 +717,9 @@ def run_batch(
         while pending or running:
             while pending and stopped is None and len(running) < workers:
                 job = pending[0]
-                need = job.reserve_bytes()
-                if max_local_bytes is not None and local + reserved + need > max_local_bytes:
+                lay = layouts[id(job)]
+                need = _reservation(job, lay) if guard else 0
+                if guard and need and local + reserved + need > max_local_bytes:
                     if not running:
                         stopped = (
                             f"disk guard: {format_bytes(local)} on local disk, and "
@@ -669,7 +734,10 @@ def run_batch(
                 )
                 process.start()
                 sender.close()
-                running.append(_Running(job, process, receiver, time.monotonic() + timeout, need))
+                before = lay.volume_bytes(job.ref) if guard else 0
+                running.append(
+                    _Running(job, process, receiver, time.monotonic() + timeout, need, before)
+                )
                 reserved += need
             if not running:
                 break
@@ -683,20 +751,18 @@ def run_batch(
                 if run.process.sentinel in ready:
                     finished(run, _collect(run))
                 elif now >= run.deadline:
-                    run.process.kill()
-                    run.process.join()
-                    run.conn.close()
+                    _kill(run)
                     message = f"timed out after {timeout:g} s"
                     _abandon(run.job, message)
                     finished(run, VolumeResult(run.job.ref.id, "timeout", error=message))
-    except (KeyboardInterrupt, _InterruptedError):
-        stopped = "interrupted"
-        for run in running:
-            run.process.kill()
-        for run in running:
-            run.process.join()
-            run.conn.close()
-            _abandon(run.job, "interrupted; not finished")
+    except BaseException as exc:  # noqa: BLE001 (stop the pool cleanly, then report)
+        if isinstance(exc, KeyboardInterrupt | _InterruptedError):
+            stopped = "interrupted"
+        else:
+            stopped = f"crashed: {_message(exc)}"
+        for run in list(running):
+            _kill(run)
+            _abandon(run.job, f"{stopped}; not finished")
     finally:
         signal.signal(signal.SIGTERM, previous)
     return BatchOutcome(results, time.monotonic() - started, stopped, total)
