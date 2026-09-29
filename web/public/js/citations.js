@@ -56,7 +56,7 @@ export async function detectCitations(text) {
  */
 const CASE_PATTERN = /(\d{1,4})\s+([A-Z][A-Za-z.]+(?:\s+\d+[a-z]{1,2})?(?:\.\d+[a-z]{0,2})?)\s+(\d{1,4})/g;
 
-function detectCitationsRegex(text) {
+export function detectCitationsRegex(text) {
   const results = [];
   let match;
   const re = new RegExp(CASE_PATTERN.source, 'g');
@@ -84,7 +84,7 @@ function detectCitationsRegex(text) {
  * code point offset. Spreading a string iterates by code point, not code
  * unit, so this is a correct, if not the fastest, conversion.
  */
-function codePointOffset(text, utf16Index) {
+export function codePointOffset(text, utf16Index) {
   return [...text.slice(0, utf16Index)].length;
 }
 
@@ -127,8 +127,11 @@ export async function checkAvailability(slug, volume) {
 /**
  * Process all citations in a case's opinions.
  * Uses citare for detection, checks availability for each.
+ *
+ * `check` is an injectable replacement for `checkAvailability`, used by
+ * tests to stub availability lookups without a network fetch.
  */
-export async function processCitations(caseData) {
+export async function processCitations(caseData, check = checkAvailability) {
   const allCites = [];
 
   for (const op of caseData.casebody?.opinions || []) {
@@ -150,13 +153,13 @@ export async function processCitations(caseData) {
       return { ...c, slug: null, resolvable: false };
     }
     if (c.harvard_slug && c.volume && c.page) {
-      const available = await checkAvailability(c.harvard_slug, c.volume);
+      const available = await check(c.harvard_slug, c.volume);
       return { ...c, slug: c.harvard_slug, resolvable: available };
     }
     // No slug — try guessing
     if (c.reporter && c.volume) {
       const slug = guessSlug(c.reporter);
-      const available = await checkAvailability(slug, c.volume);
+      const available = await check(slug, c.volume);
       return { ...c, slug: available ? slug : null, resolvable: available };
     }
     return { ...c, slug: null, resolvable: false };
