@@ -45,7 +45,7 @@ const releases = parseChangelog(changelog, { limit: 5, maxItems: 8 });
 			<p>When you look up a citation, your browser:</p>
 			<ul>
 				<li>Fetches a small binary index file (~7 KB per volume) to find the case</li>
-				<li>Fetches the volume's case data (~400 KB zip) from static.case.law</li>
+				<li>Fetches the volume's case data (~400 KB zip) from stare.pub's own copy of the CAP data (data.stare.pub)</li>
 				<li>Extracts and renders the case text entirely client-side using WebAssembly</li>
 				<li>Caches everything locally so repeat lookups are instant</li>
 			</ul>

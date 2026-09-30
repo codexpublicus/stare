@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub const DEFAULT_INDEX_URL: &str = "https://idx.stare.pub";
-pub const DEFAULT_DATA_URL: &str = "https://static.case.law";
+/// Base URL for case zips, served as `{base}/{reporter}/{volume}.zip`. Our own copy of the CAP data.
+pub const DEFAULT_DATA_URL: &str = "https://data.stare.pub/cap";
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Config {

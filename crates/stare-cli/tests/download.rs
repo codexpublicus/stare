@@ -1,5 +1,5 @@
 //! Integration tests for `stare_cli::download`. Uses `mockito` to spin up local HTTP
-//! servers standing in for the index (idx.stare.pub) and data (static.case.law)
+//! servers standing in for the index (idx.stare.pub) and data (data.stare.pub)
 //! sources, so nothing here touches the real network.
 
 use stare_cli::download::{run, DownloadConfig, Event, FileStatus};

@@ -19,7 +19,7 @@
 ///   reporter. The error only propagates when there's no local file to fall back on.
 /// - Files are written atomically (temp file + rename via `stare::config::atomic_write`)
 ///   so a killed process or a concurrent reader never sees a partial file.
-/// - Requests to the data source (static.case.law) are rate-limited per AGENTS.md
+/// - Requests to the data source (data.stare.pub) are rate-limited per AGENTS.md
 ///   (max 1-2 req/sec). The index source is our own R2 bucket and isn't rate-limited.
 use anyhow::{bail, Context, Result};
 use std::collections::BTreeMap;
@@ -147,7 +147,7 @@ fn stare_cli_is_url(s: &str) -> bool {
 }
 
 /// Fetch one file (bin or zip) into `cache_subdir/key`, skipping it if a same-size
-/// copy already exists. `rate_limiter` is `Some` only for data-source (static.case.law)
+/// copy already exists. `rate_limiter` is `Some` only for data-source (data.stare.pub)
 /// requests, per AGENTS.md.
 fn fetch_and_cache(
     client: &reqwest::blocking::Client,

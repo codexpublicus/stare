@@ -38,7 +38,7 @@ Three interfaces to the same data, all static files:
 ```
 /index/{reporter}/{vol}.bin       — citation lookup (page offset → case file)
 /index/reporters.json             — abbreviation → slug mapping
-/data/{reporter}/{vol}.zip        — case text JSONs (served as-is from mirror)
+/cap/{reporter}/{vol}.zip         — case text JSONs (codex-data bucket, served at data.stare.pub/cap)
 /data/{reporter}/{vol}.tar        — page images + ALTO OCR (range requests via tar.csv)
 /data/{reporter}/{vol}.tar.csv    — tar byte offset manifest
 /data/{reporter}/{vol}.pdf        — volume PDF fallback
@@ -180,6 +180,8 @@ read-only Docker volume `codexpublicus-cap-mirror`, the output goes to
   old Pages project is deleted by #41). CI deploys it when a release PR merges (#60); until
   the first release, production is the last `main` push deployed before #60 landed.
 - **Live**: `idx.stare.pub` (R2 bucket `stare-pub-idx`) serves the citation index files.
+- **Zips**: the site and the CLI fetch case zips from `https://data.stare.pub/cap/<reporter>/<volume>.zip`
+  (our copy, #27). Tars, `.tar.csv` and the volume PDF link still point at static.case.law.
 - **Mirror**: complete. TrueNAS `mega/codexpublicus/cap-mirror` holds 40,622 zips and 39,964
   each of tars, `.tar.csv` and PDFs (verified 2026-09-29); the dataset is read-only and the
   aria2 `codex-mirror` container is stopped.
