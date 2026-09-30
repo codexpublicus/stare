@@ -13,10 +13,10 @@ const releases = parseChangelog(changelog, { limit: 5, maxItems: 8 });
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<title>About — stare.pub</title>
-		<meta name="description" content="About stare.pub — preserving 6.7 million cases from the Harvard Caselaw Access Project. Free, open, serverless." />
+		<title>About · stare.pub</title>
+		<meta name="description" content="stare.pub resolves U.S. case citations to full text and original scans, from the Codex Publicus copy of the Caselaw Access Project: 6.9 million cases." />
 		<meta property="og:title" content="About §tare.pub" />
-		<meta property="og:description" content="Preserving 6.7 million cases from the Harvard Caselaw Access Project. Free, open, serverless." />
+		<meta property="og:description" content="U.S. case citations to full text and original scans: 6.9 million cases from the Caselaw Access Project, preserved by Codex Publicus." />
 		<meta property="og:type" content="website" />
 		<meta property="og:url" content="https://stare.pub/about" />
 		<meta property="og:image" content="https://stare.pub/og-image.png" />
@@ -33,35 +33,44 @@ const releases = parseChangelog(changelog, { limit: 5, maxItems: 8 });
 		<div class="page-topbar"><a href="/">§tare.pub</a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
 		<div class="page">
 			<h1>About stare.pub</h1>
-			<p><strong>stare.pub</strong> is a free, open tool for resolving U.S. legal citations to full case text and original scanned reporter pages. The entire application is static files served to your browser — there is no backend server, no database, no API to maintain or go down. It could run from IPFS, a USB stick, or any static file host. No tracking, no account required.</p>
-
-			<p>This project is built by <a href="https://x.com/lokkju" target="_blank" rel="noopener">lokkju</a>, motivated by the belief that public law should be permanently, freely accessible — not dependent on any single institution's continued goodwill or funding.</p>
+			<p><strong>stare.pub</strong> resolves U.S. case citations to the full text of the decision and to the original scanned pages of the reporter it was printed in. Type <em>31 A.2d 647</em> and you get the opinion. It's a <a href="https://codexpublicus.org" target="_blank" rel="noopener">Codex Publicus</a> project, built by <a href="https://x.com/lokkju" target="_blank" rel="noopener">lokkju</a>.</p>
+			<p>Everything runs in your browser. The site, the citation index and the case data are all static files: there's no server doing work on your behalf, no database, and no API to go down. There are no accounts, no cookies and no analytics. Your browser caches the files it downloads and remembers whether you like dark mode; the site stores nothing else.</p>
+			<p>Published case law is the law. Reading it shouldn't depend on a subscription, or on any one institution's continued goodwill and funding.</p>
 
 			<h2>The data</h2>
-			<p>The case text and page scans come from the <a href="https://case.law/" target="_blank" rel="noopener">Harvard Caselaw Access Project</a> (CAP), which digitized roughly 40,000 reporter volumes covering 6.7 million cases from 1658 to 2018. All of this data is public domain.</p>
-			<p>Harvard announced in 2024 that they were winding down the CAP project. The API is gone. Search is gone. The bulk data files at <a href="https://static.case.law/" target="_blank" rel="noopener">static.case.law</a> are still available, but for how long is uncertain. This project exists to preserve that data and keep it accessible.</p>
+			<p>The cases come from the <a href="https://case.law/" target="_blank" rel="noopener">Caselaw Access Project</a> (CAP). Between 2013 and 2018 the Harvard Law School Library scanned its collection of American case reporters: 40,622 volumes holding 6.9 million cases, decided between 1658 and 2020. The case data is public domain.</p>
+			<p>Ravel Law paid for the scanning in exchange for a period of exclusive commercial use, which passed to LexisNexis when it bought Ravel in 2017 and ran until March 2024. When it ended, Harvard published the whole corpus as bulk files at <a href="https://static.case.law/" target="_blank" rel="noopener">static.case.law</a>, and on September 1, 2024 it retired the CAP website and its API. The bulk files are still up. Nobody has said for how long.</p>
+			<p>Codex Publicus holds a complete copy of that release, all 10.4 TB of it: the case text, the page scans, the OCR and the metadata. stare.pub reads its case text from that copy.</p>
 
 			<h2>How it works</h2>
 			<p>When you look up a citation, your browser:</p>
 			<ul>
-				<li>Fetches a small binary index file (~7 KB per volume) to find the case</li>
-				<li>Fetches the volume's case data (~400 KB zip) from stare.pub's own copy of the CAP data (data.stare.pub)</li>
-				<li>Extracts and renders the case text entirely client-side using WebAssembly</li>
-				<li>Caches everything locally so repeat lookups are instant</li>
+				<li>fetches the volume's citation index, about 7 KB, which says which case starts on which page;</li>
+				<li>fetches the volume's case data, a zip of typically 1.5 MB, from the Codex Publicus copy at data.stare.pub;</li>
+				<li>unpacks and renders the case itself, using a WebAssembly build of the same Rust code the <code>stare</code> command line tool runs;</li>
+				<li>caches both files, so later lookups in that volume don't download them again.</li>
 			</ul>
-			<p>For the original page viewer, individual page images (~50 KB each) are fetched via HTTP range requests into the volume's tar archive — no need to download the full ~100 MB archive.</p>
-			<p>The total WebAssembly module is about 280 KB. There is no backend server, no database, no compute — just static file hosting. The same files could be served from Cloudflare R2, IPFS, a local directory, or any web host that can serve files.</p>
+			<p>The page viewer shows the original scans. Each page is a color JPEG of about 180 KB inside the volume's tar archive, which typically runs around 200 MB. The viewer reads the archive's table of contents and fetches only the bytes of the page you're looking at.</p>
 
-			<h2>Current status</h2>
-			<p>This is an early-stage project. We're actively working on:</p>
+			<h2>Where it stands</h2>
+			<p>Done:</p>
 			<ul>
-				<li><strong>Mirroring all data</strong> — downloading all 40,622 volumes (~4.4 TB) from Harvard to our own storage</li>
-				<li><strong>Building the full index</strong> — currently only a handful of test volumes are indexed; the full corpus index will follow once the mirror completes</li>
-				<li><strong>IPFS distribution</strong> — pinning the volume archives on IPFS for permanent, decentralized access</li>
-				<li><strong>Citation parsing</strong> — a Rust port of <a href="https://free.law/projects/eyecite" target="_blank" rel="noopener">eyeCite</a> to accept natural citation strings like "31 A.2d 647"</li>
-				<li><strong>Full-text search</strong> — serverless search via RoaringBuckets bitmap indexes on Cloudflare R2</li>
-				<li><strong>Federal and state statutes</strong> — the same architecture works for statutes (U.S. Code, Statutes at Large, state codes) using public domain data from govinfo.gov and state legislatures</li>
-				<li><strong>Fully decentralized hosting</strong> — the site itself (not just the data) served from IPFS, making the entire system uncensorable and permanent</li>
+				<li><strong>The mirror.</strong> All 40,622 volumes of the CAP release are copied, counted and held read-only.</li>
+				<li><strong>The index.</strong> 40,487 volumes are indexed and resolve today.</li>
+				<li><strong>Citation detection.</strong> citare, a Rust citation parser I wrote, finds the citations in every case you read and in anything you paste into the brief checker, including plain forms like 31 A.2d 647.</li>
+				<li><strong>Our own case text.</strong> Case data is served from the Codex Publicus copy, not from static.case.law.</li>
+			</ul>
+			<p>In progress:</p>
+			<ul>
+				<li><strong>Archival PDFs.</strong> One PDF/A per volume, built from the original bitonal scans with lossless compression, with the OCR as an invisible, searchable text layer and a bookmark for every case. Every page is checked against its source scan, pixel for pixel. They come out about a quarter smaller than CAP's own PDFs of the same volumes, which have no text layer at all.</li>
+				<li><strong>Structured case text.</strong> Every decision in Akoma Ntoso, the OASIS standard for legal documents, with a stable identifier for each opinion.</li>
+			</ul>
+			<p>Planned:</p>
+			<ul>
+				<li><strong>Full-text search</strong>, served as static files like everything else.</li>
+				<li><strong>Statutes and regulations</strong>: the U.S. Code, the Statutes at Large and the state codes, from the public sources that publish them.</li>
+				<li><strong>IPFS and torrents</strong>, for anyone to pin and seed.</li>
+				<li><strong>The site itself on IPFS</strong>, where the whole system can outlive any single host, this one included.</li>
 			</ul>
 
 			<h2 id="whats-new">What's new</h2>
@@ -87,25 +96,25 @@ const releases = parseChangelog(changelog, { limit: 5, maxItems: 8 });
 			))}
 
 			<h2>Help preserve case law</h2>
-			<p>This data is at risk. Harvard's hosting is a soft commitment from an academic lab in wind-down mode. The more copies that exist, the safer the data is.</p>
-			<p>If you can help, here's how:</p>
+			<p>Harvard has kept the bulk files online so far. One host is still one point of failure, and every independent copy of the full release is one more place it survives if static.case.law goes away.</p>
 			<ul>
-				<li><strong>Mirror the data</strong> — the full dataset is ~4.4 TB at <a href="https://static.case.law/" target="_blank" rel="noopener">static.case.law</a>. If you have storage, grab a copy. Eventually, you'll be able to mirror the entire stare.pub system — site, search index, and data — from a single command.</li>
-				<li><strong>Pin on IPFS</strong> — once we publish IPFS CIDs, pin them from your node to help distribute</li>
-				<li><strong>Seed torrents</strong> — per-reporter torrents are planned for bulk distribution</li>
+				<li><strong>Mirror it.</strong> The whole release is at <a href="https://static.case.law/" target="_blank" rel="noopener">static.case.law</a>. If you have 10.4 TB to spare, take a copy, and keep it to a request or two a second.</li>
+				<li><strong>Pin it</strong> on IPFS, once we publish the CIDs.</li>
+				<li><strong>Seed it</strong>, once the per-reporter torrents exist.</li>
 			</ul>
 
 			<h2>Technical details</h2>
 			<ul>
-				<li><strong>Frontend:</strong> Astro + vanilla JS + CSS custom properties</li>
-				<li><strong>Core:</strong> Rust, compiled to both native (CLI) and WebAssembly</li>
-				<li><strong>Data:</strong> Harvard CAP zip/tar files — static files, hostable anywhere</li>
-				<li><strong>Index:</strong> Custom binary format — 8 bytes per page, direct offset lookup</li>
-				<li><strong>Hosting:</strong> Any static file host works — Cloudflare R2, S3, IPFS, a local web server. The entire system (site, index, and data) is designed to be trivially mirrorable.</li>
+				<li><strong>Site:</strong> Astro, plain JavaScript and CSS, served as static files from a Cloudflare Worker.</li>
+				<li><strong>Core:</strong> Rust, compiled to a native command line tool and to WebAssembly for the browser.</li>
+				<li><strong>Citations:</strong> citare, in Rust and WebAssembly.</li>
+				<li><strong>Index:</strong> one binary file per volume, 8 bytes per page: the case on any page is one offset lookup away.</li>
+				<li><strong>Data:</strong> Cloudflare R2 holds the index and the case text; page scans still come from the CAP bulk files.</li>
+				<li><strong>Hosting:</strong> any static file host would do, whether S3, IPFS or a directory on your own machine.</li>
 			</ul>
 
 			<h2>Credits</h2>
-			<p>Built on data from the <a href="https://lil.law.harvard.edu/" target="_blank" rel="noopener">Harvard Library Innovation Lab</a>'s Caselaw Access Project. Citation detection uses patterns from the <a href="https://free.law/" target="_blank" rel="noopener">Free Law Project</a>'s eyeCite library. All case law data is public domain (CC0).</p>
+			<p>The data is the Caselaw Access Project's, from the Harvard Law School Library and its <a href="https://lil.law.harvard.edu/" target="_blank" rel="noopener">Library Innovation Lab</a>. citare was inspired by the <a href="https://free.law/" target="_blank" rel="noopener">Free Law Project</a>'s eyecite, and uses their reporters-db for its reporter data. The case law itself is public domain (CC0).</p>
 
 			<a href="/" class="back-link">&larr; Back to stare.pub</a>
 
