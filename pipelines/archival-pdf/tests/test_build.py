@@ -97,6 +97,13 @@ def test_no_temporary_file_is_left_behind(built):
     assert sorted(p.name for p in out.parent.iterdir()) == ["152.pdf"]
 
 
+def test_output_is_linearized(pdf):
+    # A viewer can show the first page from the first range request and fetch any
+    # other page on its own; see _save.
+    assert pdf.is_linearized
+    assert pdf.check_linearization(stream=io.StringIO())
+
+
 def test_pages_are_sized_from_the_tiff_at_its_resolution(pdf, volume):
     vt, vol = volume
     assert len(pdf.pages) == 4
