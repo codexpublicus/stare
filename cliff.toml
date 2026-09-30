@@ -3,7 +3,11 @@
 # Used by release-prepare.yml (the release PR's CHANGELOG.md), release.yml (the
 # GitHub Release notes and the /about "What's new" build) and by hand:
 #
-#   git cliff --unreleased --tag "$(node scripts/calver.mjs)"
+#   scripts/cliff --unreleased --tag "$(node scripts/calver.mjs)"
+#
+# scripts/cliff adds the baseline range from scripts/release-baseline, so history
+# before the first release isn't listed; the first release gets the hand-written
+# summary in the body below (the `previous.version` branch) ahead of any generated items.
 #
 # Only Features, Fixes and Performance are shown; every other type is hidden, and
 # commits that aren't Conventional Commits (merge commits among them) are dropped.
@@ -21,6 +25,16 @@ body = """
 {%- else %}
 ## Unreleased
 {%- endif %}
+{%- if not previous or not previous.version %}
+
+### What stare.pub is
+- Citation resolution runs in your browser. The page loads a WASM build of the same Rust core the command line tool uses and reads the citation index files from idx.stare.pub; there is no backend.
+- The site has been served from the stare-pub Cloudflare Worker (Workers Static Assets) since 2026-09-29.
+- Citations are highlighted in your text by their offsets, the way the resolver reports them, instead of by pattern replacement.
+- The page shows a loading state while citations are being detected.
+- The footer shows the site release and the date of the index.
+- Every pull request gets a preview deployment that resolves citations too, and production deploys only from a merged release PR.
+{% endif %}
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | striptags | trim }}
 {% for commit in commits %}
@@ -37,9 +51,19 @@ filter_unconventional = true
 split_commits = false
 filter_commits = true
 protect_breaking_commits = false
-# The site is the web app and the Rust it compiles to WASM; the CLIs and the
-# archival pipeline aren't part of its version.
-include_paths = ["web/**", "crates/stare/**", "crates/stare-wasm/**", "wrangler.jsonc"]
+# Only commits touching what the site is built from count: the web app, the WASM
+# bindings, the core library the bindings compile (a change there changes what the
+# browser resolves), the Worker config and the site's own build and deploy workflow.
+# The CLIs, the archival pipeline, docs and the release files are left out; a
+# release-workflow change moves no visitor's experience.
+include_paths = [
+  "web/**",
+  "crates/stare/**",
+  "crates/stare-wasm/**",
+  "wrangler.jsonc",
+  ".github/workflows/site.yml",
+  ".github/actions/build-site/**",
+]
 tag_pattern = "^v[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$"
 sort_commits = "oldest"
 # Squash merges end the subject with "(#58)"; link it. Commits from merge-commit

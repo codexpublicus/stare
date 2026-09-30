@@ -71,11 +71,11 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         run: |
           set -euo pipefail
-          count=$(git cliff --unreleased --context | jq '[.[].commits[]] | length')
+          count=$(scripts/cliff --unreleased --context | jq '[.[].commits[]] | length')
           if [ "$count" -eq 0 ]; then
             echo "No releasable commits (only hidden types) since the last release."
             echo "releasable=false" >> "$GITHUB_OUTPUT"
-            git cliff --output CHANGELOG.md
+            scripts/cliff --output CHANGELOG.md
             if git diff --quiet -- CHANGELOG.md; then
               echo "sync=false" >> "$GITHUB_OUTPUT"
             else
@@ -85,8 +85,8 @@ jobs:
             exit 0
           fi
           version=$(node scripts/calver.mjs)
-          git cliff --tag "$version" --output CHANGELOG.md
-          notes=$(git cliff --unreleased --tag "$version" --strip all)
+          scripts/cliff --tag "$version" --output CHANGELOG.md
+          notes=$(scripts/cliff --unreleased --tag "$version" --strip all)
           {
             echo "Merging this PR releases the site and deploys it to production (stare.pub)."
             echo
