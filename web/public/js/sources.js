@@ -6,8 +6,8 @@
 // to the mirror, because each moves to our own copy on its own schedule: the zips
 // already have (data.stare.pub, codex-data's `cap/`, codexpublicus/stare#42), and the
 // PDFs will when the archival PDFs are published (#51), which are different files from
-// CAP's. A .tar.csv holds byte offsets into its own tar, so the two share one base and
-// always come from the same place.
+// CAP's. A .tar.csv holds byte offsets into its tar, so the tar it's read against must be
+// byte-identical to the one it was made from; sharing one base keeps them paired.
 
 export const INDEX_URL = 'https://idx.stare.pub';
 export const MIRROR_URL = 'https://static.case.law';

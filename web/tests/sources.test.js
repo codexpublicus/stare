@@ -16,7 +16,7 @@ test('tars and PDFs still come from the mirror', () => {
   assert.equal(PDF_URL, MIRROR_URL);
 });
 
-test("a tar's .tar.csv comes from the same place as the tar", () => {
+test("a tar's .tar.csv shares the tar's base", () => {
   assert.equal(tarCsvUrl('a2d', '31'), `${TAR_URL}/a2d/31.tar.csv`);
   assert.equal(tarCsvUrl('a2d', '31'), `${tarUrl('a2d', '31')}.csv`);
 });
