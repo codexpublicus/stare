@@ -32,7 +32,7 @@ body = """
 - The site has been served from the stare-pub Cloudflare Worker (Workers Static Assets) since 2026-09-29.
 - Citations are highlighted in your text by their offsets, the way the resolver reports them, instead of by pattern replacement.
 - The page shows a loading state while citations are being detected.
-- The footer shows the site release, linked to this list; preview builds show the word preview and a date.
+- The footer shows the site release and the date of the citation index.
 - Every pull request gets a preview deployment that resolves citations too, and production deploys only from a merged release PR.
 {% endif %}
 {% for group, commits in commits | group_by(attribute="group") %}
