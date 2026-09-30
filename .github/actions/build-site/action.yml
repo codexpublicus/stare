@@ -1,0 +1,82 @@
+name: Build and check the site
+description: >
+  The checks and build every site workflow runs (site.yml's previews and
+  release.yml's production release): cargo fmt, clippy and tests, the JS tests,
+  the stare-wasm build and the Astro build into web/dist. Expects the repo to be
+  checked out already.
+
+inputs:
+  ssh-private-key:
+    description: Deploy key for the private citare dependency (secrets.CITARE_DEPLOY_KEY)
+    required: true
+  release:
+    description: >
+      The build's label, shown in the footer: the release tag, main-<sha>, or
+      pr-<number>. Empty shows "dev".
+    required: false
+    default: ""
+  commit:
+    description: The commit SHA to show in the footer
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
+      with:
+        ssh-private-key: ${{ inputs.ssh-private-key }}
+
+    - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+      with:
+        toolchain: stable
+        targets: wasm32-unknown-unknown
+        components: clippy, rustfmt
+
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+    - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+      with:
+        tool: wasm-pack@0.13.1
+
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: web/package-lock.json
+
+    - name: cargo fmt
+      shell: bash
+      run: cargo fmt --all --check
+
+    - name: cargo clippy
+      shell: bash
+      run: cargo clippy --workspace --all-targets -- -D warnings
+
+    - name: cargo test
+      shell: bash
+      run: cargo test --workspace
+
+    - name: JS tests
+      shell: bash
+      run: node --test 'web/tests/**/*.test.js' 'scripts/tests/**/*.test.mjs'
+
+    - name: Build stare-wasm
+      shell: bash
+      run: wasm-pack build crates/stare-wasm --target web --out-dir ../../web/public/wasm
+
+    - name: Install web dependencies
+      shell: bash
+      run: npm --prefix web ci
+
+    - name: Build web
+      shell: bash
+      env:
+        PUBLIC_RELEASE: ${{ inputs.release }}
+        PUBLIC_COMMIT: ${{ inputs.commit }}
+      run: |
+        set -euo pipefail
+        PUBLIC_BUILD_DATE=$(git log -1 --format=%cs HEAD)
+        export PUBLIC_BUILD_DATE
+        echo "Building ${PUBLIC_RELEASE:-dev} at ${PUBLIC_COMMIT:-unknown commit}, ${PUBLIC_BUILD_DATE}"
+        npm --prefix web run build

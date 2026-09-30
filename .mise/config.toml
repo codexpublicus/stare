@@ -5,6 +5,7 @@ node = "22"
 "ubi:rustwasm/wasm-pack" = "0.13.1"
 wrangler = "4.141.0"
 uv = "latest"
+"aqua:orhun/git-cliff" = "2.14.2"
 
 [settings.age]
 identity_files = ["~/.config/mise/age.lokkju.txt"]

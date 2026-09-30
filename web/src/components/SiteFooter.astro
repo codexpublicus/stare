@@ -1,0 +1,39 @@
+---
+// The footer every page shares: credits, the build this page came from, and the
+// citation index it reads. CI sets PUBLIC_RELEASE, PUBLIC_COMMIT and
+// PUBLIC_BUILD_DATE at build time; see src/lib/version.js.
+import { buildInfo, buildLine } from '../lib/version.js';
+
+interface Props {
+	/** "landing" sits centered under the landing page; "page" is the ruled footer on content pages. */
+	variant?: 'landing' | 'page';
+}
+
+const { variant = 'page' } = Astro.props;
+const info = buildInfo({
+	release: import.meta.env.PUBLIC_RELEASE,
+	commit: import.meta.env.PUBLIC_COMMIT,
+	date: import.meta.env.PUBLIC_BUILD_DATE,
+});
+---
+
+<footer class:list={['site-footer', `site-footer--${variant}`]}>
+	<p class="site-footer-credits">
+		Built with &hearts; by <a href="https://github.com/lokkju" target="_blank" rel="noopener">lokkju</a>
+		<span class="site-footer-sep">&middot;</span>
+		<a href="mailto:info@codexpublicus.org">info@codexpublicus.org</a>
+		<span class="site-footer-sep">&middot;</span>
+		<a href="https://x.com/lokkju" target="_blank" rel="noopener">@lokkju</a>
+	</p>
+	<p class="site-footer-build" title={buildLine(info)}>
+		{info.labelHref ? <a href={info.labelHref} target="_blank" rel="noopener">{info.label}</a> : <span>{info.label}</span>}
+		{info.sha && <><span class="site-footer-sep">&middot;</span><a href={info.shaHref} target="_blank" rel="noopener">{info.sha}</a></>}
+		{info.date && <><span class="site-footer-sep">&middot;</span><span>{info.date}</span></>}
+		<span class="site-footer-data" data-site-data-line hidden></span>
+	</p>
+</footer>
+
+<script is:inline type="module">
+	import { loadDataLine } from '/js/dataversion.js';
+	for (const el of document.querySelectorAll('[data-site-data-line]')) loadDataLine(el);
+</script>

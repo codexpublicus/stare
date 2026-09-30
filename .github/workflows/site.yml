@@ -1,5 +1,12 @@
 name: site
 
+# Checks and previews. Nothing here deploys production: the sanctioned path to
+# production is merging the release PR, which runs release.yml.
+#
+# - pull requests: build, upload a Worker version, and comment its preview URL
+# - pushes to main: build and upload a Worker version to the stable `main`
+#   preview alias (https://main-stare-pub.nick-441.workers.dev)
+
 on:
   pull_request:
   push:
@@ -8,59 +15,25 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
-  build-and-deploy:
+  pr-preview:
+    name: Preview PR
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
+      - uses: ./.github/actions/build-site
         with:
           ssh-private-key: ${{ secrets.CITARE_DEPLOY_KEY }}
-
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
-        with:
-          toolchain: stable
-          targets: wasm32-unknown-unknown
-          components: clippy, rustfmt
-
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-
-      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
-        with:
-          tool: wasm-pack@0.13.1
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: cargo fmt
-        run: cargo fmt --all --check
-
-      - name: cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: cargo test
-        run: cargo test --workspace
-
-      - name: JS tests
-        run: node --test 'web/tests/**/*.test.js'
-
-      - name: Build stare-wasm
-        run: wasm-pack build crates/stare-wasm --target web --out-dir ../../web/public/wasm
-
-      - name: Install web dependencies
-        run: npm --prefix web ci
-
-      - name: Build web
-        run: npm --prefix web run build
+          release: pr-${{ github.event.number }}
+          commit: ${{ github.event.pull_request.head.sha }}
 
       - name: Deploy preview
-        if: github.event_name == 'pull_request'
         id: preview
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -78,7 +51,6 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
       - name: Comment preview URL
-        if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
           PREVIEW_URL: ${{ steps.preview.outputs.url }}
@@ -96,9 +68,38 @@ jobs:
             gh api "repos/$REPO/issues/$PR_NUMBER/comments" -X POST -f body="$body"
           fi
 
-      - name: Deploy
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  main-preview:
+    # Named so a green check on main isn't mistaken for a release.
+    name: Preview main (not production)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # No concurrency group: cancelling this run would fail release.yml's check
+    # of the release PR's merge commit, which waits for it.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build label
+        id: label
+        run: echo "release=main-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/build-site
+        with:
+          ssh-private-key: ${{ secrets.CITARE_DEPLOY_KEY }}
+          release: ${{ steps.label.outputs.release }}
+          commit: ${{ github.sha }}
+
+      - name: Upload to the main preview alias
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4.141.0 deploy
+          RELEASE: ${{ steps.label.outputs.release }}
+        run: |
+          set -o pipefail
+          npx --yes wrangler@4.141.0 versions upload --preview-alias main --message "$RELEASE" | tee wrangler-output.txt
+          {
+            echo "Uploaded \`$RELEASE\` to the \`main\` preview alias. This is not production; production changes only when the release PR merges."
+            echo
+            grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev[^[:space:]]*' wrangler-output.txt | sed 's/^/- /' || true
+          } >> "$GITHUB_STEP_SUMMARY"

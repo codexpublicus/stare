@@ -1,6 +1,11 @@
 ---
+import SiteFooter from '../components/SiteFooter.astro';
+import { parseChangelog } from '../lib/changelog.js';
+import changelog from '../../../CHANGELOG.md?raw';
 import '../styles/theme.css';
 import '../styles/layout.css';
+
+const releases = parseChangelog(changelog, { limit: 5, maxItems: 8 });
 ---
 
 <html lang="en">
@@ -59,6 +64,29 @@ import '../styles/layout.css';
 				<li><strong>Fully decentralized hosting</strong> — the site itself (not just the data) served from IPFS, making the entire system uncensorable and permanent</li>
 			</ul>
 
+			<h2 id="whats-new">What's new</h2>
+			{releases.length === 0 && <p>No site releases yet. Changes queued for the next one are on <a href="https://github.com/codexpublicus/stare/pulls?q=is%3Apr+is%3Aopen+head%3Arelease%2Fnext" target="_blank" rel="noopener">the open release PR</a>.</p>}
+			{releases.map(release => (
+				<section class="whats-new-release">
+					<h3>
+						{release.href ? <a href={release.href} target="_blank" rel="noopener">{release.version}</a> : release.version}
+						{release.date && <span class="whats-new-date"> &middot; {release.date}</span>}
+					</h3>
+					{release.groups.map(group => (
+						<>
+							<p class="whats-new-group">{group.title}</p>
+							<ul>
+								{group.items.map(item => (
+									<li>{item.map(seg => seg.href ? <a href={seg.href} target="_blank" rel="noopener">{seg.text}</a> : seg.text)}</li>
+								))}
+								{group.more > 0 && <li>and {group.more} more{release.href && <> in <a href={release.href} target="_blank" rel="noopener">the release notes</a></>}</li>}
+							</ul>
+						</>
+					))}
+				</section>
+			))}
+			<p><a href="https://github.com/codexpublicus/stare/releases" target="_blank" rel="noopener">All releases</a></p>
+
 			<h2>Help preserve case law</h2>
 			<p>This data is at risk. Harvard's hosting is a soft commitment from an academic lab in wind-down mode. The more copies that exist, the safer the data is.</p>
 			<p>If you can help, here's how:</p>
@@ -83,7 +111,7 @@ import '../styles/layout.css';
 
 			<a href="/" class="back-link">&larr; Back to stare.pub</a>
 
-			<div class="page-footer">Built with &hearts; by <a href="https://github.com/lokkju" target="_blank" rel="noopener">lokkju</a> &middot; <a href="mailto:info@codexpublicus.org">info@codexpublicus.org</a> &middot; <a href="https://x.com/lokkju" target="_blank" rel="noopener">@lokkju</a></div>
+			<SiteFooter />
 		</div>
 	<script is:inline>
 			(function() {

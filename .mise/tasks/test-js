@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-#MISE description="Run the JS test suite for web/public/js"
+#MISE description="Run the JS test suites for web/ and the release scripts"
 set -euo pipefail
 
 # node --test given a bare directory path does not recurse (verified against
 # Node 22.2.0-24.19.0); an explicit glob does, and also picks up new test
-# files under web/tests/ without editing this task.
-node --test 'web/tests/**/*.test.js'
+# files under web/tests/ and scripts/tests/ without editing this task.
+node --test 'web/tests/**/*.test.js' 'scripts/tests/**/*.test.mjs'

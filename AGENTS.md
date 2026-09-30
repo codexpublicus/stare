@@ -91,16 +91,60 @@ Pulumi of its own.
 
 stare.pub has no email of its own. The published contact address is `info@codexpublicus.org`.
 
-### Site deploys (`.github/workflows/site.yml`, `wrangler.jsonc`)
+### Site releases and deploys (`.github/workflows/`, `cliff.toml`, `wrangler.jsonc`)
 
 stare.pub is the `stare-pub` Worker (Workers Static Assets, `web/dist`), attached to the apex
-as a Wrangler custom domain. Every pull request runs `cargo fmt --check`, clippy with
-`-D warnings`, `cargo test --workspace`, the WASM build and the Astro build, then uploads a
-preview version and comments its URL (`https://<version>-stare-pub.nick-441.workers.dev`).
-A push to `main` runs the same checks and `wrangler deploy`. Wrangler is pinned to 4.141.0,
-and Actions are pinned by commit SHA. Locally, `mise run check`, `mise run build-wasm` and
-`mise run build-web` run the same steps. Nobody deploys by hand; the one exception was the
-first deploy that created the Worker.
+as a Wrangler custom domain. The one sanctioned path to production is merging the release PR.
+It is not the only possible one: this private repo is on GitHub Free, so `main` has no branch
+protection and there are no environment protection rules, and a same-repo PR runs its own copy
+of `site.yml` with `CLOUDFLARE_API_TOKEN`. A PR that edits a workflow to run `wrangler deploy`
+would deploy production without a release, and a Workers token can't be scoped to preview
+uploads only. Review workflow changes in PRs with that in mind.
+
+- **Pull requests** (`site.yml`, job "Preview PR") run `cargo fmt --check`, clippy with
+  `-D warnings`, `cargo test --workspace`, the JS tests, the WASM build and the Astro build,
+  then upload a Worker version and keep one updating comment with its preview URL
+  (`https://<version>-stare-pub.nick-441.workers.dev`).
+- **Pushes to `main`** (`site.yml`, job "Preview main (not production)") run the same checks
+  and upload a version to the `main` preview alias,
+  `https://main-stare-pub.nick-441.workers.dev`. A green check on `main` is not a deploy.
+- **The release PR** (`release-prepare.yml`, on every push to `main`): git-cliff collects the
+  Conventional Commits since the last release tag and keeps one open PR from `release/next`,
+  "chore(release): next site release", that updates `CHANGELOG.md`. Only `feat`, `fix` and
+  `perf` commits touching the site (`web/`, `crates/stare`, `crates/stare-wasm`,
+  `wrangler.jsonc`) are releasable; docs, chore, ci, test, build, style and refactor are
+  hidden, and with nothing releasable there's no PR. The version in the PR is a preview.
+- **Releasing** (`release.yml`, when the bot's release PR from `release/next` merges into
+  `main`): a read-only build job waits for the merge commit's push checks and refuses if any
+  failed, then computes the tag from the tags as they stand after the wait, `vYYYY.MM.DD.N` in
+  UTC with N one more than the day's highest existing release (`scripts/calver.mjs`), and
+  rebuilds with the same checks (the composite action `.github/actions/build-site`), with no
+  git credentials on disk while cargo and npm run. A second job, which runs no build code,
+  creates the tag on the merge commit through the API (refusing if it exists elsewhere),
+  refuses if a newer release tag exists, creates the GitHub Release with the git-cliff notes,
+  runs `wrangler deploy` on the built `web/dist`, and dispatches `release-prepare.yml`. The
+  tag, release and deploy share a job because tags and releases made with `GITHUB_TOKEN`
+  don't trigger other workflows, so nothing may depend on `on: push: tags` or `on: release`.
+  Re-running a failed release reuses the tag already on the merge commit, and refuses once a
+  newer release exists, so an old run can't roll production back.
+- **After a release**, the dispatched `release-prepare.yml` closes a release PR with nothing
+  left in it, and if the merged `CHANGELOG.md` kept a preview heading that turned out wrong
+  (the PR merged on a later day), opens "chore(release): sync CHANGELOG.md with the release
+  tags" from `release/changelog-sync`. Merging that releases nothing.
+
+The footer on every page (`web/src/components/SiteFooter.astro`) shows the build: the release
+tag, short SHA and commit date for a release, `main-<sha>` on the main preview, `pr-<n>` on PR
+previews and `dev` locally, from `PUBLIC_RELEASE`, `PUBLIC_COMMIT` and `PUBLIC_BUILD_DATE`. It
+also shows the index manifest's data version once #63 adds one, and until then the
+manifest's Last-Modified date. /about renders "What's new" from `CHANGELOG.md` at build time.
+
+Don't hand-edit `CHANGELOG.md` or push `v*` tags yourself; the workflows own both. Changes to
+the workflows need the operator's workflow-scoped token to merge, and `release-prepare.yml`
+needs the repo setting "Allow GitHub Actions to create and approve pull requests". Wrangler is
+pinned to 4.141.0, git-cliff to 2.14.2, and Actions by commit SHA. Locally, `mise run check`,
+`mise run build-wasm` and `mise run build-web` run the same steps, and
+`git cliff --unreleased --tag "$(node scripts/calver.mjs)"` previews the next release's notes.
+Nobody deploys by hand; the one exception was the first deploy that created the Worker.
 
 `idx.stare.pub`'s CORS allows `stare.pub`, its subdomains and the account's workers.dev
 subdomain, so previews resolve citations too.
@@ -131,8 +175,9 @@ read-only Docker volume `codexpublicus-cap-mirror`, the output goes to
 
 ## Current Status
 
-- **Live**: stare.pub serves the Astro site from the `stare-pub` Worker, deployed by CI on
-  every push to `main` (since 2026-09-29; the old Pages project is deleted by #41).
+- **Live**: stare.pub serves the Astro site from the `stare-pub` Worker (since 2026-09-29; the
+  old Pages project is deleted by #41). CI deploys it when a release PR merges (#60); until
+  the first release, production is the last `main` push deployed before #60 landed.
 - **Live**: `idx.stare.pub` (R2 bucket `stare-pub-idx`) serves the citation index files.
 - **Mirror**: complete. TrueNAS `mega/codexpublicus/cap-mirror` holds 40,622 zips and 39,964
   each of tars, `.tar.csv` and PDFs (verified 2026-09-29); the dataset is read-only and the
