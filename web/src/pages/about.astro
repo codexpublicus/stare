@@ -35,7 +35,7 @@ const releases = parseChangelog(changelog, { limit: 5, maxItems: 8 });
 			<h1>About stare.pub</h1>
 			<p><strong>stare.pub</strong> is a free, open tool for resolving U.S. legal citations to full case text and original scanned reporter pages. The entire application is static files served to your browser — there is no backend server, no database, no API to maintain or go down. It could run from IPFS, a USB stick, or any static file host. No tracking, no account required.</p>
 
-			<p>This project is built by <a href="https://github.com/lokkju" target="_blank" rel="noopener">lokkju</a>, motivated by the belief that public law should be permanently, freely accessible — not dependent on any single institution's continued goodwill or funding.</p>
+			<p>This project is built by <a href="https://x.com/lokkju" target="_blank" rel="noopener">lokkju</a>, motivated by the belief that public law should be permanently, freely accessible — not dependent on any single institution's continued goodwill or funding.</p>
 
 			<h2>The data</h2>
 			<p>The case text and page scans come from the <a href="https://case.law/" target="_blank" rel="noopener">Harvard Caselaw Access Project</a> (CAP), which digitized roughly 40,000 reporter volumes covering 6.7 million cases from 1658 to 2018. All of this data is public domain.</p>
@@ -58,18 +58,18 @@ const releases = parseChangelog(changelog, { limit: 5, maxItems: 8 });
 				<li><strong>Mirroring all data</strong> — downloading all 40,622 volumes (~4.4 TB) from Harvard to our own storage</li>
 				<li><strong>Building the full index</strong> — currently only a handful of test volumes are indexed; the full corpus index will follow once the mirror completes</li>
 				<li><strong>IPFS distribution</strong> — pinning the volume archives on IPFS for permanent, decentralized access</li>
-				<li><strong>Citation parsing</strong> — a Rust port of <a href="https://github.com/freelawproject/eyecite" target="_blank" rel="noopener">eyeCite</a> to accept natural citation strings like "31 A.2d 647"</li>
+				<li><strong>Citation parsing</strong> — a Rust port of <a href="https://free.law/projects/eyecite" target="_blank" rel="noopener">eyeCite</a> to accept natural citation strings like "31 A.2d 647"</li>
 				<li><strong>Full-text search</strong> — serverless search via RoaringBuckets bitmap indexes on Cloudflare R2</li>
 				<li><strong>Federal and state statutes</strong> — the same architecture works for statutes (U.S. Code, Statutes at Large, state codes) using public domain data from govinfo.gov and state legislatures</li>
 				<li><strong>Fully decentralized hosting</strong> — the site itself (not just the data) served from IPFS, making the entire system uncensorable and permanent</li>
 			</ul>
 
 			<h2 id="whats-new">What's new</h2>
-			{releases.length === 0 && <p>No site releases yet. Changes queued for the next one are on <a href="https://github.com/codexpublicus/stare/pulls?q=is%3Apr+is%3Aopen+head%3Arelease%2Fnext" target="_blank" rel="noopener">the open release PR</a>.</p>}
+			{releases.length === 0 && <p>No site releases yet.</p>}
 			{releases.map(release => (
 				<section class="whats-new-release">
 					<h3>
-						{release.href ? <a href={release.href} target="_blank" rel="noopener">{release.version}</a> : release.version}
+						{release.version}
 						{release.date && <span class="whats-new-date"> &middot; {release.date}</span>}
 					</h3>
 					{release.groups.map(group => (
@@ -77,15 +77,14 @@ const releases = parseChangelog(changelog, { limit: 5, maxItems: 8 });
 							<p class="whats-new-group">{group.title}</p>
 							<ul>
 								{group.items.map(item => (
-									<li>{item.map(seg => seg.href ? <a href={seg.href} target="_blank" rel="noopener">{seg.text}</a> : seg.text)}</li>
+									<li>{item}</li>
 								))}
-								{group.more > 0 && <li>and {group.more} more{release.href && <> in <a href={release.href} target="_blank" rel="noopener">the release notes</a></>}</li>}
+								{group.more > 0 && <li>and {group.more} more</li>}
 							</ul>
 						</>
 					))}
 				</section>
 			))}
-			<p><a href="https://github.com/codexpublicus/stare/releases" target="_blank" rel="noopener">All releases</a></p>
 
 			<h2>Help preserve case law</h2>
 			<p>This data is at risk. Harvard's hosting is a soft commitment from an academic lab in wind-down mode. The more copies that exist, the safer the data is.</p>
@@ -94,7 +93,6 @@ const releases = parseChangelog(changelog, { limit: 5, maxItems: 8 });
 				<li><strong>Mirror the data</strong> — the full dataset is ~4.4 TB at <a href="https://static.case.law/" target="_blank" rel="noopener">static.case.law</a>. If you have storage, grab a copy. Eventually, you'll be able to mirror the entire stare.pub system — site, search index, and data — from a single command.</li>
 				<li><strong>Pin on IPFS</strong> — once we publish IPFS CIDs, pin them from your node to help distribute</li>
 				<li><strong>Seed torrents</strong> — per-reporter torrents are planned for bulk distribution</li>
-				<li><strong>Contribute code</strong> — the project is open source on <a href="https://github.com/codexpublicus/stare" target="_blank" rel="noopener">GitHub</a></li>
 			</ul>
 
 			<h2>Technical details</h2>
