@@ -1,7 +1,5 @@
 import { fetchCached, fetchCachedText } from './cache.js';
-
-const INDEX_URL = 'https://idx.stare.pub';
-const ZIP_URL = 'https://data.stare.pub/cap';
+import { caseZipUrl, indexUrl } from './sources.js';
 
 let wasm = null;
 
@@ -74,7 +72,7 @@ export async function resolve(reporter, volume, page, onStatus, seq = null) {
   onStatus('Fetching index...');
   let binData;
   try {
-    binData = await fetchCached('bins', binKey, `${INDEX_URL}/${reporter}/${volume}.bin`);
+    binData = await fetchCached('bins', binKey, indexUrl(`${reporter}/${volume}.bin`));
   } catch (e) {
     if (e.message.startsWith('NOT_FOUND'))
       throw new Error(`This volume hasn't been indexed yet. We're still building the index — check back soon.`);
@@ -82,7 +80,7 @@ export async function resolve(reporter, volume, page, onStatus, seq = null) {
   }
 
   const multiKey = `${reporter}/${volume}.multi`;
-  const multiData = await fetchCachedText('multi', multiKey, `${INDEX_URL}/${reporter}/${volume}.multi`);
+  const multiData = await fetchCachedText('multi', multiKey, indexUrl(`${reporter}/${volume}.multi`));
 
   onStatus('Looking up page...');
   const caseFile = wasm.lookup_page(binData, page);
@@ -100,7 +98,7 @@ export async function resolve(reporter, volume, page, onStatus, seq = null) {
   onStatus('Fetching case data...');
   let zipData;
   try {
-    zipData = await fetchCached('zips', zipKey, `${ZIP_URL}/${reporter}/${volume}.zip`);
+    zipData = await fetchCached('zips', zipKey, caseZipUrl(reporter, volume));
   } catch (e) {
     throw new Error(`Couldn't reach the server. Check your connection and try again.`);
   }

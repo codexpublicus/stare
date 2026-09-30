@@ -1,4 +1,5 @@
 import { escapeHtml, renderTextHtml, safeExternalUrl } from './citations.js';
+import { mirrorUrl } from './sources.js';
 
 /**
  * Render the reader view.
@@ -166,7 +167,7 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
     .map((c, i) => `<span class="cite-badge${i === 0 ? ' primary' : ''}">${esc(c.cite)}</span>`)
     .join(' ');
 
-  const pdfUrl = `https://static.case.law/${reporter}/${volume}.pdf`;
+  const pdfUrl = mirrorUrl(reporter, volume, 'pdf');
 
   const beforeHtml = `
     <div class="sidebar-section">

@@ -1,5 +1,7 @@
 // Citation detection — uses citare WASM when available, regex fallback
 
+import { indexUrl } from './sources.js';
+
 let wasm = null;
 
 async function getWasm() {
@@ -97,7 +99,7 @@ let manifest = null;
 async function loadManifest() {
   if (manifest) return manifest;
   try {
-    const resp = await fetch('https://idx.stare.pub/manifest.json');
+    const resp = await fetch(indexUrl('manifest.json'));
     if (resp.ok) {
       manifest = await resp.json();
     } else {

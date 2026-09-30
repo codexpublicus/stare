@@ -1,10 +1,12 @@
+import { indexUrl } from './sources.js';
+
 // The footer's data line: which citation index the site is reading.
 //
 // The index manifest (idx.stare.pub/manifest.json) will carry a CalVer `version`
 // once #63 lands; until then it's a bare reporter map, and the only thing that
 // says how current it is is the object's Last-Modified header.
 
-export const MANIFEST_URL = 'https://idx.stare.pub/manifest.json';
+export const MANIFEST_URL = indexUrl('manifest.json');
 
 const DATA_VERSION = /^v?\d{4}\.\d{2}\.\d{2}(?:\.\d+)?$/;
 
