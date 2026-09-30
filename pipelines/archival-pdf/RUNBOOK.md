@@ -130,6 +130,19 @@ stare-archival build-all, run 20260929T205448Z: OK
   failing PDF is beside it. Nothing that failed is in `cap-pdf/`. Any `image_pixels`,
   `no_jbig2_globals` or `text_layer` failure is a builder bug: stop and report it before the
   full run.
+- A `pass` line can end in `(warnings: text_chars (1))`. `text_chars` and `text_positions`
+  read the PDF back through pdftotext, and pdftotext's own layout heuristics (merged words,
+  1 pt edge differences, an occasional dropped character) trip them on volumes whose text
+  layer is exactly right; the 20-volume pilot on 2026-09-30 failed 5 volumes on these two
+  checks alone. They are advisory: they still run, a mismatch is recorded as a warning and
+  never fails the volume, and `text_layer` (the exact comparison against the ALTO) is the
+  check that decides. To sample rather than read every page, they run on every 10th page
+  (page indexes 0, 10, 20 and so on) and on every page with no ALTO words. The 10 is
+  `TEXT_SAMPLE_STRIDE` in `verify.py`; `stare-archival verify --text-stride N` changes it for
+  one run (`--text-stride 1` reads every page). Each manifest lists the pages
+  sampled (`pages_sampled` in both checks' `detail`) and the warnings (`warnings`, also under
+  the check's `failures`). The summary's `warnings (volumes)` line counts volumes per check.
+  A warning on a volume is worth a look only when `text_layer` disagrees.
 - `error` is a volume that couldn't be built or verified at all (a truncated tar, a METS
   problem); the message is on its line and in `failed/<reporter>/<volume>.json`.
 - `timeout` is a volume killed after `--timeout` (default 3600 s).

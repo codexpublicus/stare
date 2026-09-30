@@ -193,6 +193,8 @@ def _verify(args: argparse.Namespace, stdout: TextIO) -> int:
     else:
         for failure in report.failures:
             stdout.write(f"{failure}\n")
+        for warning in report.warnings:
+            stdout.write(f"warning: {warning}\n")
         what = f"{report.volume_id} ({report.page_count} pages)"
         if report.ok:
             stdout.write(f"PASS {what}\n")
