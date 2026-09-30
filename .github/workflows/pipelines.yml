@@ -54,3 +54,23 @@ jobs:
           # either is missing
           STARE_JBIG2: docker
           STARE_VERAPDF: docker
+
+  # the pipeline image (pipelines/archival-pdf/Dockerfile) builds, and builds the fixture
+  # volume with its native jbig2, then skips it on a second run
+  archival-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build the image
+        run: >-
+          docker build
+          --build-arg REVISION="$(git rev-parse HEAD:pipelines/archival-pdf)"
+          --build-arg COMMIT="$GITHUB_SHA"
+          --tag stare-archival:ci pipelines/archival-pdf
+
+      - name: Build the fixture volume in the image
+        run: pipelines/archival-pdf/scripts/image_smoke.sh stare-archival:ci
+
+      - name: Image id and size
+        run: docker image inspect --format '{{.Id}} {{.Size}}' stare-archival:ci

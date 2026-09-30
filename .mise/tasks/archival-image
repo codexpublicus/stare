@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#MISE description="Build the archival PDF pipeline image (stare-archival:<short sha> and stare-archival:local)"
+set -euo pipefail
+
+root="${MISE_PROJECT_ROOT}"
+commit="$(git -C "$root" rev-parse HEAD)"
+# the resume key: the pipeline's own tree, so commits elsewhere in the repo don't change it
+tree="$(git -C "$root" rev-parse HEAD:pipelines/archival-pdf)"
+docker build \
+  --build-arg REVISION="$tree" \
+  --build-arg COMMIT="$commit" \
+  --tag "stare-archival:${commit:0:12}" \
+  --tag stare-archival:local \
+  "$root/pipelines/archival-pdf"
+docker image inspect --format '{{.Id}} {{.Size}}' stare-archival:local

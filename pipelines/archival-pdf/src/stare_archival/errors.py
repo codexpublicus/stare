@@ -39,3 +39,11 @@ class VerifyError(ArchivalError):
 
 class ManifestError(ArchivalError):
     """A volume manifest is unreadable or has an unknown schema version."""
+
+
+class UploadError(ArchivalError):
+    """An upload failed, or the remote copy doesn't match the local file."""
+
+
+class RunnerError(ArchivalError):
+    """The batch runner can't start: a missing source directory, an unknown volume."""

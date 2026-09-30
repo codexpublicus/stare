@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from fixture_paths import FIXTURES, ROOT
+from fixture_paths import FIXTURES, ROOT, add_volume
 
 
 @pytest.fixture
@@ -44,3 +44,29 @@ def _skip_poppler_tests_without_poppler(request):
 
     if request.node.get_closest_marker("poppler") and Poppler.locate() is None:
         pytest.skip("poppler (pdfimages, pdftotext) is not on PATH")
+
+
+@pytest.fixture
+def src(tmp_path) -> Path:
+    """A mirror downloads directory holding the fixture as a2d/152."""
+    s = tmp_path / "mirror"
+    add_volume(s, "a2d/152")
+    return s
+
+
+@pytest.fixture
+def out(tmp_path) -> Path:
+    return tmp_path / "out"
+
+
+@pytest.fixture(scope="module")
+def toolchain() -> dict:
+    """This machine's toolchain with the G4 encoder, or skip without poppler."""
+    from stare_archival.encoders import G4Encoder
+    from stare_archival.external import Poppler
+    from stare_archival.runner import current_toolchain
+
+    poppler = Poppler.locate()
+    if poppler is None:
+        pytest.skip("poppler (pdfimages, pdftotext) is not on PATH")
+    return current_toolchain(G4Encoder(), poppler)

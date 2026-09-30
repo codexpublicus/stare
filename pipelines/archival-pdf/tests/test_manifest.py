@@ -205,3 +205,32 @@ def test_manifest_succeeded_needs_a_pass_for_the_same_source():
     assert not manifest_succeeded(build_manifest(_report(failing=True), generated=GENERATED), SRC)
     err = error_manifest("a2d/152", "boom", source_sha256=SRC, generated=GENERATED)
     assert not manifest_succeeded(err, SRC)
+
+
+def test_the_pipeline_image_is_pinned_when_given():
+    image = "stare-archival@sha256:" + "e" * 64
+    m = build_manifest(_report(), pipeline_image=image, generated=GENERATED)
+    assert m["pins"] == {"pipeline": image}
+    jsonschema.validate(m, manifest_schema())
+    e = error_manifest("a2d/152", "BuildError: x", pipeline_image=image, generated=GENERATED)
+    assert e["pins"] == {"pipeline": image}
+    jsonschema.validate(e, manifest_schema())
+
+
+def test_the_schema_names_every_check_verify_runs():
+    from stare_archival.verify import CHECKS
+
+    item = manifest_schema()["properties"]["checks"]["items"]
+    assert tuple(item["properties"]["name"]["enum"]) == CHECKS
+
+
+def test_the_image_revision_is_recorded_with_the_tools(monkeypatch):
+    from stare_archival.manifest import package_versions
+
+    monkeypatch.delenv("STARE_ARCHIVAL_REVISION", raising=False)
+    assert "stare-archival-revision" not in package_versions()
+    monkeypatch.setenv("STARE_ARCHIVAL_REVISION", "8d49c78" + "0" * 33)
+    assert package_versions()["stare-archival-revision"] == "8d49c78" + "0" * 33
+    m = build_manifest(_report(), generated=GENERATED)
+    assert m["tools"]["stare-archival-revision"] == "8d49c78" + "0" * 33
+    jsonschema.validate(m, manifest_schema())
