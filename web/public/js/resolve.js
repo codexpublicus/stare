@@ -1,5 +1,5 @@
 import { fetchCached, fetchCachedText } from './cache.js';
-import { caseZipUrl, indexUrl } from './sources.js';
+import { indexUrl, zipUrl } from './sources.js';
 
 let wasm = null;
 
@@ -98,7 +98,7 @@ export async function resolve(reporter, volume, page, onStatus, seq = null) {
   onStatus('Fetching case data...');
   let zipData;
   try {
-    zipData = await fetchCached('zips', zipKey, caseZipUrl(reporter, volume));
+    zipData = await fetchCached('zips', zipKey, zipUrl(reporter, volume));
   } catch (e) {
     throw new Error(`Couldn't reach the server. Check your connection and try again.`);
   }

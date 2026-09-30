@@ -1,6 +1,6 @@
 import { fetchCachedText } from './cache.js';
 import { getPageOrders } from './resolve.js';
-import { mirrorUrl } from './sources.js';
+import { tarCsvUrl, tarUrl } from './sources.js';
 
 let wasm = null;
 async function getWasm() {
@@ -22,7 +22,7 @@ export async function getTarIndex(reporter, volume) {
   if (tarIndexCache.has(key)) return tarIndexCache.get(key);
 
   const csvKey = `${reporter}/${volume}.tar.csv`;
-  const csvUrl = mirrorUrl(reporter, volume, 'tar.csv');
+  const csvUrl = tarCsvUrl(reporter, volume);
   const csv = await fetchCachedText('multi', csvKey, csvUrl);
   if (!csv) throw new Error('tar.csv not available');
 
@@ -76,7 +76,7 @@ export async function getTarIndex(reporter, volume) {
  * Fetch raw bytes from the tar via HTTP range request.
  */
 async function fetchTarRange(reporter, volume, entry) {
-  const tarUrl = mirrorUrl(reporter, volume, 'tar');
+  const tarUrl = tarUrl(reporter, volume);
   const response = await fetch(tarUrl, {
     headers: { 'Range': `bytes=${entry.offset}-${entry.offset + entry.size - 1}` },
   });

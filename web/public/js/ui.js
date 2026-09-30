@@ -1,5 +1,5 @@
 import { escapeHtml, renderTextHtml, safeExternalUrl } from './citations.js';
-import { mirrorUrl } from './sources.js';
+import { pdfUrl as volumePdfUrl } from './sources.js';
 
 /**
  * Render the reader view.
@@ -167,7 +167,7 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
     .map((c, i) => `<span class="cite-badge${i === 0 ? ' primary' : ''}">${esc(c.cite)}</span>`)
     .join(' ');
 
-  const pdfUrl = mirrorUrl(reporter, volume, 'pdf');
+  const pdfUrl = volumePdfUrl(reporter, volume);
 
   const beforeHtml = `
     <div class="sidebar-section">
