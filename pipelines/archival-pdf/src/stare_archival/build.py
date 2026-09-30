@@ -259,6 +259,15 @@ def _title(mets: VolumeMets) -> str:
 def _save(pdf: pikepdf.Pdf, out_path: Path) -> None:
     tmp = out_path.with_name(out_path.name + ".tmp")
     try:
+        # Linearized ("Fast Web View") so a reader never downloads a whole volume to
+        # show one page. These PDFs are served from R2, which answers range requests;
+        # a linearized file puts the first page and the cross-reference data at the
+        # front, so PDF.js shows page 1 from its first request and then fetches any
+        # other page's objects (one JBIG2 image, a few tens of KB, plus its text) by
+        # range. Unlinearized, the first request has to reach the xref at the end of
+        # a file that averages ~35 MB. Measured on ala/83 (728 pages): +0.3 s to
+        # save, +0.4% in size, still PDF/A-3b under veraPDF. Deciding this before the
+        # full run matters: adding it later means rewriting every volume.
         pdf.save(
             tmp,
             min_version="1.7",
@@ -266,6 +275,7 @@ def _save(pdf: pikepdf.Pdf, out_path: Path) -> None:
             object_stream_mode=pikepdf.ObjectStreamMode.generate,
             deterministic_id=True,
             fix_metadata_version=False,
+            linearize=True,
         )
         os.replace(tmp, out_path)
     finally:
