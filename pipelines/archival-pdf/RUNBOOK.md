@@ -14,10 +14,19 @@ What's where on ml-01:
 | `codexpublicus-derived` | `/out` | the output: `cap-pdf/<reporter>/<volume>.pdf`, `cap-pdf/_manifests/<reporter>/<volume>.json`, plus `.staging/` (volumes being verified), `failed/`, `runs/` |
 
 Scratch files (jbig2's page files, pdfimages' chunks) go to `/tmp/archival-work` inside the
-container, which is ml-01's local disk, not the share. The whole output is about 1.6 TB and
+container, which is ml-01's local disk, not the share. The whole output is about 1.4 TiB (38 KB a page in the 128-volume pilot) and
 fits on `codexpublicus-derived`, so the default is to build everything there and upload it
 afterwards, keeping the local copy. The streaming mode at the end is for a machine without
 the share.
+
+The PDFs are linearized ("Fast Web View"). They're meant to be read from R2 by a browser
+viewer such as PDF.js, which uses HTTP range requests: with a linearized file it shows the
+first page from its first request and fetches any other page (one JBIG2 image of a few tens
+of KB plus its text) without downloading the volume. On ala/83 (728 pages) linearizing cost
+0.3 s and 0.4% in size, and the file still validates as PDF/A-3b. It's decided before the
+full run because changing it afterwards means rebuilding every volume. Serving pages this
+way also needs the bucket's CORS to allow the `Range` header and expose `Content-Range`,
+`Accept-Ranges` and `Content-Length` (codexpublicus/stare#42).
 
 ## 1. Build the image on ml-01
 

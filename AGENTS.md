@@ -160,7 +160,8 @@ repo's `AGENTS.md` for the Pulumi, Wrangler and LFS rules that apply across the 
 
 `stare-archival` builds one PDF/A-3b per volume from the mirror's tars (lossless JBIG2
 generic region images, the ALTO words as an invisible text layer, METS page labels, a
-bookmark per case), verifies every page's pixels and text against the tar, and writes a
+bookmark per case; linearized, so a reader fetches any one page by HTTP range request
+instead of the whole volume), verifies every page's pixels and text against the tar, and writes a
 manifest per volume. `build-all` runs volumes in parallel and resumes from passing
 manifests for the same tar SHA-256, commit and tool versions. `mise run archival-test`
 runs ruff and pytest; `mise run archival-image` builds the pipeline image (native jbig2,
