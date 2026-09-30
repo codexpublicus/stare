@@ -46,7 +46,7 @@ from stare_archival.runner import (
     write_run,
 )
 from stare_archival.upload import RcloneUploader
-from stare_archival.verify import DEFAULT_TOLERANCE_PT, verify_volume
+from stare_archival.verify import DEFAULT_TOLERANCE_PT, TEXT_SAMPLE_STRIDE, verify_volume
 
 EXIT_PASS, EXIT_FAIL, EXIT_ERROR, EXIT_INTERRUPTED = 0, 1, 2, 130
 DEFAULT_TIMEOUT_S = 3600.0
@@ -105,6 +105,13 @@ def _parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_TOLERANCE_PT,
         help="word position tolerance in points (default %(default)s)",
+    )
+    verify.add_argument(
+        "--text-stride",
+        type=int,
+        default=TEXT_SAMPLE_STRIDE,
+        help="run the advisory pdftotext checks on every Nth page, and on pages without "
+        "ALTO words (default %(default)s; 1 is every page)",
     )
     verify.add_argument("--manifest", help="write the volume manifest (JSON) here")
     verify.add_argument(
@@ -176,6 +183,7 @@ def _verify(args: argparse.Namespace, stdout: TextIO) -> int:
         sha256_path=args.sha256,
         verapdf=verapdf,
         tolerance=args.tolerance,
+        text_stride=args.text_stride,
     )
     manifest = build_manifest(report, generated=generated)
     if args.manifest:

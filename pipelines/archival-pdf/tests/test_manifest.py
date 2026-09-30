@@ -26,7 +26,11 @@ OUT = "b" * 64
 
 
 def _report(
-    *, failing: bool = False, warning: bool = False, recorded: str | None = SRC, tools: dict | None = None
+    *,
+    failing: bool = False,
+    warning: bool = False,
+    recorded: str | None = SRC,
+    tools: dict | None = None,
 ) -> VerifyReport:
     failures = (
         (Failure("image_pixels", "1 pixel differs, within x 7-7, y 9-9", 2, 871, "839"),)

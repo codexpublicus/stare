@@ -207,7 +207,7 @@ def _statuses(report) -> dict[str, str]:
 
 @pytest.mark.poppler
 def test_a_good_g4_build_passes_every_check(g4_pdf, poppler):
-    report = verify_volume(g4_pdf, FIXTURES / "152.tar", poppler=poppler)
+    report = verify_volume(g4_pdf, FIXTURES / "152.tar", poppler=poppler, text_stride=1)
     assert report.ok, report.failures
     assert list(_statuses(report)) == list(CHECKS)
     assert _statuses(report) == {
@@ -321,10 +321,11 @@ def test_a_changed_word_in_the_text_layer_warns_on_text_chars(g4_pdf, poppler, t
     assert (failure.page, failure.order, failure.label) == (2, 871, "839")
     assert "missing {'9': 1}" in failure.message and "extra {'8': 1}" in failure.message
     assert _statuses(report)["image_pixels"] == "pass"
-    # advisory: the volume still passes, and the mismatch is listed as a warning
-    assert report.ok
-    assert report.failures == ()
-    assert report.warnings == (failure,)
+    # advisory: listed as a warning, not a failure (the exact text_layer check fails here too,
+    # since the edit changed the layer)
+    assert failure in report.warnings
+    assert failure not in report.failures
+    assert _statuses(report)["text_layer"] == "fail"
 
 
 @pytest.mark.poppler
@@ -339,7 +340,7 @@ def test_a_moved_word_in_the_text_layer_warns_on_text_positions(g4_pdf, poppler,
     statuses = _statuses(report)
     assert statuses["text_chars"] == "pass"
     assert statuses["text_positions"] == "warn"
-    assert report.ok
+    assert statuses["text_layer"] == "fail"
     (failure,) = report.check("text_positions").failures
     assert failure.page == 2
     assert "'839'" in failure.message and "20.0" in failure.message
