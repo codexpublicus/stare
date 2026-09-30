@@ -55,7 +55,7 @@ stare cache status
 ```
 
 `--index`/`--data` flags (or `STARE_INDEX`/`STARE_DATA` env vars, or `stare config set`)
-override the default sources (`https://idx.stare.pub` and `https://static.case.law`).
+override the default sources (`https://idx.stare.pub` and `https://data.stare.pub/cap`).
 Downloaded and resolved files are cached under `~/.cache/stare/`.
 
 ## Status

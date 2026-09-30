@@ -6,7 +6,8 @@ use crate::case::{self, CaseJson};
 use crate::index;
 use anyhow::{Context, Result};
 
-pub const DEFAULT_BASE_URL: &str = "https://static.case.law";
+/// Base URL for case zips, served as `{base}/{reporter}/{volume}.zip`. Our own copy of the CAP data.
+pub const DEFAULT_BASE_URL: &str = "https://data.stare.pub/cap";
 
 pub struct CaseResult {
     pub case_file: String,
@@ -181,7 +182,7 @@ mod tests {
 
     #[test]
     #[ignore] // requires network access
-    fn resolve_remote_from_static_case_law() {
+    fn resolve_remote_from_data_stare_pub() {
         let dir = setup_index_only_dir();
         let result = resolve_remote(dir.path(), DEFAULT_BASE_URL, "a2d", 31, 647).unwrap();
 
