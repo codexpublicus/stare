@@ -102,7 +102,7 @@
 .site-footer a, .page .site-footer a { color: var(--text-secondary); text-decoration: none; }
 .site-footer a:hover, .page .site-footer a:hover { color: var(--link); text-decoration: none; }
 .site-footer-sep { color: var(--text-tertiary); margin: 0 0.5rem; }
-.site-footer-data::before { content: "\00b7"; margin: 0 0.5rem; }
+.site-footer-data:empty { display: none; }
 .landing-link { color: var(--text-secondary); text-decoration: none; transition: color 0.15s; }
 .landing-link:hover { color: var(--link); }
 
