@@ -239,6 +239,58 @@ def test_a_failing_volume_is_recorded_outside_the_upload_tree(src, out, toolchai
     assert not lay.failed_pdf(ref).exists()
 
 
+@pytest.mark.poppler
+def test_a_volume_with_only_warnings_passes(src, out, toolchain, monkeypatch):
+    import dataclasses
+
+    from stare_archival import runner
+    from stare_archival.verify import CheckResult, Failure
+
+    real = runner.verify_volume
+    warning = Failure("text_chars", "characters differ from the ALTO", 2, 871, "839")
+
+    def warned(*args, **kwargs):
+        report = real(*args, **kwargs)
+        checks = tuple(
+            CheckResult(c.name, "warn", c.detail, (warning,)) if c.name == "text_chars" else c
+            for c in report.checks
+        )
+        return dataclasses.replace(report, checks=checks)
+
+    monkeypatch.setattr(runner, "verify_volume", warned)
+    result = process_volume(_job(src, out, toolchain))
+    assert result.status == "pass", result
+    assert result.warned_checks == {"text_chars": 1}
+    assert "text_chars (1)" in runner.progress_line(result, 1, 1)
+    lay = Layout(out)
+    ref = VolumeRef.parse("a2d/152")
+    assert lay.pdf(ref).is_file()
+    m = read_manifest(lay.manifest(ref))
+    jsonschema.validate(m, manifest_schema())
+    assert m["status"] == "pass"
+    assert [w["check"] for w in m["warnings"]] == ["text_chars"]
+    assert not lay.failed_manifest(ref).exists()
+    assert process_volume(_job(src, out, toolchain)).status == "skipped"
+
+
+def test_summary_counts_warnings_by_check():
+    from stare_archival.runner import BatchOutcome
+
+    results = [
+        VolumeResult("a/1", "pass", pages=10, warned_checks={"text_chars": 2}),
+        VolumeResult("a/2", "pass", pages=10),
+    ]
+    summary = summarize(
+        BatchOutcome(results=results, elapsed_s=1.0, stopped=None, selected=2),
+        run_id="r",
+        workers=1,
+        settings={},
+    )
+    assert summary["ok"]
+    assert summary["warnings_by_check"] == {"text_chars": 1}
+    assert "warnings (volumes): text_chars 1" in format_summary(summary)
+
+
 def test_a_volume_that_cant_be_built_gets_an_error_manifest(src, out):
     (src / "a2d" / "152.tar.csv").unlink()
     result = process_volume(_job(src, out, {"encoder": "x"}))

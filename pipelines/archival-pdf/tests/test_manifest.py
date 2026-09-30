@@ -26,17 +26,31 @@ OUT = "b" * 64
 
 
 def _report(
-    *, failing: bool = False, recorded: str | None = SRC, tools: dict | None = None
+    *, failing: bool = False, warning: bool = False, recorded: str | None = SRC, tools: dict | None = None
 ) -> VerifyReport:
     failures = (
         (Failure("image_pixels", "1 pixel differs, within x 7-7, y 9-9", 2, 871, "839"),)
         if failing
         else ()
     )
+    warned = (
+        (
+            Failure(
+                "text_chars",
+                "characters differ from the ALTO: missing {'9': 1}, extra {'8': 1}",
+                2,
+                871,
+                "839",
+            ),
+        )
+        if warning
+        else ()
+    )
     checks = (
         CheckResult("source_sha256", "pass", {"computed": SRC}),
         CheckResult("structure", "pass", {"pages": 4}),
         CheckResult("image_pixels", "fail" if failing else "pass", {"pages_compared": 4}, failures),
+        CheckResult("text_chars", "warn" if warning else "pass", {"stride": 10}, warned),
         CheckResult("pdfa", "skipped", {"reason": "not requested"}),
     )
     return VerifyReport(
@@ -82,14 +96,15 @@ def _validate(manifest: dict) -> None:
 def test_schema_is_a_valid_versioned_json_schema():
     schema = manifest_schema()
     jsonschema.Draft202012Validator.check_schema(schema)
-    assert schema["properties"]["schema_version"]["const"] == MANIFEST_SCHEMA_VERSION == 1
-    assert schema["$id"].endswith("/manifest/1.json")
+    assert schema["properties"]["schema_version"]["const"] == MANIFEST_SCHEMA_VERSION == 2
+    assert schema["$id"].endswith("/manifest/2.json")
 
 
 def test_passing_manifest_records_volume_source_output_encoder_and_checks():
     m = build_manifest(_report(), _build_result(), generated=GENERATED)
     _validate(m)
-    assert m["schema_version"] == 1
+    assert m["schema_version"] == 2
+    assert m["warnings"] == []
     assert m["status"] == "pass"
     assert m["volume_id"] == "a2d/152"
     assert m["barcode"] == "32044109578831"
@@ -115,6 +130,7 @@ def test_passing_manifest_records_volume_source_output_encoder_and_checks():
         "source_sha256",
         "structure",
         "image_pixels",
+        "text_chars",
         "pdfa",
     ]
     assert m["error"] is None
@@ -185,13 +201,13 @@ def test_write_and_read_round_trip(tmp_path):
     text = path.read_text()
     assert text.endswith("\n")
     assert not list(path.parent.glob("*.tmp"))
-    assert json.loads(text)["schema_version"] == 1
+    assert json.loads(text)["schema_version"] == 2
 
 
 def test_read_rejects_other_schema_versions_and_bad_json(tmp_path):
     path = tmp_path / "m.json"
-    path.write_text(json.dumps({"schema_version": 2}))
-    with pytest.raises(ManifestError, match="schema_version 2"):
+    path.write_text(json.dumps({"schema_version": 3}))
+    with pytest.raises(ManifestError, match="schema_version 3"):
         read_manifest(path)
     path.write_text("{")
     with pytest.raises(ManifestError, match=r"m\.json"):
@@ -205,6 +221,37 @@ def test_manifest_succeeded_needs_a_pass_for_the_same_source():
     assert not manifest_succeeded(build_manifest(_report(failing=True), generated=GENERATED), SRC)
     err = error_manifest("a2d/152", "boom", source_sha256=SRC, generated=GENERATED)
     assert not manifest_succeeded(err, SRC)
+
+
+def test_a_warning_only_volume_passes_and_lists_its_warnings():
+    m = build_manifest(_report(warning=True), generated=GENERATED)
+    _validate(m)
+    assert m["status"] == "pass"
+    (chars,) = [c for c in m["checks"] if c["name"] == "text_chars"]
+    assert chars["status"] == "warn"
+    assert m["warnings"] == [
+        {
+            "check": "text_chars",
+            "page": 2,
+            "order": 871,
+            "label": "839",
+            "message": "characters differ from the ALTO: missing {'9': 1}, extra {'8': 1}",
+        }
+    ]
+    assert manifest_succeeded(m, SRC)
+
+
+def test_a_version_1_pass_still_counts_as_a_success_and_can_be_read(tmp_path):
+    # version 1 had no warnings and ran pdftotext on every page; its passes are stricter
+    old = build_manifest(_report(), generated=GENERATED)
+    old["schema_version"] = 1
+    del old["warnings"]
+    assert manifest_succeeded(old, SRC)
+    path = tmp_path / "old.json"
+    path.write_text(json.dumps(old))
+    assert read_manifest(path) == old
+    old["status"] = "fail"
+    assert not manifest_succeeded(old, SRC)
 
 
 def test_the_pipeline_image_is_pinned_when_given():
