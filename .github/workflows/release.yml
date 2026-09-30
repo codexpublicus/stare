@@ -163,15 +163,15 @@ jobs:
               git cliff "$prev..$VERSION" --strip all > "$RUNNER_TEMP/release/notes.md"
             else
               # The first release: no earlier tag, and the check above made sure
-              # it's the newest, so --latest is exactly this tag's range.
-              git cliff --latest --strip all > "$RUNNER_TEMP/release/notes.md"
+              # it is the newest, so the baseline range up to this tag is its range.
+              scripts/cliff "$(head -n1 scripts/release-baseline)..$VERSION" --strip all > "$RUNNER_TEMP/release/notes.md"
             fi
-            git cliff --output CHANGELOG.md
+            scripts/cliff --output CHANGELOG.md
           else
-            git cliff --unreleased --tag "$VERSION" --strip all > "$RUNNER_TEMP/release/notes.md"
+            scripts/cliff --unreleased --tag "$VERSION" --strip all > "$RUNNER_TEMP/release/notes.md"
             # Not committed: /about renders this build's changelog, headed with the
             # real tag even if the release PR previewed a different date.
-            git cliff --tag "$VERSION" --output CHANGELOG.md
+            scripts/cliff --tag "$VERSION" --output CHANGELOG.md
           fi
           cat "$RUNNER_TEMP/release/notes.md"
 

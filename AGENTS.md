@@ -111,8 +111,8 @@ uploads only. Review workflow changes in PRs with that in mind.
 - **The release PR** (`release-prepare.yml`, on every push to `main`): git-cliff collects the
   Conventional Commits since the last release tag and keeps one open PR from `release/next`,
   "chore(release): next site release", that updates `CHANGELOG.md`. Only `feat`, `fix` and
-  `perf` commits touching the site (`web/`, `crates/stare`, `crates/stare-wasm`,
-  `wrangler.jsonc`) are releasable; docs, chore, ci, test, build, style and refactor are
+  `perf` commits touching the site (`web/`, `crates/stare`, `crates/stare-wasm`, `wrangler.jsonc`,
+  `site.yml` and `.github/actions/build-site/`) after the commit in `scripts/release-baseline` are releasable; docs, chore, ci, test, build, style and refactor are
   hidden, and with nothing releasable there's no PR. The version in the PR is a preview.
 - **Releasing** (`release.yml`, when the bot's release PR from `release/next` merges into
   `main`): a read-only build job waits for the merge commit's push checks and refuses if any
@@ -143,7 +143,7 @@ the workflows need the operator's workflow-scoped token to merge, and `release-p
 needs the repo setting "Allow GitHub Actions to create and approve pull requests". Wrangler is
 pinned to 4.141.0, git-cliff to 2.14.2, and Actions by commit SHA. Locally, `mise run check`,
 `mise run build-wasm` and `mise run build-web` run the same steps, and
-`git cliff --unreleased --tag "$(node scripts/calver.mjs)"` previews the next release's notes.
+`scripts/cliff --unreleased --tag "$(node scripts/calver.mjs)"` previews the next release's notes (`scripts/cliff` is git-cliff with the baseline range; the first release's hand-written summary is in `cliff.toml`).
 Nobody deploys by hand; the one exception was the first deploy that created the Worker.
 
 `idx.stare.pub`'s CORS allows `stare.pub`, its subdomains and the account's workers.dev

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# git-cliff for the site's release notes, counting only commits after the
+# baseline in scripts/release-baseline (the history before the first release is
+# summarized by hand in cliff.toml). Takes git-cliff's arguments; an explicit
+# range among them (PREV..TAG) replaces the baseline range.
+set -euo pipefail
+baseline=$(head -n1 "$(dirname "${BASH_SOURCE[0]}")/release-baseline")
+for arg in "$@"; do
+  case "$arg" in
+    *..*) exec git cliff "$@" ;;
+  esac
+done
+exec git cliff "$baseline.." "$@"
