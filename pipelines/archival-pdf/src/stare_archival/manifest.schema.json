@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://stare.pub/ns/archival/manifest/1.json",
-  "title": "stare archival PDF volume manifest, schema version 1",
-  "description": "One per volume, written beside the archival PDF (codexpublicus/stare#51). status is \"pass\" when every check passed or was skipped, \"fail\" when a check failed, and \"error\" when the volume couldn't be built or verified at all (error says why; output, encoder, build and checks are then empty). A change that removes or redefines a field bumps schema_version; adding an optional field does not.",
+  "$id": "https://stare.pub/ns/archival/manifest/2.json",
+  "title": "stare archival PDF volume manifest, schema version 2",
+  "description": "One per volume, written beside the archival PDF (codexpublicus/stare#51). status is \"pass\" when no check failed (an advisory check may have warned, see warnings), \"fail\" when a check failed, and \"error\" when the volume couldn't be built or verified at all (error says why; output, encoder, build and checks are then empty). A change that removes or redefines a field bumps schema_version; adding an optional field does not.",
   "type": "object",
   "required": [
     "schema_version",
@@ -15,13 +15,14 @@
     "encoder",
     "build",
     "checks",
+    "warnings",
     "tools",
     "pins",
     "error"
   ],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "volume_id": {
       "description": "<reporter>/<volume>, as in the mirror's layout and the PDF's dc:source",
       "type": ["string", "null"]
@@ -106,11 +107,16 @@
               "pdfa"
             ]
           },
-          "status": {"enum": ["pass", "fail", "skipped"]},
+          "status": {"enum": ["pass", "fail", "warn", "skipped"]},
           "detail": {"description": "Counts and settings; keys depend on the check", "type": "object"},
           "failures": {"type": "array", "items": {"$ref": "#/$defs/failure"}}
         }
       }
+    },
+    "warnings": {
+      "description": "What the advisory checks (text_chars, text_positions) found; the volume passes with these. Each is also in its check's failures.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/failure"}
     },
     "tools": {
       "description": "Versions of the package, libraries and external tools involved",

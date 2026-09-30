@@ -17,6 +17,7 @@ from stare_archival.errors import ToolError, VerifyError
 from stare_archival.external import Poppler
 from stare_archival.verify import (
     CHECKS,
+    TEXT_SAMPLE_STRIDE,
     ExtractedWord,
     compare_bitonal,
     compare_page_text,
@@ -206,7 +207,7 @@ def _statuses(report) -> dict[str, str]:
 
 @pytest.mark.poppler
 def test_a_good_g4_build_passes_every_check(g4_pdf, poppler):
-    report = verify_volume(g4_pdf, FIXTURES / "152.tar", poppler=poppler)
+    report = verify_volume(g4_pdf, FIXTURES / "152.tar", poppler=poppler, text_stride=1)
     assert report.ok, report.failures
     assert list(_statuses(report)) == list(CHECKS)
     assert _statuses(report) == {
@@ -309,34 +310,72 @@ def _edit_page_content(src: Path, dest: Path, page: int, edit) -> Path:
 
 
 @pytest.mark.poppler
-def test_a_changed_word_in_the_text_layer_fails_text_chars(g4_pdf, poppler, tmp_path):
+def test_a_changed_word_in_the_text_layer_warns_on_text_chars(g4_pdf, poppler, tmp_path):
     # page 2's first run is "839" (the printed page number); make it "838"
     pdf = _edit_page_content(
         g4_pdf, tmp_path / "t.pdf", 1, lambda b: b.replace(b"<003800330039>", b"<003800330038>", 1)
     )
-    report = verify_volume(pdf, FIXTURES / "152.tar", poppler=poppler)
-    assert _statuses(report)["text_chars"] == "fail"
+    report = verify_volume(pdf, FIXTURES / "152.tar", poppler=poppler, text_stride=1)
+    assert _statuses(report)["text_chars"] == "warn"
     (failure,) = report.check("text_chars").failures
     assert (failure.page, failure.order, failure.label) == (2, 871, "839")
     assert "missing {'9': 1}" in failure.message and "extra {'8': 1}" in failure.message
     assert _statuses(report)["image_pixels"] == "pass"
+    # advisory: listed as a warning, not a failure (the exact text_layer check fails here too,
+    # since the edit changed the layer)
+    assert failure in report.warnings
+    assert failure not in report.failures
+    assert _statuses(report)["text_layer"] == "fail"
 
 
 @pytest.mark.poppler
-def test_a_moved_word_in_the_text_layer_fails_text_positions(g4_pdf, poppler, tmp_path):
+def test_a_moved_word_in_the_text_layer_warns_on_text_positions(g4_pdf, poppler, tmp_path):
     def shift_first_word(content: bytes) -> bytes:
         m = TM.search(content)
         moved = b"1 0 0 1 %.2f %s Tm" % (float(m.group(1)) + 20, m.group(2))
         return content[: m.start()] + moved + content[m.end() :]
 
     pdf = _edit_page_content(g4_pdf, tmp_path / "t.pdf", 1, shift_first_word)
-    report = verify_volume(pdf, FIXTURES / "152.tar", poppler=poppler)
+    report = verify_volume(pdf, FIXTURES / "152.tar", poppler=poppler, text_stride=1)
     statuses = _statuses(report)
     assert statuses["text_chars"] == "pass"
-    assert statuses["text_positions"] == "fail"
+    assert statuses["text_positions"] == "warn"
+    assert statuses["text_layer"] == "fail"
     (failure,) = report.check("text_positions").failures
     assert failure.page == 2
     assert "'839'" in failure.message and "20.0" in failure.message
+
+
+@pytest.mark.poppler
+def test_the_advisory_checks_sample_every_nth_page_and_pages_without_words(g4_pdf, poppler):
+    report = verify_volume(g4_pdf, FIXTURES / "152.tar", poppler=poppler)
+    for name in ("text_chars", "text_positions"):
+        detail = report.check(name).detail
+        assert detail["stride"] == TEXT_SAMPLE_STRIDE == 10
+        # page 1 is index 0; page 4 has no ALTO words; pages 2 and 3 are skipped
+        assert detail["pages_sampled"] == [1, 4]
+    assert report.check("text_positions").detail["words_extracted"] < 302 + 251
+    everything = verify_volume(g4_pdf, FIXTURES / "152.tar", poppler=poppler, text_stride=1)
+    assert everything.check("text_chars").detail["pages_sampled"] == [1, 2, 3, 4]
+    assert everything.check("text_positions").detail["words_extracted"] == 302 + 251
+
+
+@pytest.mark.poppler
+def test_a_change_on_an_unsampled_page_is_not_seen(g4_pdf, poppler, tmp_path):
+    pdf = _edit_page_content(
+        g4_pdf, tmp_path / "t.pdf", 1, lambda b: b.replace(b"<003800330039>", b"<003800330038>", 1)
+    )
+    report = verify_volume(pdf, FIXTURES / "152.tar", poppler=poppler)
+    assert _statuses(report)["text_chars"] == "pass"
+    assert 2 not in report.check("text_chars").detail["pages_sampled"]
+    assert _statuses(report)["text_layer"] == "fail"  # the exact check still catches it
+    assert not report.ok
+
+
+@pytest.mark.poppler
+def test_a_text_stride_below_one_is_refused(g4_pdf, poppler):
+    with pytest.raises(ValueError, match="text_stride"):
+        verify_volume(g4_pdf, FIXTURES / "152.tar", poppler=poppler, text_stride=0)
 
 
 @pytest.mark.poppler

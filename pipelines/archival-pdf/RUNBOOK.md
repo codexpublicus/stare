@@ -14,10 +14,19 @@ What's where on ml-01:
 | `codexpublicus-derived` | `/out` | the output: `cap-pdf/<reporter>/<volume>.pdf`, `cap-pdf/_manifests/<reporter>/<volume>.json`, plus `.staging/` (volumes being verified), `failed/`, `runs/` |
 
 Scratch files (jbig2's page files, pdfimages' chunks) go to `/tmp/archival-work` inside the
-container, which is ml-01's local disk, not the share. The whole output is about 1.6 TB and
+container, which is ml-01's local disk, not the share. The whole output is about 1.4 TiB (38 KB a page in the 128-volume pilot) and
 fits on `codexpublicus-derived`, so the default is to build everything there and upload it
 afterwards, keeping the local copy. The streaming mode at the end is for a machine without
 the share.
+
+The PDFs are linearized ("Fast Web View"). They're meant to be read from R2 by a browser
+viewer such as PDF.js, which uses HTTP range requests: with a linearized file it shows the
+first page from its first request and fetches any other page (one JBIG2 image of a few tens
+of KB plus its text) without downloading the volume. On ala/83 (728 pages) linearizing cost
+0.3 s and 0.4% in size, and the file still validates as PDF/A-3b. It's decided before the
+full run because changing it afterwards means rebuilding every volume. Serving pages this
+way also needs the bucket's CORS to allow the `Range` header and expose `Content-Range`,
+`Accept-Ranges` and `Content-Length` (codexpublicus/stare#42).
 
 ## 1. Build the image on ml-01
 
@@ -130,6 +139,19 @@ stare-archival build-all, run 20260929T205448Z: OK
   failing PDF is beside it. Nothing that failed is in `cap-pdf/`. Any `image_pixels`,
   `no_jbig2_globals` or `text_layer` failure is a builder bug: stop and report it before the
   full run.
+- A `pass` line can end in `(warnings: text_chars (1))`. `text_chars` and `text_positions`
+  read the PDF back through pdftotext, and pdftotext's own layout heuristics (merged words,
+  1 pt edge differences, an occasional dropped character) trip them on volumes whose text
+  layer is exactly right; the 20-volume pilot on 2026-09-30 failed 5 volumes on these two
+  checks alone. They are advisory: they still run, a mismatch is recorded as a warning and
+  never fails the volume, and `text_layer` (the exact comparison against the ALTO) is the
+  check that decides. To sample rather than read every page, they run on every 10th page
+  (page indexes 0, 10, 20 and so on) and on every page with no ALTO words. The 10 is
+  `TEXT_SAMPLE_STRIDE` in `verify.py`; `stare-archival verify --text-stride N` changes it for
+  one run (`--text-stride 1` reads every page). Each manifest lists the pages
+  sampled (`pages_sampled` in both checks' `detail`) and the warnings (`warnings`, also under
+  the check's `failures`). The summary's `warnings (volumes)` line counts volumes per check.
+  A warning on a volume is worth a look only when `text_layer` disagrees.
 - `error` is a volume that couldn't be built or verified at all (a truncated tar, a METS
   problem); the message is on its line and in `failed/<reporter>/<volume>.json`.
 - `timeout` is a volume killed after `--timeout` (default 3600 s).

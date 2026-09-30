@@ -327,7 +327,7 @@ class VolumeJob:
 class VolumeResult:
     """What happened to one volume. Times are in seconds; `local_bytes` is what the volume
     left on local disk (a PDF not yet uploaded, or one that failed); `failed_checks` counts
-    each failing check's failures."""
+    each failing check's failures and `warned_checks` each advisory check's warnings."""
 
     volume_id: str
     status: str
@@ -339,10 +339,12 @@ class VolumeResult:
     local_bytes: int = 0
     failed_checks: Mapping[str, int] = field(default_factory=dict)
     error: str | None = None
+    warned_checks: Mapping[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["failed_checks"] = dict(self.failed_checks)
+        d["warned_checks"] = dict(self.warned_checks)
         return d
 
 
@@ -508,6 +510,7 @@ def _process(job: VolumeJob, lay: Layout) -> VolumeResult:
         report, build, pipeline_image=job.pipeline_image, generated=job.created
     )
     common = {
+        "warned_checks": {c.name: len(c.failures) for c in report.checks if c.status == "warn"},
         "pages": report.page_count,
         "build_s": build_s,
         "verify_s": verify_s,
@@ -798,6 +801,8 @@ def progress_line(result: VolumeResult, done: int, total: int) -> str:
         line += f", upload {result.upload_s:.1f} s"
     if result.failed_checks:
         line += ": " + _checks(result.failed_checks)
+    if result.warned_checks:
+        line += " (warnings: " + _checks(result.warned_checks) + ")"
     if result.error:
         line += f": {result.error}"
     return line
@@ -824,6 +829,10 @@ def summarize(
     for r in results:
         for name in r.failed_checks:
             by_check[name] = by_check.get(name, 0) + 1
+    warned: dict[str, int] = {}
+    for r in results:
+        for name in r.warned_checks:
+            warned[name] = warned.get(name, 0) + 1
     built = [r for r in results if r.build_s > 0]
     pages_built = sum(r.pages for r in built)
     build_s = sum(r.build_s for r in built)
@@ -858,6 +867,7 @@ def summarize(
             "upload_s": round(upload_s, 3),
         },
         "failures_by_check": dict(sorted(by_check.items())),
+        "warnings_by_check": dict(sorted(warned.items())),
         "problems": [r.to_dict() for r in results if r.status in _PROBLEMS],
         "volumes": [r.to_dict() for r in results],
     }
@@ -888,6 +898,11 @@ def format_summary(summary: Mapping[str, Any]) -> str:
         lines.append(
             "  failing checks (volumes): "
             + ", ".join(f"{k} {v}" for k, v in summary["failures_by_check"].items())
+        )
+    if summary["warnings_by_check"]:
+        lines.append(
+            "  warnings (volumes): "
+            + ", ".join(f"{k} {v}" for k, v in summary["warnings_by_check"].items())
         )
     if summary["stopped"]:
         lines.append(f"  stopped: {summary['stopped']}")

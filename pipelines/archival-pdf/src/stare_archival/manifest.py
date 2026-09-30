@@ -1,11 +1,13 @@
 """The per-volume manifest: a JSON record of what was built and how it verified.
 
 The schema is `manifest.schema.json` in this package (JSON Schema 2020-12, `manifest_schema()`
-loads it). `schema_version` is 1; a change that removes or redefines a field bumps it, and
-`read_manifest` refuses any version it doesn't know. `build_manifest` makes one from a
-`VerifyReport` (plus the `BuildResult` when the caller built the PDF); `error_manifest`
-records a volume that couldn't be built or verified. `manifest_succeeded` is the test a
-resumable batch uses to skip a volume.
+loads it). `schema_version` is 2; a change that removes or redefines a field bumps it, and
+`read_manifest` refuses any version it doesn't know. Version 2 added `warnings` and the
+"warn" check status; version 1 manifests (every pass in one had run pdftotext on every page)
+are still read, and `manifest_succeeded` still counts a version 1 pass. `build_manifest` makes
+one from a `VerifyReport` (plus the `BuildResult` when the caller built the PDF);
+`error_manifest` records a volume that couldn't be built or verified. `manifest_succeeded` is
+the test a resumable batch uses to skip a volume.
 """
 
 from __future__ import annotations
@@ -28,7 +30,8 @@ from stare_archival.build import BuildResult
 from stare_archival.errors import ManifestError
 from stare_archival.verify import VerifyReport
 
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
+READABLE_SCHEMA_VERSIONS = (1, 2)
 
 
 def manifest_schema() -> dict[str, Any]:
@@ -121,6 +124,7 @@ def build_manifest(
             "attachments": list(build.attachments),
         },
         "checks": [c.to_dict() for c in report.checks],
+        "warnings": [f.to_dict() for f in report.warnings],
         "tools": _tools(dict(report.tools)),
         "pins": _pins(jbig2_image, report.tools, pipeline_image),
         "error": None,
@@ -154,6 +158,7 @@ def error_manifest(
         "encoder": None,
         "build": None,
         "checks": [],
+        "warnings": [],
         "tools": _tools(),
         "pins": _pins(pipeline_image=pipeline_image),
         "error": message,
@@ -163,7 +168,7 @@ def error_manifest(
 def manifest_succeeded(manifest: dict[str, Any], source_sha256: str) -> bool:
     """True when the manifest records a passing build of the tar with this SHA-256."""
     return (
-        manifest.get("schema_version") == MANIFEST_SCHEMA_VERSION
+        manifest.get("schema_version") in READABLE_SCHEMA_VERSIONS
         and manifest.get("status") == "pass"
         and (manifest.get("source") or {}).get("sha256") == source_sha256
     )
@@ -190,8 +195,9 @@ def read_manifest(path: str | os.PathLike[str]) -> dict[str, Any]:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ManifestError(f"{path}: not a readable manifest ({exc})") from exc
     version = manifest.get("schema_version") if isinstance(manifest, dict) else None
-    if version != MANIFEST_SCHEMA_VERSION:
+    if version not in READABLE_SCHEMA_VERSIONS:
         raise ManifestError(
-            f"{path}: schema_version {version}, this code reads {MANIFEST_SCHEMA_VERSION}"
+            f"{path}: schema_version {version}, this code reads "
+            + " and ".join(str(v) for v in READABLE_SCHEMA_VERSIONS)
         )
     return manifest

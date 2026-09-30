@@ -2,7 +2,10 @@
 
 `verify_volume` runs these checks, in this order (`CHECKS`), and reports each as pass, fail or
 skipped, with a structured `Failure` (check, PDF page, METS order, page label, message) for
-every problem it finds:
+every problem it finds. text_chars and text_positions are advisory: a mismatch there is
+reported as "warn" and doesn't fail the volume, because they measure pdftotext's layout
+heuristics as much as the PDF (merged words, edge differences of a point, an occasional
+dropped glyph). Every other check that finds a problem reports "fail".
 
 - source_sha256: the tar's SHA-256 equals the mirror's `<tar>.sha256` (when there is one) and
   the stare:sourceSha256 the PDF's XMP records.
@@ -21,18 +24,22 @@ every problem it finds:
   order and exact text, render mode 3, x0, baseline and size within 0.006 pt, width within a
   bound that grows with the run. The layer's font must be the one shared Type0 font with
   Identity-H, the identity ToUnicode map, every CID on glyph 1 and glyph 1 half an em wide.
-- text_chars, secondary: a real extractor reads the layer. Per page, the characters
+- text_chars, advisory: a real extractor reads the layer. Per page, the characters
   `pdftotext -bbox` extracts equal, as a multiset, the ALTO words' characters, after NFKC
   normalization and with whitespace and hyphens removed. poppler drops glyphs it takes for
   fake bold, which the layer produces only in words squeezed below 0.1 em per character and in
   words the ALTO lists twice at one place; those words' characters may go missing
   (`at_risk_words`), but nothing may be added. That allowance can't pass a volume by itself:
   text_layer has already required every character.
-- text_positions, secondary: every word pdftotext extracts must be accounted for by the ALTO
+- text_positions, advisory: every word pdftotext extracts must be accounted for by the ALTO
   at its position, within `tolerance` points (default 1.0) on its left and right edges and its
   vertical centre: a word with the same text and box, a part of one word inside that word's
   box, or several adjacent words run together. pdftotext's vertical extent comes from the
   font's ascent and descent, not the box, so the top and bottom edges aren't compared.
+
+Both advisory checks sample: pdftotext runs only on every `text_stride`th page (default
+`TEXT_SAMPLE_STRIDE`, 10; page indexes 0, 10, 20 and so on) and on every page the ALTO gives no
+words, and the checks' detail lists the pages it ran on.
 - pdfa: veraPDF validates the file as PDF/A-3b, when a `VeraPdf` is given; skipped otherwise.
 
 When the page count is wrong, the per-page checks are skipped rather than compared against
@@ -88,6 +95,8 @@ CHECKS = (
     "text_positions",
     "pdfa",
 )
+ADVISORY_CHECKS = ("text_chars", "text_positions")
+TEXT_SAMPLE_STRIDE = 10  # pdftotext runs on page indexes 0, 10, 20, ... and on blank pages
 PAGE_CHECKS = ("image_streams", "image_pixels", "text_layer", "text_chars", "text_positions")
 DEFAULT_TOLERANCE_PT = 1.0
 DUP_PRI_DELTA = 0.1  # poppler's dupMaxPriDelta: along the line, in em
@@ -140,8 +149,9 @@ class Failure:
 
 @dataclass(frozen=True)
 class CheckResult:
-    """A check's outcome: status "pass", "fail" or "skipped", counts and settings in
-    `detail`, and every failure it found."""
+    """A check's outcome: status "pass", "fail", "warn" or "skipped", counts and settings
+    in `detail`, and every problem it found. "warn" is an advisory check that found problems;
+    it doesn't fail the volume."""
 
     name: str
     status: str
@@ -185,7 +195,12 @@ class VerifyReport:
 
     @property
     def failures(self) -> tuple[Failure, ...]:
-        return tuple(f for c in self.checks for f in c.failures)
+        return tuple(f for c in self.checks if c.status == "fail" for f in c.failures)
+
+    @property
+    def warnings(self) -> tuple[Failure, ...]:
+        """What the advisory checks found; the volume passes with these."""
+        return tuple(f for c in self.checks if c.status == "warn" for f in c.failures)
 
     def check(self, name: str) -> CheckResult:
         for c in self.checks:
@@ -494,6 +509,11 @@ def _result(name: str, failures: Iterable[Failure], detail: Mapping[str, Any]) -
     return CheckResult(name, "fail" if failures else "pass", dict(detail), failures)
 
 
+def _advisory(name: str, findings: Iterable[Failure], detail: Mapping[str, Any]) -> CheckResult:
+    findings = tuple(findings)
+    return CheckResult(name, "warn" if findings else "pass", dict(detail), findings)
+
+
 def _check_source(
     tar_path: Path, sha256_path: Path | None, embedded: str | None, computed: str
 ) -> tuple[CheckResult, str | None]:
@@ -762,10 +782,14 @@ class _PopplerImages:
             return im.copy()
 
 
-def _pdftotext_pages(poppler: Poppler, pdf_path: Path, out_dir: Path) -> list[list]:
-    """The words pdftotext extracts from each page, with their boxes."""
+def _pdftotext_page(
+    poppler: Poppler, pdf_path: Path, out_dir: Path, number: int
+) -> list[ExtractedWord]:
+    """The words pdftotext extracts from one page (1-based), with their boxes."""
     out = out_dir / "words.html"
-    poppler.run([poppler.pdftotext, "-bbox", str(pdf_path), str(out)])
+    poppler.run(
+        [poppler.pdftotext, "-bbox", "-f", str(number), "-l", str(number), str(pdf_path), str(out)]
+    )
     try:
         tree = etree.parse(str(out), _SAFE_XML)
     except etree.XMLSyntaxError as exc:
@@ -784,7 +808,9 @@ def _pdftotext_pages(poppler: Poppler, pdf_path: Path, out_dir: Path) -> list[li
                 for w in page.iter(f"{_XHTML}word")
             ]
         )
-    return pages
+    if len(pages) != 1:
+        raise ToolError(f"pdftotext found {len(pages)} pages for page {number} of {pdf_path}")
+    return pages[0]
 
 
 def _alto_words(alto: AltoPage, dpi: tuple[float, float]) -> list[ExtractedWord]:
@@ -830,6 +856,7 @@ def _check_pages(
     pages: Sequence[Page],
     poppler: Poppler,
     tolerance: float,
+    text_stride: int,
 ) -> list[CheckResult]:
     streams: list[Failure] = []
     pixels: list[Failure] = []
@@ -843,14 +870,10 @@ def _check_pages(
     compared = characters = at_risk = dropped = 0
     placed: Counter[str] = Counter()
     worst = 0.0
+    sampled: list[int] = []
 
     with tempfile.TemporaryDirectory(prefix="stare-verify-") as tmp:
         tmp_dir = Path(tmp)
-        extracted = _pdftotext_pages(poppler, pdf_path, tmp_dir)
-        if len(extracted) != len(pages):
-            raise ToolError(
-                f"pdftotext found {len(extracted)} pages in {pdf_path}, pikepdf {len(pages)}"
-            )
         poppler_images = _PopplerImages(poppler, pdf_path, tmp_dir, len(pages))
 
         for i, (pdf_page, page) in enumerate(zip(pdf.pages, pages, strict=True)):
@@ -902,7 +925,11 @@ def _check_pages(
             for problem in run_problems + layer_result.problems:
                 fail(layer, "text_layer", problem)
             want = _alto_words(alto, info.dpi) if alto else []
-            result = compare_page_text(want, extracted[i], tolerance=tolerance)
+            if i % text_stride and want:
+                continue  # not sampled: pdftotext runs on every text_stride-th page and blanks
+            sampled.append(number)
+            extracted = _pdftotext_page(poppler, pdf_path, tmp_dir, number)
+            result = compare_page_text(want, extracted, tolerance=tolerance)
             characters += result.characters
             at_risk += result.at_risk
             dropped += result.dropped
@@ -931,20 +958,24 @@ def _check_pages(
                 "max_position_deviation_pt": round(layer_worst, 4),
             },
         ),
-        _result(
+        _advisory(
             "text_chars",
             chars,
             {
+                "stride": text_stride,
+                "pages_sampled": sampled,
                 "characters": characters,
                 "characters_at_risk": at_risk,
                 "characters_dropped": dropped,
                 "ignored": "whitespace and hyphens, after NFKC",
             },
         ),
-        _result(
+        _advisory(
             "text_positions",
             positions,
             {
+                "stride": text_stride,
+                "pages_sampled": sampled,
                 "words_extracted": sum(placed.values()),
                 "words_exact": placed["exact"],
                 "words_split": placed["split"],
@@ -966,6 +997,7 @@ def verify_volume(
     poppler: Poppler | None = None,
     verapdf: VeraPdf | None = None,
     tolerance: float = DEFAULT_TOLERANCE_PT,
+    text_stride: int = TEXT_SAMPLE_STRIDE,
     env: Mapping[str, str] | None = None,
 ) -> VerifyReport:
     """Verify `pdf_path` against the volume tar it was built from; see the module docstring
@@ -975,7 +1007,11 @@ def verify_volume(
     defaults to `<tar>.sha256` when that exists (the mirror's layout), and a path given
     explicitly must exist. `poppler` defaults to the one on PATH (`env`'s PATH when given);
     without it this raises ToolError. PDF/A validation runs only when `verapdf` is given.
+    `text_stride` (at least 1; 1 means every page) sets which pages the advisory pdftotext
+    checks run on.
     """
+    if text_stride < 1:
+        raise ValueError(f"text_stride must be at least 1, not {text_stride}")
     pdf_path, tar_path = Path(pdf_path), Path(tar_path)
     poppler = poppler or Poppler.locate(env)
     if poppler is None:
@@ -1010,7 +1046,7 @@ def verify_volume(
         structure = _check_structure(pdf, pages)
         checks = [source, structure, _check_no_jbig2_globals(pdf)]
         if len(pdf.pages) == len(pages):
-            checks += _check_pages(pdf, pdf_path, vt, pages, poppler, tolerance)
+            checks += _check_pages(pdf, pdf_path, vt, pages, poppler, tolerance, text_stride)
         else:
             reason = {"reason": "the page count doesn't match the METS"}
             checks += [CheckResult(name, "skipped", reason) for name in PAGE_CHECKS]
