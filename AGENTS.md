@@ -132,11 +132,19 @@ uploads only. Review workflow changes in PRs with that in mind.
   (the PR merged on a later day), opens "chore(release): sync CHANGELOG.md with the release
   tags" from `release/changelog-sync`. Merging that releases nothing.
 
-The footer on every page (`web/src/components/SiteFooter.astro`) shows the build: the release
-tag, short SHA and commit date for a release, `main-<sha>` on the main preview, `pr-<n>` on PR
-previews and `dev` locally, from `PUBLIC_RELEASE`, `PUBLIC_COMMIT` and `PUBLIC_BUILD_DATE`. It
-also shows the index manifest's data version once #63 adds one, and until then the
-manifest's Last-Modified date. /about renders "What's new" from `CHANGELOG.md` at build time.
+The footer on every page (`web/src/components/SiteFooter.astro`, `web/src/lib/version.js`)
+credits Codex Publicus and lokkju and shows the build: on a release, the CalVer tag linking
+to `/updates#<tag>`; on any other build (PR previews, the main preview, local), `preview` and
+the commit date. It never shows a commit SHA; the SHA is only in a `data-commit` attribute.
+The values come from `PUBLIC_RELEASE`, `PUBLIC_COMMIT` and `PUBLIC_BUILD_DATE`. It also shows
+the index manifest's data version once #63 adds one, and until then the manifest's
+Last-Modified date.
+
+`CHANGELOG.md` is rendered at build time three ways: every release on `/updates` (each with
+an anchor named for its tag), the latest three on /about's "What's new", and the Atom feed
+`/updates.xml` (`web/src/lib/feed.js`). The codexpublicus/stare source isn't published, so
+the site links to no GitHub page: the cliff.toml template emits no commit, PR or release
+links, and `web/src/lib/changelog.js` strips any link from a CHANGELOG line.
 
 Don't hand-edit `CHANGELOG.md` or push `v*` tags yourself; the workflows own both. Changes to
 the workflows need the operator's workflow-scoped token to merge, and `release-prepare.yml`
@@ -183,7 +191,7 @@ read-only Docker volume `codexpublicus-cap-mirror`, the output goes to
 - **Zips**: the site and the CLI fetch case zips from `https://data.stare.pub/cap/<reporter>/<volume>.zip`
   (our copy, #27). Tars, `.tar.csv` and the volume PDF link still point at static.case.law.
 - **Mirror**: complete. TrueNAS `mega/codexpublicus/cap-mirror` holds 40,622 zips and 39,964
-  each of tars, `.tar.csv` and PDFs (verified 2026-09-29); the dataset is read-only and the
+  each of tars, `.tar.csv` and PDFs (counted 2026-09-29; checksums not yet audited, and a2d/142.tar fails its `.tar.sha256`, see #77); the dataset is read-only and the
   aria2 `codex-mirror` container is stopped.
 - **Pending, tracked by issue** (`gh issue list -R codexpublicus/stare`):
   - #42: `codex-data` contents and `data.stare.pub` exposure (tier 1 uploaded 2026-09-29)

@@ -1,38 +1,26 @@
 // Parses the CHANGELOG.md that git-cliff writes from cliff.toml into plain data
 // for /about's "What's new". Only the shapes cliff.toml emits are recognized:
 //
-//   ## [v2026.09.30.1](https://github.com/.../releases/tag/v2026.09.30.1) - 2026-09-30
+//   ## v2026.09.30.1 - 2026-09-30
 //   ## Unreleased
 //   ### Features
-//   - web: some change ([abc1234](https://github.com/.../commit/...)) ([#58](...))
+//   - web: some change
 //
-// Item text is split into segments ({ text } or { text, href }) so the page can
-// render links as elements; nothing here produces HTML. Only links into this
-// repo on GitHub (every link cliff.toml writes) are kept as links; anything else,
-// such as a link typed into a commit subject, renders as its text.
+// Item text is returned as plain text; the site links to no outside host, so a
+// markdown link in a CHANGELOG line is reduced to its label.
 
-const RELEASE_HEADING = /^##\s+\[([^\]]+)\]\((https:\/\/github\.com\/codexpublicus\/stare\/[^)\s]+)\)(?:\s+-\s+(\d{4}-\d{2}-\d{2}))?\s*$/;
+const RELEASE_HEADING = /^##\s+\[?(v\d{4}\.\d{2}\.\d{2}\.\d+)\]?(?:\([^)\s]*\))?(?:\s+-\s+(\d{4}-\d{2}-\d{2}))?\s*$/;
 const UNRELEASED_HEADING = /^##\s+Unreleased\s*$/i;
 const GROUP_HEADING = /^###\s+(.+?)\s*$/;
 const ITEM = /^[-*]\s+(.+?)\s*$/;
-const REPO_PREFIX = 'https://github.com/codexpublicus/stare/';
-const LINK = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+const LINK = /\[([^\]]+)\]\([^)\s]*\)/g;
 
-export function inlineSegments(text) {
-  const segments = [];
-  let last = 0;
-  for (const match of text.matchAll(LINK)) {
-    if (match.index > last) segments.push({ text: text.slice(last, match.index) });
-    const [, label, href] = match;
-    segments.push(href.startsWith(REPO_PREFIX) ? { text: label, href } : { text: label });
-    last = match.index + match[0].length;
-  }
-  if (last < text.length) segments.push({ text: text.slice(last) });
-  return segments;
+export function plainText(text) {
+  return text.replace(LINK, '$1');
 }
 
-// Returns releases newest first, as written: [{ version, href, date, groups:
-// [{ title, items: [segments], more }] }]. The Unreleased section, if any, is
+// Returns releases newest first, as written: [{ version, date, groups:
+// [{ title, items: [text], more }] }]. The Unreleased section, if any, is
 // skipped unless includeUnreleased is set; a release with no items is dropped.
 // maxItems caps each group's items; `more` counts the ones cut.
 export function parseChangelog(markdown, { limit = Infinity, includeUnreleased = false, maxItems = Infinity } = {}) {
@@ -44,11 +32,11 @@ export function parseChangelog(markdown, { limit = Infinity, includeUnreleased =
     const line = raw.trimEnd();
     let m;
     if ((m = RELEASE_HEADING.exec(line))) {
-      release = { version: m[1], href: m[2], date: m[3] ?? null, groups: [] };
+      release = { version: m[1], date: m[2] ?? null, groups: [] };
       releases.push(release);
       group = null;
     } else if (UNRELEASED_HEADING.test(line)) {
-      release = includeUnreleased ? { version: 'Unreleased', href: null, date: null, groups: [] } : null;
+      release = includeUnreleased ? { version: 'Unreleased', date: null, groups: [] } : null;
       if (release) releases.push(release);
       group = null;
     } else if (/^#{1,2}\s/.test(line)) {
@@ -59,7 +47,7 @@ export function parseChangelog(markdown, { limit = Infinity, includeUnreleased =
       group = { title: m[1], items: [] };
       release.groups.push(group);
     } else if (group && (m = ITEM.exec(line))) {
-      group.items.push(inlineSegments(m[1]));
+      group.items.push(plainText(m[1]));
     }
   }
 

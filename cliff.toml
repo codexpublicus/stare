@@ -21,7 +21,7 @@ Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed 
 """
 body = """
 {%- if version %}
-## [{{ version }}](https://github.com/codexpublicus/stare/releases/tag/{{ version }}) - {{ timestamp | date(format="%Y-%m-%d") }}
+## {{ version }} - {{ timestamp | date(format="%Y-%m-%d") }}
 {%- else %}
 ## Unreleased
 {%- endif %}
@@ -32,13 +32,13 @@ body = """
 - The site has been served from the stare-pub Cloudflare Worker (Workers Static Assets) since 2026-09-29.
 - Citations are highlighted in your text by their offsets, the way the resolver reports them, instead of by pattern replacement.
 - The page shows a loading state while citations are being detected.
-- The footer shows the site release and the date of the index.
+- The footer shows the site release and the date of the citation index.
 - Every pull request gets a preview deployment that resolves citations too, and production deploys only from a merged release PR.
 {% endif %}
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | striptags | trim }}
 {% for commit in commits %}
-- {% if commit.scope %}{{ commit.scope }}: {% endif %}{{ commit.message | split(pat="\n") | first | trim }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/codexpublicus/stare/commit/{{ commit.id }}))
+- {% if commit.scope %}{{ commit.scope }}: {% endif %}{{ commit.message | split(pat="\n") | first | trim }}
 {%- endfor %}
 {% endfor %}
 """
@@ -66,10 +66,10 @@ include_paths = [
 ]
 tag_pattern = "^v[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$"
 sort_commits = "oldest"
-# Squash merges end the subject with "(#58)"; link it. Commits from merge-commit
-# PRs carry no number and get only their commit link.
+# Squash merges end the subject with "(#58)"; the number means nothing without a
+# link to the pull request, so it is dropped.
 commit_preprocessors = [
-  { pattern = '\(#([0-9]+)\)', replace = "([#${1}](https://github.com/codexpublicus/stare/pull/${1}))" },
+  { pattern = '(?m)[ \t]*\(#[0-9]+\)[ \t]*$', replace = "" },
 ]
 commit_parsers = [
   { message = "^feat", group = "<!-- 0 -->Features" },

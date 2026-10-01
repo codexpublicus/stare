@@ -1,48 +1,48 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildInfo, buildLine, REPO_URL } from '../src/lib/version.js';
+import { buildInfo, buildLine } from '../src/lib/version.js';
 import { formatDataLine, loadDataLine, MANIFEST_URL } from '../public/js/dataversion.js';
 
 const SHA = '7c42187aa0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5';
 
 describe('buildInfo', () => {
-  test('a local build with nothing set is "dev"', () => {
+  test('a local build with nothing set is a plain preview', () => {
     const info = buildInfo({});
-    assert.deepEqual(info, { label: 'dev', labelHref: null, sha: null, shaHref: null, date: null });
-    assert.equal(buildLine(info), 'dev');
+    assert.deepEqual(info, { release: false, label: 'preview', href: null, date: null, commit: null });
+    assert.equal(buildLine(info), 'preview');
   });
 
-  test('a release links the tag and the commit', () => {
+  test('a release shows its tag, links to the changelog and hides the commit', () => {
     const info = buildInfo({ release: 'v2026.09.30.1', commit: SHA, date: '2026-09-30' });
+    assert.equal(info.release, true);
     assert.equal(info.label, 'v2026.09.30.1');
-    assert.equal(info.labelHref, `${REPO_URL}/releases/tag/v2026.09.30.1`);
-    assert.equal(info.sha, '7c42187');
-    assert.equal(info.shaHref, `${REPO_URL}/commit/${SHA}`);
-    assert.equal(buildLine(info), 'v2026.09.30.1 · 7c42187 · 2026-09-30');
+    assert.equal(info.href, '/updates#v2026.09.30.1');
+    assert.equal(buildLine(info), 'v2026.09.30.1');
+    assert.ok(!buildLine(info).includes('7c42187'));
   });
 
-  test('a main preview links its label to the commit and does not repeat the SHA', () => {
+  test('a main preview shows "preview" and the date, with no SHA and no link', () => {
     const info = buildInfo({ release: 'main-7c42187', commit: SHA, date: '2026-09-29' });
-    assert.equal(info.labelHref, `${REPO_URL}/commit/${SHA}`);
-    assert.equal(info.sha, null);
-    assert.equal(buildLine(info), 'main-7c42187 · 2026-09-29');
+    assert.equal(info.href, null);
+    assert.equal(buildLine(info), 'preview · 2026-09-29');
+    assert.equal(info.commit, SHA);
   });
 
-  test('a PR preview shows its label and the commit', () => {
+  test('a PR preview reads the same as a main preview', () => {
     const info = buildInfo({ release: 'pr-60', commit: SHA, date: '2026-09-29' });
-    assert.equal(info.labelHref, null);
-    assert.equal(buildLine(info), 'pr-60 · 7c42187 · 2026-09-29');
+    assert.equal(info.href, null);
+    assert.equal(buildLine(info), 'preview · 2026-09-29');
   });
 
-  test('empty strings, as unset env vars arrive, fall back to "dev"', () => {
-    assert.equal(buildLine(buildInfo({ release: '', commit: '', date: '' })), 'dev');
+  test('empty strings, as unset env vars arrive, are a plain preview', () => {
+    assert.equal(buildLine(buildInfo({ release: '', commit: '', date: '' })), 'preview');
   });
 
   test('malformed values are dropped, not shown', () => {
     const info = buildInfo({ release: '<script>', commit: 'not-a-sha', date: 'yesterday' });
-    assert.equal(buildLine(info), 'dev');
-    assert.equal(info.shaHref, null);
+    assert.equal(buildLine(info), 'preview');
+    assert.equal(info.commit, null);
   });
 });
 
