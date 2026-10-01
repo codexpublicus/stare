@@ -191,7 +191,7 @@ read-only Docker volume `codexpublicus-cap-mirror`, the output goes to
 - **Zips**: the site and the CLI fetch case zips from `https://data.stare.pub/cap/<reporter>/<volume>.zip`
   (our copy, #27). Tars, `.tar.csv` and the volume PDF link still point at static.case.law.
 - **Mirror**: complete. TrueNAS `mega/codexpublicus/cap-mirror` holds 40,622 zips and 39,964
-  each of tars, `.tar.csv` and PDFs (verified 2026-09-29); the dataset is read-only and the
+  each of tars, `.tar.csv` and PDFs (counted 2026-09-29; checksums not yet audited, and a2d/142.tar fails its `.tar.sha256`, see #77); the dataset is read-only and the
   aria2 `codex-mirror` container is stopped.
 - **Pending, tracked by issue** (`gh issue list -R codexpublicus/stare`):
   - #42: `codex-data` contents and `data.stare.pub` exposure (tier 1 uploaded 2026-09-29)
