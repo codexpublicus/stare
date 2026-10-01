@@ -5,7 +5,7 @@ import changelog from '../../../CHANGELOG.md?raw';
 import '../styles/theme.css';
 import '../styles/layout.css';
 
-const releases = parseChangelog(changelog, { limit: 5, maxItems: 8 });
+const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
 ---
 
 <html lang="en">
@@ -14,6 +14,7 @@ const releases = parseChangelog(changelog, { limit: 5, maxItems: 8 });
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<title>About · stare.pub</title>
+		<link rel="alternate" type="application/atom+xml" title="stare.pub updates" href="/updates.xml" />
 		<meta name="description" content="stare.pub resolves U.S. case citations to full text and original scans, from the Codex Publicus copy of the Caselaw Access Project: 6.9 million cases." />
 		<meta property="og:title" content="About §tare.pub" />
 		<meta property="og:description" content="U.S. case citations to full text and original scans: 6.9 million cases from the Caselaw Access Project, preserved by Codex Publicus." />
@@ -94,6 +95,7 @@ const releases = parseChangelog(changelog, { limit: 5, maxItems: 8 });
 					))}
 				</section>
 			))}
+			<p><a href="/updates">All updates</a> &middot; <a href="/updates.xml">Atom feed</a></p>
 
 			<h2>Help preserve case law</h2>
 			<p>Harvard has kept the bulk files online so far. One host is still one point of failure, and every independent copy of the full release is one more place it survives if static.case.law goes away.</p>
@@ -103,18 +105,17 @@ const releases = parseChangelog(changelog, { limit: 5, maxItems: 8 });
 				<li><strong>Seed it</strong>, once the per-reporter torrents exist.</li>
 			</ul>
 
-			<h2>Technical details</h2>
+			<h2>Built on</h2>
 			<ul>
-				<li><strong>Site:</strong> Astro, plain JavaScript and CSS, served as static files from a Cloudflare Worker.</li>
-				<li><strong>Core:</strong> Rust, compiled to a native command line tool and to WebAssembly for the browser.</li>
-				<li><strong>Citations:</strong> citare, in Rust and WebAssembly.</li>
-				<li><strong>Index:</strong> one binary file per volume, 8 bytes per page: the case on any page is one offset lookup away.</li>
-				<li><strong>Data:</strong> Cloudflare R2 holds the index and the case text; page scans still come from the CAP bulk files.</li>
-				<li><strong>Hosting:</strong> any static file host would do, whether S3, IPFS or a directory on your own machine.</li>
+				<li><strong><a href="https://case.law/" target="_blank" rel="noopener">Caselaw Access Project</a></strong>: every case on this site, scanned and transcribed by the Harvard Law School Library and its <a href="https://lil.law.harvard.edu/" target="_blank" rel="noopener">Library Innovation Lab</a>. The case law is public domain (CC0).</li>
+				<li><strong>citare</strong>: the citation parser behind the reader and the brief checker, written in Rust and compiled to WebAssembly. It's a Codex Publicus project, inspired by the <a href="https://free.law/" target="_blank" rel="noopener">Free Law Project</a>'s eyecite, and it uses their reporters-db for its reporter data.</li>
+				<li><strong><a href="https://www.oasis-open.org/committees/legaldocml/" target="_blank" rel="noopener">Akoma Ntoso</a></strong>: the OASIS standard for legal documents, which the structured case text will follow.</li>
+				<li><strong>PDF/A</strong>: the ISO archival PDF standard the per-volume PDFs are built to.</li>
+				<li><strong><a href="https://www.rust-lang.org/" target="_blank" rel="noopener">Rust</a></strong>: the core lookup code, compiled to the <code>stare</code> command line tool and to WebAssembly for the browser. The index is one binary file per volume, 8 bytes per page, so the case on any page is one offset lookup away.</li>
+				<li><strong><a href="https://astro.build/" target="_blank" rel="noopener">Astro</a></strong>: the site, as plain HTML, JavaScript and CSS.</li>
+				<li><strong><a href="https://www.cloudflare.com/" target="_blank" rel="noopener">Cloudflare</a></strong>: Workers serve the site and R2 holds the index and the case text. Any static host would do, whether S3, IPFS or a directory on your own machine.</li>
 			</ul>
-
-			<h2>Credits</h2>
-			<p>The data is the Caselaw Access Project's, from the Harvard Law School Library and its <a href="https://lil.law.harvard.edu/" target="_blank" rel="noopener">Library Innovation Lab</a>. citare was inspired by the <a href="https://free.law/" target="_blank" rel="noopener">Free Law Project</a>'s eyecite, and uses their reporters-db for its reporter data. The case law itself is public domain (CC0).</p>
+			<p>stare.pub is one of the <a href="https://codexpublicus.org" target="_blank" rel="noopener">Codex Publicus</a> projects.</p>
 
 			<a href="/" class="back-link">&larr; Back to stare.pub</a>
 

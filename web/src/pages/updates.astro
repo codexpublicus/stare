@@ -1,0 +1,78 @@
+---
+import SiteFooter from '../components/SiteFooter.astro';
+import { parseChangelog } from '../lib/changelog.js';
+import changelog from '../../../CHANGELOG.md?raw';
+import '../styles/theme.css';
+import '../styles/layout.css';
+
+const releases = parseChangelog(changelog);
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<title>Updates · stare.pub</title>
+		<link rel="alternate" type="application/atom+xml" title="stare.pub updates" href="/updates.xml" />
+		<meta name="description" content="Every release of stare.pub, newest first." />
+		<meta property="og:title" content="§tare.pub updates" />
+		<meta property="og:description" content="Every release of stare.pub, newest first." />
+		<meta property="og:type" content="website" />
+		<meta property="og:url" content="https://stare.pub/updates" />
+		<meta property="og:image" content="https://stare.pub/og-image.png" />
+		<script is:inline>
+			try {
+				var theme = localStorage.getItem('stare-theme');
+				if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+					document.documentElement.setAttribute('data-theme', 'dark');
+				}
+			} catch(e) {}
+		</script>
+	</head>
+	<body>
+		<div class="page-topbar"><a href="/">§tare.pub</a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
+		<div class="page">
+			<h1>Updates</h1>
+			<p>Every release of the site, newest first. Each is tagged with the date it went live, and the footer of every page shows the one you're looking at. Follow along with the <a href="/updates.xml">Atom feed</a>.</p>
+			{releases.length === 0 && <p>No site releases yet.</p>}
+			{releases.map(release => (
+				<section class="whats-new-release" id={release.version}>
+					<h3>
+						{release.version}
+						{release.date && <span class="whats-new-date"> &middot; {release.date}</span>}
+					</h3>
+					{release.groups.map(group => (
+						<>
+							<p class="whats-new-group">{group.title}</p>
+							<ul>
+								{group.items.map(item => (
+									<li>{item}</li>
+								))}
+								{group.more > 0 && <li>and {group.more} more</li>}
+							</ul>
+						</>
+					))}
+				</section>
+			))}
+
+
+			<a href="/" class="back-link">&larr; Back to stare.pub</a>
+
+			<SiteFooter />
+		</div>
+	<script is:inline>
+			(function() {
+				var btn = document.getElementById('page-theme-btn');
+				if (!btn) return;
+				try { if (localStorage.getItem('stare-theme') === 'dark' || (!localStorage.getItem('stare-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) btn.textContent = '\u2600'; } catch(e) {}
+				btn.addEventListener('click', function(e) {
+					e.preventDefault();
+					var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+					if (isDark) { document.documentElement.removeAttribute('data-theme'); btn.textContent = '\u263E'; try { localStorage.setItem('stare-theme', 'light'); } catch(e) {} }
+					else { document.documentElement.setAttribute('data-theme', 'dark'); btn.textContent = '\u2600'; try { localStorage.setItem('stare-theme', 'dark'); } catch(e) {} }
+				});
+			})();
+		</script>
+	</body>
+</html>
