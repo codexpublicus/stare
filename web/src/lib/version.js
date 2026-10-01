@@ -4,8 +4,6 @@
 //   PUBLIC_COMMIT     the full commit SHA (kept in a data attribute, never shown)
 //   PUBLIC_BUILD_DATE the commit date, YYYY-MM-DD
 
-export const WHATS_NEW_HREF = '/about#whats-new';
-
 const RELEASE_TAG = /^v\d{4}\.\d{2}\.\d{2}\.\d+$/;
 const SHA = /^[0-9a-f]{7,40}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -15,7 +13,7 @@ function clean(value) {
 }
 
 // Returns { release, label, href, date, commit }. A release build has its CalVer
-// tag as the label and links to the changelog; anything else is a preview, which
+// tag as the label and links to its entry on /updates; anything else is a preview, which
 // shows no tag and no link. Values that don't look like what CI sets are dropped.
 export function buildInfo({ release, commit, date } = {}) {
   const rel = clean(release);
@@ -31,7 +29,7 @@ export function buildInfo({ release, commit, date } = {}) {
   if (RELEASE_TAG.test(rel)) {
     info.release = true;
     info.label = rel;
-    info.href = WHATS_NEW_HREF;
+    info.href = `/updates#${rel}`;
   }
   return info;
 }

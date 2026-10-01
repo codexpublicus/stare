@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildInfo, buildLine, WHATS_NEW_HREF } from '../src/lib/version.js';
+import { buildInfo, buildLine } from '../src/lib/version.js';
 import { formatDataLine, loadDataLine, MANIFEST_URL } from '../public/js/dataversion.js';
 
 const SHA = '7c42187aa0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5';
@@ -17,8 +17,7 @@ describe('buildInfo', () => {
     const info = buildInfo({ release: 'v2026.09.30.1', commit: SHA, date: '2026-09-30' });
     assert.equal(info.release, true);
     assert.equal(info.label, 'v2026.09.30.1');
-    assert.equal(info.href, WHATS_NEW_HREF);
-    assert.equal(WHATS_NEW_HREF, '/about#whats-new');
+    assert.equal(info.href, '/updates#v2026.09.30.1');
     assert.equal(buildLine(info), 'v2026.09.30.1');
     assert.ok(!buildLine(info).includes('7c42187'));
   });
