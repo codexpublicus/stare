@@ -104,10 +104,13 @@ uploads only. Review workflow changes in PRs with that in mind.
 - **Pull requests** (`site.yml`, job "Preview PR") run `cargo fmt --check`, clippy with
   `-D warnings`, `cargo test --workspace`, the JS tests, the WASM build and the Astro build,
   then upload a Worker version and keep one updating comment with its preview URL
-  (`https://<version>-stare-pub.nick-441.workers.dev`).
+  (`https://<version>-stare-pub.nick-441.workers.dev`), then run the Playwright smoke suite
+  (`web/e2e/`, `.github/actions/smoke-test`) against that URL.
 - **Pushes to `main`** (`site.yml`, job "Preview main (not production)") run the same checks
   and upload a version to the `main` preview alias,
-  `https://main-stare-pub.nick-441.workers.dev`. A green check on `main` is not a deploy.
+  `https://main-stare-pub.nick-441.workers.dev`, and smoke test the uploaded version's own URL.
+  A green check on `main` is not a deploy, but a failed smoke test blocks the release, since
+  `release.yml` refuses a merge commit whose checks failed.
 - **The release PR** (`release-prepare.yml`, on every push to `main`): git-cliff collects the
   Conventional Commits since the last release tag and keeps one open PR from `release/next`,
   "chore(release): next site release", that updates `CHANGELOG.md`. Only `feat`, `fix` and
@@ -150,7 +153,8 @@ Don't hand-edit `CHANGELOG.md` or push `v*` tags yourself; the workflows own bot
 the workflows need the operator's workflow-scoped token to merge, and `release-prepare.yml`
 needs the repo setting "Allow GitHub Actions to create and approve pull requests". Wrangler is
 pinned to 4.141.0, git-cliff to 2.14.2, and Actions by commit SHA. Locally, `mise run check`,
-`mise run build-wasm` and `mise run build-web` run the same steps, and
+`mise run build-wasm` and `mise run build-web` run the same steps, `mise run e2e [url]` runs
+the smoke suite against a deployed site (the main preview by default), and
 `scripts/cliff --unreleased --tag "$(node scripts/calver.mjs)"` previews the next release's notes (`scripts/cliff` is git-cliff with the baseline range; the first release's hand-written summary is in `cliff.toml`).
 Nobody deploys by hand; the one exception was the first deploy that created the Worker.
 

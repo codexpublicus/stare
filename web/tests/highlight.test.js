@@ -2,13 +2,12 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  codePointOffset,
-  detectCitationsRegex,
   escapeHtml,
   formatPlainText,
   renderParagraphHtml,
   renderTextHtml,
 } from '../public/js/citations.js';
+import { codePointOffset, fakeDetect } from './fake-detect.js';
 
 // Citation info as processCitations produces it, keyed by raw string.
 const RESOLVABLE = { slug: 'us', volume: 123, page: '456', resolvable: true, externalUrl: null };
@@ -28,7 +27,7 @@ const unresolvedFor = (raw) => `<span class="cite-unresolved" title="Not yet ind
 // Occurrences in the shape processCitations reports per opinion: code point
 // offsets into the whole opinion text.
 function occurrencesIn(text) {
-  return detectCitationsRegex(text).map(({ raw, start, end }) => ({ raw, start, end }));
+  return fakeDetect(text).map(({ raw, start, end }) => ({ raw, start, end }));
 }
 
 // The regex-replace highlighter this work replaces, kept here only as an

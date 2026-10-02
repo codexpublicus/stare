@@ -1,87 +1,42 @@
 import { test, describe, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  codePointOffset,
-  detectCitationsRegex,
-  detectCitations,
-  processCitations,
-} from '../public/js/citations.js';
+import { detectCitations, processCitations } from '../public/js/citations.js';
+import { WasmLoadError } from '../public/js/wasm.js';
+import { codePointOffset, fakeDetect } from './fake-detect.js';
 
-describe('codePointOffset', () => {
-  test('plain ASCII: UTF-16 offset equals code point offset', () => {
-    const text = 'See 123 U.S. 456 for details.';
-    const utf16Index = text.indexOf('123');
-    assert.equal(codePointOffset(text, utf16Index), utf16Index);
-  });
-
+describe('codePointOffset (test fixture)', () => {
   test('astral character before the target shifts the code point offset', () => {
-    // U+1F600 (grinning face) is a surrogate pair in UTF-16 (2 code units,
-    // 1 code point).
-    const emoji = '\u{1F600}';
-    const text = `${emoji} 123 U.S. 456.`;
-    const utf16Index = text.indexOf('123');
-    // UTF-16 index counts the emoji as 2 units; code point offset counts it
-    // as 1, so the code point offset is one less than the UTF-16 index.
-    assert.equal(utf16Index, 3);
-    assert.equal(codePointOffset(text, utf16Index), 2);
+    // U+1F600 is a surrogate pair in UTF-16 (2 code units, 1 code point).
+    const text = '\u{1F600} 123 U.S. 456.';
+    assert.equal(text.indexOf('123'), 3);
+    assert.equal(codePointOffset(text, 3), 2);
   });
 });
 
-describe('detectCitationsRegex', () => {
-  test('finds citations after a surrogate pair with code point offsets', () => {
-    const emoji = '\u{1F600}';
-    const text = `${emoji} 123 U.S. 456 and later 78 N.E.2d 90.`;
+describe('detectCitations without the WASM', () => {
+  test('rejects with a WasmLoadError, logs once, and does not retry', async (t) => {
+    // The WASM module is imported from an absolute site path ('/wasm/...')
+    // that does not exist under plain Node, so the load fails. There is no
+    // regex fallback: detectCitations must reject, not return results.
+    t.mock.method(console, 'error', () => {});
 
-    const results = detectCitationsRegex(text);
+    await assert.rejects(detectCitations('See 123 U.S. 456 for details.'), WasmLoadError);
+    await assert.rejects(detectCitations('And 78 N.E.2d 90.'), WasmLoadError);
 
-    assert.equal(results.length, 2);
-
-    const [first, second] = results;
-    assert.equal(first.raw, '123 U.S. 456');
-    assert.equal(first.volume, 123);
-    assert.equal(first.reporter, 'U.S.');
-    assert.equal(first.page, '456');
-    assert.equal(first.type, 'case');
-
-    // The emoji is 1 code point but 2 UTF-16 code units; the code point
-    // offset of the first citation must account for that difference.
-    const utf16Start = text.indexOf('123 U.S. 456');
-    assert.equal(codePointOffset(text, utf16Start), first.start);
-    assert.equal(
-      codePointOffset(text, utf16Start + '123 U.S. 456'.length),
-      first.end
-    );
-
-    assert.equal(second.raw, '78 N.E.2d 90');
-    assert.equal(second.volume, 78);
-    assert.equal(second.reporter, 'N.E.2d');
-    assert.equal(second.page, '90');
+    // The failed load is cached for the page's life: one load, one log.
+    assert.equal(console.error.mock.calls.length, 1);
   });
-});
 
-describe('detectCitations WASM fallback', () => {
-  test('falls back to the regex path when the WASM module cannot load under Node', async (t) => {
-    // The WASM module is fetched from an absolute site path ('/wasm/...')
-    // that does not exist under plain Node, so detectCitations must catch
-    // that failure and fall back to detectCitationsRegex. Stub
-    // console.warn so the expected warning does not pollute test output.
-    t.mock.method(console, 'warn', () => {});
-
-    const results = await detectCitations('See 123 U.S. 456 for details.');
-
-    assert.equal(results.length, 1);
-    assert.equal(results[0].raw, '123 U.S. 456');
-    assert.equal(console.warn.mock.calls.length, 1);
+  test('processCitations rejects too, rather than reporting no citations', async (t) => {
+    t.mock.method(console, 'error', () => {});
+    const caseData = { casebody: { opinions: [{ text: 'See 123 U.S. 456.' }] } };
+    await assert.rejects(processCitations(caseData, async () => true), WasmLoadError);
   });
 });
 
 describe('processCitations', () => {
-  test('dedups repeated citations by raw string using an injected check', async (t) => {
-    // detectCitations also hits the WASM-unavailable fallback here; stub
-    // console.warn so that expected noise does not print.
-    t.mock.method(console, 'warn', () => {});
-
+  test('dedups repeated citations by raw string using an injected check', async () => {
     const caseData = {
       casebody: {
         opinions: [
@@ -93,7 +48,7 @@ describe('processCitations', () => {
 
     const check = mock.fn(async () => true);
 
-    const { unique: result } = await processCitations(caseData, check);
+    const { unique: result } = await processCitations(caseData, check, fakeDetect);
 
     // Two opinions detect the same "123 U.S. 456" twice; dedup by raw
     // string must leave exactly two unique citations.
@@ -107,9 +62,7 @@ describe('processCitations', () => {
     assert.ok(result.every((c) => c.resolvable === true));
   });
 
-  test('keeps every occurrence per opinion with its code point offsets', async (t) => {
-    t.mock.method(console, 'warn', () => {});
-
+  test('keeps every occurrence per opinion with its code point offsets', async () => {
     const caseData = {
       casebody: {
         opinions: [
@@ -119,7 +72,7 @@ describe('processCitations', () => {
       },
     };
 
-    const { unique, occurrencesByOpinion } = await processCitations(caseData, async () => false);
+    const { unique, occurrencesByOpinion } = await processCitations(caseData, async () => false, fakeDetect);
 
     assert.equal(unique.length, 2);
     assert.deepEqual(occurrencesByOpinion, [
