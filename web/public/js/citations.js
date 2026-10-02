@@ -115,7 +115,12 @@ export async function processCitations(caseData, check = checkAvailability, dete
     if (c.externalUrl) {
       return { ...c, slug: null, resolvable: false };
     }
-    if (c.harvard_slug && c.volume && c.page) {
+    // A blank page (`1 U.S. ___`) arrives as page: null and can't be looked
+    // up, so it doesn't fall through to the slug guess below either.
+    if (!c.page) {
+      return { ...c, slug: null, resolvable: false };
+    }
+    if (c.harvard_slug && c.volume) {
       const available = await check(c.harvard_slug, c.volume);
       return { ...c, slug: c.harvard_slug, resolvable: available };
     }

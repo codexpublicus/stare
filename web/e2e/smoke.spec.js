@@ -45,9 +45,10 @@ test('the WASM is served as application/wasm', async ({ request }) => {
 });
 
 test('/check lists the citations citare finds', async ({ page }) => {
-  // Citations as citare v0.2.0 reports them. "Id." is the WASM's alone; the
-  // old regex fallback never found it. The statute is detected (it counts
-  // in the summary) but /check lists only case citations.
+  // Citations as citare v0.4.0 reports them, unchanged from v0.2.0 for this
+  // text. "Id." is the WASM's alone; the old regex fallback never found it.
+  // The statute is detected (it counts in the summary) but /check lists only
+  // case citations.
   const text = [
     "The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App. 1943),",
     'held that residence is the test. See Barney v. Oelrichs, 138 U.S. 529 (1891).',

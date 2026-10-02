@@ -347,7 +347,8 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             .as_deref()
             .and_then(|v| v.parse().ok())
             .unwrap_or(0);
-        let resolvable = if !slug.is_empty() && volume > 0 {
+        // A blank page (`1 U.S. ___`) has `page: None` and nothing to look up.
+        let resolvable = if !slug.is_empty() && volume > 0 && c.page.is_some() {
             fetch_bin(src, &slug, volume).is_ok()
         } else {
             false
