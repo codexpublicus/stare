@@ -351,7 +351,7 @@ mod tests {
     }
 
     /// A blank page (`1 U.S. ___`, a slip opinion not yet paginated) has
-    /// no page: citare v0.4.0 reports it as `None`, as eyecite does, so it
+    /// no page: citare reports it as `None`, as eyecite does, so it
     /// must never reach an index lookup as the page "___".
     #[test]
     fn blank_page_is_none_and_not_resolvable() {
@@ -375,5 +375,30 @@ mod tests {
             json["page"].is_null(),
             "JS must see page: null, not \"___\""
         );
+    }
+
+    /// citare v0.4.0 panicked on about 2% of real opinions: the case-name
+    /// scan sliced the text at a fixed byte distance (300) from the
+    /// citation, and a multibyte character straddling that byte (here a
+    /// curly apostrophe, three bytes) put the slice inside a char. v0.4.1
+    /// keeps every span on a char boundary. This runs the same path the
+    /// WASM runs: detect, then convert spans to char offsets.
+    #[test]
+    fn multibyte_char_at_case_name_scan_boundary() {
+        let text = format!(
+            "Foo v. Bar, 547 So.2d 1034 {}\u{2019}s house.",
+            "x".repeat(297)
+        );
+        let mut cites = detect_citations(&text);
+        let cite = cites
+            .iter()
+            .position(|c| c.matched_text == "547 So.2d 1034")
+            .expect("should detect the So.2d citation");
+        spans_to_char_offsets(&text, &mut cites).expect("every span lands on a char boundary");
+
+        let (start, end) = cites[cite].span;
+        let chars: Vec<char> = text.chars().collect();
+        let sliced: String = chars[start..end].iter().collect();
+        assert_eq!(sliced, "547 So.2d 1034");
     }
 }
