@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Run the Playwright smoke tests against a deployed site (default: the main preview)"
+#USAGE arg "[url]" help="Base URL of the site to test" default="https://main-stare-pub.nick-441.workers.dev"
+set -euo pipefail
+
+# Installs the web dependencies (including @playwright/test) and Chromium
+# only if they're missing; `mise run build-web` already runs npm ci.
+web="${MISE_PROJECT_ROOT}/web"
+[ -x "$web/node_modules/.bin/playwright" ] || npm --prefix "$web" ci
+"$web/node_modules/.bin/playwright" install chromium
+
+STARE_BASE_URL="${usage_url:?}" "$web/node_modules/.bin/playwright" test --config "$web/playwright.config.js" "${@:2}"
