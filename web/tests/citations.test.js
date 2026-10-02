@@ -62,6 +62,31 @@ describe('processCitations', () => {
     assert.ok(result.every((c) => c.resolvable === true));
   });
 
+  test('never resolves a blank page, even in an indexed volume', async () => {
+    // citare v0.4.0 reports `1 U.S. ___` with page: null. Neither the
+    // harvard_slug branch nor the slug guess may turn it into a link.
+    const blank = (text) => [
+      {
+        raw: '599 U.S. ___', type: 'FullCaseCitation', harvard_slug: 'us', volume: 599,
+        page: null, reporter: 'U.S.', year: null, start: 4, end: 16, externalUrl: null,
+      },
+      {
+        raw: '12 Foo ___', type: 'FullCaseCitation', harvard_slug: null, volume: 12,
+        page: null, reporter: 'Foo', year: null, start: 21, end: 31, externalUrl: null,
+      },
+    ];
+    const check = mock.fn(async () => true);
+
+    const { unique } = await processCitations(
+      { casebody: { opinions: [{ text: 'See 599 U.S. ___ and 12 Foo ___.' }] } },
+      check,
+      blank,
+    );
+
+    assert.equal(check.mock.calls.length, 0);
+    assert.ok(unique.every((c) => c.resolvable === false && c.slug === null));
+  });
+
   test('keeps every occurrence per opinion with its code point offsets', async () => {
     const caseData = {
       casebody: {

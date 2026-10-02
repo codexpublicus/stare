@@ -149,6 +149,11 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 						if (c.externalUrl) {
 							return { ...c, slug: null, resolvable: false };
 						}
+						// A blank page (`1 U.S. ___`) arrives as page: null; there
+						// is nothing to link to, whether or not the volume is indexed.
+						if (!c.page) {
+							return { ...c, slug: null, resolvable: false };
+						}
 						if (c.harvard_slug && c.volume) {
 							const available = await checkAvailability(c.harvard_slug, c.volume);
 							return { ...c, slug: c.harvard_slug, resolvable: available };

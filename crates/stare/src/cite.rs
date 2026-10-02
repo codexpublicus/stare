@@ -4,8 +4,6 @@
 //! with Harvard CAP slugs for direct index resolution.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fmt;
 
 /// A detected citation with enough info to resolve via stare.
 #[derive(Debug, Serialize, Deserialize)]
@@ -25,7 +23,8 @@ pub struct DetectedCitation {
     pub harvard_slug: Option<String>,
     /// Volume number from the citation groups
     pub volume: Option<String>,
-    /// Page number from the citation groups
+    /// Page number from the citation groups. `None` for a blank page
+    /// (`1 U.S. ___`), which can't be looked up.
     pub page: Option<String>,
     /// Reporter abbreviation from the citation groups
     pub reporter: Option<String>,
@@ -122,8 +121,9 @@ pub fn external_url(citation: &DetectedCitation) -> Option<String> {
     None
 }
 
-/// A citation span's byte offset did not fall on a Unicode char boundary in
-/// the text it was supposedly detected from.
+/// A citation span that could not be converted from UTF-8 byte offsets to
+/// Unicode scalar value (char) offsets, because an endpoint fell inside a
+/// multi-byte character or past the end of the text.
 ///
 /// This should never happen: citation spans come from regex matches over
 /// `text`, and a regex match never splits a codepoint. If it does happen,
@@ -131,23 +131,7 @@ pub fn external_url(citation: &DetectedCitation) -> Option<String> {
 /// alongside the wrong text), and silently returning the raw byte offset as
 /// though it were a char offset would reintroduce the exact bug
 /// `spans_to_char_offsets` exists to fix, just one level down.
-#[derive(Debug, PartialEq, Eq)]
-pub struct SpanBoundaryError {
-    /// The byte offset that did not land on a char boundary.
-    pub byte_offset: usize,
-}
-
-impl fmt::Display for SpanBoundaryError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "byte offset {} is not on a char boundary",
-            self.byte_offset
-        )
-    }
-}
-
-impl std::error::Error for SpanBoundaryError {}
+pub type SpanOffsetError = citare_core::offsets::OffsetError;
 
 /// Convert `DetectedCitation::span` from UTF-8 byte offsets to Unicode scalar
 /// value (char) offsets into `text`, in place.
@@ -159,38 +143,23 @@ impl std::error::Error for SpanBoundaryError {}
 /// DOM) can use bytes directly. This is the boundary conversion: stare-wasm
 /// calls it before serializing citations for JS, so `span` means one thing
 /// (bytes) everywhere inside Rust and another (chars) only once it crosses
-/// into JS, matching the page viewer's convention.
+/// into JS, matching the page viewer's convention. The conversion itself is
+/// citare's `OffsetMap` with `OffsetUnit::Chars`.
 ///
-/// Returns `Err(SpanBoundaryError)` on the first span endpoint that doesn't
-/// land on a char boundary in `text`, instead of silently passing the byte
-/// offset through mislabeled as a char offset. `citations` is left partially
-/// converted if this happens; callers that hit this error have a bug
-/// upstream to fix, not a value to recover from.
+/// Returns `Err` on the first span endpoint that isn't a char boundary in
+/// `text`, instead of silently passing the byte offset through mislabeled as
+/// a char offset. `citations` is left partially converted if this happens;
+/// callers that hit this error have a bug upstream to fix, not a value to
+/// recover from.
 pub fn spans_to_char_offsets(
     text: &str,
     citations: &mut [DetectedCitation],
-) -> Result<(), SpanBoundaryError> {
-    // Map every char boundary's byte offset to its Unicode scalar value
-    // index. Citation spans always fall on char boundaries (they come from
-    // regex matches over `text`), so every valid span endpoint is a key
-    // here; anything else is the invariant violation this function guards.
-    let mut char_at_byte: HashMap<usize, usize> = HashMap::new();
-    let mut count = 0usize;
-    for (byte_offset, _) in text.char_indices() {
-        char_at_byte.insert(byte_offset, count);
-        count += 1;
-    }
-    char_at_byte.insert(text.len(), count);
+) -> Result<(), SpanOffsetError> {
+    use citare_core::offsets::{OffsetMap, OffsetUnit};
 
+    let map = OffsetMap::new(text);
     for c in citations.iter_mut() {
-        let (start, end) = c.span;
-        let start_char = *char_at_byte
-            .get(&start)
-            .ok_or(SpanBoundaryError { byte_offset: start })?;
-        let end_char = *char_at_byte
-            .get(&end)
-            .ok_or(SpanBoundaryError { byte_offset: end })?;
-        c.span = (start_char, end_char);
+        c.span = map.convert_span(c.span, OffsetUnit::Chars)?;
     }
     Ok(())
 }
@@ -322,31 +291,30 @@ mod tests {
         assert_eq!(sliced, cite.matched_text);
     }
 
-    /// A byte offset that lands mid-character should never occur in
-    /// practice (citation spans come from regex matches, which never split
-    /// a codepoint), but if it does, spans_to_char_offsets must not
-    /// silently hand back the raw byte value relabeled as a char offset.
-    /// That's the same bug this function exists to fix, just moved one
-    /// level down. It must be reported as an error instead.
+    /// A blank page (`1 U.S. ___`, a slip opinion not yet paginated) has
+    /// no page: citare v0.4.0 reports it as `None`, as eyecite does, so it
+    /// must never reach an index lookup as the page "___".
     #[test]
-    fn spans_to_char_offsets_rejects_non_boundary_span() {
-        let text = "caf\u{e9}"; // 'é' is bytes 3..5; byte 4 is mid-character
-        let mut citations = vec![DetectedCitation {
-            matched_text: "?".to_string(),
-            citation_type: "Test".to_string(),
-            span: (4, 5),
-            harvard_slug: None,
-            volume: None,
-            page: None,
-            reporter: None,
-            year: None,
-            external_url: None,
-        }];
-
-        let result = spans_to_char_offsets(text, &mut citations);
+    fn blank_page_is_none_and_not_resolvable() {
+        let text = "See Smith v. Jones, 599 U.S. ___ (2023).";
+        let cites = detect_citations(text);
+        let c = cites
+            .iter()
+            .find(|c| c.matched_text.contains("U.S."))
+            .expect("should detect the U.S. citation");
+        assert_eq!(c.harvard_slug.as_deref(), Some("us"));
+        assert_eq!(c.volume.as_deref(), Some("599"));
+        assert_eq!(c.page, None);
         assert!(
-            result.is_err(),
-            "a span starting mid-character must be rejected, not passed through as if 4 were a valid char offset"
+            c.matched_text.ends_with("___"),
+            "matched_text keeps the underscores"
+        );
+        assert!(resolvable_citations(&cites).is_empty());
+
+        let json = serde_json::to_value(c).unwrap();
+        assert!(
+            json["page"].is_null(),
+            "JS must see page: null, not \"___\""
         );
     }
 }
