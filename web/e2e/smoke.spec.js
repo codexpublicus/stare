@@ -45,7 +45,7 @@ test('the WASM is served as application/wasm', async ({ request }) => {
 });
 
 test('/check lists the citations citare finds', async ({ page }) => {
-  // Citations as citare v0.4.0 reports them, unchanged from v0.2.0 for this
+  // Citations as citare v0.4.1 reports them, unchanged from v0.2.0 for this
   // text. "Id." is the WASM's alone; the old regex fallback never found it.
   // The statute is detected (it counts in the summary) but /check lists only
   // case citations.
@@ -75,6 +75,24 @@ test('/check lists the citations citare finds', async ({ page }) => {
   const links = page.locator('#check-cite-list a.cited-case-link');
   await expect(links.nth(0)).toHaveAttribute('href', '/#a2d/31/647-01');
   await expect(links.nth(1)).toHaveAttribute('href', '/#us/138/529-01');
+});
+
+test('/check survives a multibyte character at the case-name scan boundary', async ({ page }) => {
+  // citare v0.4.0 panicked (a WASM trap here) when a multibyte character,
+  // here a three-byte curly apostrophe, straddled byte 300 of the
+  // case-name scan.
+  const text = `Foo v. Bar, 547 So.2d 1034 ${'x'.repeat(297)}’s house.`;
+
+  await page.goto('/check');
+  await page.fill('#check-input', text);
+  await page.click('#check-btn');
+
+  await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
+  await expect(page.locator('#check-status')).not.toHaveClass(/check-error/);
+  await expect(page.locator('#check-summary')).toHaveText(/^1 citations found/);
+  await expect(page.locator('#check-rendered').locator('.cite-link, .cite-unresolved')).toHaveText([
+    '547 So.2d 1034',
+  ]);
 });
 
 test('/#a2d/31/647-01 resolves through idx.stare.pub and renders the case', async ({ page }) => {
