@@ -156,7 +156,7 @@ async function showResolved(result) {
       updateCitationStatus(handle, caseData, unique, 'done');
       setupCiteHovers(readerContent, resolve);
     } catch (e) {
-      console.warn('Citation detection failed:', e);
+      console.error('Citation detection failed:', e);
       if (shownCaseFile !== caseFile) return;
       updateCitationStatus(handle, caseData, null, 'error');
     }
@@ -234,7 +234,13 @@ async function doResolve(reporter, volume, page, seq = null) {
 // Landing form submit
 landingForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const parsed = await parseInput(landingInput.value);
+  let parsed;
+  try {
+    parsed = await parseInput(landingInput.value);
+  } catch (err) {
+    setStatus(err.message, true);
+    return;
+  }
   if (!parsed) {
     setStatus('Enter a citation (e.g., 31 A.2d 647 or a2d 31 647)', true);
     return;
@@ -271,7 +277,14 @@ topbarCite.addEventListener('click', startEditing);
 topbarCiteInput.addEventListener('keydown', async (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
-    const parsed = await parseInput(topbarCiteInput.value);
+    let parsed;
+    try {
+      parsed = await parseInput(topbarCiteInput.value);
+    } catch (err) {
+      stopEditing();
+      setStatus(err.message, true);
+      return;
+    }
     if (parsed) {
       editSubmitting = true;
       stopEditing();

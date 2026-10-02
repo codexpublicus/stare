@@ -1,22 +1,14 @@
-// Citation detection — uses citare WASM when available, regex fallback
+// Citation detection, through citare compiled to WASM. There is no fallback:
+// if the WASM fails to load, detectCitations rejects with a WasmLoadError and
+// callers show an error, not empty or degraded results.
 
 import { indexUrl } from './sources.js';
-
-let wasm = null;
-
-async function getWasm() {
-  if (!wasm) {
-    const mod = await import('/wasm/stare_wasm.js');
-    await mod.default();
-    wasm = mod;
-  }
-  return wasm;
-}
+import { loadWasm } from './wasm.js';
 
 // External URL generation is now in Rust (stare::cite::external_url)
 
 // ---------------------------------------------------------------------------
-// Detection — citare WASM or regex fallback
+// Detection — citare WASM
 // ---------------------------------------------------------------------------
 
 /**
@@ -30,64 +22,21 @@ async function getWasm() {
  * these offsets.
  */
 export async function detectCitations(text) {
-  try {
-    const w = await getWasm();
-    const json = w.detect_citations(text);
-    const raw = JSON.parse(json);
+  const w = await loadWasm();
+  const raw = JSON.parse(w.detect_citations(text));
 
-    return raw.map(c => ({
-      raw: c.matched_text,
-      type: c.citation_type,
-      harvard_slug: c.harvard_slug || null,
-      volume: c.volume ? parseInt(c.volume, 10) : null,
-      page: c.page || null,
-      reporter: c.reporter || null,
-      year: c.year || null,
-      start: c.span[0],
-      end: c.span[1],
-      externalUrl: c.external_url || null,
-    }));
-  } catch (e) {
-    console.warn('Citare WASM failed, falling back to regex:', e);
-    return detectCitationsRegex(text);
-  }
-}
-
-/**
- * Regex fallback — same patterns as before.
- */
-const CASE_PATTERN = /(\d{1,4})\s+([A-Z][A-Za-z.]+(?:\s+\d+[a-z]{1,2})?(?:\.\d+[a-z]{0,2})?)\s+(\d{1,4})/g;
-
-export function detectCitationsRegex(text) {
-  const results = [];
-  let match;
-  const re = new RegExp(CASE_PATTERN.source, 'g');
-  while ((match = re.exec(text)) !== null) {
-    results.push({
-      raw: match[0],
-      type: 'case',
-      harvard_slug: null,
-      volume: parseInt(match[1], 10),
-      page: match[3],
-      reporter: match[2].trim(),
-      // match.index and match[0].length are UTF-16 code unit offsets (JS
-      // regex's native unit). Convert to Unicode code point offsets so this
-      // fallback path agrees with the WASM path's span, above.
-      start: codePointOffset(text, match.index),
-      end: codePointOffset(text, match.index + match[0].length),
-      externalUrl: null,
-    });
-  }
-  return results;
-}
-
-/**
- * Convert a UTF-16 code unit offset (a native JS string index) to a Unicode
- * code point offset. Spreading a string iterates by code point, not code
- * unit, so this is a correct, if not the fastest, conversion.
- */
-export function codePointOffset(text, utf16Index) {
-  return [...text.slice(0, utf16Index)].length;
+  return raw.map(c => ({
+    raw: c.matched_text,
+    type: c.citation_type,
+    harvard_slug: c.harvard_slug || null,
+    volume: c.volume ? parseInt(c.volume, 10) : null,
+    page: c.page || null,
+    reporter: c.reporter || null,
+    year: c.year || null,
+    start: c.span[0],
+    end: c.span[1],
+    externalUrl: c.external_url || null,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -138,15 +87,17 @@ export async function checkAvailability(slug, volume) {
  *   `start`/`end` are code point offsets into that opinion's `text`. The
  *   reader highlights from these, looking each `raw` up in `unique`.
  *
- * `check` is an injectable replacement for `checkAvailability`, used by
- * tests to stub availability lookups without a network fetch.
+ * `check` and `detect` are injectable replacements for `checkAvailability`
+ * and `detectCitations`, used by tests to stub the network fetch and the
+ * WASM, which Node can't load from the site path. Rejects, with a
+ * WasmLoadError, if the WASM fails to load.
  */
-export async function processCitations(caseData, check = checkAvailability) {
+export async function processCitations(caseData, check = checkAvailability, detect = detectCitations) {
   const allCites = [];
   const occurrencesByOpinion = [];
 
   for (const op of caseData.casebody?.opinions || []) {
-    const detected = await detectCitations(op.text);
+    const detected = await detect(op.text);
     allCites.push(...detected);
     occurrencesByOpinion.push(detected.map(({ raw, start, end }) => ({ raw, start, end })));
   }

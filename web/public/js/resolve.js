@@ -1,5 +1,6 @@
 import { fetchCached, fetchCachedText } from './cache.js';
 import { indexUrl, zipUrl } from './sources.js';
+import { loadWasm } from './wasm.js';
 
 let wasm = null;
 
@@ -18,9 +19,10 @@ export async function parseInput(raw) {
   const slugResult = parseSlugFormat(trimmed);
   if (slugResult) return slugResult;
 
-  // Then try citare: "31 A.2d 647"
+  // Then try citare: "31 A.2d 647". A WASM load failure propagates, so
+  // the caller reports it instead of calling the input unparseable.
+  await ensureWasm();
   try {
-    await ensureWasm();
     const json = wasm.detect_citations(trimmed);
     const cites = JSON.parse(json);
     if (cites.length > 0) {
@@ -35,7 +37,7 @@ export async function parseInput(raw) {
       }
     }
   } catch (e) {
-    // citare failed, fall through
+    // citare found nothing usable, fall through
   }
 
   return null;
@@ -57,11 +59,7 @@ function parseSlugFormat(raw) {
 }
 
 async function ensureWasm() {
-  if (!wasm) {
-    const mod = await import('/wasm/stare_wasm.js');
-    await mod.default();
-    wasm = mod;
-  }
+  if (!wasm) wasm = await loadWasm();
 }
 
 export async function resolve(reporter, volume, page, onStatus, seq = null) {
