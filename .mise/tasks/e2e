@@ -7,6 +7,6 @@ set -euo pipefail
 # only if they're missing; `mise run build-web` already runs npm ci.
 web="${MISE_PROJECT_ROOT}/web"
 [ -x "$web/node_modules/.bin/playwright" ] || npm --prefix "$web" ci
-"$web/node_modules/.bin/playwright" install chromium
+"$web/node_modules/.bin/playwright" install --only-shell chromium
 
 STARE_BASE_URL="${usage_url:?}" "$web/node_modules/.bin/playwright" test --config "$web/playwright.config.js" "${@:2}"

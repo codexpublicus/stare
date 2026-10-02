@@ -1,0 +1,59 @@
+name: Smoke test a deployed site
+description: >
+  Runs the Playwright smoke suite (web/e2e/) in Chromium against a deployed
+  stare.pub, such as the workers.dev preview a site.yml job just uploaded.
+  Expects build-site to have run already, so web/node_modules exists. Needs
+  no secrets: previews are public.
+
+inputs:
+  url:
+    description: Base URL of the site to test
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Playwright version
+      id: playwright
+      shell: bash
+      run: echo "version=$(node -p "require('./web/node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+    # Browsers are keyed by the Playwright version, which pins them.
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: browsers
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium-headless-shell
+
+    - name: Install Chromium
+      if: steps.browsers.outputs.cache-hit != 'true'
+      shell: bash
+      run: web/node_modules/.bin/playwright install --with-deps --only-shell chromium
+
+    - name: Install Chromium's system dependencies
+      if: steps.browsers.outputs.cache-hit == 'true'
+      shell: bash
+      run: web/node_modules/.bin/playwright install-deps chromium
+
+    - name: Wait for the preview
+      shell: bash
+      env:
+        STARE_BASE_URL: ${{ inputs.url }}
+      # A version just uploaded can take a few seconds to answer.
+      run: curl --silent --show-error --fail --output /dev/null --retry 12 --retry-delay 5 --retry-all-errors "$STARE_BASE_URL/"
+
+    - name: Smoke test
+      shell: bash
+      env:
+        STARE_BASE_URL: ${{ inputs.url }}
+      run: web/node_modules/.bin/playwright test --config web/playwright.config.js
+
+    - name: Upload traces
+      if: failure()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: smoke-test-results
+        path: web/test-results
+        if-no-files-found: ignore
+        retention-days: 7
+        overwrite: true
