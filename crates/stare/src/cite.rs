@@ -79,8 +79,11 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
 pub fn external_url(citation: &DetectedCitation) -> Option<String> {
     let text = &citation.matched_text;
 
-    // U.S. Code: "42 U.S.C. § 1983"
-    if let Some(caps) = regex::Regex::new(r"(\d+)\s+U\.?S\.?C\.?\s*(?:§+\s*)?(\d[\d.a-z-]*)")
+    // The abbreviations allow whitespace between their letters, since
+    // citare finds spaced forms such as "18 U. S. C. § 4241" too.
+
+    // U.S. Code: "42 U.S.C. § 1983", "42 U. S. C. § 1983"
+    if let Some(caps) = regex::Regex::new(r"(\d+)\s+U\.?\s*S\.?\s*C\.?\s*(?:§+\s*)?(\d[\d.a-z-]*)")
         .ok()
         .and_then(|re| re.captures(text))
     {
@@ -105,8 +108,8 @@ pub fn external_url(citation: &DetectedCitation) -> Option<String> {
         ));
     }
 
-    // CFR: "40 C.F.R. § 122.1"
-    if let Some(caps) = regex::Regex::new(r"(\d+)\s+C\.?F\.?R\.?\s*(?:§+\s*)?(\d[\d.]*)")
+    // CFR: "40 C.F.R. § 122.1", "40 C. F. R. § 122.1"
+    if let Some(caps) = regex::Regex::new(r"(\d+)\s+C\.?\s*F\.?\s*R\.?\s*(?:§+\s*)?(\d[\d.]*)")
         .ok()
         .and_then(|re| re.captures(text))
     {
@@ -221,6 +224,62 @@ mod tests {
         if let Some(c) = stat {
             assert!(c.external_url.is_some(), "Stat should have external URL");
             assert!(c.external_url.as_ref().unwrap().contains("govinfo.gov"));
+        }
+    }
+
+    /// The external URL for the one citation `text` should contain.
+    fn sole_external_url(text: &str) -> Option<String> {
+        let cites = detect_citations(text);
+        assert_eq!(cites.len(), 1, "expected one citation in {text:?}");
+        cites.into_iter().next().unwrap().external_url
+    }
+
+    #[test]
+    fn statute_external_url_allows_spaced_abbreviations() {
+        let cases = [
+            (
+                "See 18 U.S.C. § 4241.",
+                "https://www.law.cornell.edu/uscode/text/18/4241",
+            ),
+            (
+                "See 18 U. S. C. § 4241.",
+                "https://www.law.cornell.edu/uscode/text/18/4241",
+            ),
+            (
+                "See 42 U.S.C. §§ 1983.",
+                "https://www.law.cornell.edu/uscode/text/42/1983",
+            ),
+            (
+                "See 42 U. S. C. §§ 1983.",
+                "https://www.law.cornell.edu/uscode/text/42/1983",
+            ),
+            (
+                "See 26 U. S. C. § 501(c)(3).",
+                "https://www.law.cornell.edu/uscode/text/26/501",
+            ),
+            (
+                "See 18 USC § 4241.",
+                "https://www.law.cornell.edu/uscode/text/18/4241",
+            ),
+            (
+                "See 18 U.S.C. §4241.",
+                "https://www.law.cornell.edu/uscode/text/18/4241",
+            ),
+            (
+                "See 40 C.F.R. § 122.1.",
+                "https://www.ecfr.gov/current/title-40/section-122.1",
+            ),
+            (
+                "See 40 C. F. R. § 122.1.",
+                "https://www.ecfr.gov/current/title-40/section-122.1",
+            ),
+            (
+                "See 56 Stat. 195.",
+                "https://www.govinfo.gov/content/pkg/STATUTE-56/pdf/STATUTE-56-Pg195.pdf",
+            ),
+        ];
+        for (text, url) in cases {
+            assert_eq!(sole_external_url(text).as_deref(), Some(url), "{text}");
         }
     }
 
