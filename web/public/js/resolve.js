@@ -1,6 +1,6 @@
 import { fetchCached, fetchCachedText } from './cache.js';
 import { indexUrl, zipUrl } from './sources.js';
-import { isVolumeKey, loadManifest, volumeCandidates } from './manifest.js';
+import { indexPath, isVolumeKey, loadManifest, volumeCandidates } from './manifest.js';
 import { loadWasm } from './wasm.js';
 
 let wasm = null;
@@ -67,8 +67,9 @@ async function ensureWasm() {
 
 // A volume folder's .bin, or null if it isn't indexed.
 async function fetchBin(reporter, volume) {
+  const key = await indexPath(`${reporter}/${volume}.bin`);
   try {
-    return await fetchCached('bins', `${reporter}/${volume}.bin`, indexUrl(`${reporter}/${volume}.bin`));
+    return await fetchCached('bins', key, indexUrl(key));
   } catch (e) {
     if (e.message.startsWith('NOT_FOUND')) return null;
     throw new Error(`Couldn't reach the server. Check your connection and try again.`);
@@ -76,8 +77,9 @@ async function fetchBin(reporter, volume) {
 }
 
 // Find the volume folder with a case at `page` for a citation to `volume`. The folder
-// named as cited is tried first; only on a miss is the manifest asked for the other
-// parts of a volume CAP split over several folders (a3d 138 and 138-2).
+// named as cited is tried first; only on a miss are the manifest's other parts of a
+// volume CAP split over several folders (a3d 138 and 138-2) tried. (The manifest is
+// already loaded by then: every index file's path is under its `base`.)
 async function locate(reporter, volume, page, onStatus) {
   onStatus('Fetching index...');
   const binData = await fetchBin(reporter, volume);
@@ -105,8 +107,8 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
 
   const { volume, binData, caseFile } = await locate(reporter, String(citedVolume), page, onStatus);
 
-  const multiKey = `${reporter}/${volume}.multi`;
-  const multiData = await fetchCachedText('multi', multiKey, indexUrl(`${reporter}/${volume}.multi`));
+  const multiKey = await indexPath(`${reporter}/${volume}.multi`);
+  const multiData = await fetchCachedText('multi', multiKey, indexUrl(multiKey));
 
   // The .bin's entry, then any more cases at the page from the .multi. A page whose
   // first case's name is too long for the .bin has a "*" there, and all its cases in

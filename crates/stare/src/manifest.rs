@@ -11,6 +11,9 @@
 //! ```json
 //! {
 //!   "format": 2,
+//!   "version": "v2026.10.03",
+//!   "generated_at": "2026-10-03T17:04:12Z",
+//!   "base": "v/v2026.10.03/",
 //!   "volumes": 40622,
 //!   "entries": 6920598,
 //!   "reporters": { "a3d": ["1", "2", "138", "138-2"] },
@@ -24,6 +27,19 @@
 //!   }
 //! }
 //! ```
+//!
+//! `version` is the index's CalVer data version (`vYYYY.MM.DD`, with `.N` for a second
+//! release the same day) and `generated_at` is when the manifest was built (RFC 3339,
+//! UTC). Both are optional to readers: manifests written before them have neither. The
+//! site and the CLI cache index files under their versioned paths, so a new version is
+//! a new set of cache keys.
+//!
+//! `base` says where this build's index files are, relative to the manifest: a volume's
+//! `.bin` is at `<base><reporter>/<volume>.bin`. Each build is uploaded once under
+//! `v/<version>/` and never changed; the root `manifest.json` is the live build's own
+//! manifest with `base` added, so publishing or rolling back a build is one write. A
+//! manifest without `base` (a build's own, or one from before the versioned layout)
+//! has its files next to it. `stare-admin build-manifest` never writes `base`.
 //!
 //! `parts` lists only volume numbers CAP split over more than one folder, each part with
 //! the range of pages its index covers. The ranges can overlap (a3d's second parts are a
@@ -59,6 +75,13 @@ pub struct Manifest {
     /// Total volumes and index entries, as the builder counted them (format 2 only).
     pub volumes: Option<u64>,
     pub entries: Option<u64>,
+    /// The index's data version (`vYYYY.MM.DD[.N]`) and when the manifest was built
+    /// (format 2 only; absent from manifests written before them).
+    pub version: Option<String>,
+    pub generated_at: Option<String>,
+    /// Where the index files are, relative to the manifest (`v/v2026.10.03/`); see
+    /// [`Manifest::index_path`].
+    pub base: Option<String>,
     /// Read from the legacy format, which can't describe split volumes.
     pub legacy: bool,
 }
@@ -66,6 +89,12 @@ pub struct Manifest {
 #[derive(Serialize, Deserialize)]
 struct Format2 {
     format: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    generated_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    base: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     volumes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -83,6 +112,80 @@ pub fn is_volume_key(s: &str) -> bool {
     matches!(chars.next(), Some(c) if c.is_ascii_digit())
         && chars.all(|c| c.is_ascii_digit() || c.is_ascii_lowercase() || c == '-')
         && !s.ends_with('-')
+}
+
+/// Whether `s` can be a manifest's `base`: one or more path segments of ASCII letters,
+/// digits, `.`, `_` and `-`, each followed by `/` (`v/v2026.10.03/`). No `.` or `..`
+/// segment, no leading slash and no scheme, so it can't leave the index's origin.
+pub fn is_index_base(s: &str) -> bool {
+    let Some(body) = s.strip_suffix('/') else {
+        return false;
+    };
+    !body.is_empty()
+        && body.split('/').all(|seg| {
+            !seg.is_empty()
+                && seg != "."
+                && seg != ".."
+                && seg
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        })
+}
+
+/// Whether `s` is a CalVer data version: `vYYYY.MM.DD`, or `vYYYY.MM.DD.N` for a later
+/// release the same day, with a real month and day.
+pub fn is_data_version(s: &str) -> bool {
+    let Some(rest) = s.strip_prefix('v') else {
+        return false;
+    };
+    let fields: Vec<&str> = rest.split('.').collect();
+    if !(3..=4).contains(&fields.len()) {
+        return false;
+    }
+    let widths = [4, 2, 2];
+    let digits = |f: &str| !f.is_empty() && f.chars().all(|c| c.is_ascii_digit());
+    if !fields.iter().all(|f| digits(f)) {
+        return false;
+    }
+    if fields.iter().zip(widths).any(|(f, w)| f.len() != w) {
+        return false;
+    }
+    if fields.len() == 4 && (fields[3].starts_with('0') || fields[3].len() > 4) {
+        return false;
+    }
+    let month: u32 = fields[1].parse().unwrap_or(0);
+    let day: u32 = fields[2].parse().unwrap_or(0);
+    (1..=12).contains(&month) && (1..=31).contains(&day)
+}
+
+/// The UTC calendar date and time of `secs` seconds since the Unix epoch, as
+/// `(year, month, day, hour, minute, second)`.
+fn civil(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
+    // Howard Hinnant's days-to-civil algorithm, for dates after 1970.
+    let days = secs / 86_400;
+    let rem = secs % 86_400;
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = z % 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + u64::from(month <= 2);
+    (year, month, day, rem / 3600, rem % 3600 / 60, rem % 60)
+}
+
+/// The data version for a build on the UTC date of `secs`: `vYYYY.MM.DD`.
+pub fn data_version_for(secs: u64) -> String {
+    let (y, m, d, ..) = civil(secs);
+    format!("v{:04}.{:02}.{:02}", y, m, d)
+}
+
+/// `secs` as an RFC 3339 UTC timestamp: `2026-10-03T17:04:12Z`.
+pub fn rfc3339_utc(secs: u64) -> String {
+    let (y, mo, d, h, mi, s) = civil(secs);
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, mo, d, h, mi, s)
 }
 
 /// The leading volume number of a folder name: `138-2` → 138.
@@ -119,6 +222,9 @@ impl Manifest {
                 parts: f.parts,
                 volumes: f.volumes,
                 entries: f.entries,
+                version: f.version,
+                generated_at: f.generated_at,
+                base: f.base,
                 legacy: false,
             };
             m.normalize()?;
@@ -147,6 +253,11 @@ impl Manifest {
     }
 
     fn normalize(&mut self) -> Result<()> {
+        if let Some(base) = &self.base {
+            if !is_index_base(base) {
+                bail!("manifest: bad base {:?}", base);
+            }
+        }
         for (reporter, volumes) in &mut self.reporters {
             if let Some(bad) = volumes.iter().find(|v| !is_volume_key(v)) {
                 bail!("manifest: bad volume {:?} under {}", bad, reporter);
@@ -167,12 +278,21 @@ impl Manifest {
     pub fn to_json(&self) -> Result<String> {
         let f = Format2 {
             format: FORMAT,
+            version: self.version.clone(),
+            generated_at: self.generated_at.clone(),
+            base: self.base.clone(),
             volumes: self.volumes,
             entries: self.entries,
             reporters: self.reporters.clone(),
             parts: self.parts.clone(),
         };
         Ok(serde_json::to_string_pretty(&f)?)
+    }
+
+    /// The path of an index file (`a3d/138.bin`) relative to the manifest's location:
+    /// under `base` when the manifest has one, next to the manifest otherwise.
+    pub fn index_path(&self, path: &str) -> String {
+        format!("{}{}", self.base.as_deref().unwrap_or(""), path)
     }
 
     pub fn volumes(&self, reporter: &str) -> &[String] {
@@ -349,6 +469,97 @@ mod tests {
         let again = Manifest::parse(m.to_json().unwrap().as_bytes()).unwrap();
         assert_eq!(again, m);
         assert_eq!(again.entries, Some(10));
+    }
+
+    #[test]
+    fn round_trips_version_and_generated_at() {
+        let mut m = a3d();
+        assert_eq!(m.version, None);
+        m.version = Some("v2026.10.03".into());
+        m.generated_at = Some("2026-10-03T17:04:12Z".into());
+        let json = m.to_json().unwrap();
+        let raw: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(raw["version"], "v2026.10.03");
+        assert_eq!(raw["generated_at"], "2026-10-03T17:04:12Z");
+        assert_eq!(raw["format"], 2);
+        assert_eq!(Manifest::parse(json.as_bytes()).unwrap(), m);
+    }
+
+    #[test]
+    fn unversioned_manifest_writes_no_version_key() {
+        let raw: serde_json::Value = serde_json::from_str(&a3d().to_json().unwrap()).unwrap();
+        assert!(raw.get("version").is_none());
+        assert!(raw.get("generated_at").is_none());
+    }
+
+    #[test]
+    fn base_places_index_files() {
+        let mut m = a3d();
+        assert_eq!(m.index_path("a3d/138.bin"), "a3d/138.bin");
+        m.base = Some("v/v2026.10.03/".into());
+        assert_eq!(m.index_path("a3d/138.bin"), "v/v2026.10.03/a3d/138.bin");
+        let again = Manifest::parse(m.to_json().unwrap().as_bytes()).unwrap();
+        assert_eq!(again.base.as_deref(), Some("v/v2026.10.03/"));
+        assert_eq!(again, m);
+    }
+
+    #[test]
+    fn index_bases() {
+        for ok in ["v/v2026.10.03/", "v/v2026.10.03.1/", "builds/x_y-z/"] {
+            assert!(is_index_base(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "/",
+            "v/v2026.10.03",
+            "/v/v2026.10.03/",
+            "v//",
+            "../v/",
+            "v/../../",
+            "./",
+            "https://evil.example/",
+            "v/a b/",
+            "v\\x/",
+        ] {
+            assert!(!is_index_base(bad), "{bad}");
+        }
+        assert!(Manifest::parse(br#"{"format": 2, "base": "../x/", "reporters": {}}"#).is_err());
+        assert!(
+            Manifest::parse(br#"{"format": 2, "base": "v/v2026.10.03/", "reporters": {}}"#).is_ok()
+        );
+    }
+
+    #[test]
+    fn data_versions() {
+        for ok in ["v2026.10.03", "v2026.10.03.1", "v2026.12.31.12"] {
+            assert!(is_data_version(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "2026.10.03",
+            "v2026.10.3",
+            "v26.10.03",
+            "v2026.13.03",
+            "v2026.10.00",
+            "v2026.10.03.0",
+            "v2026.10.03.",
+            "v2026.10.03.1.2",
+            "v2026-10-03",
+        ] {
+            assert!(!is_data_version(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn dates_from_epoch_seconds() {
+        assert_eq!(data_version_for(0), "v1970.01.01");
+        assert_eq!(rfc3339_utc(0), "1970-01-01T00:00:00Z");
+        // 2026-10-03T17:04:12Z
+        assert_eq!(data_version_for(1_791_047_052), "v2026.10.03");
+        assert_eq!(rfc3339_utc(1_791_047_052), "2026-10-03T17:04:12Z");
+        // A leap day, and the last second of a year.
+        assert_eq!(rfc3339_utc(1_709_164_800), "2024-02-29T00:00:00Z");
+        assert_eq!(rfc3339_utc(1_767_225_599), "2025-12-31T23:59:59Z");
     }
 
     #[test]

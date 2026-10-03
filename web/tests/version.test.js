@@ -94,6 +94,22 @@ describe('loadDataLine', () => {
     assert.equal(el.hidden, false);
   });
 
+  test('shows the version of a manifest stare-admin build-manifest wrote', async () => {
+    const el = { textContent: '', hidden: true };
+    const manifest = {
+      format: 2,
+      version: 'v2026.10.03',
+      generated_at: '2026-10-03T17:04:12Z',
+      volumes: 1,
+      entries: 10,
+      reporters: { a3d: ['138'] },
+      parts: {},
+    };
+    const fetchFn = async () => fakeResponse({ json: manifest, lastModified: 'Sat, 03 Oct 2026 17:10:00 GMT' });
+    assert.equal(await loadDataLine(el, fetchFn), 'Index v2026.10.03');
+    assert.equal(el.textContent, 'Index v2026.10.03');
+  });
+
   test('stays hidden when the fetch fails or the response is unusable', async () => {
     for (const fetchFn of [
       async () => { throw new Error('offline'); },

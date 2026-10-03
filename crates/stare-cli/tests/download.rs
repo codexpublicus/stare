@@ -448,3 +448,109 @@ fn downloads_split_volume_folders_named_in_a_format_2_manifest() {
         .iter()
         .any(|e| matches!(e, Event::Volume { volume, .. } if volume == "138-2")));
 }
+
+#[test]
+fn reads_index_files_under_the_manifest_base() {
+    let mut index_server = mockito::Server::new();
+    let mut data_server = mockito::Server::new();
+
+    let manifest = r#"{"format": 2, "version": "v2026.10.03", "base": "v/v2026.10.03/",
+        "reporters": {"a2d": ["31"]}}"#;
+    let _manifest_mock = index_server
+        .mock("GET", "/manifest.json")
+        .with_status(200)
+        .with_body(manifest)
+        .create();
+    // The root-level file is the old index; only the versioned one may be read.
+    let root_bin = index_server
+        .mock("GET", "/a2d/31.bin")
+        .with_status(200)
+        .with_body("old!")
+        .expect(0)
+        .create();
+    let _bin_head = index_server
+        .mock("HEAD", "/v/v2026.10.03/a2d/31.bin")
+        .with_status(200)
+        .with_header("content-length", "4")
+        .create();
+    let _bin_get = index_server
+        .mock("GET", "/v/v2026.10.03/a2d/31.bin")
+        .with_status(200)
+        .with_body("new!")
+        .create();
+    let _zip_head = data_server
+        .mock("HEAD", "/a2d/31.zip")
+        .with_status(200)
+        .with_header("content-length", "3")
+        .create();
+    let _zip_get = data_server
+        .mock("GET", "/a2d/31.zip")
+        .with_status(200)
+        .with_body("zip")
+        .create();
+
+    let cache = tempfile::tempdir().unwrap();
+    let cfg = DownloadConfig {
+        index_source: &index_server.url(),
+        data_source: &data_server.url(),
+        cache_dir: cache.path(),
+        reporters: &["a2d".to_string()],
+        data_rate_limit: Duration::ZERO,
+    };
+    let report = run(&cfg, |_| {}).unwrap();
+
+    assert!(report.errors.is_empty(), "{:?}", report.errors);
+    root_bin.assert();
+    assert_eq!(
+        std::fs::read(cache.path().join("bins/v/v2026.10.03/a2d/31.bin")).unwrap(),
+        b"new!"
+    );
+    assert!(!cache.path().join("bins/a2d/31.bin").exists());
+    // The manifest is saved with the files, so <cache>/bins reads as an index source.
+    let saved = std::fs::read(cache.path().join("bins/manifest.json")).unwrap();
+    assert_eq!(saved, manifest.as_bytes());
+    let m = stare::manifest::Manifest::parse(&saved).unwrap();
+    assert_eq!(m.index_path("a2d/31.bin"), "v/v2026.10.03/a2d/31.bin");
+}
+
+#[test]
+fn a_manifest_without_base_reads_the_root() {
+    let mut index_server = mockito::Server::new();
+    let mut data_server = mockito::Server::new();
+    let _manifest_mock = index_server
+        .mock("GET", "/manifest.json")
+        .with_status(200)
+        .with_body(r#"{"a2d": [31]}"#)
+        .create();
+    let mut mocks = Vec::new();
+    for (server, path) in [
+        (&mut index_server, "/a2d/31.bin"),
+        (&mut data_server, "/a2d/31.zip"),
+    ] {
+        mocks.push(
+            server
+                .mock("HEAD", path)
+                .with_status(200)
+                .with_header("content-length", "2")
+                .create(),
+        );
+        mocks.push(
+            server
+                .mock("GET", path)
+                .with_status(200)
+                .with_body("ok")
+                .create(),
+        );
+    }
+    let cache = tempfile::tempdir().unwrap();
+    let cfg = DownloadConfig {
+        index_source: &index_server.url(),
+        data_source: &data_server.url(),
+        cache_dir: cache.path(),
+        reporters: &["a2d".to_string()],
+        data_rate_limit: Duration::ZERO,
+    };
+    let report = run(&cfg, |_| {}).unwrap();
+    assert!(report.errors.is_empty(), "{:?}", report.errors);
+    assert!(cache.path().join("bins/a2d/31.bin").exists());
+}

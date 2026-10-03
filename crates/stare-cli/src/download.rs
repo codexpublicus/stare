@@ -8,7 +8,11 @@
 ///   (or just letting the normal cache lookup do its job) works without a network call.
 /// - The list of volumes per reporter comes from `manifest.json` at the root of the
 ///   index source (written by `stare-admin build-manifest`). The manifest is always
-///   fetched fresh, not cached, since it grows as the index is built out.
+///   fetched fresh, since it changes when the index is rebuilt, and saved as
+///   `<cache>/bins/manifest.json`.
+/// - Index files are at their path under the manifest's `base` when it has one
+///   (`v/v2026.10.03/a3d/138.bin`), on the source and in the cache alike, so files from
+///   two index versions never mix and `<cache>/bins` reads like an index source.
 /// - A file already on disk is skipped when its size matches the remote size (via a
 ///   HEAD request's Content-Length). No checksum is published for .bin/.zip files
 ///   (only .tar.sha256 exists, and tars aren't part of this command), so size is the
@@ -118,11 +122,11 @@ impl RateLimiter {
 }
 
 /// Fetch and parse `manifest.json` from the root of the index source, in either the
-/// legacy or the current format (see `stare::manifest`).
+/// legacy or the current format (see `stare::manifest`), with its bytes.
 fn fetch_manifest(
     client: &reqwest::blocking::Client,
     index_source: &str,
-) -> Result<stare::manifest::Manifest> {
+) -> Result<(stare::manifest::Manifest, Vec<u8>)> {
     let bytes = if stare_cli_is_url(index_source) {
         let url = format!("{}/manifest.json", index_source);
         let resp = client
@@ -139,7 +143,9 @@ fn fetch_manifest(
         let path = Path::new(index_source).join("manifest.json");
         std::fs::read(&path).with_context(|| format!("manifest not found: {}", path.display()))?
     };
-    stare::manifest::Manifest::parse(&bytes).context("failed to parse manifest.json")
+    let manifest =
+        stare::manifest::Manifest::parse(&bytes).context("failed to parse manifest.json")?;
+    Ok((manifest, bytes))
 }
 
 fn stare_cli_is_url(s: &str) -> bool {
@@ -249,12 +255,13 @@ pub fn run(cfg: &DownloadConfig, mut on_event: impl FnMut(Event)) -> Result<Repo
         .build()
         .context("failed to build HTTP client")?;
 
-    let manifest = fetch_manifest(&client, cfg.index_source)?;
+    let (manifest, manifest_bytes) = fetch_manifest(&client, cfg.index_source)?;
     let mut report = Report::default();
     let mut data_limiter = RateLimiter::new(cfg.data_rate_limit);
 
     let bins_dir: PathBuf = cfg.cache_dir.join("bins");
     let zips_dir: PathBuf = cfg.cache_dir.join("zips");
+    stare::config::atomic_write(&bins_dir.join(crate::MANIFEST_CACHE_KEY), &manifest_bytes)?;
 
     for reporter in cfg.reporters {
         let slug = reporter.to_lowercase();
@@ -279,7 +286,7 @@ pub fn run(cfg: &DownloadConfig, mut on_event: impl FnMut(Event)) -> Result<Repo
         let total = volumes.len();
         for (i, volume) in volumes.iter().enumerate() {
             report.volumes_seen += 1;
-            let bin_key = format!("{}/{}.bin", slug, volume);
+            let bin_key = manifest.index_path(&format!("{}/{}.bin", slug, volume));
             let zip_key = format!("{}/{}.zip", slug, volume);
 
             let bin_status =

@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  hasVolume, isVolumeKey, loadManifest, normalizeManifest, volumeCandidates,
+  hasVolume, isIndexBase, isVolumeKey, loadManifest, normalizeManifest, volumeCandidates,
 } from '../public/js/manifest.js';
 
 // a3d 138 as stare-admin build-manifest writes it: CAP split it over two folders whose
@@ -57,6 +57,26 @@ describe('normalizeManifest', () => {
     assert.ok(!hasVolume(m, 'format', '2'));
   });
 
+  test('reads the data version, and null for a manifest without one', () => {
+    assert.equal(normalizeManifest({ ...FORMAT_2, version: 'v2026.10.03', generated_at: '2026-10-03T17:04:12Z' }).version, 'v2026.10.03');
+    assert.equal(normalizeManifest(FORMAT_2).version, null);
+    assert.equal(normalizeManifest({ a2d: [2] }).version, null);
+    assert.equal(normalizeManifest({ ...FORMAT_2, version: '' }).version, null);
+    assert.equal(normalizeManifest({ ...FORMAT_2, version: 3 }).version, null);
+    assert.equal(normalizeManifest(null).version, null);
+  });
+
+  test('reads base, and the root for a manifest without a usable one', () => {
+    assert.equal(normalizeManifest({ ...FORMAT_2, base: 'v/v2026.10.03/' }).base, 'v/v2026.10.03/');
+    assert.equal(normalizeManifest(FORMAT_2).base, '');
+    assert.equal(normalizeManifest({ a2d: [2] }).base, '');
+    assert.equal(normalizeManifest(null).base, '');
+    for (const bad of ['v/v2026.10.03', '/v/x/', '../x/', 'v/../', 'https://evil.example/', 'v//', 3]) {
+      assert.equal(normalizeManifest({ ...FORMAT_2, base: bad }).base, '', String(bad));
+    }
+    assert.ok(isIndexBase('v/v2026.10.03.1/'));
+  });
+
   test('drops anything that is not a volume folder name', () => {
     const m = normalizeManifest({ a2d: [31, '../x', null] });
     assert.deepEqual(m.reporters.a2d, ['31']);
@@ -107,6 +127,8 @@ test('loadManifest fetches once and survives a failed fetch', async () => {
   };
   const m = await loadManifest(failing);
   assert.deepEqual(m.reporters, {});
+  // cache.js keeps its cache when it can't read the version.
+  assert.equal(m.unreachable, true);
   await loadManifest(failing);
   assert.equal(calls, 1);
 });

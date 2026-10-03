@@ -83,6 +83,8 @@ enum CacheAction {
 struct Sources {
     index: String,
     data: String,
+    /// The index manifest, fetched on first use (see [`Sources::manifest`]).
+    manifest: std::cell::OnceCell<Option<stare::manifest::Manifest>>,
 }
 
 impl Sources {
@@ -97,6 +99,27 @@ impl Sources {
                 .data
                 .clone()
                 .unwrap_or_else(|| cfg.data_source().to_string()),
+            manifest: std::cell::OnceCell::new(),
+        }
+    }
+
+    /// The index manifest, fetched once per run. When the index source can't be
+    /// reached, the copy saved by the last successful fetch is used, so cached index
+    /// files are still found offline. None when there's neither.
+    fn manifest(&self) -> Option<&stare::manifest::Manifest> {
+        self.manifest
+            .get_or_init(|| fetch_manifest(self).ok())
+            .as_ref()
+    }
+
+    /// Where an index file (`a3d/138.bin`) is, relative to the index source, and its
+    /// cache key: under the manifest's `base` (`v/v2026.10.03/a3d/138.bin`) when it has
+    /// one, at the root otherwise. A build's files never change under their versioned
+    /// path, so a new index version is new cache keys.
+    fn index_key(&self, path: &str) -> String {
+        match self.manifest() {
+            Some(m) => m.index_path(path),
+            None => path.to_string(),
         }
     }
 
@@ -221,7 +244,7 @@ fn parse_labeled_input(input: &str) -> Option<(String, String, String)> {
 // ---------------------------------------------------------------------------
 
 fn fetch_bin(src: &Sources, reporter: &str, volume: &str) -> Result<Vec<u8>> {
-    let key = format!("{}/{}.bin", reporter, volume);
+    let key = src.index_key(&format!("{}/{}.bin", reporter, volume));
 
     // 1. Check cache
     if let Some(data) = config::cache_get("bins", &key) {
@@ -248,7 +271,7 @@ fn fetch_bin(src: &Sources, reporter: &str, volume: &str) -> Result<Vec<u8>> {
 
 /// A volume's `.multi` file, or None if it has none.
 fn fetch_multi(src: &Sources, reporter: &str, volume: &str) -> Result<Option<String>> {
-    let key = format!("{}/{}.multi", reporter, volume);
+    let key = src.index_key(&format!("{}/{}.multi", reporter, volume));
     if let Some(data) = config::cache_get("bins", &key) {
         return Ok(Some(String::from_utf8(data)?));
     }
@@ -317,16 +340,28 @@ fn fetch_url(url: &str) -> Result<Vec<u8>> {
 // Commands
 // ---------------------------------------------------------------------------
 
-/// Fetch the index manifest from the index source. Never cached: it changes when the
-/// index is rebuilt.
+/// Fetch the index manifest from the index source. It changes when the index is
+/// rebuilt, so it's always fetched; the copy saved in the cache
+/// (`bins/manifest.json`, which `stare download` writes too) is only read when the
+/// source can't be reached.
 fn fetch_manifest(src: &Sources) -> Result<stare::manifest::Manifest> {
-    let bytes = if Sources::is_url(&src.index) {
-        fetch_url(&format!("{}/manifest.json", src.index))?
+    let fetched = if Sources::is_url(&src.index) {
+        fetch_url(&format!("{}/manifest.json", src.index))
     } else {
         let path = PathBuf::from(&src.index).join("manifest.json");
-        std::fs::read(&path).with_context(|| format!("manifest not found: {}", path.display()))?
+        std::fs::read(&path).with_context(|| format!("manifest not found: {}", path.display()))
     };
-    stare::manifest::Manifest::parse(&bytes)
+    match fetched {
+        Ok(bytes) => {
+            let manifest = stare::manifest::Manifest::parse(&bytes)?;
+            let _ = config::cache_set("bins", stare_cli::MANIFEST_CACHE_KEY, &bytes);
+            Ok(manifest)
+        }
+        Err(e) => match config::cache_get("bins", stare_cli::MANIFEST_CACHE_KEY) {
+            Some(bytes) => stare::manifest::Manifest::parse(&bytes),
+            None => Err(e),
+        },
+    }
 }
 
 /// Resolve a citation to `volume` (a cited number or a CAP folder name). The volume's
@@ -342,7 +377,7 @@ fn resolve_case(
     let located = match stare::manifest::locate(&[volume.to_string()], page, read) {
         Ok(found) => found,
         Err(direct) => {
-            let Ok(manifest) = fetch_manifest(src) else {
+            let Some(manifest) = src.manifest() else {
                 return Err(direct.context(format!("{}/{}", reporter, volume)));
             };
             let others: Vec<String> = manifest
@@ -694,5 +729,64 @@ fn print_download_event(event: &stare_cli::download::Event) {
         Event::ReporterDone { reporter } => {
             println!("{}: done", reporter);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sources(index: &std::path::Path) -> Sources {
+        Sources {
+            index: index.to_string_lossy().into_owned(),
+            data: String::new(),
+            manifest: std::cell::OnceCell::new(),
+        }
+    }
+
+    // One test, since it points the cache at a temporary directory through the
+    // environment.
+    #[test]
+    fn index_files_resolve_through_the_manifest_base() {
+        let cache = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", cache.path());
+
+        // A versioned index: the old build at the root, the live one under its base.
+        let idx = tempfile::tempdir().unwrap();
+        std::fs::write(
+            idx.path().join("manifest.json"),
+            r#"{"format": 2, "base": "v/v2026.10.03/", "reporters": {"a2d": ["31"]}}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(idx.path().join("a2d")).unwrap();
+        std::fs::write(idx.path().join("a2d/31.bin"), b"old").unwrap();
+        std::fs::create_dir_all(idx.path().join("v/v2026.10.03/a2d")).unwrap();
+        std::fs::write(idx.path().join("v/v2026.10.03/a2d/31.bin"), b"new").unwrap();
+
+        let src = sources(idx.path());
+        assert_eq!(src.index_key("a2d/31.bin"), "v/v2026.10.03/a2d/31.bin");
+        assert_eq!(fetch_bin(&src, "a2d", "31").unwrap(), b"new");
+        // Cached under the versioned path, with the manifest beside it.
+        assert_eq!(
+            config::cache_get("bins", "v/v2026.10.03/a2d/31.bin").unwrap(),
+            b"new"
+        );
+        assert!(config::cache_get("bins", "a2d/31.bin").is_none());
+        assert!(config::cache_get("bins", stare_cli::MANIFEST_CACHE_KEY).is_some());
+
+        // The source gone, the saved manifest still finds the cached file.
+        let gone = sources(&idx.path().join("missing"));
+        assert_eq!(gone.index_key("a2d/31.bin"), "v/v2026.10.03/a2d/31.bin");
+        assert_eq!(fetch_bin(&gone, "a2d", "31").unwrap(), b"new");
+
+        // A manifest without base, and no manifest at all, read the root.
+        let fresh = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", fresh.path());
+        std::fs::write(idx.path().join("manifest.json"), r#"{"a2d": [31]}"#).unwrap();
+        assert_eq!(sources(idx.path()).index_key("a2d/31.bin"), "a2d/31.bin");
+        let empty = tempfile::tempdir().unwrap();
+        let cache2 = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", cache2.path());
+        assert_eq!(sources(empty.path()).index_key("a2d/31.bin"), "a2d/31.bin");
     }
 }

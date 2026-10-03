@@ -8,8 +8,23 @@
 // cover. The legacy format is a bare reporter map of integers; it can't name split
 // volumes, so with it a miss in "138" falls back to guessing "138-2", the name every
 // second part in CAP has.
+//
+// A manifest built since #63 also has a CalVer data `version` ("v2026.10.03"), and the
+// root manifest of the versioned layout a `base` ("v/v2026.10.03/"): the prefix the
+// live build's files are under. Each build is uploaded once under its own prefix and
+// never changed, so every .bin and .multi is read, and cached, by its path under
+// `base` (indexPath). A manifest without `base` has the files at the root, where the
+// index lived before.
 
+import { pruneIndexCache } from './cache.js';
 import { indexUrl } from './sources.js';
+
+// One or more path segments, each followed by "/"; no "." or "..", no scheme.
+const INDEX_BASE = /^(?:(?!\.\.?\/)[A-Za-z0-9._-]+\/)+$/;
+
+export function isIndexBase(s) {
+  return typeof s === 'string' && INDEX_BASE.test(s);
+}
 
 const VOLUME_KEY = /^\d(?:[0-9a-z-]*[0-9a-z])?$/;
 
@@ -17,9 +32,11 @@ export function isVolumeKey(s) {
   return typeof s === 'string' && VOLUME_KEY.test(s);
 }
 
-// Either format, as { legacy, reporters: { slug: [folder, ...] }, parts }.
+// Either format, as { legacy, version, base, reporters: { slug: [folder, ...] }, parts }.
+// `version` is the data version, or null for a manifest without one; `base` is the
+// index files' prefix, or '' for the root.
 export function normalizeManifest(raw) {
-  const empty = { legacy: true, reporters: {}, parts: {} };
+  const empty = { legacy: true, version: null, base: '', reporters: {}, parts: {} };
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return empty;
   const v2 = 'format' in raw;
   const map = v2 ? raw.reporters : raw;
@@ -30,7 +47,9 @@ export function normalizeManifest(raw) {
     reporters[slug] = volumes.map(String).filter(isVolumeKey);
   }
   const parts = v2 && raw.parts && typeof raw.parts === 'object' ? raw.parts : {};
-  return { legacy: !v2, reporters, parts };
+  const version = typeof raw.version === 'string' && raw.version.trim() ? raw.version.trim() : null;
+  const base = v2 && isIndexBase(raw.base) ? raw.base : '';
+  return { legacy: !v2, version, base, reporters, parts };
 }
 
 export function hasVolume(m, reporter, volume) {
@@ -56,16 +75,36 @@ export function volumeCandidates(m, reporter, volume, page) {
 let manifest = null;
 
 // The manifest, fetched once per page. An unreachable or unreadable one reads as an
-// empty legacy manifest: nothing shows as available, and resolving still works.
+// empty legacy manifest marked `unreachable`: nothing shows as available, and resolving
+// still works, from the root.
 export async function loadManifest(fetchFn = globalThis.fetch) {
   if (manifest) return manifest;
   manifest = (async () => {
     try {
-      const resp = await fetchFn(indexUrl('manifest.json'));
-      return normalizeManifest(resp.ok ? await resp.json() : null);
+      // Revalidated, never taken from the HTTP cache as it is: it's the pointer to the
+      // live build, and a browser may otherwise reuse an old copy heuristically.
+      const resp = await fetchFn(indexUrl('manifest.json'), { cache: 'no-cache' });
+      if (!resp.ok) return { ...normalizeManifest(null), unreachable: true };
+      return normalizeManifest(await resp.json());
     } catch {
-      return normalizeManifest(null);
+      return { ...normalizeManifest(null), unreachable: true };
     }
   })();
   return manifest;
+}
+
+let pruned = false;
+
+// The path of an index file ("a3d/138.bin") on idx.stare.pub, which is also its cache
+// key: under the manifest's `base`, or at the root without one. The sidebar, /check and
+// the case viewer all read .bin and .multi files through here. The first call on a
+// page with a readable manifest also drops other builds' files from the cache, in the
+// background.
+export async function indexPath(path, load = loadManifest) {
+  const m = await load();
+  if (!pruned && !m.unreachable) {
+    pruned = true;
+    setTimeout(() => { pruneIndexCache(m.base).catch(() => {}); }, 0);
+  }
+  return `${m.base}${path}`;
 }

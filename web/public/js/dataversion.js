@@ -2,9 +2,9 @@ import { indexUrl } from './sources.js';
 
 // The footer's data line: which citation index the site is reading.
 //
-// The index manifest (idx.stare.pub/manifest.json) will carry a CalVer `version`
-// once #63 lands; until then it's a bare reporter map, and the only thing that
-// says how current it is is the object's Last-Modified header.
+// The index manifest (idx.stare.pub/manifest.json) carries a CalVer `version` when
+// stare-admin build-manifest wrote it since #63. An older manifest has none, and the
+// only thing that says how current it is is the object's Last-Modified header.
 
 export const MANIFEST_URL = indexUrl('manifest.json');
 
@@ -30,7 +30,7 @@ export function formatDataLine(manifest, lastModified) {
 export async function loadDataLine(el, fetchFn = globalThis.fetch) {
   if (!el || typeof fetchFn !== 'function') return null;
   try {
-    const resp = await fetchFn(MANIFEST_URL);
+    const resp = await fetchFn(MANIFEST_URL, { cache: 'no-cache' });
     if (!resp.ok) return null;
     const lastModified = resp.headers.get('last-modified');
     let manifest = null;

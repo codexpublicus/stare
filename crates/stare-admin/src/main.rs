@@ -56,6 +56,10 @@ enum Commands {
         /// which folders are parts of one volume. Required when any are.
         #[arg(long)]
         volumes_metadata: Option<PathBuf>,
+        /// The index's CalVer data version, vYYYY.MM.DD or vYYYY.MM.DD.N for a later
+        /// release the same day (default: today's UTC date, vYYYY.MM.DD)
+        #[arg(long = "version", value_name = "VERSION")]
+        data_version: Option<String>,
     },
 }
 
@@ -87,8 +91,14 @@ fn main() -> anyhow::Result<()> {
             index_dir,
             output,
             volumes_metadata,
+            data_version,
         } => {
-            build_manifest(&index_dir, output.as_deref(), volumes_metadata.as_deref())?;
+            build_manifest(
+                &index_dir,
+                output.as_deref(),
+                volumes_metadata.as_deref(),
+                data_version.as_deref(),
+            )?;
         }
     }
 
@@ -450,11 +460,28 @@ struct CapVolume {
 ///
 /// Which folders are parts of one volume comes from CAP's VolumesMetadata.json
 /// (`volume_number`), which is required when any folder isn't a plain number.
+///
+/// The manifest's `version` is `data_version`, or today's UTC date (`vYYYY.MM.DD`), and
+/// its `generated_at` is now.
 fn build_manifest(
     index_dir: &std::path::Path,
     output: Option<&std::path::Path>,
     volumes_metadata: Option<&std::path::Path>,
+    data_version: Option<&str>,
 ) -> anyhow::Result<()> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .context("system clock is before 1970")?
+        .as_secs();
+    let version = match data_version {
+        Some(v) if stare::manifest::is_data_version(v) => v.to_string(),
+        Some(v) => anyhow::bail!(
+            "--version {:?} isn't a data version: use vYYYY.MM.DD, or vYYYY.MM.DD.N for a later release the same day",
+            v
+        ),
+        None => stare::manifest::data_version_for(now),
+    };
+
     let mut stats: BTreeMap<(String, String), VolumeStats> = BTreeMap::new();
     for path in walkdir(index_dir)? {
         if path.extension().map(|e| e != "bin").unwrap_or(true) {
@@ -493,6 +520,8 @@ fn build_manifest(
     }
     manifest.volumes = Some(stats.len() as u64);
     manifest.entries = Some(stats.values().map(|s| s.entries).sum());
+    manifest.version = Some(version);
+    manifest.generated_at = Some(stare::manifest::rfc3339_utc(now));
 
     let split = stats
         .keys()
@@ -521,7 +550,8 @@ fn build_manifest(
 
     let split_volumes: usize = manifest.parts.values().map(|n| n.len()).sum();
     println!(
-        "Built manifest: {} reporters, {} volumes ({} split over several folders), {} entries → {}",
+        "Built manifest {}: {} reporters, {} volumes ({} split over several folders), {} entries → {}",
+        manifest.version.as_deref().unwrap_or(""),
         manifest.reporters.len(),
         stats.len(),
         split_volumes,
@@ -644,7 +674,7 @@ mod tests {
     fn manifest_lists_split_volumes_as_strings_with_their_page_ranges() {
         let dir = index_dir();
         let meta = volumes_metadata(dir.path());
-        build_manifest(dir.path(), None, Some(&meta)).unwrap();
+        build_manifest(dir.path(), None, Some(&meta), None).unwrap();
         let m = stare::manifest::Manifest::parse(
             &std::fs::read(dir.path().join("manifest.json")).unwrap(),
         )
@@ -676,6 +706,90 @@ mod tests {
         assert_eq!(m.parts.len(), 1);
         assert_eq!(m.parts["a3d"].len(), 1);
         assert_eq!(m.candidates("a3d", "138", 1012), ["138", "138-2"]);
+    }
+
+    fn read_manifest_json(dir: &std::path::Path) -> serde_json::Value {
+        serde_json::from_slice(&std::fs::read(dir.join("manifest.json")).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn manifest_carries_the_given_version_and_when_it_was_built() {
+        let dir = index_dir();
+        let meta = volumes_metadata(dir.path());
+        build_manifest(dir.path(), None, Some(&meta), Some("v2026.10.03.1")).unwrap();
+        let raw = read_manifest_json(dir.path());
+        assert_eq!(raw["format"], 2);
+        assert_eq!(raw["version"], "v2026.10.03.1");
+        let generated_at = raw["generated_at"].as_str().unwrap();
+        assert_eq!(generated_at.len(), "2026-10-03T17:04:12Z".len());
+        assert!(generated_at.ends_with('Z'), "{generated_at}");
+        // Every key readers already use is still there.
+        for key in ["volumes", "entries", "reporters", "parts"] {
+            assert!(raw.get(key).is_some(), "{key}");
+        }
+        let m = stare::manifest::Manifest::parse(
+            &std::fs::read(dir.path().join("manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(m.version.as_deref(), Some("v2026.10.03.1"));
+        assert_eq!(m.volumes("a3d"), ["9", "138", "138-2"]);
+    }
+
+    #[test]
+    fn manifest_version_defaults_to_todays_utc_date() {
+        let dir = index_dir();
+        let meta = volumes_metadata(dir.path());
+        let before = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        build_manifest(dir.path(), None, Some(&meta), None).unwrap();
+        let after = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let version = read_manifest_json(dir.path())["version"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(stare::manifest::is_data_version(&version), "{version}");
+        assert!(
+            [before, after]
+                .iter()
+                .any(|&t| stare::manifest::data_version_for(t) == version),
+            "{version}"
+        );
+    }
+
+    #[test]
+    fn manifest_rejects_a_malformed_version() {
+        let dir = index_dir();
+        let meta = volumes_metadata(dir.path());
+        for bad in ["2026.10.03", "v2026.10.3", "latest"] {
+            let err = build_manifest(dir.path(), None, Some(&meta), Some(bad)).unwrap_err();
+            assert!(err.to_string().contains("isn't a data version"), "{err}");
+        }
+        assert!(!dir.path().join("manifest.json").exists());
+    }
+
+    #[test]
+    fn cli_parses_build_manifest_version() {
+        use clap::{CommandFactory, Parser};
+        Cli::command().debug_assert();
+        let cli = Cli::try_parse_from([
+            "stare-admin",
+            "build-manifest",
+            "idx",
+            "--version",
+            "v2026.10.03.1",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::BuildManifest { data_version, .. } => {
+                assert_eq!(data_version.as_deref(), Some("v2026.10.03.1"));
+            }
+            _ => panic!("not build-manifest"),
+        }
     }
 
     /// A volume zip with these case files, and CasesMetadata.json giving each its first
@@ -802,7 +916,7 @@ mod tests {
     #[test]
     fn split_folders_need_the_volumes_metadata() {
         let dir = index_dir();
-        let err = build_manifest(dir.path(), None, None).unwrap_err();
+        let err = build_manifest(dir.path(), None, None, None).unwrap_err();
         assert!(err.to_string().contains("--volumes-metadata"), "{err}");
     }
 
@@ -811,6 +925,6 @@ mod tests {
         let dir = index_dir();
         std::fs::write(dir.path().join("a3d/x9.bin"), [0u8; 8]).unwrap();
         let meta = volumes_metadata(dir.path());
-        assert!(build_manifest(dir.path(), None, Some(&meta)).is_err());
+        assert!(build_manifest(dir.path(), None, Some(&meta), None).is_err());
     }
 }
