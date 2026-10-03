@@ -1,0 +1,61 @@
+---
+import SiteFooter from '../components/SiteFooter.astro';
+import '../styles/theme.css';
+import '../styles/layout.css';
+import '../styles/data.css';
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<title>Index data · stare.pub</title>
+		<meta name="description" content="Every published rebuild of the stare.pub citation index: cases indexed, volumes, coverage and exceptions over time." />
+		<meta property="og:title" content="§tare.pub index data" />
+		<meta property="og:description" content="Every published rebuild of the stare.pub citation index: cases indexed, volumes, coverage and exceptions over time." />
+		<meta property="og:type" content="website" />
+		<meta property="og:url" content="https://stare.pub/data" />
+		<meta property="og:image" content="https://stare.pub/og-image.png" />
+		<script is:inline>
+			try {
+				var theme = localStorage.getItem('stare-theme');
+				if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+					document.documentElement.setAttribute('data-theme', 'dark');
+				}
+			} catch(e) {}
+		</script>
+	</head>
+	<body>
+		<div class="page-topbar"><a href="/">§tare.pub</a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
+		<div class="page page--data">
+			<h1>Index data</h1>
+			<p>Each time the citation index is rebuilt, the build writes a report: how many cases and volumes it indexed, how many index entries it wrote for them, and every volume that failed or was let through with a known reason. This page charts every published report, from <a href="https://idx.stare.pub/reports/index.json">idx.stare.pub/reports/index.json</a>, and lists the live build&rsquo;s numbers by reporter.</p>
+			<div id="data-root" class="data-root" aria-live="polite">
+				<p class="data-note">Loading the index reports&hellip;</p>
+				<noscript><p class="data-note">This page needs JavaScript to draw the charts. The reports themselves are plain JSON at idx.stare.pub/reports/index.json.</p></noscript>
+			</div>
+
+			<a href="/" class="back-link">&larr; Back to stare.pub</a>
+
+			<SiteFooter />
+		</div>
+	<script is:inline type="module">
+			import { mountDataPage } from '/js/datapage.js';
+			mountDataPage(document.getElementById('data-root'));
+		</script>
+	<script is:inline>
+			(function() {
+				var btn = document.getElementById('page-theme-btn');
+				if (!btn) return;
+				try { if (localStorage.getItem('stare-theme') === 'dark' || (!localStorage.getItem('stare-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) btn.textContent = '\u2600'; } catch(e) {}
+				btn.addEventListener('click', function(e) {
+					e.preventDefault();
+					var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+					if (isDark) { document.documentElement.removeAttribute('data-theme'); btn.textContent = '\u263E'; try { localStorage.setItem('stare-theme', 'light'); } catch(e) {} }
+					else { document.documentElement.setAttribute('data-theme', 'dark'); btn.textContent = '\u2600'; try { localStorage.setItem('stare-theme', 'dark'); } catch(e) {} }
+				});
+			})();
+		</script>
+	</body>
+</html>

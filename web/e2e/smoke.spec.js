@@ -9,12 +9,18 @@ import { casesLabel, yearRange } from '../src/lib/collection.js';
 const WASM_PATH = '/wasm/stare_wasm_bg.wasm';
 
 // Every test fails on a console error or warning, or an uncaught exception.
+// `expectedMissing` lists URLs a test expects to 404: Chromium logs every failed
+// fetch as a console error, and only that exact message for that exact URL is let
+// through.
 const test = base.extend({
-  page: async ({ page }, use) => {
+  expectedMissing: [[], { option: true }],
+  page: async ({ page, expectedMissing }, use) => {
     const problems = [];
     page.on('console', (msg) => {
       if (msg.type() === 'error' || msg.type() === 'warning') {
-        problems.push(`console.${msg.type()}: ${msg.text()}`);
+        const missing = expectedMissing.includes(msg.location().url)
+          && /^Failed to load resource: the server responded with a status of 404\b/.test(msg.text());
+        if (!missing) problems.push(`console.${msg.type()}: ${msg.text()}`);
       }
     });
     page.on('pageerror', (err) => problems.push(`uncaught: ${err.message}`));
@@ -207,4 +213,28 @@ test('138 A.3d 1012 resolves into a3d/138-2, the second folder CAP split the vol
   await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
   // The page's URL names the folder the case is in.
   await expect(page).toHaveURL(/#a3d\/138-2\/1012-01$/);
+});
+
+test.describe('/data before the first index report', () => {
+  // Today idx.stare.pub answers reports/index.json with a 404. The route stubs that
+  // 404 so the case keeps testing the empty state after the first rebuild publishes
+  // the file; Chromium still logs the 404, which `expectedMissing` lets through.
+  const REPORTS = 'https://idx.stare.pub/reports/index.json';
+  test.use({ expectedMissing: [REPORTS] });
+
+  test('/data shows the empty state until the first report', async ({ page }) => {
+    await page.route(REPORTS, (route) => route.fulfill({
+      status: 404,
+      headers: { 'access-control-allow-origin': '*' },
+      body: 'Not Found',
+    }));
+    const reports = page.waitForResponse((r) => r.url() === REPORTS);
+    const response = await page.goto('/data');
+    expect(response.status()).toBe(200);
+    await expect(page).toHaveTitle('Index data · stare.pub');
+    expect((await reports).status()).toBe(404);
+    await expect(page.locator('#data-root')).toContainText('Index reports start with the next rebuild.');
+    // The footer's "Index v…" line links here; it stays hidden if the manifest can't be read.
+    await expect(page.locator('footer [data-site-data-line]')).toHaveAttribute('href', '/data');
+  });
 });

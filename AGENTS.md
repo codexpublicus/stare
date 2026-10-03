@@ -40,6 +40,8 @@ Three interfaces to the same data, all static files:
 /index/v/{version}/{reporter}/{vol}.bin    — citation lookup (page offset → case file); immutable
 /index/v/{version}/{reporter}/{vol}.multi  — pages with several cases; immutable
 /index/v/{version}/manifest.json  — the build's own manifest (no `base`)
+/index/v/{version}/report.json    — the build's report (schemas/index-report.v1.schema.json); immutable
+/index/reports/index.json         — every published build's report totals, oldest first (schemas/reports-index.v1.schema.json); charted at stare.pub/data
 /index/{reporter}/{vol}.bin       — the pre-versioning index, for clients that ignore `base`
 /index/reporters.json             — abbreviation → slug mapping
 /cap/{reporter}/{vol}.zip         — case text JSONs (codex-data bucket, served at data.stare.pub/cap)
@@ -55,18 +57,23 @@ Three interfaces to the same data, all static files:
 Each index build is immutable and versioned with a CalVer data version (`vYYYY.MM.DD`, `.N`
 for a later one the same day). Both steps are operator-run on ml-01 and never automatic:
 
-- `mise run index-build <stare tag> [version]` builds `stare-admin` from the tag and runs
-  `batch-index` and `build-manifest` in a throwaway container (no network, the mirror
-  read-only) into `codexpublicus-index:/builds/<version>/`, with `build.log` and
-  `build.json`.
-- `mise run index-publish <version>` checks the build's exit status and counts, uploads it to
-  `stare-pub-idx/v/<version>/` (`Cache-Control: public, max-age=31536000, immutable`, its
-  manifest last), saves the old root `manifest.json` to `codexpublicus-index:/published/`,
-  writes the root `manifest.json` (the build's plus `base`, `max-age=60`), and points
+- `mise run index-build <stare tag> [version] [--allow <file>]` builds `stare-admin` from the
+  tag and runs `batch-index`, `build-manifest` and `build-report` in a throwaway container
+  (no network, the mirror read-only) into `codexpublicus-index:/builds/<version>/`, with
+  `build.log`, `build.json`, `batch-index.json` and `report.json`. The report
+  (`schemas/index-report.v1.schema.json`) has the build's identity, totals, per-reporter
+  counts, every allow-listed and failed volume, and a diff against
+  `/index/current/report.json` when the published build has one.
+- `mise run index-publish <version>` checks the build's exit status and counts and its
+  report, uploads it to `stare-pub-idx/v/<version>/` (`Cache-Control: public,
+  max-age=31536000, immutable`, `report.json` next to last, its manifest last), adds the
+  build to `reports/index.json` (`max-age=60`), saves the old root `manifest.json` and
+  `reports/index.json` to `codexpublicus-index:/published/`, writes the root
+  `manifest.json` (the build's plus `base`, `max-age=60`), and points
   `codexpublicus-index:/current` at the build.
 - Rolling back is `mise run index-publish <earlier version>` for a version still in `v/`: it
-  only rewrites the root manifest. To go back to the pre-versioning root, upload the saved
-  copy from `published/` as `manifest.json`.
+  only rewrites `reports/index.json` and the root manifest. To go back to the
+  pre-versioning root, upload the saved copy from `published/` as `manifest.json`.
 
 Nothing in `v/` is ever overwritten or deleted by these tasks.
 

@@ -6,19 +6,30 @@ set -euo pipefail
 # Publishing a build:
 #   1. Checks codexpublicus-index:/builds/<version>/build.json (every step exited 0) and
 #      the counts: batch-index's volumes and entries match the manifest's, entries
-#      match cases, no errors, and the manifest's version is <version>.
+#      match cases, no errors, and the manifest's version is <version>. The build's
+#      report.json has to agree: its version, volumes and entries match the
+#      manifest's, and it lists no failed volumes.
 #   2. Uploads the build to s3://stare-pub-idx/v/<version>/ with
-#      Cache-Control: public, max-age=31536000, immutable; the build's manifest.json
-#      goes last, so its presence means the upload is complete. A version already in
-#      v/ is never uploaded again; its manifest has to match the local build's.
-#   3. Saves the current root manifest.json to codexpublicus-index:/published/, then
-#      writes the root manifest.json last: the build's manifest plus
-#      "base": "v/<version>/", with Cache-Control: public, max-age=60.
-#   4. Points codexpublicus-index:/current at builds/<version>.
+#      Cache-Control: public, max-age=31536000, immutable; report.json goes just
+#      before the build's manifest.json, which goes last, so its presence means the
+#      upload is complete. batch-index.json, build.json and build.log stay on the
+#      volume. A version already in v/ is never uploaded again; its manifest has to
+#      match the local build's.
+#   3. Adds the build's entry to reports/index.json ({version, generated_at, report,
+#      totals}, oldest first; schemas/reports-index.v1.schema.json), replacing an
+#      entry for the same version, with Cache-Control: public, max-age=60. The
+#      stare.pub /data page charts it.
+#   4. Saves the current root manifest.json and reports/index.json to
+#      codexpublicus-index:/published/, then writes the root manifest.json last: the
+#      build's manifest plus "base": "v/<version>/", with
+#      Cache-Control: public, max-age=60.
+#   5. Points codexpublicus-index:/current at builds/<version>.
 #
 # Rolling back is publishing an earlier version that's still in v/: the files are
-# already there, so only the root manifest.json (and current, if that build is still
-# on the volume) changes. Clients pick it up within the root manifest's max-age.
+# already there, so only reports/index.json, the root manifest.json (and current, if
+# that build is still on the volume) change. Clients pick it up within the root
+# manifest's max-age. A build made before index builds wrote reports has no
+# report.json; it's published without one and left out of reports/index.json.
 #
 # Uses the R2 keys from this repo's mise env (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
 # AWS_ENDPOINT_URL_S3) through the peakcom/s5cmd container.
@@ -81,6 +92,24 @@ if ! $remote; then
   indexed="${BASH_REMATCH[1]}" errors="${BASH_REMATCH[2]}" cases="${BASH_REMATCH[3]}" entries="${BASH_REMATCH[4]}"
   read -r m_version m_volumes m_entries < <(jq -r '[.version, .volumes, .entries] | @tsv' "$work/manifest.json")
   problems=()
+  if jq -e 'has("build_report_exit")' "$work/build.json" >/dev/null; then
+    jq -e '.build_report_exit == 0' "$work/build.json" >/dev/null \
+      || problems+=("build-report didn't finish cleanly")
+    if in_index test -f "$build/report.json"; then
+      in_index cat "$build/report.json" > "$work/report.json"
+      read -r r_format r_version r_volumes r_entries r_failed < <(jq -r \
+        '[.format, .version, .totals.volumes, .totals.entries, .totals.failed] | @tsv' "$work/report.json")
+      [ "$r_format" = 1 ] || problems+=("report.json is format $r_format, not 1")
+      [ "$r_version" = "$version" ] || problems+=("report.json's version is $r_version")
+      [ "$r_volumes" = "$m_volumes" ] || problems+=("report.json has $r_volumes volumes, the manifest $m_volumes")
+      [ "$r_entries" = "$m_entries" ] || problems+=("report.json has $r_entries entries, the manifest $m_entries")
+      [ "$r_failed" = 0 ] || problems+=("report.json lists $r_failed failed volumes")
+    else
+      problems+=("build.json says build-report ran, but there's no report.json")
+    fi
+  else
+    echo "index-publish: builds/$version predates build reports; publishing it without report.json" >&2
+  fi
   [ "$errors" -eq 0 ] || problems+=("batch-index reported $errors errors")
   [ "$cases" -eq "$entries" ] || problems+=("$cases cases but $entries entries")
   [ "$m_version" = "$version" ] || problems+=("the manifest's version is $m_version")
@@ -92,10 +121,15 @@ if ! $remote; then
   fi
   echo "Build $version checks out: $indexed volumes, $entries entries."
 
-  # 2. Upload it, manifest last.
+  # 2. Upload it: the index files, then report.json, then the manifest last.
   s5 cp --cache-control "$immutable" \
     --exclude '*manifest.json' --exclude '*build.json' --exclude '*build.log' \
+    --exclude '*batch-index.json' --exclude '*report.json' \
     "$build/*" "$bucket/v/$version/"
+  if [ -f "$work/report.json" ]; then
+    s5 cp --cache-control "$immutable" --content-type application/json \
+      /work/report.json "$bucket/v/$version/report.json"
+  fi
   s5 cp --cache-control "$immutable" --content-type application/json \
     "$build/manifest.json" "$bucket/v/$version/manifest.json"
 else
@@ -106,14 +140,47 @@ else
     cmp -s "$work/local.json" "$work/remote.json" \
       || { echo "index-publish: $bucket/v/$version/manifest.json differs from builds/$version; builds are immutable" >&2; exit 1; }
   fi
+  if s5 ls "$bucket/v/$version/report.json" >/dev/null 2>&1; then
+    s5 cat "$bucket/v/$version/report.json" > "$work/report.json"
+  else
+    echo "index-publish: $bucket/v/$version/ has no report.json; leaving it out of reports/index.json" >&2
+  fi
 fi
 
-# 3. Save the current root manifest, then point the root at the build.
+# 3. Add the build to reports/index.json. A missing file starts the history; one that
+# can't be read stops the publish rather than writing over the history.
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-if s5 cat "$bucket/manifest.json" > "$work/previous.json" 2>/dev/null; then
+save_published() { # <name>: stdin to codexpublicus-index:/published/<name>
   docker run --rm --network none --user 1000:1000 -i -v "$index_volume:/index" "$image" \
-    bash -c "mkdir -p /index/published && cat > /index/published/manifest-$stamp-before-$version.json" \
-    < "$work/previous.json"
+    bash -c "mkdir -p /index/published && cat > '/index/published/$1'"
+}
+if [ -f "$work/report.json" ]; then
+  if listing="$(s5 ls "$bucket/reports/index.json" 2>&1)"; then
+    s5 cat "$bucket/reports/index.json" > "$work/reports-index.json"
+    jq -e '.format == 1 and (.reports | type == "array")' "$work/reports-index.json" >/dev/null \
+      || { echo "index-publish: $bucket/reports/index.json isn't format 1; not writing over it" >&2; exit 1; }
+    save_published "reports-index-$stamp-before-$version.json" < "$work/reports-index.json"
+  elif grep -q 'no object found' <<<"$listing"; then
+    echo '{"format": 1, "reports": []}' > "$work/reports-index.json"
+  else
+    echo "index-publish: can't read $bucket/reports/index.json: $listing" >&2
+    exit 1
+  fi
+  jq --slurpfile r "$work/report.json" '
+    $r[0] as $report
+    | .reports = ([.reports[] | select(.version != $report.version)]
+        + [{version: $report.version, generated_at: $report.generated_at,
+            report: ("v/" + $report.version + "/report.json"), totals: $report.totals}])
+    | .reports |= sort_by(.generated_at, .version)
+  ' "$work/reports-index.json" > "$work/reports-index.new.json"
+  s5 cp --cache-control "$root_max_age" --content-type application/json \
+    /work/reports-index.new.json "$bucket/reports/index.json"
+  echo "reports/index.json: $(jq '.reports | length' "$work/reports-index.new.json") builds"
+fi
+
+# 4. Save the current root manifest, then point the root at the build.
+if s5 cat "$bucket/manifest.json" > "$work/previous.json" 2>/dev/null; then
+  save_published "manifest-$stamp-before-$version.json" < "$work/previous.json"
   echo "Saved the previous root manifest as published/manifest-$stamp-before-$version.json"
 fi
 s5 cat "$bucket/v/$version/manifest.json" \
@@ -122,7 +189,7 @@ jq -e --arg v "$version" '.format == 2 and .version == $v' "$work/root.json" >/d
 s5 cp --cache-control "$root_max_age" --content-type application/json \
   /work/root.json "$bucket/manifest.json"
 
-# 4. Point current at the build, when it's on the volume.
+# 5. Point current at the build, when it's on the volume.
 if $local_build; then
   in_index bash -c "if [ -e /index/current ] && [ ! -L /index/current ]; then echo 'current is not a symlink; leaving it' >&2; exit 1; fi; ln -sfn 'builds/$version' /index/current"
   echo "current -> builds/$version"
