@@ -72,15 +72,22 @@ for (const path of ['/', '/check']) {
     expect(await response.text()).not.toContain('stare_wasm');
     await wasm;
 
-    const timing = await page.evaluate((wasmPath) => ({
+    // The resource timing entry appears once the whole body is in, after
+    // the response the wait above saw; poll for it and the paint entry.
+    const timing = () => page.evaluate((wasmPath) => ({
       fcp: performance.getEntriesByName('first-contentful-paint')[0]?.startTime,
       wasmStart: performance.getEntriesByType('resource')
         .find((e) => new URL(e.name).pathname === wasmPath)?.startTime,
       load: performance.getEntriesByType('navigation')[0].loadEventEnd,
     }), WASM_PATH);
-    expect(timing.fcp).toBeGreaterThan(0);
-    expect(timing.wasmStart).toBeGreaterThan(timing.fcp);
-    expect(timing.wasmStart).toBeGreaterThanOrEqual(timing.load);
+    await expect.poll(async () => {
+      const t = await timing();
+      return t.fcp !== undefined && t.wasmStart !== undefined;
+    }).toBe(true);
+    const { fcp, wasmStart, load } = await timing();
+    expect(fcp).toBeGreaterThan(0);
+    expect(wasmStart).toBeGreaterThan(fcp);
+    expect(wasmStart).toBeGreaterThanOrEqual(load);
   });
 }
 
