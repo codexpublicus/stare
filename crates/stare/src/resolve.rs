@@ -1,5 +1,8 @@
 //! Core resolve: (reporter_slug, volume, page) → CaseResult
 //!
+//! `volume` is a CAP volume folder (`31`, `138-2`); see [`crate::manifest`] for how a
+//! cited volume number maps onto folders.
+//!
 //! Works against a local filesystem path or remote URL.
 
 use crate::case::{self, CaseJson};
@@ -22,7 +25,7 @@ pub struct CaseResult {
 pub fn resolve_local(
     base_path: &std::path::Path,
     reporter: &str,
-    volume: u32,
+    volume: &str,
     page: u32,
 ) -> Result<CaseResult> {
     let bin_data = read_bin_local(base_path, reporter, volume)?;
@@ -47,7 +50,7 @@ pub fn resolve_remote(
     index_path: &std::path::Path,
     base_url: &str,
     reporter: &str,
-    volume: u32,
+    volume: &str,
     page: u32,
 ) -> Result<CaseResult> {
     let bin_data = read_bin_local(index_path, reporter, volume)?;
@@ -65,13 +68,13 @@ pub fn resolve_remote(
     })
 }
 
-fn read_bin_local(base_path: &std::path::Path, reporter: &str, volume: u32) -> Result<Vec<u8>> {
+fn read_bin_local(base_path: &std::path::Path, reporter: &str, volume: &str) -> Result<Vec<u8>> {
     let bin_path = base_path.join(reporter).join(format!("{}.bin", volume));
     std::fs::read(&bin_path)
         .with_context(|| format!("failed to read index: {}", bin_path.display()))
 }
 
-fn read_zip_local(base_path: &std::path::Path, reporter: &str, volume: u32) -> Result<Vec<u8>> {
+fn read_zip_local(base_path: &std::path::Path, reporter: &str, volume: &str) -> Result<Vec<u8>> {
     let zip_path = base_path.join(reporter).join(format!("{}.zip", volume));
     std::fs::read(&zip_path).with_context(|| format!("failed to read zip: {}", zip_path.display()))
 }
@@ -158,7 +161,7 @@ mod tests {
     #[test]
     fn resolve_known_case() {
         let dir = setup_test_dir();
-        let result = resolve_local(dir.path(), "a2d", 31, 647).unwrap();
+        let result = resolve_local(dir.path(), "a2d", "31", 647).unwrap();
 
         assert_eq!(result.case_file, "0647-01");
         assert_eq!(result.case.name_abbreviation, "D'Elia & Marks Co. v. Lyon");
@@ -169,14 +172,14 @@ mod tests {
     #[test]
     fn resolve_empty_page_returns_error() {
         let dir = setup_test_dir();
-        let result = resolve_local(dir.path(), "a2d", 31, 648);
+        let result = resolve_local(dir.path(), "a2d", "31", 648);
         assert!(result.is_err());
     }
 
     #[test]
     fn resolve_nonexistent_reporter_returns_error() {
         let dir = setup_test_dir();
-        let result = resolve_local(dir.path(), "fake", 31, 647);
+        let result = resolve_local(dir.path(), "fake", "31", 647);
         assert!(result.is_err());
     }
 
@@ -184,7 +187,7 @@ mod tests {
     #[ignore] // requires network access
     fn resolve_remote_from_data_stare_pub() {
         let dir = setup_index_only_dir();
-        let result = resolve_remote(dir.path(), DEFAULT_BASE_URL, "a2d", 31, 647).unwrap();
+        let result = resolve_remote(dir.path(), DEFAULT_BASE_URL, "a2d", "31", 647).unwrap();
 
         assert_eq!(result.case_file, "0647-01");
         assert_eq!(result.case.name_abbreviation, "D'Elia & Marks Co. v. Lyon");

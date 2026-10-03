@@ -2,7 +2,7 @@
 // if the WASM fails to load, detectCitations rejects with a WasmLoadError and
 // callers show an error, not empty or degraded results.
 
-import { indexUrl } from './sources.js';
+import { hasVolume, loadManifest } from './manifest.js';
 import { loadWasm } from './wasm.js';
 
 // External URL generation is now in Rust (stare::cite::external_url)
@@ -43,32 +43,12 @@ export async function detectCitations(text) {
 // Availability checking
 // ---------------------------------------------------------------------------
 
-let manifest = null;
-
-async function loadManifest() {
-  if (manifest) return manifest;
-  try {
-    const resp = await fetch(indexUrl('manifest.json'));
-    if (resp.ok) {
-      manifest = await resp.json();
-    } else {
-      manifest = {};
-    }
-  } catch {
-    manifest = {};
-  }
-  return manifest;
-}
-
 export function guessSlug(reporter) {
   return reporter.toLowerCase().replace(/\./g, '').replace(/\s+/g, '');
 }
 
 export async function checkAvailability(slug, volume) {
-  const m = await loadManifest();
-  const volumes = m[slug];
-  if (!volumes) return false;
-  return volumes.includes(typeof volume === 'number' ? volume : parseInt(volume, 10));
+  return hasVolume(await loadManifest(), slug, volume);
 }
 
 // ---------------------------------------------------------------------------
@@ -294,8 +274,7 @@ export function setupCiteHovers(container, resolveFn) {
       if (!hash || !hash.startsWith('#')) return;
       const parts = hash.slice(1).split('/');
       if (parts.length !== 3) return;
-      const [slug, volStr, pageStr] = parts;
-      const volume = parseInt(volStr, 10);
+      const [slug, volume, pageStr] = parts;
 
       // Suppress browser tooltip while our custom one is showing
       savedTitle = el.getAttribute('title');

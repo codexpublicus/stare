@@ -215,7 +215,8 @@ async function doResolve(reporter, volume, page, seq = null) {
   try {
     const result = await resolve(reporter, volume, page, (msg) => setStatus(msg, false), seq);
     currentResult = result;
-    setHash(reporter, volume, page, result.seq);
+    // The folder the case is in, which can differ from the volume as cited (a3d/138-2).
+    setHash(reporter, result.volume, page, result.seq);
     lastResolvedHash = window.location.hash;
     showResolved(result);
   } catch (err) {

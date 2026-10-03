@@ -22,7 +22,6 @@
 /// - Requests to the data source (data.stare.pub) are rate-limited per AGENTS.md
 ///   (max 1-2 req/sec). The index source is our own R2 bucket and isn't rate-limited.
 use anyhow::{bail, Context, Result};
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -59,7 +58,8 @@ pub enum Event {
     /// One volume's bin + zip fetch finished (successfully or not).
     Volume {
         reporter: String,
-        volume: u32,
+        /// The CAP volume folder, e.g. `31` or `138-2`.
+        volume: String,
         index: usize,
         total: usize,
         bin: FileStatus,
@@ -117,12 +117,12 @@ impl RateLimiter {
     }
 }
 
-/// Fetch and parse `manifest.json` from the root of the index source.
-/// Format: `{"<reporter-slug>": [<volume>, ...], ...}` (see stare-admin's build-manifest).
+/// Fetch and parse `manifest.json` from the root of the index source, in either the
+/// legacy or the current format (see `stare::manifest`).
 fn fetch_manifest(
     client: &reqwest::blocking::Client,
     index_source: &str,
-) -> Result<BTreeMap<String, Vec<u32>>> {
+) -> Result<stare::manifest::Manifest> {
     let bytes = if stare_cli_is_url(index_source) {
         let url = format!("{}/manifest.json", index_source);
         let resp = client
@@ -139,7 +139,7 @@ fn fetch_manifest(
         let path = Path::new(index_source).join("manifest.json");
         std::fs::read(&path).with_context(|| format!("manifest not found: {}", path.display()))?
     };
-    serde_json::from_slice(&bytes).context("failed to parse manifest.json")
+    stare::manifest::Manifest::parse(&bytes).context("failed to parse manifest.json")
 }
 
 fn stare_cli_is_url(s: &str) -> bool {
@@ -258,7 +258,7 @@ pub fn run(cfg: &DownloadConfig, mut on_event: impl FnMut(Event)) -> Result<Repo
 
     for reporter in cfg.reporters {
         let slug = reporter.to_lowercase();
-        let volumes = manifest.get(&slug).cloned().unwrap_or_default();
+        let volumes = manifest.volumes(&slug).to_vec();
 
         if volumes.is_empty() {
             report.errors.push(format!(
@@ -317,7 +317,7 @@ pub fn run(cfg: &DownloadConfig, mut on_event: impl FnMut(Event)) -> Result<Repo
 
             on_event(Event::Volume {
                 reporter: slug.clone(),
-                volume: *volume,
+                volume: volume.clone(),
                 index: i + 1,
                 total,
                 bin: bin_status,

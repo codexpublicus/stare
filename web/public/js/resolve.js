@@ -1,5 +1,6 @@
 import { fetchCached, fetchCachedText } from './cache.js';
 import { indexUrl, zipUrl } from './sources.js';
+import { isVolumeKey, loadManifest, volumeCandidates } from './manifest.js';
 import { loadWasm } from './wasm.js';
 
 let wasm = null;
@@ -10,6 +11,9 @@ let wasm = null;
  *   "a2d 31 647"        → slug format (legacy/direct)
  *   "a2d/31/647"        → URL format
  *   "a2d 31 647-02"     → with sequence
+ *   "a3d 138-2 1012"    → naming a CAP volume folder
+ *
+ * `volume` is a string: the number as cited, or a CAP folder name (see manifest.js).
  */
 export async function parseInput(raw) {
   const trimmed = raw.trim();
@@ -30,7 +34,7 @@ export async function parseInput(raw) {
       if (c.harvard_slug && c.volume && c.page) {
         return {
           reporter: c.harvard_slug,
-          volume: parseInt(c.volume, 10),
+          volume: String(parseInt(c.volume, 10)),
           page: parseInt(c.page, 10),
           seq: null,
         };
@@ -46,9 +50,8 @@ export async function parseInput(raw) {
 function parseSlugFormat(raw) {
   const parts = raw.replace(/\//g, ' ').split(/\s+/);
   if (parts.length !== 3) return null;
-  const [reporter, volStr, pageStr] = parts;
-  const volume = parseInt(volStr, 10);
-  if (isNaN(volume)) return null;
+  const [reporter, volume, pageStr] = parts;
+  if (!isVolumeKey(volume)) return null;
 
   const pageMatch = pageStr.match(/^(\d+)(?:-(\d+))?$/);
   if (!pageMatch) return null;
@@ -62,29 +65,48 @@ async function ensureWasm() {
   if (!wasm) wasm = await loadWasm();
 }
 
-export async function resolve(reporter, volume, page, onStatus, seq = null) {
+// A volume folder's .bin, or null if it isn't indexed.
+async function fetchBin(reporter, volume) {
+  try {
+    return await fetchCached('bins', `${reporter}/${volume}.bin`, indexUrl(`${reporter}/${volume}.bin`));
+  } catch (e) {
+    if (e.message.startsWith('NOT_FOUND')) return null;
+    throw new Error(`Couldn't reach the server. Check your connection and try again.`);
+  }
+}
+
+// Find the volume folder with a case at `page` for a citation to `volume`. The folder
+// named as cited is tried first; only on a miss is the manifest asked for the other
+// parts of a volume CAP split over several folders (a3d 138 and 138-2).
+async function locate(reporter, volume, page, onStatus) {
+  onStatus('Fetching index...');
+  const binData = await fetchBin(reporter, volume);
+  onStatus('Looking up page...');
+  let caseFile = binData && wasm.lookup_page(binData, page);
+  if (caseFile) return { volume, binData, caseFile };
+
+  const manifest = await loadManifest();
+  for (const other of volumeCandidates(manifest, reporter, volume, page)) {
+    if (other === volume) continue;
+    const otherBin = await fetchBin(reporter, other);
+    caseFile = otherBin && wasm.lookup_page(otherBin, page);
+    if (caseFile) return { volume: other, binData: otherBin, caseFile };
+  }
+  if (!binData)
+    throw new Error(`This volume hasn't been indexed yet. We're still building the index — check back soon.`);
+  throw new Error(`No case starts at page ${page} in ${reporter} vol. ${volume}.`);
+}
+
+// `volume` is as cited or a folder name; the result's `volume` is the folder the case
+// is in, which the zip, the scans and the page's URL all use.
+export async function resolve(reporter, citedVolume, page, onStatus, seq = null) {
   onStatus('Loading...');
   await ensureWasm();
 
-  const binKey = `${reporter}/${volume}.bin`;
-  onStatus('Fetching index...');
-  let binData;
-  try {
-    binData = await fetchCached('bins', binKey, indexUrl(`${reporter}/${volume}.bin`));
-  } catch (e) {
-    if (e.message.startsWith('NOT_FOUND'))
-      throw new Error(`This volume hasn't been indexed yet. We're still building the index — check back soon.`);
-    throw new Error(`Couldn't reach the server. Check your connection and try again.`);
-  }
+  const { volume, binData, caseFile } = await locate(reporter, String(citedVolume), page, onStatus);
 
   const multiKey = `${reporter}/${volume}.multi`;
   const multiData = await fetchCachedText('multi', multiKey, indexUrl(`${reporter}/${volume}.multi`));
-
-  onStatus('Looking up page...');
-  const caseFile = wasm.lookup_page(binData, page);
-  if (!caseFile) {
-    throw new Error(`No case starts at page ${page} in ${reporter} vol. ${volume}.`);
-  }
 
   let allCases = [caseFile];
   if (multiData) {

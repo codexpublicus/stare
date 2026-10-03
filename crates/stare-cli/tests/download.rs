@@ -390,3 +390,61 @@ fn head_failure_without_cached_file_is_an_error() {
     assert!(!report.errors.is_empty());
     assert!(!cache.path().join("bins/us/3.bin").exists());
 }
+
+#[test]
+fn downloads_split_volume_folders_named_in_a_format_2_manifest() {
+    let mut index_server = mockito::Server::new();
+    let mut data_server = mockito::Server::new();
+
+    let _manifest_mock = index_server
+        .mock("GET", "/manifest.json")
+        .with_status(200)
+        .with_body(
+            r#"{"format": 2, "volumes": 2, "entries": 2,
+                "reporters": {"a3d": ["138", "138-2"]},
+                "parts": {"a3d": {"138": [
+                  {"volume": "138", "first_page": 8, "last_page": 1221},
+                  {"volume": "138-2", "first_page": 2, "last_page": 1263}]}}}"#,
+        )
+        .create();
+
+    let mut mocks = Vec::new();
+    for volume in ["138", "138-2"] {
+        for (server, ext) in [(&mut index_server, "bin"), (&mut data_server, "zip")] {
+            let path = format!("/a3d/{volume}.{ext}");
+            mocks.push(
+                server
+                    .mock("HEAD", path.as_str())
+                    .with_status(200)
+                    .with_header("content-length", "4")
+                    .create(),
+            );
+            mocks.push(
+                server
+                    .mock("GET", path.as_str())
+                    .with_status(200)
+                    .with_body(volume[..1].repeat(4))
+                    .create(),
+            );
+        }
+    }
+
+    let cache = tempfile::tempdir().unwrap();
+    let cfg = DownloadConfig {
+        index_source: &index_server.url(),
+        data_source: &data_server.url(),
+        cache_dir: cache.path(),
+        reporters: &["a3d".to_string()],
+        data_rate_limit: Duration::ZERO,
+    };
+    let mut events = Vec::new();
+    let report = run(&cfg, |e| events.push(e)).unwrap();
+
+    assert!(report.errors.is_empty(), "{:?}", report.errors);
+    assert_eq!(report.bins_downloaded, 2);
+    assert!(cache.path().join("bins/a3d/138-2.bin").exists());
+    assert!(cache.path().join("zips/a3d/138-2.zip").exists());
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, Event::Volume { volume, .. } if volume == "138-2")));
+}

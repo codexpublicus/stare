@@ -114,7 +114,7 @@ fn main() -> Result<()> {
         Commands::Resolve { citation } => {
             let input = citation.join(" ");
             let (reporter, volume, page) = parse_citation_input(&input)?;
-            let result = resolve_case(&src, &reporter, volume, page)?;
+            let result = resolve_case(&src, &reporter, &volume, page)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&result.case)?);
             } else {
@@ -128,9 +128,10 @@ fn main() -> Result<()> {
                 anyhow::bail!("Usage: stare list <reporter> <volume> (e.g., stare list a2d 31)");
             }
             let reporter = parts[0].to_lowercase();
-            let volume: u32 = parts[1]
-                .parse()
-                .with_context(|| format!("invalid volume: {}", parts[1]))?;
+            let volume = parts[1];
+            if !stare::manifest::is_volume_key(volume) {
+                anyhow::bail!("invalid volume: {}", volume);
+            }
             list_cases(&src, &reporter, volume, json)?;
         }
         Commands::Check { file } => {
@@ -159,14 +160,17 @@ fn main() -> Result<()> {
 ///
 /// Accepts:
 ///   "a2d 31 647"       → slug format
+///   "a3d 138-2 1012"   → slug format naming a CAP volume folder
 ///   "31 A.2d 647"      → natural citation (via citare)
 ///   "410 U.S. 113"     → natural citation
-fn parse_citation_input(input: &str) -> Result<(String, u32, u32)> {
+///
+/// The volume is a string: a cited volume number, or a CAP folder name in slug format.
+fn parse_citation_input(input: &str) -> Result<(String, String, u32)> {
     // Try slug format: "a2d 31 647"
     let parts: Vec<&str> = input.split_whitespace().collect();
-    if parts.len() == 3 {
-        if let (Ok(vol), Ok(page)) = (parts[1].parse::<u32>(), parts[2].parse::<u32>()) {
-            return Ok((parts[0].to_lowercase(), vol, page));
+    if parts.len() == 3 && stare::manifest::is_volume_key(parts[1]) {
+        if let Ok(page) = parts[2].parse::<u32>() {
+            return Ok((parts[0].to_lowercase(), parts[1].to_string(), page));
         }
     }
 
@@ -175,7 +179,7 @@ fn parse_citation_input(input: &str) -> Result<(String, u32, u32)> {
     for c in &detected {
         if let (Some(slug), Some(vol_str), Some(page_str)) = (&c.harvard_slug, &c.volume, &c.page) {
             if let (Ok(vol), Ok(page)) = (vol_str.parse::<u32>(), page_str.parse::<u32>()) {
-                return Ok((slug.clone(), vol, page));
+                return Ok((slug.clone(), vol.to_string(), page));
             }
         }
     }
@@ -190,7 +194,7 @@ fn parse_citation_input(input: &str) -> Result<(String, u32, u32)> {
 // Fetch helpers — check cache first, then source (path or URL)
 // ---------------------------------------------------------------------------
 
-fn fetch_bin(src: &Sources, reporter: &str, volume: u32) -> Result<Vec<u8>> {
+fn fetch_bin(src: &Sources, reporter: &str, volume: &str) -> Result<Vec<u8>> {
     let key = format!("{}/{}.bin", reporter, volume);
 
     // 1. Check cache
@@ -216,7 +220,7 @@ fn fetch_bin(src: &Sources, reporter: &str, volume: u32) -> Result<Vec<u8>> {
     Ok(data)
 }
 
-fn fetch_zip(src: &Sources, reporter: &str, volume: u32) -> Result<Vec<u8>> {
+fn fetch_zip(src: &Sources, reporter: &str, volume: &str) -> Result<Vec<u8>> {
     let key = format!("{}/{}.zip", reporter, volume);
 
     if let Some(data) = config::cache_get("zips", &key) {
@@ -253,19 +257,51 @@ fn fetch_url(url: &str) -> Result<Vec<u8>> {
 // Commands
 // ---------------------------------------------------------------------------
 
+/// Fetch the index manifest from the index source. Never cached: it changes when the
+/// index is rebuilt.
+fn fetch_manifest(src: &Sources) -> Result<stare::manifest::Manifest> {
+    let bytes = if Sources::is_url(&src.index) {
+        fetch_url(&format!("{}/manifest.json", src.index))?
+    } else {
+        let path = PathBuf::from(&src.index).join("manifest.json");
+        std::fs::read(&path).with_context(|| format!("manifest not found: {}", path.display()))?
+    };
+    stare::manifest::Manifest::parse(&bytes)
+}
+
+/// Resolve a citation to `volume` (a cited number or a CAP folder name). The volume's
+/// own folder is tried first; only when the page isn't there is the manifest consulted
+/// for the other parts of a volume CAP split over several folders.
 fn resolve_case(
     src: &Sources,
     reporter: &str,
-    volume: u32,
+    volume: &str,
     page: u32,
 ) -> Result<stare::resolve::CaseResult> {
-    let bin_data = fetch_bin(src, reporter, volume)?;
-    let case_file = stare::index::lookup(&bin_data, page as usize)
-        .with_context(|| format!("no case at page {} in {}/{}", page, reporter, volume))?;
-    let zip_data = fetch_zip(src, reporter, volume)?;
-    let case = stare::case::extract_from_zip(&zip_data, case_file)?;
+    let read = |v: &str| fetch_bin(src, reporter, v);
+    let located = match stare::manifest::locate(&[volume.to_string()], page, read) {
+        Ok(found) => found,
+        Err(direct) => {
+            let Ok(manifest) = fetch_manifest(src) else {
+                return Err(direct.context(format!("{}/{}", reporter, volume)));
+            };
+            let others: Vec<String> = manifest
+                .candidates(reporter, volume, page)
+                .into_iter()
+                .filter(|v| v != volume)
+                .collect();
+            if others.is_empty() {
+                return Err(direct.context(format!("{}/{}", reporter, volume)));
+            }
+            stare::manifest::locate(&others, page, read).with_context(|| {
+                format!("no case at page {} in {} vol. {}", page, reporter, volume)
+            })?
+        }
+    };
+    let zip_data = fetch_zip(src, reporter, &located.volume)?;
+    let case = stare::case::extract_from_zip(&zip_data, &located.case_file)?;
     Ok(stare::resolve::CaseResult {
-        case_file: case_file.to_string(),
+        case_file: located.case_file,
         case,
     })
 }
@@ -295,7 +331,7 @@ fn print_case(result: &stare::resolve::CaseResult) {
     }
 }
 
-fn list_cases(src: &Sources, reporter: &str, volume: u32, json: bool) -> Result<()> {
+fn list_cases(src: &Sources, reporter: &str, volume: &str, json: bool) -> Result<()> {
     let zip_data = fetch_zip(src, reporter, volume)?;
     let metadata = stare::case::extract_cases_metadata(&zip_data)?;
 
@@ -349,7 +385,7 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             .unwrap_or(0);
         // A blank page (`1 U.S. ___`) has `page: None` and nothing to look up.
         let resolvable = if !slug.is_empty() && volume > 0 && c.page.is_some() {
-            fetch_bin(src, &slug, volume).is_ok()
+            fetch_bin(src, &slug, &volume.to_string()).is_ok()
         } else {
             false
         };
