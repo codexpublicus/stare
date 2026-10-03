@@ -1,7 +1,15 @@
 /* web/src/styles/theme.css */
+@import './fonts.css';
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
+  /* Self-hosted faces (fonts.css, #102); the system fonts after each are for
+     the moment before it loads and for characters it lacks. */
+  --font-text: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-ui: 'Source Sans 3', -apple-system, system-ui, 'Segoe UI', sans-serif;
+  --font-mono: 'Source Code Pro', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
   --bg: #f8f7f4; --bg-alt: #f0efec; --bg-surface: #e8e7e3;
   --text: #1a1a1a; --text-body: #333; --text-secondary: #6b6b6b; --text-tertiary: #999;
   --border: #ddd; --border-light: #e5e4e0;
@@ -38,7 +46,20 @@
 }
 
 body {
-  font-family: -apple-system, system-ui, 'Segoe UI', sans-serif;
+  font-family: var(--font-ui);
   background: var(--bg); color: var(--text);
   transition: background 0.2s, color 0.2s;
+}
+
+/* Form controls take the system font unless told otherwise. */
+button, input, textarea, select { font-family: inherit; }
+
+
+/* Citations and counts: lining, tabular figures, so volume and page numbers
+   line up and don't take the serif's old-style forms. */
+.topbar-cite, .topbar-cite-input, .landing-form input, .landing-example,
+.landing-feature-text strong, .site-footer-build, .sidebar, .page-marker,
+.cite-badge, .cite-link, .cite-unresolved, .cite-lookup, .cite-tooltip,
+.check-status, .check-summary, .check-cite-panel {
+  font-variant-numeric: lining-nums tabular-nums;
 }
