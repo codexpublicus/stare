@@ -205,10 +205,12 @@ impl Manifest {
     }
 }
 
-/// Where a citation landed: the volume folder and the case file at the page.
+/// Where a citation landed: the volume folder and the page's `.bin` entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Located {
     pub volume: String,
+    /// The first case at the page, or [`crate::index::LONG_NAME`] when the page's cases
+    /// are all in the folder's `.multi` file.
     pub case_file: String,
 }
 

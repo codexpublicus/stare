@@ -152,6 +152,8 @@ Some pages have multiple cases (e.g., page 657 has `0647-01` and `0657-02`). Fre
 
 For citation validation (primary use case), `-01` is almost always correct. The `.multi` file is only needed for exhaustive results.
 
+Two later additions (#95), documented in `crates/stare/src/index.rs`: a page whose first case's file name is longer than the 7 bytes an entry holds (`1107½-01`, `[106]-01`) has `*` in the `.bin` and all its cases in the `.multi`; and a case whose first page isn't a number (front matter like `xxix`, `Supp. 1`) is a `.multi` line with that label in place of the page number, which readers that only parse numbers skip. `stare-admin` fails a volume whose index doesn't hold every case in its zip exactly once.
+
 ## Text Access
 
 ### From the zip files
