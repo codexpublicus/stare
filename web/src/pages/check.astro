@@ -1,5 +1,6 @@
 ---
 import SiteFooter from '../components/SiteFooter.astro';
+import { casesLabel } from '../lib/collection.js';
 import '../styles/theme.css';
 import '../styles/layout.css';
 import '../styles/reader.css';
@@ -13,7 +14,7 @@ import '../styles/reader.css';
 		<title>Check Citations — stare.pub</title>
 		<meta name="description" content="Paste a legal brief and check all citations against the Harvard Caselaw Access Project corpus." />
 		<meta property="og:title" content="Check Citations — §tare.pub" />
-		<meta property="og:description" content="Paste a legal brief and check all citations against 6.7 million cases from the Harvard Caselaw Access Project." />
+		<meta property="og:description" content={`Paste a legal brief and check all citations against ${casesLabel} from the Harvard Caselaw Access Project.`} />
 		<meta property="og:type" content="website" />
 		<meta property="og:url" content="https://stare.pub/check" />
 		<meta property="og:image" content="https://stare.pub/og-image.png" />

@@ -4,6 +4,8 @@
 // step 5), plus /check exercising citare through the WASM.
 import { test as base, expect } from '@playwright/test';
 
+import { casesLabel, yearRange } from '../src/lib/collection.js';
+
 const WASM_PATH = '/wasm/stare_wasm_bg.wasm';
 
 // Every test fails on a console error or warning, or an uncaught exception.
@@ -38,6 +40,12 @@ test('/ returns 200 with the title and security headers', async ({ page }) => {
   const headers = response.headers();
   expect(headers['x-content-type-options']).toBe('nosniff');
   expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
+});
+
+test('/ gives the collection figures from web/src/data/collection.json', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#collection-cases')).toHaveText(casesLabel);
+  await expect(page.locator('#collection-cases + span')).toContainText(yearRange);
 });
 
 test('the WASM is served as application/wasm', async ({ request }) => {

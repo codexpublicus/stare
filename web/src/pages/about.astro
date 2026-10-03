@@ -1,6 +1,7 @@
 ---
 import SiteFooter from '../components/SiteFooter.astro';
 import { parseChangelog } from '../lib/changelog.js';
+import { collection, casesLabel, formatCount } from '../lib/collection.js';
 import changelog from '../../../CHANGELOG.md?raw';
 import '../styles/theme.css';
 import '../styles/layout.css';
@@ -15,9 +16,9 @@ const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<title>About · stare.pub</title>
 		<link rel="alternate" type="application/atom+xml" title="stare.pub updates" href="/updates.xml" />
-		<meta name="description" content="stare.pub resolves U.S. case citations to full text and original scans, from the Codex Publicus copy of the Caselaw Access Project: 6.9 million cases." />
+		<meta name="description" content={`stare.pub resolves U.S. case citations to full text and original scans, from the Codex Publicus copy of the Caselaw Access Project: ${casesLabel}.`} />
 		<meta property="og:title" content="About §tare.pub" />
-		<meta property="og:description" content="U.S. case citations to full text and original scans: 6.9 million cases from the Caselaw Access Project, preserved by Codex Publicus." />
+		<meta property="og:description" content={`U.S. case citations to full text and original scans: ${casesLabel} from the Caselaw Access Project, preserved by Codex Publicus.`} />
 		<meta property="og:type" content="website" />
 		<meta property="og:url" content="https://stare.pub/about" />
 		<meta property="og:image" content="https://stare.pub/og-image.png" />
@@ -39,7 +40,7 @@ const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
 			<p>Published case law is the law. Reading it shouldn't depend on a subscription, or on any one institution's continued goodwill and funding.</p>
 
 			<h2>The data</h2>
-			<p>The cases come from the <a href="https://case.law/" target="_blank" rel="noopener">Caselaw Access Project</a> (CAP). Between 2013 and 2018 the Harvard Law School Library scanned its collection of American case reporters: 40,622 volumes holding 6.9 million cases, decided between 1658 and 2020. The case data is public domain.</p>
+			<p>The cases come from the <a href="https://case.law/" target="_blank" rel="noopener">Caselaw Access Project</a> (CAP). Between 2013 and 2018 the Harvard Law School Library scanned its collection of American case reporters: {formatCount(collection.volumes)} volumes holding {casesLabel}, decided between {collection.first_year} and {collection.last_year}. The case data is public domain.</p>
 			<p>Ravel Law paid for the scanning in exchange for a period of exclusive commercial use, which passed to LexisNexis when it bought Ravel in 2017 and ran until March 2024. When it ended, Harvard published the whole corpus as bulk files at <a href="https://static.case.law/" target="_blank" rel="noopener">static.case.law</a>, and on September 1, 2024 it retired the CAP website and its API. The bulk files are still up. Nobody has said for how long.</p>
 			<p>Codex Publicus holds a complete copy of that release, all 10.4 TB of it: the case text, the page scans, the OCR and the metadata. stare.pub reads its case text from that copy.</p>
 
@@ -56,8 +57,8 @@ const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
 			<h2>Where it stands</h2>
 			<p>Done:</p>
 			<ul>
-				<li><strong>The mirror.</strong> All 40,622 volumes of the CAP release are copied, counted and held read-only.</li>
-				<li><strong>The index.</strong> 40,487 volumes are indexed and resolve today.</li>
+				<li><strong>The mirror.</strong> All {formatCount(collection.volumes)} volumes of the CAP release are copied, counted and held read-only.</li>
+				<li><strong>The index.</strong> {formatCount(collection.indexed_volumes)} volumes are indexed and resolve today.</li>
 				<li><strong>Citation detection.</strong> citare, a Rust citation parser I wrote, finds the citations in every case you read and in anything you paste into the brief checker, including plain forms like 31 A.2d 647.</li>
 				<li><strong>Our own case text.</strong> Case data is served from the Codex Publicus copy, not from static.case.law.</li>
 			</ul>
