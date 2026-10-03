@@ -425,13 +425,15 @@ def read(cache: Path, src: Src) -> bytes:
 
 
 def ranges(cps: set[int]) -> str:
-    out, cps = [], sorted(cps)
+    out: list[str] = []
+    ordered = sorted(cps)
     i = 0
-    while i < len(cps):
+    while i < len(ordered):
         j = i
-        while j + 1 < len(cps) and cps[j + 1] == cps[j] + 1:
+        while j + 1 < len(ordered) and ordered[j + 1] == ordered[j] + 1:
             j += 1
-        out.append(f"U+{cps[i]:X}" if i == j else f"U+{cps[i]:X}-{cps[j]:X}")
+        first, last = ordered[i], ordered[j]
+        out.append(f"U+{first:X}" if i == j else f"U+{first:X}-{last:X}")
         i = j + 1
     return ", ".join(out)
 
@@ -448,11 +450,12 @@ def features(font: TTFont) -> set[str]:
 def subset(raw: bytes, face: Face, unicodes: set[int]) -> bytes:
     # Keep the upstream head.modified, so the same inputs give byte-identical files.
     font = TTFont(io.BytesIO(raw), recalcTimestamp=False)
-    opts = Options()
+    # "*" keeps every name record (copyright, license, trademark); fontTools
+    # accepts it through the constructor, as on the pyftsubset command line.
+    opts = Options(name_IDs=["*"])
     opts.layout_features += FEATURES
     opts.hinting = False
     opts.desubroutinize = True
-    opts.name_IDs = ["*"]  # keep the copyright, license and trademark records
     sub = Subsetter(opts)
     sub.populate(unicodes=unicodes)
     sub.subset(font)
@@ -487,7 +490,10 @@ def main() -> None:
         for face in fam.faces:
             raw = read(args.cache, face.src)
             font = TTFont(io.BytesIO(raw))
-            cmap = set(font.getBestCmap())
+            best = font.getBestCmap()
+            if best is None:
+                raise SystemExit(f"{fam.css} {face.name}: no Unicode cmap")
+            cmap = set(best)
             lacking[fam.css, face.name] = [f for f in FEATURES if f not in features(font)]
             missing.setdefault(fam.css, set()).update(set(sample) - cmap)
             for tier, cps in (("core", core & cmap), ("ext", extended & cmap)):
