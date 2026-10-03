@@ -1,16 +1,7 @@
 import { fetchCachedText } from './cache.js';
 import { getPageOrders } from './resolve.js';
 import { tarCsvUrl, tarUrl } from './sources.js';
-
-let wasm = null;
-async function getWasm() {
-  if (!wasm) {
-    const mod = await import('/wasm/stare_wasm.js');
-    await mod.default();
-    wasm = mod;
-  }
-  return wasm;
-}
+import { loadWasm } from './wasm.js';
 
 /**
  * Parse tar.csv and build sorted indexes of images and ALTO files.
@@ -122,7 +113,7 @@ export async function fetchAltoForPage(reporter, volume, pageOrder) {
   const response = await fetchTarRange(reporter, volume, altoEntry);
   const gzData = new Uint8Array(await response.arrayBuffer());
 
-  const w = await getWasm();
+  const w = await loadWasm();
   const json = w.parse_alto(gzData);
   return JSON.parse(json);
 }

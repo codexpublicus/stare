@@ -24,7 +24,7 @@ describe('detectCitations without the WASM', () => {
     await assert.rejects(detectCitations('See 123 U.S. 456 for details.'), WasmLoadError);
     await assert.rejects(detectCitations('And 78 N.E.2d 90.'), WasmLoadError);
 
-    // The failed load is cached for the page's life: one load, one log.
+    // The failed load is cached until retryWasm(): one load, one log.
     assert.equal(console.error.mock.calls.length, 1);
   });
 
