@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+#MISE description="Build a versioned citation index from the CAP mirror into codexpublicus-index:/builds/<version>/ (operator-run, on ml-01)"
+#USAGE arg "<tag>" help="The stare release tag to build stare-admin from, e.g. v2026.10.04.1"
+#USAGE arg "[version]" help="The index's data version, vYYYY.MM.DD[.N] (default: today's UTC date, vYYYY.MM.DD)"
+set -euo pipefail
+
+# Builds stare-admin from <tag> on this host, then runs batch-index and build-manifest in
+# a throwaway debian:trixie-slim container with no network: the CAP mirror mounted
+# read-only, the output in a new codexpublicus-index:/builds/<version>/. A build is
+# never written over; a second build the same day is vYYYY.MM.DD.1 and so on.
+#
+# The build directory gets the .bin and .multi files, the build's manifest.json (with
+# `version` and `generated_at`, no `base`), build.log, and build.json with the exit
+# status of each step. `mise run index-publish <version>` checks those before uploading.
+
+root="${MISE_PROJECT_ROOT}"
+tag="${usage_tag:?}"
+version="${usage_version:-v$(date -u +%Y.%m.%d)}"
+
+image=debian:trixie-slim
+mirror_volume=codexpublicus-cap-mirror
+index_volume=codexpublicus-index
+
+if ! [[ "$version" =~ ^v[0-9]{4}\.(0[1-9]|1[0-2])\.(0[1-9]|[12][0-9]|3[01])(\.[1-9][0-9]*)?$ ]]; then
+  echo "index-build: $version isn't a data version (vYYYY.MM.DD or vYYYY.MM.DD.N)" >&2
+  exit 2
+fi
+
+in_index() {
+  docker run --rm --network none --user 1000:1000 -v "$index_volume:/index" "$image" "$@"
+}
+
+if in_index test -e "/index/builds/$version"; then
+  echo "index-build: builds/$version already exists; builds are never written over. Use the next .N." >&2
+  exit 1
+fi
+
+# stare-admin from the tag, in a throwaway worktree.
+git -C "$root" fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"
+commit="$(git -C "$root" rev-parse "$tag^{commit}")"
+work="$(mktemp -d "${TMPDIR:-/tmp}/stare-index-build.XXXXXX")"
+cleanup() {
+  git -C "$root" worktree remove --force "$work/src" 2>/dev/null || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
+git -C "$root" worktree add --quiet --detach "$work/src" "$commit"
+cargo build --release --locked -p stare-admin \
+  --manifest-path "$work/src/Cargo.toml" --target-dir "$work/target"
+bin="$work/target/release/stare-admin"
+if ! "$bin" build-manifest --help | grep -q -- '--version'; then
+  echo "index-build: stare-admin at $tag has no build-manifest --version; use a later tag" >&2
+  exit 1
+fi
+
+echo "Building index $version with stare $tag ($commit)"
+docker run --rm --network none --user 1000:1000 \
+  -v "$mirror_volume:/mirror:ro" \
+  -v "$index_volume:/index" \
+  -v "$bin:/usr/local/bin/stare-admin:ro" \
+  -e VERSION="$version" -e TAG="$tag" -e COMMIT="$commit" \
+  "$image" bash -c '
+    set -u -o pipefail
+    out="/index/builds/$VERSION"
+    mkdir -p /index/builds
+    mkdir "$out" || exit 1
+    started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    stare-admin batch-index /mirror/downloads -o "$out" 2>&1 | tee "$out/build.log"
+    batch=${PIPESTATUS[0]}
+    manifest=null
+    if [ "$batch" -eq 0 ]; then
+      stare-admin build-manifest "$out" \
+        --volumes-metadata /mirror/downloads/VolumesMetadata.json \
+        --version "$VERSION" 2>&1 | tee -a "$out/build.log"
+      manifest=${PIPESTATUS[0]}
+    fi
+    printf "{\"version\": \"%s\", \"stare_tag\": \"%s\", \"stare_commit\": \"%s\", \"started_at\": \"%s\", \"finished_at\": \"%s\", \"batch_index_exit\": %s, \"build_manifest_exit\": %s}\n" \
+      "$VERSION" "$TAG" "$COMMIT" "$started" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$batch" "$manifest" \
+      > "$out/build.json"
+    cat "$out/build.json"
+    [ "$batch" -eq 0 ] && [ "$manifest" = 0 ]
+  '
+echo "Built builds/$version. Publish it with: mise run index-publish $version"
