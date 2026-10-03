@@ -40,7 +40,7 @@ function legacyHighlight(escapedText, citationMap) {
     const re = new RegExp(raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
     if (info.externalUrl) {
       result = result.replace(re,
-        `<a class="cite-link cite-external" href="${info.externalUrl}" target="_blank" rel="noopener" title="View on external site">${raw}</a>`);
+        `<a class="cite-link cite-external" href="${info.externalUrl}" target="_blank" rel="noopener noreferrer" title="View on external site">${raw}</a>`);
     } else if (info.resolvable) {
       result = result.replace(re,
         `<a class="cite-link" href="#${info.slug}/${info.volume}/${info.page}" data-slug="${info.slug}" data-volume="${info.volume}" data-page="${info.page}" title="${raw}">${raw}</a>`);
@@ -114,7 +114,7 @@ describe('renderParagraphHtml', () => {
     assert.equal(
       renderParagraphHtml(text, 0, occurrencesIn(text), map),
       `First ${linkFor('123 U.S. 456')}, then ${unresolvedFor('78 N.E.2d 90')}, then ` +
-        '<a class="cite-link cite-external" href="https://example.org/cite?a=1&amp;b=2" target="_blank" rel="noopener" title="View on external site">5 Ext. 6</a>.'
+        '<a class="cite-link cite-external" href="https://example.org/cite?a=1&amp;b=2" target="_blank" rel="noopener noreferrer" title="View on external site">5 Ext. 6</a>.'
     );
   });
 

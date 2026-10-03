@@ -13,7 +13,11 @@ import { loadWasm } from './wasm.js';
 
 /**
  * Detect citations using citare WASM.
- * Returns array of { raw, type, harvard_slug, volume, page, reporter, year, start, end, externalUrl? }
+ * Returns array of { raw, type, harvard_slug, volume, page, reporter, year, start, end, externalUrl, caseLinks }
+ *
+ * `caseLinks` are the Rust `case_links`: `{ source, kind, url }` for places
+ * outside stare.pub that may hold a case citation, offered only when the
+ * index doesn't (see caseLookupLinks).
  *
  * `start`/`end` are Unicode code point offsets into `text`, matching
  * gorsuch-library's page viewer convention, not UTF-16 code units. Convert
@@ -36,6 +40,7 @@ export async function detectCitations(text) {
     start: c.span[0],
     end: c.span[1],
     externalUrl: c.external_url || null,
+    caseLinks: Array.isArray(c.case_links) ? c.case_links : [],
   }));
 }
 
@@ -168,6 +173,32 @@ export function safeExternalUrl(url) {
   return typeof url === 'string' && /^https?:\/\//i.test(url) ? url : null;
 }
 
+// Links that leave stare.pub open in a new tab and send no referrer, so the
+// other site doesn't learn which page or brief the reader came from.
+const OUTBOUND = 'target="_blank" rel="noopener noreferrer"';
+
+/** Display names for the `source` of a case link (Rust `CaseLink`). */
+export const LOOKUP_SOURCES = {
+  courtlistener: 'CourtListener',
+  google_scholar: 'Google Scholar',
+};
+
+/**
+ * The outside links to offer for a citation stare.pub doesn't hold: its
+ * `caseLinks` with a known source and an http(s) URL, in order. Empty when
+ * the citation resolves here or links to a statute's text instead.
+ */
+export function caseLookupLinks(info) {
+  if (!info || info.resolvable || safeExternalUrl(info.externalUrl)) return [];
+  return (info.caseLinks || []).filter(l =>
+    l && Object.hasOwn(LOOKUP_SOURCES, l.source) && safeExternalUrl(l.url));
+}
+
+/** "Not in stare.pub: find on CourtListener", for a case link. */
+export function lookupLabel(link) {
+  return `Not in stare.pub: find on ${LOOKUP_SOURCES[link.source]}`;
+}
+
 /**
  * Markup for one citation occurrence. `inner` is the already formatted
  * citation text; `info` is the citation's entry from processCitations.
@@ -175,7 +206,7 @@ export function safeExternalUrl(url) {
 function citationHtml(raw, inner, info) {
   const externalUrl = safeExternalUrl(info.externalUrl);
   if (externalUrl) {
-    return `<a class="cite-link cite-external" href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener" title="View on external site">${inner}</a>`;
+    return `<a class="cite-link cite-external" href="${escapeHtml(externalUrl)}" ${OUTBOUND} title="View on external site">${inner}</a>`;
   }
   if (info.resolvable) {
     const slug = escapeHtml(info.slug);
@@ -183,7 +214,67 @@ function citationHtml(raw, inner, info) {
     const page = escapeHtml(String(info.page));
     return `<a class="cite-link" href="#${slug}/${volume}/${page}" data-slug="${slug}" data-volume="${volume}" data-page="${page}" title="${escapeHtml(raw)}">${inner}</a>`;
   }
+  const [lookup] = caseLookupLinks(info);
+  if (lookup) {
+    return `<a class="cite-lookup" href="${escapeHtml(lookup.url)}" ${OUTBOUND} title="${escapeHtml(lookupLabel(lookup))}">${inner}</a>`;
+  }
   return `<span class="cite-unresolved" title="Not yet indexed">${inner}</span>`;
+}
+
+/**
+ * Sort citations for a cited-cases list: ones stare.pub holds, then
+ * statutes linked to their text, then cases to look for elsewhere, then
+ * the rest. Stable within each group.
+ */
+export function orderCitedCases(citations) {
+  const rank = (c) => {
+    if (c.resolvable) return 0;
+    if (safeExternalUrl(c.externalUrl)) return 1;
+    if (caseLookupLinks(c).length) return 2;
+    return 3;
+  };
+  return citations
+    .map((c, i) => ({ c, i, r: rank(c) }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map(({ c }) => c);
+}
+
+/**
+ * One entry in a cited-cases list (the case viewer's sidebar and /check).
+ * `caseHref(c)` gives the stare.pub link for a citation it holds; that link
+ * opens in a new tab with `caseRel` (pass '' for none).
+ */
+export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
+  const raw = escapeHtml(c.raw);
+  if (c.resolvable) {
+    const rel = caseRel ? ` rel="${escapeHtml(caseRel)}"` : '';
+    return `<div class="cited-case">
+          <span class="cited-status ok">&#10003;</span>
+          <a class="cited-case-link" href="${escapeHtml(caseHref(c))}" target="_blank"${rel}>${raw}</a>
+        </div>`;
+  }
+  const externalUrl = safeExternalUrl(c.externalUrl);
+  if (externalUrl) {
+    return `<div class="cited-case">
+          <span class="cited-status ext">&#8599;</span>
+          <a class="cited-case-link" href="${escapeHtml(externalUrl)}" ${OUTBOUND}>${raw}</a>
+        </div>`;
+  }
+  const links = caseLookupLinks(c);
+  if (links.length) {
+    const [first, ...rest] = links;
+    const more = rest.map(l =>
+      ` <a class="cited-lookup-link" href="${escapeHtml(l.url)}" ${OUTBOUND}>or ${escapeHtml(LOOKUP_SOURCES[l.source])}</a>`).join('');
+    return `<div class="cited-case cited-case-lookup">
+          <span class="cited-status lookup">&#8599;</span>
+          <span class="cited-case-unresolved">${raw}</span>
+          <span class="cited-lookup"><a class="cited-lookup-link" href="${escapeHtml(first.url)}" ${OUTBOUND}>${escapeHtml(lookupLabel(first))}</a>${more}</span>
+        </div>`;
+  }
+  return `<div class="cited-case">
+          <span class="cited-status no">&#10007;</span>
+          <span class="cited-case-unresolved">${raw}</span>
+        </div>`;
 }
 
 /**
