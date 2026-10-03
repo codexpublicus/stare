@@ -1,0 +1,9 @@
+{
+  "cases": 6920598,
+  "volumes": 40622,
+  "indexed_volumes": 40487,
+  "first_year": 1658,
+  "last_year": 2020,
+  "source": "Counted from the Codex Publicus mirror of static.case.law: one metadata/CasesMetadata.json entry per case (and one json/ file) in each of the 40,622 volume zips listed in VolumesMetadata.json, with decision years from decision_date. indexed_volumes is the count of volumes in idx.stare.pub/manifest.json. See codexpublicus/stare#92.",
+  "as_of": "2026-10-03"
+}
