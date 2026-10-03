@@ -1,11 +1,11 @@
 .topbar { position: sticky; top: 0; z-index: 10; background: var(--topbar-bg); color: var(--topbar-text); padding: 8px 16px; display: flex; align-items: center; gap: 12px; font-size: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
 .topbar-brand { font-weight: 700; letter-spacing: -0.5px; font-size: 15px; }
 .topbar-divider { color: var(--topbar-divider); }
-.topbar-cite { font-family: 'SF Mono', 'Fira Code', monospace; color: var(--topbar-cite); font-size: 13px; }
+.topbar-cite { font-family: var(--font-mono); color: var(--topbar-cite); font-size: 13px; }
 .topbar-editable { cursor: pointer; padding: 2px 6px; border-radius: 3px; transition: background 0.15s; }
 .topbar-editable:hover { background: rgba(255,255,255,0.1); }
 .topbar-cite-input {
-  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px;
+  font-family: var(--font-mono); font-size: 13px;
   background: rgba(255,255,255,0.1); color: var(--topbar-text);
   border: 1px solid rgba(255,255,255,0.2); border-radius: 3px;
   padding: 2px 8px; width: 180px; outline: none;
@@ -50,7 +50,7 @@
 .landing-desc { font-size: 0.9rem; color: var(--text-tertiary); line-height: 1.6; max-width: 440px; margin: 0 auto; }
 .landing-input-hint { font-size: 0.8rem; color: var(--text-tertiary); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px; }
 .landing-form { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
-.landing-form input { padding: 12px 16px; border: 2px solid var(--border); border-radius: 8px; font-size: 16px; font-family: 'SF Mono', 'Fira Code', monospace; background: var(--bg); color: var(--text); width: 280px; }
+.landing-form input { padding: 12px 16px; border: 2px solid var(--border); border-radius: 8px; font-size: 16px; font-family: var(--font-mono); background: var(--bg); color: var(--text); width: 280px; }
 .landing-form input:focus { outline: none; border-color: var(--link); }
 .landing-form button { padding: 12px 24px; background: var(--topbar-bg); color: var(--topbar-text); border: none; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer; transition: opacity 0.15s; }
 .landing-form button:hover { opacity: 0.85; }
@@ -58,7 +58,7 @@
 
 .landing-examples { margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-tertiary); }
 .landing-examples-label { margin-right: 0.25rem; }
-.landing-example { color: var(--link); text-decoration: none; margin: 0 0.35rem; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem; }
+.landing-example { color: var(--link); text-decoration: none; margin: 0 0.35rem; font-family: var(--font-mono); font-size: 0.8rem; }
 .landing-example:hover { text-decoration: underline; }
 
 .landing-features { display: flex; gap: 1.5rem; margin-top: 2.5rem; max-width: 580px; width: 100%; justify-content: center; }
@@ -98,7 +98,7 @@
 .site-footer--landing { text-align: center; }
 .site-footer--page { padding-top: 1.5rem; border-top: 1px solid var(--border); }
 .site-footer p, .page .site-footer p { margin: 0; font-size: inherit; line-height: 1.6; color: inherit; }
-.site-footer-build { margin-top: 0.25rem; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.75rem; }
+.site-footer-build { margin-top: 0.25rem; font-family: var(--font-mono); font-size: 0.75rem; }
 .site-footer a, .page .site-footer a { color: var(--text-secondary); text-decoration: none; }
 .site-footer a:hover, .page .site-footer a:hover { color: var(--link); text-decoration: none; }
 .site-footer-sep { color: var(--text-tertiary); margin: 0 0.5rem; }
@@ -108,7 +108,7 @@
 
 /* Shared page layout for About, Check, etc. */
 .page { max-width: 680px; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
-.page h1 { font-family: Georgia, 'Times New Roman', serif; font-size: 1.75rem; font-weight: 600; margin-bottom: 0.5rem; }
+.page h1 { font-family: var(--font-text); font-size: 1.75rem; font-weight: 600; margin-bottom: 0.5rem; }
 .page h2 { font-size: 1.15rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.5rem; }
 .page p { font-size: 0.95rem; line-height: 1.7; color: var(--text-body); margin-bottom: 1rem; }
 .page a { color: var(--link); text-decoration: none; }
