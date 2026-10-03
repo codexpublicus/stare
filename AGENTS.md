@@ -96,6 +96,13 @@ wasm-opt, which made the compressed module larger. Measured 2026-10-03 (gzip -9,
 | #73 release profile, no wasm-opt | 2,769,808 | 877,310 | 606,251 |
 | plus citare without unused regex Unicode tables (citare#46) | 2,538,007 | 815,660 | 582,080 |
 
+The Worker compresses on the fly, less tightly than brotli 11. Bytes on the wire, same day:
+
+| Build | br | zstd | gzip |
+|---|---:|---:|---:|
+| main preview before #73 | 969,934 | 981,923 | 1,048,261 |
+| #73 preview | 783,415 | 790,873 | 875,281 |
+
 About half the module is data: citare's reporter tables, regex templates and edition
 strings generated from reporters-db, and the Unicode tables regex needs. The rest is
 code, most of it the regex engines. opt-level `"z"` everywhere is smaller still (540 KB
