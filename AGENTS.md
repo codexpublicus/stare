@@ -38,7 +38,7 @@ Three interfaces to the same data, all static files:
 ```
 /index/{reporter}/{vol}.bin       — citation lookup (page offset → case file)
 /index/reporters.json             — abbreviation → slug mapping
-/index/manifest.json              — indexed volume folders, split volumes' parts and page ranges (crates/stare/src/manifest.rs)
+/index/manifest.json              — data version, indexed volume folders, split volumes' parts and page ranges (crates/stare/src/manifest.rs)
 /cap/{reporter}/{vol}.zip         — case text JSONs (codex-data bucket, served at data.stare.pub/cap)
 /data/{reporter}/{vol}.tar        — page images + ALTO OCR (range requests via tar.csv)
 /data/{reporter}/{vol}.tar.csv    — tar byte offset manifest
