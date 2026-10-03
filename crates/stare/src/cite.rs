@@ -198,7 +198,7 @@ pub fn external_url(citation: &DetectedCitation) -> Option<String> {
 
     // Michigan: "Mich. Comp. Laws § 750.316", "... Ann. § 600.2912". The
     // site takes lettered sections too (mcl-600-2912a), though citare
-    // v0.4.1 stops "§ 600.2912a" at "600".
+    // v0.5.0 still stops "§ 600.2912a" at "600".
     if let Some(caps) =
         regex!(r"^Mich\.\s*Comp\.\s*Laws(?:\s*Ann\.)?\s*§*\s*(\d+)\.(\d+[a-z]*)").captures(text)
     {
