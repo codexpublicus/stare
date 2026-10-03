@@ -90,6 +90,32 @@ All rendering runs client-side. Server serves only static files.
 - On-demand PDF generation: BentoPDF or printpdf WASM module
 - Page viewer: JPG + ALTO text overlay
 
+### WASM module size (#73)
+
+`web/public/wasm/stare_wasm_bg.wasm` is built by wasm-pack with the release profile in
+`crates/stare-wasm/.cargo/config.toml` (opt-level `"z"`, fat LTO, one codegen unit,
+`strip`; the regex stack, aho-corasick, memchr and citare-core at opt-level 3) and without
+wasm-opt, which made the compressed module larger. Measured 2026-10-03 (gzip -9, brotli 11):
+
+| Build | Raw | gzip | brotli |
+|---|---:|---:|---:|
+| main before #73 (wasm-pack defaults, wasm-opt -O) | 3,008,251 | 1,047,356 | 746,711 |
+| #73 release profile, no wasm-opt | 2,769,808 | 877,310 | 606,251 |
+| plus citare without unused regex Unicode tables (citare#46) | 2,538,007 | 815,660 | 582,080 |
+
+The Worker compresses on the fly, less tightly than brotli 11. Bytes on the wire, same day:
+
+| Build | br | zstd | gzip |
+|---|---:|---:|---:|
+| main preview before #73 | 969,934 | 981,923 | 1,048,261 |
+| #73 preview | 783,415 | 790,873 | 875,281 |
+
+About half the module is data: citare's reporter tables, regex templates and edition
+strings generated from reporters-db, and the Unicode tables regex needs. The rest is
+code, most of it the regex engines. opt-level `"z"` everywhere is smaller still (540 KB
+brotli) but doubles citation detection time; keep the matching engines at 3. Check
+`twiggy top` and the brotli size when adding a dependency to `stare` or `stare-wasm`.
+
 ## Data Source: static.case.law
 
 Plain HTML directory listings served via Cloudflare (not JS-rendered). ~40,622 volumes across hundreds of reporter series.

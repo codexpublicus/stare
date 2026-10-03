@@ -13,3 +13,9 @@ wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
 serde_json = "1"
 js-sys = "0.3"
+
+# wasm-opt (wasm-pack's default -O, and -Oz) shrinks the raw module by about
+# 6% but grows it by 2-3% compressed, and the compressed size is what's
+# served. Measured with binaryen 117 and 132 (#73).
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
