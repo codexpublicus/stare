@@ -79,7 +79,8 @@ async function readBin(slug, volume) {
  * Whether a case starts at `page` in an indexed volume, from the volumes'
  * .bin files (a few KB, cached like the case viewer's). The folder as cited
  * is tried first, then, as resolve.js does, the other parts of a split volume
- * whose page range holds the page (a3d 138 A.3d 1012 is in folder 138-2).
+ * whose page range holds the page (138 A.3d 1012 is in folder a3d/138-2), as
+ * the format 2 manifest lists them.
  * Null when that can't be told (a .bin or the WASM didn't load); callers then
  * treat the citation as resolvable, as they did before pages were checked.
  *
@@ -100,6 +101,12 @@ export async function checkPage(slug, volume, page, deps = {}) {
     let bin = await read(slug, cited);
     if (bin && lookup(bin, p) != null) return true;
     const m = deps.manifest || await loadManifest();
+    // The legacy manifest can't name split volumes, and guessing "<n>-2" here,
+    // as resolve.js does for one citation the reader asked for, would cost a
+    // 404 for every page miss on the page. Until the format 2 manifest is up,
+    // a citation into a second part shows as a held-volume miss, as it did
+    // before #94.
+    if (m.legacy) return false;
     for (const other of volumeCandidates(m, slug, cited, p)) {
       if (tried.includes(other)) continue;
       tried.push(other);

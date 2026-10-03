@@ -43,33 +43,43 @@ const cite = {
   reporter: 'A.3d', externalUrl: null, caseLinks: [],
 };
 
-for (const [name, manifest] of [['format 2', FORMAT_2], ['legacy', LEGACY]]) {
-  describe(`a page in part 2 of a split volume, ${name} manifest`, () => {
-    const deps = { manifest, readBin, lookup };
-    const check = (slug, volume) => checkAvailability(slug, volume, manifest);
-    const pageCheck = (slug, volume, page) => checkPage(slug, volume, page, deps);
+describe('a page in part 2 of a split volume, format 2 manifest', () => {
+  const manifest = FORMAT_2;
+  const deps = { manifest, readBin, lookup };
+  const check = (slug, volume) => checkAvailability(slug, volume, manifest);
+  const pageCheck = (slug, volume, page) => checkPage(slug, volume, page, deps);
 
-    test('the page is found in 138-2', async () => {
-      assert.equal(await pageCheck('a3d', 138, '1012'), true);
-      // Page 8 is in the first part; no page 5000 anywhere.
-      assert.equal(await pageCheck('a3d', 138, '8'), true);
-      assert.equal(await pageCheck('a3d', 138, '5000'), false);
-    });
-
-    test('resolves, and is not a held-volume miss', async () => {
-      const c = await checkCitation(cite, check, pageCheck);
-      assert.equal(c.volumeHeld, true);
-      assert.equal(c.resolvable, true);
-      assert.equal(heldVolumeMiss(c), null);
-    });
-
-    test('a page in neither part is still a held-volume miss', async () => {
-      const c = await checkCitation({ ...cite, raw: '138 A.3d 1013', page: '1013' }, check, pageCheck);
-      assert.equal(c.resolvable, false);
-      assert.equal(heldVolumeMiss(c), 'No case found at this page in A.3d vol. 138');
-    });
+  test('the page is found in 138-2', async () => {
+    assert.equal(await pageCheck('a3d', 138, '1012'), true);
+    // Page 8 is in the first part; no page 5000 anywhere.
+    assert.equal(await pageCheck('a3d', 138, '8'), true);
+    assert.equal(await pageCheck('a3d', 138, '5000'), false);
   });
-}
+
+  test('resolves, and is not a held-volume miss', async () => {
+    const c = await checkCitation(cite, check, pageCheck);
+    assert.equal(c.volumeHeld, true);
+    assert.equal(c.resolvable, true);
+    assert.equal(heldVolumeMiss(c), null);
+  });
+
+  test('a page in neither part is still a held-volume miss', async () => {
+    const c = await checkCitation({ ...cite, raw: '138 A.3d 1013', page: '1013' }, check, pageCheck);
+    assert.equal(c.resolvable, false);
+    assert.equal(heldVolumeMiss(c), 'No case found at this page in A.3d vol. 138');
+  });
+});
+
+test('with the legacy manifest, part 2 is not guessed at, so no 404 per page miss', async () => {
+  const fetched = [];
+  const deps = {
+    manifest: LEGACY,
+    lookup,
+    readBin: async (slug, volume) => { fetched.push(volume); return readBin(slug, volume); },
+  };
+  assert.equal(await checkPage('a3d', 138, '1012', deps), false);
+  assert.deepEqual(fetched, ['138']);
+});
 
 test('a volume held only as split parts counts as held', async () => {
   const m = normalizeManifest({
