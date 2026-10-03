@@ -1,0 +1,38 @@
+# Release profile for the WASM build (codexpublicus/stare#73). wasm-pack runs
+# `cargo build` from this directory, so Cargo reads this file for
+# `mise run build-wasm` and CI's build, and not for workspace builds from the
+# repository root (the native CLI and `cargo test` keep the default profile).
+#
+# opt-level "z" with fat LTO and one codegen unit cuts the brotli-compressed
+# module by about a fifth, but doubles citation detection time. The matching
+# engines (the regex stack, aho-corasick, memchr) and citare-core stay at
+# opt-level 3, which keeps detection as fast as before for most of the saving.
+# Measurements are in AGENTS.md ("WASM module size").
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.release.package.regex]
+opt-level = 3
+
+[profile.release.package.regex-automata]
+opt-level = 3
+
+[profile.release.package.regex-syntax]
+opt-level = 3
+
+[profile.release.package.fancy-regex]
+opt-level = 3
+
+[profile.release.package.aho-corasick]
+opt-level = 3
+
+[profile.release.package.memchr]
+opt-level = 3
+
+[profile.release.package.citare-core]
+opt-level = 3
