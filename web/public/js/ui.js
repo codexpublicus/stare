@@ -123,7 +123,7 @@ function fillCitationStatus(handle, caseData, detectedCitations, citationStatus)
  * @param {Element} el - sidebar container
  * @param {Object} caseData - parsed case JSON
  * @param {string} reporter - reporter slug
- * @param {number} volume - volume number
+ * @param {string} volume - CAP volume folder (e.g. "31", "138-2")
  * @param {Array} allCases - list of case files on this page
  * @param {Array|null} detectedCitations - citation objects from processCitations()
  * @param {'loading'|'error'|'done'|undefined} citationStatus - state of async

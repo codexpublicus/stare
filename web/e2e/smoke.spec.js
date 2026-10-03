@@ -163,3 +163,17 @@ test('/#a2d/31/647-01 resolves through idx.stare.pub and renders the case', asyn
   // The sidebar's citation pass finished without its error state.
   await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ citations? found$/);
 });
+
+test('138 A.3d 1012 resolves into a3d/138-2, the second folder CAP split the volume over', async ({ page }) => {
+  // CAP split 138 A.3d over two folders, a3d/138 and a3d/138-2 (#94). Page 1012 is
+  // only in the second; the resolver tries 138 first, then asks the manifest.
+  await page.goto('/');
+  await page.fill('#landing-input', '138 A.3d 1012');
+  await page.click('#landing-btn');
+
+  await expect(page.locator('#resolved')).toBeVisible();
+  await expect(page.locator('#topbar-case')).toHaveText('Brooks v. Powers');
+  await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
+  // The page's URL names the folder the case is in.
+  await expect(page).toHaveURL(/#a3d\/138-2\/1012-01$/);
+});

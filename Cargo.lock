@@ -1737,6 +1737,7 @@ dependencies = [
  "serde",
  "serde_json",
  "stare",
+ "tempfile",
 ]
 
 [[package]]
