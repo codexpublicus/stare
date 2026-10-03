@@ -2,7 +2,7 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
-## v2026.10.03.1 - 2026-10-03
+## v2026.10.03.2 - 2026-10-03
 
 ### Features
 
@@ -10,6 +10,8 @@ Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed 
 - web: /about rewrite, /updates and feed, no GitHub links, CalVer footer
 - cite: bump citare to v0.4.0
 - link out for missing cases and statutes
+- versioned index layout
+- web: self-host subset web fonts
 
 ### Fixes
 
