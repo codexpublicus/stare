@@ -50,6 +50,26 @@ Three interfaces to the same data, all static files:
 /ducklake/...                     — DuckLake Parquet + catalog
 ```
 
+### Index builds and publishing
+
+Each index build is immutable and versioned with a CalVer data version (`vYYYY.MM.DD`, `.N`
+for a later one the same day). Both steps are operator-run on ml-01 and never automatic:
+
+- `mise run index-build <stare tag> [version]` builds `stare-admin` from the tag and runs
+  `batch-index` and `build-manifest` in a throwaway container (no network, the mirror
+  read-only) into `codexpublicus-index:/builds/<version>/`, with `build.log` and
+  `build.json`.
+- `mise run index-publish <version>` checks the build's exit status and counts, uploads it to
+  `stare-pub-idx/v/<version>/` (`Cache-Control: public, max-age=31536000, immutable`, its
+  manifest last), saves the old root `manifest.json` to `codexpublicus-index:/published/`,
+  writes the root `manifest.json` (the build's plus `base`, `max-age=60`), and points
+  `codexpublicus-index:/current` at the build.
+- Rolling back is `mise run index-publish <earlier version>` for a version still in `v/`: it
+  only rewrites the root manifest. To go back to the pre-versioning root, upload the saved
+  copy from `published/` as `manifest.json`.
+
+Nothing in `v/` is ever overwritten or deleted by these tasks.
+
 ### Storage Split
 
 - **R2**: index, zips, tar.csvs, search index, DuckLake (~$1-8/month)
