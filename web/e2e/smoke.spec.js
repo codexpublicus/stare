@@ -55,8 +55,6 @@ test('the WASM is served as application/wasm', async ({ request }) => {
 test('/check lists the citations citare finds', async ({ page }) => {
   // Citations as citare v0.4.1 reports them, unchanged from v0.2.0 for this
   // text. "Id." is the WASM's alone; the old regex fallback never found it.
-  // The statute is detected (it counts in the summary) but /check lists only
-  // case citations.
   const text = [
     "The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App. 1943),",
     'held that residence is the test. See Barney v. Oelrichs, 138 U.S. 529 (1891).',
@@ -74,15 +72,65 @@ test('/check lists the citations citare finds', async ({ page }) => {
   // Resolvability comes from idx.stare.pub's manifest; a2d/31 and us/138
   // are both indexed.
   await expect(page.locator('#check-summary')).toHaveText('4 citations found (2 resolvable)');
-  // Resolvable citations first, as links to the case viewer; then the rest.
+  // Resolvable citations first, as links to the case viewer; then the
+  // statute, linked to its text; then the rest.
   await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
     '✓ 31 A.2d 647',
     '✓ 138 U.S. 529',
+    '↗ 42 U.S.C. § 1983',
     '✗ Id.',
   ]);
   const links = page.locator('#check-cite-list a.cited-case-link');
   await expect(links.nth(0)).toHaveAttribute('href', '/#a2d/31/647-01');
   await expect(links.nth(1)).toHaveAttribute('href', '/#us/138/529-01');
+  await expect(links.nth(2)).toHaveAttribute('href', 'https://www.law.cornell.edu/uscode/text/42/1983');
+});
+
+test('/check links out only for volumes and statutes stare.pub does not hold', async ({ page }) => {
+  // Axon (2023) is past CAP's last volumes of the U.S. Reports, so the
+  // index can't have it; the Minnesota statute links to the revisor. A.2d
+  // 31 is indexed and its last case starts at page 894, so 31 A.2d 950 is a
+  // miss in a held volume: a neutral note, and no outside link.
+  const text = 'See Axon Enterprise, Inc. v. FTC, 598 U.S. 175 (2023); Minn. Stat. § 609.185; Doe v. Roe, 31 A.2d 950 (1943).';
+
+  // Links only: the page itself must make no request to either site.
+  const outside = [];
+  page.on('request', (req) => {
+    const host = new URL(req.url()).hostname;
+    if (/courtlistener|google|revisor/.test(host)) outside.push(req.url());
+  });
+
+  await page.goto('/check');
+  await page.fill('#check-input', text);
+  await page.click('#check-btn');
+
+  await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
+  await expect(page.locator('#check-summary')).toHaveText('3 citations found (0 resolvable)');
+  await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
+    '↗ Minn. Stat. § 609.185',
+    '↗ 598 U.S. 175 Not in stare.pub: may be at CourtListener or Google Scholar',
+    '✗ 31 A.2d 950 No case found at this page in A.2d vol. 31',
+  ]);
+  await expect(page.locator('#check-cite-list .cited-case', { hasText: '31 A.2d 950' }).locator('a')).toHaveCount(0);
+  await expect(page.locator('#check-rendered .cite-unresolved', { hasText: '31 A.2d 950' }))
+    .toHaveAttribute('title', 'No case found at this page in A.2d vol. 31');
+
+  const statute = page.locator('#check-cite-list a.cited-case-link');
+  await expect(statute).toHaveAttribute('href', 'https://www.revisor.mn.gov/statutes/cite/609.185');
+  await expect(statute).toHaveAttribute('rel', 'noopener noreferrer');
+
+  const courtListener = page.getByRole('link', { name: 'Not in stare.pub: may be at CourtListener' });
+  await expect(courtListener).toHaveAttribute('href', 'https://www.courtlistener.com/c/U.S./598/175/');
+  await expect(courtListener).toHaveAttribute('target', '_blank');
+  await expect(courtListener).toHaveAttribute('rel', 'noopener noreferrer');
+
+  // In the text, the citation itself links out, styled apart from stare.pub's own links.
+  const inline = page.locator('#check-rendered a.cite-lookup');
+  await expect(inline).toHaveText('598 U.S. 175');
+  await expect(inline).toHaveAttribute('href', 'https://www.courtlistener.com/c/U.S./598/175/');
+  await expect(page.locator('#check-rendered a.cite-link', { hasText: '598 U.S. 175' })).toHaveCount(0);
+
+  expect(outside).toEqual([]);
 });
 
 test('/check survives a multibyte character at the case-name scan boundary', async ({ page }) => {
