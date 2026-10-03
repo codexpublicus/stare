@@ -102,6 +102,7 @@ wasm-opt, which made the compressed module larger. Measured 2026-10-03 (gzip -9,
 | main before #73 (wasm-pack defaults, wasm-opt -O) | 3,008,251 | 1,047,356 | 746,711 |
 | #73 release profile, no wasm-opt | 2,769,808 | 877,310 | 606,251 |
 | plus citare without unused regex Unicode tables (citare#46) | 2,538,007 | 815,660 | 582,080 |
+| citare v0.5.0, which ships citare#46 | 2,553,624 | 826,044 | 588,268 |
 
 The Worker compresses on the fly, less tightly than brotli 11. Bytes on the wire, same day:
 

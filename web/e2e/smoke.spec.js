@@ -167,7 +167,7 @@ base('/check reports a failed WASM load and retries it', async ({ page }) => {
 });
 
 test('/check lists the citations citare finds', async ({ page }) => {
-  // Citations as citare v0.4.1 reports them, unchanged from v0.2.0 for this
+  // Citations as citare v0.5.0 reports them, unchanged from v0.2.0 for this
   // text. "Id." is the WASM's alone; the old regex fallback never found it.
   const text = [
     "The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App. 1943),",
