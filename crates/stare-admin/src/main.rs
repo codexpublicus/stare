@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+mod report;
+
 #[derive(Parser)]
 #[command(
     name = "stare-admin",
@@ -44,6 +46,10 @@ enum Commands {
         /// each with its reason
         #[arg(long)]
         allow: Option<PathBuf>,
+        /// Write what indexing each volume found here (JSON), for build-report. Written
+        /// even when volumes fail.
+        #[arg(long)]
+        results: Option<PathBuf>,
     },
     /// Build manifest.json: indexed volumes, split volumes' parts and page ranges, counts
     BuildManifest {
@@ -60,6 +66,38 @@ enum Commands {
         /// release the same day (default: today's UTC date, vYYYY.MM.DD)
         #[arg(long = "version", value_name = "VERSION")]
         data_version: Option<String>,
+    },
+    /// Build report.json for an index build: its identity, totals, per-reporter counts,
+    /// failed and allow-listed volumes, and the changes since a previous report
+    /// (schemas/index-report.v1.schema.json)
+    BuildReport {
+        /// The build directory: the .bin and .multi files and, when build-manifest ran,
+        /// manifest.json
+        build_dir: PathBuf,
+        /// The build's data version, vYYYY.MM.DD[.N]
+        #[arg(long = "version", value_name = "VERSION")]
+        data_version: String,
+        /// What batch-index --results wrote (default: batch-index.json in build_dir)
+        #[arg(long)]
+        results: Option<PathBuf>,
+        /// The previous build's report.json, to report what changed since it
+        #[arg(long)]
+        previous: Option<PathBuf>,
+        /// The stare tag stare-admin was built from
+        #[arg(long)]
+        stare_tag: Option<String>,
+        /// That tag's commit
+        #[arg(long)]
+        stare_commit: Option<String>,
+        /// What identifies the CAP data the build read
+        #[arg(long)]
+        cap_release: Option<String>,
+        /// When the build started, as an RFC 3339 UTC time (2026-10-03T17:04:12Z)
+        #[arg(long)]
+        started_at: Option<String>,
+        /// Output path (default: report.json in build_dir)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -83,9 +121,16 @@ fn main() -> anyhow::Result<()> {
             dir,
             output_dir,
             allow,
+            results,
         } => {
             let allow = load_allowlist(allow.as_deref())?;
-            batch_index(&dir, output_dir.as_deref(), &allow, cli.verbose)?;
+            batch_index(
+                &dir,
+                output_dir.as_deref(),
+                &allow,
+                results.as_deref(),
+                cli.verbose,
+            )?;
         }
         Commands::BuildManifest {
             index_dir,
@@ -98,6 +143,32 @@ fn main() -> anyhow::Result<()> {
                 output.as_deref(),
                 volumes_metadata.as_deref(),
                 data_version.as_deref(),
+            )?;
+        }
+        Commands::BuildReport {
+            build_dir,
+            data_version,
+            results,
+            previous,
+            stare_tag,
+            stare_commit,
+            cap_release,
+            started_at,
+            output,
+        } => {
+            let identity = report::Identity {
+                version: data_version,
+                stare_tag,
+                stare_commit,
+                cap_release,
+                started_at,
+            };
+            build_report(
+                &build_dir,
+                results.as_deref(),
+                previous.as_deref(),
+                &identity,
+                output.as_deref(),
             )?;
         }
     }
@@ -126,7 +197,7 @@ fn volume_key(zip_path: &std::path::Path, root: Option<&std::path::Path>) -> Str
 }
 
 /// What building one volume's index found.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct VolumeReport {
     /// Case JSON files in the zip.
     cases: usize,
@@ -306,6 +377,7 @@ fn batch_index(
     dir: &std::path::Path,
     output_dir: Option<&std::path::Path>,
     allow: &Allowlist,
+    results_path: Option<&std::path::Path>,
     verbose: bool,
 ) -> anyhow::Result<()> {
     let zips: Vec<PathBuf> = walkdir(dir)?
@@ -352,9 +424,15 @@ fn batch_index(
     let mut errors = Vec::new();
     let mut failures = Vec::new();
     let mut allowed = 0;
+    let mut batch = report::BatchResults {
+        format: report::RESULTS_FORMAT,
+        allow: allow.clone(),
+        ..Default::default()
+    };
     for (key, result) in &results {
         match result {
             Ok(report) => {
+                batch.volumes.insert(key.clone(), report.clone());
                 totals.cases += report.cases;
                 totals.entries += report.entries;
                 totals.labeled += report.labeled;
@@ -366,8 +444,15 @@ fn batch_index(
                     }
                 }
             }
-            Err(e) => errors.push(format!("{}: {:#}", key, e)),
+            Err(e) => {
+                batch.errors.insert(key.clone(), format!("{:#}", e));
+                errors.push(format!("{}: {:#}", key, e));
+            }
         }
+    }
+    if let Some(path) = results_path {
+        std::fs::write(path, serde_json::to_string(&batch)? + "\n")
+            .with_context(|| format!("failed to write {}", path.display()))?;
     }
 
     println!(
@@ -605,6 +690,106 @@ fn split_parts(
         }
     }
     parts
+}
+
+/// Write report.json for the build in `build_dir` from batch-index's results, the
+/// build's manifest.json when there is one, and the previous build's report.
+fn build_report(
+    build_dir: &std::path::Path,
+    results: Option<&std::path::Path>,
+    previous: Option<&std::path::Path>,
+    identity: &report::Identity,
+    output: Option<&std::path::Path>,
+) -> anyhow::Result<report::Report> {
+    if !stare::manifest::is_data_version(&identity.version) {
+        anyhow::bail!(
+            "--version {:?} isn't a data version: use vYYYY.MM.DD, or vYYYY.MM.DD.N",
+            identity.version
+        );
+    }
+    let results_path = results
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| build_dir.join("batch-index.json"));
+    let bytes = std::fs::read(&results_path)
+        .with_context(|| format!("failed to read {}", results_path.display()))?;
+    let results: report::BatchResults = serde_json::from_slice(&bytes)
+        .with_context(|| format!("failed to parse {}", results_path.display()))?;
+    if results.format != report::RESULTS_FORMAT {
+        anyhow::bail!(
+            "{} is results format {}; this stare-admin reads {}",
+            results_path.display(),
+            results.format,
+            report::RESULTS_FORMAT
+        );
+    }
+
+    let manifest_path = build_dir.join("manifest.json");
+    let manifest = match std::fs::read(&manifest_path) {
+        Ok(bytes) => Some(
+            stare::manifest::Manifest::parse(&bytes)
+                .with_context(|| format!("failed to parse {}", manifest_path.display()))?,
+        ),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            return Err(e).with_context(|| format!("failed to read {}", manifest_path.display()))
+        }
+    };
+    let previous = match previous {
+        Some(path) => {
+            let bytes = std::fs::read(path)
+                .with_context(|| format!("failed to read {}", path.display()))?;
+            Some(
+                report::Report::parse(&bytes)
+                    .with_context(|| format!("failed to parse {}", path.display()))?,
+            )
+        }
+        None => None,
+    };
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .context("system clock is before 1970")?
+        .as_secs();
+    let report = report::build_report(
+        build_dir,
+        &results,
+        manifest.as_ref(),
+        identity,
+        previous.as_ref(),
+        now,
+    )?;
+
+    let out_path = output
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| build_dir.join("report.json"));
+    std::fs::write(&out_path, report.to_json()?)
+        .with_context(|| format!("failed to write {}", out_path.display()))?;
+
+    let t = &report.totals;
+    println!(
+        "Built report {}: {} reporters, {} volumes, {} cases, {} entries ({} short), {} allow-listed, {} failed → {}",
+        report.version,
+        t.reporters,
+        t.volumes,
+        t.cases,
+        t.entries,
+        t.shortfall,
+        t.allowed,
+        t.failed,
+        out_path.display()
+    );
+    if let Some(d) = &report.diff {
+        println!(
+            "Since {}: {} volumes added, {} removed, {} changed; entries {} → {}",
+            d.previous_version,
+            d.volumes_added.len(),
+            d.volumes_removed.len(),
+            d.volumes_changed.len(),
+            d.totals.entries[0],
+            d.totals.entries[1]
+        );
+    }
+    Ok(report)
 }
 
 /// Simple recursive directory walk returning all file paths.
@@ -884,7 +1069,7 @@ mod tests {
         .unwrap();
         let out = dir.path().join("idx");
 
-        let err = batch_index(&zips, Some(&out), &Allowlist::new(), false).unwrap_err();
+        let err = batch_index(&zips, Some(&out), &Allowlist::new(), None, false).unwrap_err();
         assert!(
             err.to_string().contains("1 failed the index check"),
             "{err}"
@@ -892,7 +1077,139 @@ mod tests {
         assert!(out.join("x/1.bin").exists() && out.join("x/2.bin").exists());
 
         let allow = Allowlist::from([("x/2".to_string(), "known".to_string())]);
-        batch_index(&zips, Some(&out), &allow, false).unwrap();
+        batch_index(&zips, Some(&out), &allow, None, false).unwrap();
+    }
+
+    #[test]
+    fn batch_results_feed_a_report_and_the_next_build_diffs_against_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let zips = dir.path().join("zips");
+        std::fs::create_dir_all(zips.join("x")).unwrap();
+        std::fs::write(zips.join("x/1.zip"), volume_zip(&[("0001-01", Some("1"))])).unwrap();
+        std::fs::write(
+            zips.join("x/2.zip"),
+            volume_zip(&[("0001-01", Some("1")), ("0002-01", None)]),
+        )
+        .unwrap();
+        std::fs::write(zips.join("x/3.zip"), b"not a zip").unwrap();
+
+        // The first build fails: x/2 fails the check and x/3 isn't a zip. The results
+        // are written anyway, and the report records both.
+        let first = dir.path().join("v1");
+        let results = first.join("batch-index.json");
+        assert!(batch_index(
+            &zips,
+            Some(&first),
+            &Allowlist::new(),
+            Some(&results),
+            false
+        )
+        .is_err());
+        let identity = report::Identity {
+            version: "v2026.10.04".into(),
+            started_at: Some("2026-10-04T00:00:00Z".into()),
+            ..Default::default()
+        };
+        let r1 = build_report(&first, None, None, &identity, None).unwrap();
+        assert!(first.join("report.json").exists());
+        assert_eq!(
+            (r1.totals.volumes, r1.totals.failed, r1.totals.allowed),
+            (2, 2, 0)
+        );
+        assert_eq!(r1.totals.split_volumes, None); // no manifest.json
+        let kinds: Vec<_> = r1
+            .failed
+            .iter()
+            .map(|f| (f.volume.as_str(), f.kind))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ("x/2", report::FailureKind::Check),
+                ("x/3", report::FailureKind::Error)
+            ]
+        );
+
+        // The second build allow-lists x/2, drops x/3, and has a manifest.
+        std::fs::remove_file(zips.join("x/3.zip")).unwrap();
+        let allow = Allowlist::from([("x/2".to_string(), "CAP left 0002-01 out".to_string())]);
+        let second = dir.path().join("v2");
+        batch_index(
+            &zips,
+            Some(&second),
+            &allow,
+            Some(&second.join("batch-index.json")),
+            false,
+        )
+        .unwrap();
+        build_manifest(&second, None, None, Some("v2026.10.05")).unwrap();
+        let identity = report::Identity {
+            version: "v2026.10.05".into(),
+            ..Default::default()
+        };
+        let r2 = build_report(
+            &second,
+            None,
+            Some(&first.join("report.json")),
+            &identity,
+            None,
+        )
+        .unwrap();
+        assert_eq!((r2.totals.failed, r2.totals.allowed), (0, 1));
+        assert_eq!(
+            (r2.totals.split_volumes, r2.totals.split_parts),
+            (Some(0), Some(0))
+        );
+        assert_eq!(
+            r2.allowed[0].problems,
+            ["in json/ but not CasesMetadata.json: 0002-01"]
+        );
+        let d = r2.diff.as_ref().unwrap();
+        assert_eq!(d.previous_version, "v2026.10.04");
+        // Same zips, same indexer: nothing changed but the failures.
+        assert!(d.volumes_added.is_empty() && d.volumes_removed.is_empty());
+        assert!(d.volumes_changed.is_empty(), "{:?}", d.volumes_changed);
+
+        // A malformed version is refused before anything is written.
+        let bad = report::Identity {
+            version: "latest".into(),
+            ..Default::default()
+        };
+        let out = dir.path().join("bad.json");
+        assert!(build_report(&second, None, None, &bad, Some(&out)).is_err());
+        assert!(!out.exists());
+    }
+
+    #[test]
+    fn cli_parses_build_report() {
+        use clap::Parser;
+        let cli = Cli::try_parse_from([
+            "stare-admin",
+            "build-report",
+            "/index/builds/v2026.10.04",
+            "--version",
+            "v2026.10.04",
+            "--previous",
+            "/index/current/report.json",
+            "--stare-tag",
+            "v2026.10.04.1",
+            "--started-at",
+            "2026-10-04T00:00:00Z",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::BuildReport {
+                data_version,
+                previous,
+                stare_tag,
+                ..
+            } => {
+                assert_eq!(data_version, "v2026.10.04");
+                assert_eq!(previous, Some(PathBuf::from("/index/current/report.json")));
+                assert_eq!(stare_tag.as_deref(), Some("v2026.10.04.1"));
+            }
+            _ => panic!("not build-report"),
+        }
     }
 
     #[test]
