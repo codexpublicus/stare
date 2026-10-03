@@ -7,6 +7,7 @@ import { test as base, expect } from '@playwright/test';
 import { casesLabel, yearRange } from '../src/lib/collection.js';
 
 const WASM_PATH = '/wasm/stare_wasm_bg.wasm';
+const WASM_SIZE_PATH = '/wasm/stare_wasm_bg.json';
 
 // Every test fails on a console error or warning, or an uncaught exception.
 // `expectedMissing` lists URLs a test expects to 404: Chromium logs every failed
@@ -29,8 +30,9 @@ const test = base.extend({
   },
 });
 
-function isWasm(response) {
-  return new URL(response.url()).pathname === WASM_PATH;
+// A request or response for the WASM module.
+function isWasm(message) {
+  return new URL(message.url()).pathname === WASM_PATH;
 }
 
 async function expectWasmResponse(response) {
@@ -54,8 +56,114 @@ test('/ gives the collection figures from web/src/data/collection.json', async (
   await expect(page.locator('#collection-cases + span')).toContainText(yearRange);
 });
 
-test('the WASM is served as application/wasm', async ({ request }) => {
-  await expectWasmResponse(await request.get(WASM_PATH));
+test('the WASM is served as application/wasm, compressed', async ({ request }) => {
+  const response = await request.get(WASM_PATH, { headers: { 'Accept-Encoding': 'br, gzip' } });
+  await expectWasmResponse(response);
+  expect(['br', 'gzip']).toContain(response.headers()['content-encoding']);
+});
+
+test('/wasm/stare_wasm_bg.json gives the WASM module\'s uncompressed size', async ({ request }) => {
+  const size = await request.get(WASM_SIZE_PATH);
+  expect(size.status()).toBe(200);
+  const { bytes } = await size.json();
+  const wasm = await request.get(WASM_PATH);
+  expect((await wasm.body()).length).toBe(bytes);
+});
+
+for (const path of ['/', '/check']) {
+  test(`${path} loads the WASM in the background, after first paint`, async ({ page }) => {
+    const wasm = page.waitForResponse(isWasm);
+    const response = await page.goto(path);
+    // Nothing in the HTML asks for it up front.
+    expect(await response.text()).not.toContain('stare_wasm');
+    await wasm;
+
+    // The resource timing entry appears once the whole body is in, after
+    // the response the wait above saw; poll for it and the paint entry.
+    const timing = () => page.evaluate((wasmPath) => ({
+      fcp: performance.getEntriesByName('first-contentful-paint')[0]?.startTime,
+      wasmStart: performance.getEntriesByType('resource')
+        .find((e) => new URL(e.name).pathname === wasmPath)?.startTime,
+      load: performance.getEntriesByType('navigation')[0].loadEventEnd,
+    }), WASM_PATH);
+    await expect.poll(async () => {
+      const t = await timing();
+      return t.fcp !== undefined && t.wasmStart !== undefined;
+    }).toBe(true);
+    const { fcp, wasmStart, load } = await timing();
+    expect(fcp).toBeGreaterThan(0);
+    expect(wasmStart).toBeGreaterThan(fcp);
+    expect(wasmStart).toBeGreaterThanOrEqual(load);
+  });
+}
+
+test('/about does not load the WASM', async ({ page }) => {
+  const wasm = [];
+  page.on('request', (req) => { if (isWasm(req)) wasm.push(req.url()); });
+  await page.goto('/about', { waitUntil: 'load' });
+  await page.waitForTimeout(4000);
+  expect(wasm).toEqual([]);
+});
+
+// Holds every request for the WASM until release() is called.
+async function holdWasm(page) {
+  let release;
+  const released = new Promise((resolve) => { release = resolve; });
+  await page.route(`**${WASM_PATH}`, async (route) => {
+    await released;
+    await route.continue();
+  });
+  return release;
+}
+
+test('/check shows a loading bar while the WASM loads, then the results', async ({ page }) => {
+  const release = await holdWasm(page);
+  await page.goto('/check');
+  await page.fill('#check-input', 'See Barney v. Oelrichs, 138 U.S. 529 (1891).');
+  await page.click('#check-btn');
+
+  const bar = page.getByRole('progressbar', { name: /^Loading the citation parser/ });
+  await expect(bar).toBeVisible();
+  await expect(bar).toHaveAttribute('aria-valuemax', '100');
+  // The rest of the page still works while it loads.
+  await page.fill('#check-input', 'See Barney v. Oelrichs, 138 U.S. 529 (1891). And more.');
+
+  release();
+  await expect(bar).toHaveCount(0);
+  await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
+  await expect(page.locator('#check-summary')).toHaveText('1 citations found (1 resolvable)');
+});
+
+test('the case view shows a loading bar while the WASM loads, then the case', async ({ page }) => {
+  const release = await holdWasm(page);
+  await page.goto('/#a2d/31/647-01');
+
+  const bar = page.getByRole('progressbar', { name: /^Loading the citation parser/ });
+  await expect(bar).toBeVisible();
+  release();
+  await expect(bar).toHaveCount(0);
+  await expect(page.locator('#topbar-case')).toHaveText("D'Elia & Marks Co. v. Lyon");
+});
+
+// A plain test: the failed loads log console errors on purpose.
+base('/check reports a failed WASM load and retries it', async ({ page }) => {
+  let failing = true;
+  await page.route(`**${WASM_PATH}`, (route) => (failing ? route.abort() : route.continue()));
+  await page.goto('/check');
+  await page.fill('#check-input', 'See Barney v. Oelrichs, 138 U.S. 529 (1891).');
+  await page.click('#check-btn');
+
+  const alert = page.getByRole('alert');
+  await expect(alert).toHaveText("Couldn't load the citation parser. Retry");
+  await expect(page.locator('#check-status')).not.toHaveClass(/check-error/);
+  await expect(page.locator('#check-btn')).toBeEnabled();
+
+  failing = false;
+  await alert.getByRole('button', { name: 'Retry' }).click();
+  await expect(alert).toHaveCount(0);
+  // The retry reruns the check.
+  await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
+  await expect(page.locator('#check-summary')).toHaveText('1 citations found (1 resolvable)');
 });
 
 test('/check lists the citations citare finds', async ({ page }) => {
@@ -67,9 +175,11 @@ test('/check lists the citations citare finds', async ({ page }) => {
     'Id. at 533. See also 42 U.S.C. § 1983.',
   ].join(' ');
 
+  // The page starts loading the WASM in the background once it has painted,
+  // so the response may come before the click.
+  const wasm = page.waitForResponse(isWasm);
   await page.goto('/check');
   await page.fill('#check-input', text);
-  const wasm = page.waitForResponse(isWasm);
   await page.click('#check-btn');
   await expectWasmResponse(await wasm);
 

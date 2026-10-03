@@ -3,6 +3,8 @@ import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } 
 import { getHashParams, setHash, onHashChange } from './router.js';
 import { processCitations, setupCiteHovers } from './citations.js';
 import { renderPageViewer } from './pageviewer.js';
+import { preloadWasm, WasmLoadError } from './wasm.js';
+import { showWasmProgress } from './wasmbar.js';
 
 let currentResult = null;
 
@@ -25,6 +27,8 @@ const sidebarToggle = document.getElementById('sidebar-toggle');
 const tabReader = document.getElementById('tab-reader');
 const tabPages = document.getElementById('tab-pages');
 const pageViewerEl = document.getElementById('page-viewer');
+const landingWasmSlot = document.getElementById('landing-wasm-progress');
+const resolvedWasmSlot = document.getElementById('wasm-progress');
 let pageViewerLoaded = false;
 
 function showLanding() {
@@ -199,6 +203,15 @@ function wireActions(result) {
   }
 }
 
+// Shows the WASM loading bar under whichever status line is showing, if the
+// WASM isn't ready. A WASM failure is reported there, with a Retry button
+// that calls `redo` once the retry succeeds, so callers don't also put it in
+// the status line.
+function showWasmBar(redo) {
+  const isLanding = !landing.classList.contains('hidden');
+  showWasmProgress(isLanding ? landingWasmSlot : resolvedWasmSlot, { onRetryReady: redo });
+}
+
 function setStatus(msg, isError) {
   const isLanding = !landing.classList.contains('hidden');
   const target = isLanding ? landingStatus : statusBar;
@@ -214,6 +227,7 @@ function setStatus(msg, isError) {
 async function doResolve(reporter, volume, page, seq = null) {
   landingBtn.disabled = true;
   setStatus('', false);
+  showWasmBar(() => doResolve(reporter, volume, page, seq));
 
   try {
     const result = await resolve(reporter, volume, page, (msg) => setStatus(msg, false), seq);
@@ -223,12 +237,12 @@ async function doResolve(reporter, volume, page, seq = null) {
     lastResolvedHash = window.location.hash;
     showResolved(result);
   } catch (err) {
-    setStatus(err.message, true);
+    if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
     // Only go to landing if we're not already showing a case
     // (i.e., this was a landing page search, not an inline edit)
     if (landing.classList.contains('hidden') && !currentResult) {
       showLanding();
-      setStatus(err.message, true);
+      if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
     }
   } finally {
     landingBtn.disabled = false;
@@ -238,11 +252,13 @@ async function doResolve(reporter, volume, page, seq = null) {
 // Landing form submit
 landingForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  setStatus('', false);
+  if (landingInput.value.trim()) showWasmBar(() => landingForm.requestSubmit());
   let parsed;
   try {
     parsed = await parseInput(landingInput.value);
   } catch (err) {
-    setStatus(err.message, true);
+    if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
     return;
   }
   if (!parsed) {
@@ -282,11 +298,12 @@ topbarCiteInput.addEventListener('keydown', async (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
     let parsed;
+    showWasmBar(null);
     try {
       parsed = await parseInput(topbarCiteInput.value);
     } catch (err) {
       stopEditing();
-      setStatus(err.message, true);
+      if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
       return;
     }
     if (parsed) {
@@ -385,3 +402,7 @@ if (initial) {
   landingInput.value = `${initial.reporter} ${initial.volume} ${initial.page}`;
   doResolve(initial.reporter, initial.volume, initial.page, initial.seq);
 }
+
+// Fetch and compile the WASM in the background once the page has painted;
+// nothing waits on it until a feature needs it.
+preloadWasm();

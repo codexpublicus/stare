@@ -86,6 +86,7 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 				<button id="check-btn" class="check-btn">Check Citations</button>
 				<span id="check-status" class="check-status" role="status" aria-live="polite"></span>
 			</div>
+			<div id="check-wasm-progress"></div>
 
 			<div id="check-results" class="check-results">
 				<div class="check-text-panel">
@@ -103,6 +104,8 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 
 		<script is:inline type="module">
 			import { detectCitations, checkCitation, escapeHtml, renderTextHtml, citedCaseHtml, orderCitedCases } from '/js/citations.js';
+			import { preloadWasm, WasmLoadError } from '/js/wasm.js';
+			import { showWasmProgress } from '/js/wasmbar.js';
 
 			const input = document.getElementById('check-input');
 			const btn = document.getElementById('check-btn');
@@ -120,6 +123,9 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 				status.classList.remove('check-error');
 				status.textContent = 'Scanning for citations...';
 				results.classList.remove('visible');
+				// The loading bar, if the WASM isn't ready; it reports a load
+				// failure itself, with a Retry button that reruns the check.
+				showWasmProgress(document.getElementById('check-wasm-progress'), { onRetryReady: () => btn.click() });
 
 				try {
 					const citations = await detectCitations(text);
@@ -169,16 +175,25 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 					results.classList.add('visible');
 					status.textContent = '';
 				} catch (e) {
-					// No partial results: a WASM load failure (WasmLoadError) or
-					// any other error leaves the results hidden and says so.
-					console.error('Citation check failed:', e);
+					// No partial results: a WASM load failure (WasmLoadError,
+					// shown by the loading bar) or any other error leaves the
+					// results hidden and says so.
 					results.classList.remove('visible');
-					status.classList.add('check-error');
-					status.textContent = 'Error: ' + e.message;
+					if (e instanceof WasmLoadError) {
+						status.textContent = '';
+					} else {
+						console.error('Citation check failed:', e);
+						status.classList.add('check-error');
+						status.textContent = 'Error: ' + e.message;
+					}
 				} finally {
 					btn.disabled = false;
 				}
 			});
+
+			// Fetch and compile the WASM in the background once the page has
+			// painted; the check button waits on it only if it isn't ready.
+			preloadWasm();
 		</script>
 		<script is:inline>
 			(function() {
