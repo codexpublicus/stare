@@ -77,7 +77,7 @@ describe('renderSidebar external citations', () => {
   test('links an https external citation', () => {
     const el = new FakeElement();
     renderSidebar(el, caseData, 'a2d', 1, [], [external('56 Stat. 195', 'https://example.org/s?a=1&b=2')]);
-    assert.match(el.innerHTML, /<a class="cited-case-link" href="https:\/\/example.org\/s\?a=1&amp;b=2" target="_blank" rel="noopener">56 Stat. 195<\/a>/);
+    assert.match(el.innerHTML, /<a class="cited-case-link" href="https:\/\/example.org\/s\?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">56 Stat. 195<\/a>/);
   });
 
   test('does not link a javascript: external citation', () => {
@@ -85,6 +85,20 @@ describe('renderSidebar external citations', () => {
     renderSidebar(el, caseData, 'a2d', 1, [], [external('5 Ext. 6', 'javascript:alert(1)')]);
     assert.doesNotMatch(el.innerHTML, /javascript:/);
     assert.match(el.innerHTML, /<span class="cited-status no">&#10007;<\/span>\s*<span class="cited-case-unresolved">5 Ext. 6<\/span>/);
+  });
+
+  test('links a case it does not hold to CourtListener, after held cases and statutes', () => {
+    const el = new FakeElement();
+    const notHeld = {
+      raw: '598 U.S. 175', resolvable: false, slug: 'us', volume: 598, page: '175', externalUrl: null,
+      caseLinks: [{ source: 'courtlistener', kind: 'full_text', url: 'https://www.courtlistener.com/c/U.S./598/175/' }],
+    };
+    const held = { raw: '1 A.2d 2', resolvable: true, slug: 'a2d', volume: 1, page: 2, externalUrl: null, caseLinks: [] };
+    renderSidebar(el, caseData, 'a2d', 1, [], [notHeld, external('56 Stat. 195', 'https://example.org/s'), held], 'done');
+    assert.match(el.innerHTML,
+      /<a class="cited-lookup-link" href="https:\/\/www.courtlistener.com\/c\/U.S.\/598\/175\/" target="_blank" rel="noopener noreferrer">Not in stare.pub: may be at CourtListener<\/a>/);
+    const order = [...el.innerHTML.matchAll(/>(1 A\.2d 2|56 Stat\. 195|598 U\.S\. 175)</g)].map(m => m[1]);
+    assert.deepEqual(order, ['1 A.2d 2', '56 Stat. 195', '598 U.S. 175']);
   });
 });
 

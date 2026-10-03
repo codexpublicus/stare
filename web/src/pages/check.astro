@@ -73,7 +73,7 @@ import '../styles/reader.css';
 		<div class="check-container">
 			<div class="check-header">
 				<h1>Check Citations</h1>
-				<p>Paste a legal brief or any text containing case citations. We'll identify each citation and check whether we can resolve it to the full case text.</p>
+				<p>Paste a legal brief or any text containing case citations. We'll identify each citation and check whether we can resolve it to the full case text. A case from a volume we don't hold links to CourtListener and Google Scholar, where it may be, and a statute or regulation links to its text where it's published.</p>
 			</div>
 
 			<div class="check-input-area">
@@ -102,7 +102,7 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 		</div>
 
 		<script is:inline type="module">
-			import { detectCitations, guessSlug, checkAvailability, escapeHtml, renderTextHtml } from '/js/citations.js';
+			import { detectCitations, checkCitation, escapeHtml, renderTextHtml, citedCaseHtml, orderCitedCases } from '/js/citations.js';
 
 			const input = document.getElementById('check-input');
 			const btn = document.getElementById('check-btn');
@@ -111,12 +111,6 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 			const rendered = document.getElementById('check-rendered');
 			const citeList = document.getElementById('check-cite-list');
 			const summary = document.getElementById('check-summary');
-
-			function esc(str) {
-				const el = document.createElement('span');
-				el.textContent = str;
-				return el.innerHTML;
-			}
 
 			btn.addEventListener('click', async () => {
 				const text = input.value.trim();
@@ -145,28 +139,11 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 						return true;
 					});
 
-					// Check availability
-					const checked = await Promise.all(unique.map(async (c) => {
-						if (c.externalUrl) {
-							return { ...c, slug: null, resolvable: false };
-						}
-						// A blank page (`1 U.S. ___`) arrives as page: null; there
-						// is nothing to link to, whether or not the volume is indexed.
-						if (!c.page) {
-							return { ...c, slug: null, resolvable: false };
-						}
-						if (c.harvard_slug && c.volume) {
-							const available = await checkAvailability(c.harvard_slug, c.volume);
-							return { ...c, slug: c.harvard_slug, resolvable: available };
-						}
-						const slug = guessSlug(c.reporter || '');
-						const available = c.volume ? await checkAvailability(slug, c.volume) : false;
-						return { ...c, slug: available ? slug : null, resolvable: available };
-					}));
+					// Check availability: the volume in the manifest, then the
+					// page in the volume's index.
+					const checked = await Promise.all(unique.map(c => checkCitation(c)));
 
 					const resolvable = checked.filter(c => c.resolvable);
-					const external = checked.filter(c => c.externalUrl);
-					const unresolvable = checked.filter(c => !c.resolvable && !c.externalUrl);
 
 					// Build citation map for highlighting
 					const citationMap = new Map();
@@ -182,23 +159,11 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 					// Render cite list
 					summary.textContent = `${checked.length} citations found (${resolvable.length} resolvable)`;
 
-					let listHtml = '';
-					if (resolvable.length > 0) {
-						listHtml += resolvable.map(c =>
-							`<div class="cited-case">
-								<span class="cited-status ok">&#10003;</span>
-								<a class="cited-case-link" href="/#${c.slug}/${c.volume}/${c.page}-01" target="_blank">${esc(c.raw)}</a>
-							</div>`
-						).join('');
-					}
-					if (unresolvable.length > 0) {
-						listHtml += unresolvable.map(c =>
-							`<div class="cited-case">
-								<span class="cited-status no">&#10007;</span>
-								<span class="cited-case-unresolved">${esc(c.raw)}</span>
-							</div>`
-						).join('');
-					}
+					// Held here, then statutes linked to their text, then cases
+					// to look for elsewhere (CourtListener, Google Scholar), then
+					// the rest.
+					const caseHref = (c) => `/#${c.slug}/${c.volume}/${c.page}-01`;
+					const listHtml = orderCitedCases(checked).map(c => citedCaseHtml(c, caseHref, '')).join('');
 					citeList.innerHTML = listHtml;
 
 					results.classList.add('visible');
