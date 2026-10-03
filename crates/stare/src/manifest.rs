@@ -13,6 +13,7 @@
 //!   "format": 2,
 //!   "version": "v2026.10.03",
 //!   "generated_at": "2026-10-03T17:04:12Z",
+//!   "base": "v/v2026.10.03/",
 //!   "volumes": 40622,
 //!   "entries": 6920598,
 //!   "reporters": { "a3d": ["1", "2", "138", "138-2"] },
@@ -30,7 +31,15 @@
 //! `version` is the index's CalVer data version (`vYYYY.MM.DD`, with `.N` for a second
 //! release the same day) and `generated_at` is when the manifest was built (RFC 3339,
 //! UTC). Both are optional to readers: manifests written before them have neither. The
-//! site clears its cached `.bin` and `.multi` files when `version` changes.
+//! site and the CLI cache index files under their versioned paths, so a new version is
+//! a new set of cache keys.
+//!
+//! `base` says where this build's index files are, relative to the manifest: a volume's
+//! `.bin` is at `<base><reporter>/<volume>.bin`. Each build is uploaded once under
+//! `v/<version>/` and never changed; the root `manifest.json` is the live build's own
+//! manifest with `base` added, so publishing or rolling back a build is one write. A
+//! manifest without `base` (a build's own, or one from before the versioned layout)
+//! has its files next to it. `stare-admin build-manifest` never writes `base`.
 //!
 //! `parts` lists only volume numbers CAP split over more than one folder, each part with
 //! the range of pages its index covers. The ranges can overlap (a3d's second parts are a
@@ -70,6 +79,9 @@ pub struct Manifest {
     /// (format 2 only; absent from manifests written before them).
     pub version: Option<String>,
     pub generated_at: Option<String>,
+    /// Where the index files are, relative to the manifest (`v/v2026.10.03/`); see
+    /// [`Manifest::index_path`].
+    pub base: Option<String>,
     /// Read from the legacy format, which can't describe split volumes.
     pub legacy: bool,
 }
@@ -81,6 +93,8 @@ struct Format2 {
     version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     generated_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    base: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     volumes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -98,6 +112,24 @@ pub fn is_volume_key(s: &str) -> bool {
     matches!(chars.next(), Some(c) if c.is_ascii_digit())
         && chars.all(|c| c.is_ascii_digit() || c.is_ascii_lowercase() || c == '-')
         && !s.ends_with('-')
+}
+
+/// Whether `s` can be a manifest's `base`: one or more path segments of ASCII letters,
+/// digits, `.`, `_` and `-`, each followed by `/` (`v/v2026.10.03/`). No `.` or `..`
+/// segment, no leading slash and no scheme, so it can't leave the index's origin.
+pub fn is_index_base(s: &str) -> bool {
+    let Some(body) = s.strip_suffix('/') else {
+        return false;
+    };
+    !body.is_empty()
+        && body.split('/').all(|seg| {
+            !seg.is_empty()
+                && seg != "."
+                && seg != ".."
+                && seg
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        })
 }
 
 /// Whether `s` is a CalVer data version: `vYYYY.MM.DD`, or `vYYYY.MM.DD.N` for a later
@@ -192,6 +224,7 @@ impl Manifest {
                 entries: f.entries,
                 version: f.version,
                 generated_at: f.generated_at,
+                base: f.base,
                 legacy: false,
             };
             m.normalize()?;
@@ -220,6 +253,11 @@ impl Manifest {
     }
 
     fn normalize(&mut self) -> Result<()> {
+        if let Some(base) = &self.base {
+            if !is_index_base(base) {
+                bail!("manifest: bad base {:?}", base);
+            }
+        }
         for (reporter, volumes) in &mut self.reporters {
             if let Some(bad) = volumes.iter().find(|v| !is_volume_key(v)) {
                 bail!("manifest: bad volume {:?} under {}", bad, reporter);
@@ -242,12 +280,19 @@ impl Manifest {
             format: FORMAT,
             version: self.version.clone(),
             generated_at: self.generated_at.clone(),
+            base: self.base.clone(),
             volumes: self.volumes,
             entries: self.entries,
             reporters: self.reporters.clone(),
             parts: self.parts.clone(),
         };
         Ok(serde_json::to_string_pretty(&f)?)
+    }
+
+    /// The path of an index file (`a3d/138.bin`) relative to the manifest's location:
+    /// under `base` when the manifest has one, next to the manifest otherwise.
+    pub fn index_path(&self, path: &str) -> String {
+        format!("{}{}", self.base.as_deref().unwrap_or(""), path)
     }
 
     pub fn volumes(&self, reporter: &str) -> &[String] {
@@ -445,6 +490,43 @@ mod tests {
         let raw: serde_json::Value = serde_json::from_str(&a3d().to_json().unwrap()).unwrap();
         assert!(raw.get("version").is_none());
         assert!(raw.get("generated_at").is_none());
+    }
+
+    #[test]
+    fn base_places_index_files() {
+        let mut m = a3d();
+        assert_eq!(m.index_path("a3d/138.bin"), "a3d/138.bin");
+        m.base = Some("v/v2026.10.03/".into());
+        assert_eq!(m.index_path("a3d/138.bin"), "v/v2026.10.03/a3d/138.bin");
+        let again = Manifest::parse(m.to_json().unwrap().as_bytes()).unwrap();
+        assert_eq!(again.base.as_deref(), Some("v/v2026.10.03/"));
+        assert_eq!(again, m);
+    }
+
+    #[test]
+    fn index_bases() {
+        for ok in ["v/v2026.10.03/", "v/v2026.10.03.1/", "builds/x_y-z/"] {
+            assert!(is_index_base(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "/",
+            "v/v2026.10.03",
+            "/v/v2026.10.03/",
+            "v//",
+            "../v/",
+            "v/../../",
+            "./",
+            "https://evil.example/",
+            "v/a b/",
+            "v\\x/",
+        ] {
+            assert!(!is_index_base(bad), "{bad}");
+        }
+        assert!(Manifest::parse(br#"{"format": 2, "base": "../x/", "reporters": {}}"#).is_err());
+        assert!(
+            Manifest::parse(br#"{"format": 2, "base": "v/v2026.10.03/", "reporters": {}}"#).is_ok()
+        );
     }
 
     #[test]

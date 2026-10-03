@@ -36,9 +36,12 @@ Three interfaces to the same data, all static files:
 ### R2 Object Layout
 
 ```
-/index/{reporter}/{vol}.bin       — citation lookup (page offset → case file)
+/index/manifest.json              — the live build's manifest plus `base` (`v/<version>/`), short max-age (crates/stare/src/manifest.rs)
+/index/v/{version}/{reporter}/{vol}.bin    — citation lookup (page offset → case file); immutable
+/index/v/{version}/{reporter}/{vol}.multi  — pages with several cases; immutable
+/index/v/{version}/manifest.json  — the build's own manifest (no `base`)
+/index/{reporter}/{vol}.bin       — the pre-versioning index, for clients that ignore `base`
 /index/reporters.json             — abbreviation → slug mapping
-/index/manifest.json              — data version, indexed volume folders, split volumes' parts and page ranges (crates/stare/src/manifest.rs)
 /cap/{reporter}/{vol}.zip         — case text JSONs (codex-data bucket, served at data.stare.pub/cap)
 /data/{reporter}/{vol}.tar        — page images + ALTO OCR (range requests via tar.csv)
 /data/{reporter}/{vol}.tar.csv    — tar byte offset manifest
