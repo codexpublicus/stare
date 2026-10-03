@@ -3,7 +3,7 @@
 // callers show an error, not empty or degraded results.
 
 import { fetchCached } from './cache.js';
-import { hasVolume, loadManifest, volumeCandidates } from './manifest.js';
+import { hasVolume, indexPath, loadManifest, volumeCandidates } from './manifest.js';
 import { indexUrl } from './sources.js';
 import { loadWasm } from './wasm.js';
 
@@ -66,7 +66,7 @@ export async function checkAvailability(slug, volume, manifest = null) {
 
 // A volume folder's .bin, or null when it isn't indexed (a 404).
 async function readBin(slug, volume) {
-  const key = `${slug}/${volume}.bin`;
+  const key = await indexPath(`${slug}/${volume}.bin`);
   try {
     return await fetchCached('bins', key, indexUrl(key));
   } catch (e) {

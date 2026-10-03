@@ -1,11 +1,22 @@
+// The browser's cache of index and case files, in IndexedDB (an in-memory map where
+// IndexedDB isn't available): `bins` and `multi` hold idx.stare.pub's .bin and .multi
+// files (and the scans' tar.csv), `zips` the case zips.
+//
+// Index files are keyed by their path on idx.stare.pub, which is under the build's
+// versioned prefix (`v/v2026.10.03/a3d/138.bin`) when the manifest has a `base`; see
+// manifest.js. A build's files never change, so a new index version is new keys and
+// nothing cached goes stale. pruneIndexCache drops other versions' files.
+
 const DB_NAME = 'stare-cache';
 const DB_VERSION = 2;
 const STORES = ['bins', 'multi', 'zips'];
+const INDEX_STORES = ['bins', 'multi'];
+const INDEX_FILE = /\.(?:bin|multi)$/;
 
 let memoryCache = {};
 
 function openDB() {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     try {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = () => {
@@ -18,6 +29,61 @@ function openDB() {
       req.onerror = () => resolve(null);
     } catch (e) {
       resolve(null);
+    }
+  });
+}
+
+// Forget the in-memory cache (tests only).
+export function resetMemoryCache() {
+  memoryCache = {};
+}
+
+// Whether a cached index file's key belongs to the build at `base` ('' for the root,
+// where the index lived before the versioned layout). Everything else in the stores,
+// like the scans' tar.csv, isn't an index file and is never pruned.
+export function isStaleIndexKey(key, base) {
+  if (typeof key !== 'string' || !INDEX_FILE.test(key)) return false;
+  return base ? !key.startsWith(base) : key.startsWith('v/');
+}
+
+// Delete cached .bin and .multi files that aren't the build at `base`. Returns how many
+// it deleted. Callers don't wait on it: a stale entry is never read, since its key is
+// not the current build's, so this only frees space.
+export async function pruneIndexCache(base) {
+  const db = await openDB();
+  if (!db) {
+    let n = 0;
+    for (const key of Object.keys(memoryCache)) {
+      const sep = key.indexOf(':');
+      const store = key.slice(0, sep);
+      if (INDEX_STORES.includes(store) && isStaleIndexKey(key.slice(sep + 1), base)) {
+        delete memoryCache[key];
+        n += 1;
+      }
+    }
+    return n;
+  }
+  return new Promise((resolve) => {
+    let n = 0;
+    try {
+      const tx = db.transaction(INDEX_STORES, 'readwrite');
+      for (const name of INDEX_STORES) {
+        const store = tx.objectStore(name);
+        const req = store.getAllKeys();
+        req.onsuccess = () => {
+          for (const key of req.result || []) {
+            if (isStaleIndexKey(key, base)) {
+              store.delete(key);
+              n += 1;
+            }
+          }
+        };
+      }
+      tx.oncomplete = () => resolve(n);
+      tx.onerror = () => resolve(0);
+      tx.onabort = () => resolve(0);
+    } catch {
+      resolve(0);
     }
   });
 }
