@@ -113,8 +113,13 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Resolve { citation } => {
             let input = citation.join(" ");
-            let (reporter, volume, page) = parse_citation_input(&input)?;
-            let result = resolve_case(&src, &reporter, &volume, page)?;
+            let result = match parse_labeled_input(&input) {
+                Some((reporter, volume, label)) => resolve_label(&src, &reporter, &volume, &label)?,
+                None => {
+                    let (reporter, volume, page) = parse_citation_input(&input)?;
+                    resolve_case(&src, &reporter, &volume, page)?
+                }
+            };
             if json {
                 println!("{}", serde_json::to_string_pretty(&result.case)?);
             } else {
@@ -190,6 +195,27 @@ fn parse_citation_input(input: &str) -> Result<(String, String, u32)> {
     )
 }
 
+/// Slug format with a page that isn't a number: "cai-cas 1 xxix", "cal-app-4th 15
+/// Supp. 1". Those pages are front matter or supplements, indexed by label.
+fn parse_labeled_input(input: &str) -> Option<(String, String, String)> {
+    // A natural citation ("31 A.2d 647") fails here on its volume, "A.2d".
+    let mut parts = input.split_whitespace();
+    let reporter = parts.next()?;
+    let volume = parts.next()?;
+    let label = parts.collect::<Vec<_>>().join(" ");
+    let slug = reporter
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-');
+    if !slug
+        || !stare::manifest::is_volume_key(volume)
+        || label.is_empty()
+        || label.starts_with(|c: char| c.is_ascii_digit())
+    {
+        return None;
+    }
+    Some((reporter.to_lowercase(), volume.to_string(), label))
+}
+
 // ---------------------------------------------------------------------------
 // Fetch helpers — check cache first, then source (path or URL)
 // ---------------------------------------------------------------------------
@@ -218,6 +244,40 @@ fn fetch_bin(src: &Sources, reporter: &str, volume: &str) -> Result<Vec<u8>> {
     // Cache for next time
     let _ = config::cache_set("bins", &key, &data);
     Ok(data)
+}
+
+/// A volume's `.multi` file, or None if it has none.
+fn fetch_multi(src: &Sources, reporter: &str, volume: &str) -> Result<Option<String>> {
+    let key = format!("{}/{}.multi", reporter, volume);
+    if let Some(data) = config::cache_get("bins", &key) {
+        return Ok(Some(String::from_utf8(data)?));
+    }
+    let source = &src.index;
+    let data = if Sources::is_url(source) {
+        let url = format!("{}/{}", source, key);
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("stare/0.1.0 (case law tool; github.com/codexpublicus/stare)")
+            .build()?;
+        let response = client
+            .get(&url)
+            .send()
+            .with_context(|| format!("failed to fetch {}", url))?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            bail!("HTTP {} fetching {}", response.status(), url);
+        }
+        response.bytes()?.to_vec()
+    } else {
+        let path = PathBuf::from(source).join(&key);
+        if !path.exists() {
+            return Ok(None);
+        }
+        std::fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?
+    };
+    let _ = config::cache_set("bins", &key, &data);
+    Ok(Some(String::from_utf8(data)?))
 }
 
 fn fetch_zip(src: &Sources, reporter: &str, volume: &str) -> Result<Vec<u8>> {
@@ -298,12 +358,39 @@ fn resolve_case(
             })?
         }
     };
+    let mut case_file = located.case_file;
+    if case_file == stare::index::LONG_NAME {
+        // The page's cases have names too long for the .bin; they're all in the .multi.
+        let multi = fetch_multi(src, reporter, &located.volume)?
+            .with_context(|| format!("{}/{}.multi is missing", reporter, located.volume))?;
+        let multi = stare::index::parse_multi(&multi);
+        let bin = fetch_bin(src, reporter, &located.volume)?;
+        case_file = stare::index::lookup_all(&bin, &multi, page as usize)
+            .first()
+            .with_context(|| format!("no case at page {} in {}", page, located.volume))?
+            .to_string();
+    }
     let zip_data = fetch_zip(src, reporter, &located.volume)?;
-    let case = stare::case::extract_from_zip(&zip_data, &located.case_file)?;
-    Ok(stare::resolve::CaseResult {
-        case_file: located.case_file,
-        case,
-    })
+    let case = stare::case::extract_from_zip(&zip_data, &case_file)?;
+    Ok(stare::resolve::CaseResult { case_file, case })
+}
+
+/// Resolve a case on an unnumbered page (`xxix`, `Supp. 1`) of a volume folder.
+fn resolve_label(
+    src: &Sources,
+    reporter: &str,
+    volume: &str,
+    label: &str,
+) -> Result<stare::resolve::CaseResult> {
+    let multi = fetch_multi(src, reporter, volume)?.unwrap_or_default();
+    let labeled = stare::index::parse_labeled(&multi);
+    let case_file = stare::index::lookup_label(&labeled, label)
+        .first()
+        .with_context(|| format!("no case at page {} in {}/{}", label, reporter, volume))?
+        .to_string();
+    let zip_data = fetch_zip(src, reporter, volume)?;
+    let case = stare::case::extract_from_zip(&zip_data, &case_file)?;
+    Ok(stare::resolve::CaseResult { case_file, case })
 }
 
 fn print_case(result: &stare::resolve::CaseResult) {

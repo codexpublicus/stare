@@ -28,9 +28,8 @@ pub fn resolve_local(
     volume: &str,
     page: u32,
 ) -> Result<CaseResult> {
-    let bin_data = read_bin_local(base_path, reporter, volume)?;
-    let case_file = index::lookup(&bin_data, page as usize)
-        .with_context(|| format!("no case at page {} in {}/{}", page, reporter, volume))?;
+    let case_file = first_case_local(base_path, reporter, volume, page)?;
+    let case_file = case_file.as_str();
 
     let zip_data = read_zip_local(base_path, reporter, volume)?;
     let case = case::extract_from_zip(&zip_data, case_file)
@@ -53,9 +52,8 @@ pub fn resolve_remote(
     volume: &str,
     page: u32,
 ) -> Result<CaseResult> {
-    let bin_data = read_bin_local(index_path, reporter, volume)?;
-    let case_file = index::lookup(&bin_data, page as usize)
-        .with_context(|| format!("no case at page {} in {}/{}", page, reporter, volume))?;
+    let case_file = first_case_local(index_path, reporter, volume, page)?;
+    let case_file = case_file.as_str();
 
     let zip_url = format!("{}/{}/{}.zip", base_url, reporter, volume);
     let zip_data = fetch_url(&zip_url)?;
@@ -66,6 +64,26 @@ pub fn resolve_remote(
         case_file: case_file.to_string(),
         case,
     })
+}
+
+/// The first case at `page` in a local index: the `.bin`'s entry, or for a page whose
+/// cases are all in the `.multi` ([`index::LONG_NAME`]), the first of those.
+fn first_case_local(
+    base_path: &std::path::Path,
+    reporter: &str,
+    volume: &str,
+    page: u32,
+) -> Result<String> {
+    let bin_data = read_bin_local(base_path, reporter, volume)?;
+    let multi_path = base_path.join(reporter).join(format!("{}.multi", volume));
+    let multi = match std::fs::read_to_string(&multi_path) {
+        Ok(text) => index::parse_multi(&text),
+        Err(_) => Vec::new(),
+    };
+    index::lookup_all(&bin_data, &multi, page as usize)
+        .first()
+        .map(|s| s.to_string())
+        .with_context(|| format!("no case at page {} in {}/{}", page, reporter, volume))
 }
 
 fn read_bin_local(base_path: &std::path::Path, reporter: &str, volume: &str) -> Result<Vec<u8>> {

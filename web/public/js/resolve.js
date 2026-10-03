@@ -108,10 +108,16 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
   const multiKey = `${reporter}/${volume}.multi`;
   const multiData = await fetchCachedText('multi', multiKey, indexUrl(`${reporter}/${volume}.multi`));
 
-  let allCases = [caseFile];
+  // The .bin's entry, then any more cases at the page from the .multi. A page whose
+  // first case's name is too long for the .bin has a "*" there, and all its cases in
+  // the .multi (lookup_page_all leaves the "*" out).
+  let allCases = caseFile === '*' ? [] : [caseFile];
   if (multiData) {
     const allJson = wasm.lookup_page_all(binData, multiData, page);
     allCases = JSON.parse(allJson);
+  }
+  if (allCases.length === 0) {
+    throw new Error(`No case starts at page ${page} in ${reporter} vol. ${volume}.`);
   }
 
   const zipKey = `${reporter}/${volume}.zip`;
@@ -123,21 +129,20 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
     throw new Error(`Couldn't reach the server. Check your connection and try again.`);
   }
 
-  // If seq specified, pick that specific case; otherwise default to -01 (first)
-  let activeCaseFile = caseFile;
+  // If seq specified, pick that specific case; otherwise default to -01 (first).
+  // The sequence number is after the file name's last hyphen ("1114-1140-02").
+  const seqOf = (f) => parseInt(f.slice(f.lastIndexOf('-') + 1), 10);
+  let activeCaseFile = allCases[0];
   let activeSeq = 1;
   if (seq !== null && seq > 0) {
-    const target = allCases.find(f => {
-      const s = parseInt(f.split('-')[1], 10);
-      return s === seq;
-    });
+    const target = allCases.find(f => seqOf(f) === seq);
     if (target) {
       activeCaseFile = target;
       activeSeq = seq;
     }
   } else {
     // Default to first case (-01), extract seq from filename
-    activeSeq = parseInt(activeCaseFile.split('-')[1], 10) || 1;
+    activeSeq = seqOf(activeCaseFile) || 1;
   }
 
   onStatus('Extracting case...');

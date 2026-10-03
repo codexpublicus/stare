@@ -1,7 +1,9 @@
 use wasm_bindgen::prelude::*;
 
 /// Look up a case filename from a .bin index given a page number.
-/// Returns the case filename (e.g., "0647-01") or null if no case at that page.
+/// Returns the case filename (e.g., "0647-01"), "*" when the page's cases have names too
+/// long for the .bin and are all in the .multi (use `lookup_page_all`), or null if no
+/// case starts at that page.
 #[wasm_bindgen]
 pub fn lookup_page(bin_data: &[u8], page: u32) -> Option<String> {
     stare::index::lookup(bin_data, page as usize).map(|s| s.to_string())

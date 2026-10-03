@@ -34,16 +34,19 @@ function showLanding() {
   landingInput.focus();
 }
 
+// Case files are "<first page>-<seq>"; the page can itself hold a hyphen
+// ("1114-1140-01") or a bracket ("[106]-01").
 function seqFromFile(caseFile) {
-  return parseInt(caseFile.split('-')[1], 10) || 1;
+  return parseInt(caseFile.slice(caseFile.lastIndexOf('-') + 1), 10) || 1;
 }
 
 function pageFromFile(caseFile) {
-  return parseInt(caseFile.split('-')[0], 10);
+  return parseInt(caseFile.replace(/^\[/, ''), 10);
 }
 
 function updatePrevNext(result, activeCaseFile) {
-  const cases = result.volumeCases || [];
+  // Cases on unnumbered pages (front matter, "Supp. 1") can't be opened by page here.
+  const cases = (result.volumeCases || []).filter((f) => !Number.isNaN(pageFromFile(f)));
   const idx = cases.indexOf(activeCaseFile);
 
   if (idx > 0) {

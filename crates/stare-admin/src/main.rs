@@ -28,6 +28,10 @@ enum Commands {
         /// Output path for the .bin file
         #[arg(short, long)]
         output: Option<PathBuf>,
+        /// JSON object of volumes ("reporter/volume") allowed to fail the index check,
+        /// each with its reason
+        #[arg(long)]
+        allow: Option<PathBuf>,
     },
     /// Build indexes for all zips in a directory
     BatchIndex {
@@ -36,6 +40,10 @@ enum Commands {
         /// Output directory for .bin files (preserves reporter/vol structure)
         #[arg(short, long)]
         output_dir: Option<PathBuf>,
+        /// JSON object of volumes ("reporter/volume") allowed to fail the index check,
+        /// each with its reason
+        #[arg(long)]
+        allow: Option<PathBuf>,
     },
     /// Build manifest.json: indexed volumes, split volumes' parts and page ranges, counts
     BuildManifest {
@@ -55,11 +63,25 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::BuildIndex { zip_path, output } => {
-            build_index(&zip_path, output.as_deref(), cli.verbose)?;
+        Commands::BuildIndex {
+            zip_path,
+            output,
+            allow,
+        } => {
+            let allow = load_allowlist(allow.as_deref())?;
+            let key = volume_key(&zip_path, zip_path.parent().and_then(|p| p.parent()));
+            let report = build_index(&zip_path, output.as_deref(), cli.verbose)?;
+            if let Some(reason) = check_failure(&key, &report, &allow) {
+                anyhow::bail!("{}", reason);
+            }
         }
-        Commands::BatchIndex { dir, output_dir } => {
-            batch_index(&dir, output_dir.as_deref(), cli.verbose)?;
+        Commands::BatchIndex {
+            dir,
+            output_dir,
+            allow,
+        } => {
+            let allow = load_allowlist(allow.as_deref())?;
+            batch_index(&dir, output_dir.as_deref(), &allow, cli.verbose)?;
         }
         Commands::BuildManifest {
             index_dir,
@@ -73,60 +95,170 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Parse a page number from a case filename.
+/// Volumes allowed to fail the index check: `{"reporter/volume": "reason", ...}`.
+type Allowlist = BTreeMap<String, String>;
+
+fn load_allowlist(path: Option<&std::path::Path>) -> anyhow::Result<Allowlist> {
+    let Some(path) = path else {
+        return Ok(Allowlist::new());
+    };
+    let bytes =
+        std::fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_slice(&bytes).with_context(|| format!("failed to parse {}", path.display()))
+}
+
+/// `reporter/volume` for a zip at `<root>/<reporter>/<volume>.zip`.
+fn volume_key(zip_path: &std::path::Path, root: Option<&std::path::Path>) -> String {
+    let rel = root
+        .and_then(|r| zip_path.strip_prefix(r).ok())
+        .unwrap_or(zip_path);
+    rel.with_extension("").to_string_lossy().replace('\\', "/")
+}
+
+/// What building one volume's index found.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct VolumeReport {
+    /// Case JSON files in the zip.
+    cases: usize,
+    /// Index entries written, in the .bin and the .multi.
+    entries: usize,
+    /// Cases on unnumbered pages (roman numeral front matter, supplements).
+    labeled: usize,
+    /// Pages whose first case's name is too long for the .bin.
+    long_names: usize,
+    /// Where the index doesn't account for every case exactly once.
+    problems: Vec<String>,
+}
+
+/// The reason a volume fails the index check, or None if it passes or is allow-listed.
+fn check_failure(key: &str, report: &VolumeReport, allow: &Allowlist) -> Option<String> {
+    if report.problems.is_empty() || allow.contains_key(key) {
+        return None;
+    }
+    Some(format!(
+        "{}: index check failed ({} cases, {} entries): {}",
+        key,
+        report.cases,
+        report.entries,
+        report.problems.join("; ")
+    ))
+}
+
+/// Build one volume's index from its zip's bytes, and check that the index holds every
+/// case in the zip exactly once, each found again by looking up its own page.
 ///
-/// Handles formats:
-///   "0647-01"       → 647
-///   "1265=1275-01"  → 1265 (takes first number before =)
-///   "105, 106-01"   → 105 (takes first number before comma)
-///   "428e-01"       → 428 (strips trailing letter suffix)
-///   "1028A-01"      → 1028 (strips trailing letter suffix)
-///   "LXXXVIII-01"   → None (roman numerals — front matter, skipped for now)
-///   "Supp. 1-01"    → None (supplement pages, skipped for now)
-///   "000?-02"       → None (unknown page, skipped)
-fn parse_case_page(filename: &str) -> Option<usize> {
-    let page_part = filename.split('-').next()?;
-    // Take the first chunk (before = or ,)
-    let chunk = page_part.split(['=', ',', ' ']).next()?.trim();
-    // Try parsing directly
-    if let Ok(n) = chunk.parse::<usize>() {
-        return Some(n);
+/// A case's page comes from `first_page` in the zip's CasesMetadata.json, falling back
+/// to its file name; see `stare::index::page_key` for how labels map to pages.
+fn index_volume(zip_bytes: &[u8]) -> anyhow::Result<(stare::index::BuildResult, VolumeReport)> {
+    use stare::index::{self, PageKey};
+
+    let names = stare::case::list_cases_in_zip(zip_bytes)?;
+    let mut report = VolumeReport {
+        cases: names.len(),
+        ..Default::default()
+    };
+
+    let meta = match stare::case::extract_cases_metadata(zip_bytes) {
+        Ok(meta) => meta,
+        Err(e) => {
+            report
+                .problems
+                .push(format!("no usable CasesMetadata.json ({e})"));
+            Vec::new()
+        }
+    };
+    let first_pages: BTreeMap<&str, &str> = meta
+        .iter()
+        .map(|m| (m.file_name.as_str(), m.first_page.as_str()))
+        .collect();
+    if !meta.is_empty() {
+        let in_zip: std::collections::BTreeSet<&str> = names.iter().map(|n| n.as_str()).collect();
+        let no_json: Vec<&str> = first_pages
+            .keys()
+            .filter(|f| !in_zip.contains(*f))
+            .copied()
+            .collect();
+        let no_meta: Vec<&str> = in_zip
+            .iter()
+            .filter(|f| !first_pages.contains_key(*f))
+            .copied()
+            .collect();
+        if !no_json.is_empty() {
+            report.problems.push(format!(
+                "in CasesMetadata.json but not json/: {}",
+                no_json.join(", ")
+            ));
+        }
+        if !no_meta.is_empty() {
+            report.problems.push(format!(
+                "in json/ but not CasesMetadata.json: {}",
+                no_meta.join(", ")
+            ));
+        }
     }
-    // Extract the longest numeric substring (handles both "428e" and "B174")
-    let digits: String = chunk.chars().filter(|c| c.is_ascii_digit()).collect();
-    if !digits.is_empty() {
-        return digits.parse::<usize>().ok();
+
+    let keyed: Vec<(&str, PageKey)> = names
+        .iter()
+        .map(|n| {
+            let label = first_pages
+                .get(n.as_str())
+                .copied()
+                .unwrap_or_else(|| index::file_page(n));
+            (n.as_str(), index::page_key(label))
+        })
+        .collect();
+    let result = index::build(&keyed);
+    let multi_text = result.multi_file();
+
+    let mut indexed = index::all_cases(&result.bin, multi_text.as_deref());
+    report.entries = indexed.len();
+    report.labeled = result.labeled.len();
+    report.long_names = result
+        .bin
+        .chunks(index::ENTRY_SIZE)
+        .filter(|e| e.starts_with(index::LONG_NAME.as_bytes()) && e[1..].iter().all(|&b| b == 0))
+        .count();
+
+    let mut expected: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
+    expected.sort();
+    indexed.sort();
+    if indexed != expected {
+        report.problems.push(format!(
+            "index holds {} entries for {} cases",
+            indexed.len(),
+            expected.len()
+        ));
     }
-    None
+    let multi = index::parse_multi(multi_text.as_deref().unwrap_or(""));
+    let labeled = index::parse_labeled(multi_text.as_deref().unwrap_or(""));
+    let lost: Vec<&str> = keyed
+        .iter()
+        .filter(|(name, key)| {
+            let found = match key {
+                PageKey::Number(page) => index::lookup_all(&result.bin, &multi, *page),
+                PageKey::Label(label) => index::lookup_label(&labeled, label),
+            };
+            !found.contains(name)
+        })
+        .map(|(name, _)| *name)
+        .collect();
+    if !lost.is_empty() {
+        report
+            .problems
+            .push(format!("not found at their own page: {}", lost.join(", ")));
+    }
+    Ok((result, report))
 }
 
 fn build_index(
     zip_path: &std::path::Path,
     output: Option<&std::path::Path>,
     verbose: bool,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<VolumeReport> {
     let zip_bytes = std::fs::read(zip_path)
         .with_context(|| format!("failed to read {}", zip_path.display()))?;
-    let cases = stare::case::list_cases_in_zip(&zip_bytes)?;
-
-    let mut skipped = 0;
-    let case_pages: Vec<(&str, usize)> = cases
-        .iter()
-        .filter_map(|c| match parse_case_page(c) {
-            Some(page) => Some((c.as_str(), page)),
-            None => {
-                skipped += 1;
-                eprintln!(
-                    "Warning: skipping case with unparseable page: {} (in {})",
-                    c,
-                    zip_path.display()
-                );
-                None
-            }
-        })
-        .collect();
-
-    let result = stare::index::build(&case_pages);
+    let (result, report) = index_volume(&zip_bytes)
+        .with_context(|| format!("failed to index {}", zip_path.display()))?;
 
     let out_path = output
         .map(|p| p.to_path_buf())
@@ -134,40 +266,36 @@ fn build_index(
     std::fs::write(&out_path, &result.bin)
         .with_context(|| format!("failed to write {}", out_path.display()))?;
 
-    if !result.multi.is_empty() {
-        let multi_path = out_path.with_extension("multi");
-        let multi_data = stare::index::serialize_multi(&result.multi);
-        std::fs::write(&multi_path, &multi_data)
-            .with_context(|| format!("failed to write {}", multi_path.display()))?;
+    // Remove a .multi left by an earlier build when this one needs none.
+    let multi_path = out_path.with_extension("multi");
+    match result.multi_file() {
+        Some(multi) => std::fs::write(&multi_path, multi)
+            .with_context(|| format!("failed to write {}", multi_path.display()))?,
+        None if multi_path.exists() => std::fs::remove_file(&multi_path)
+            .with_context(|| format!("failed to remove {}", multi_path.display()))?,
+        None => {}
     }
 
     if verbose {
-        let multi_note = if result.multi.is_empty() {
-            String::new()
-        } else {
-            format!(" ({} multi-case pages)", result.multi.len())
-        };
-        let skip_note = if skipped > 0 {
-            format!(", {} skipped", skipped)
-        } else {
-            String::new()
-        };
         println!(
-            "  {} cases{}{}, {} bytes → {}",
-            case_pages.len(),
-            multi_note,
-            skip_note,
+            "  {} cases, {} entries ({} multi, {} labeled, {} long names), {} bytes → {}",
+            report.cases,
+            report.entries,
+            result.multi.len(),
+            report.labeled,
+            report.long_names,
             result.bin.len(),
             out_path.display()
         );
     }
 
-    Ok(())
+    Ok(report)
 }
 
 fn batch_index(
     dir: &std::path::Path,
     output_dir: Option<&std::path::Path>,
+    allow: &Allowlist,
     verbose: bool,
 ) -> anyhow::Result<()> {
     let zips: Vec<PathBuf> = walkdir(dir)?
@@ -178,7 +306,6 @@ fn batch_index(
     println!("Found {} zip files, indexing in parallel...", zips.len());
 
     let count = AtomicUsize::new(0);
-    let errors = AtomicUsize::new(0);
     // Pre-create output directories (not safe to race on mkdir)
     if let Some(out) = output_dir {
         for zip_path in &zips {
@@ -192,39 +319,82 @@ fn batch_index(
 
     let total = zips.len();
 
-    zips.par_iter().for_each(|zip_path| {
-        let out_path = match output_dir {
-            Some(out) => {
-                let rel = zip_path.strip_prefix(dir).unwrap_or(zip_path);
-                out.join(rel).with_extension("bin")
+    let results: Vec<(String, anyhow::Result<VolumeReport>)> = zips
+        .par_iter()
+        .map(|zip_path| {
+            let out_path = match output_dir {
+                Some(out) => {
+                    let rel = zip_path.strip_prefix(dir).unwrap_or(zip_path);
+                    out.join(rel).with_extension("bin")
+                }
+                None => zip_path.with_extension("bin"),
+            };
+            let result = build_index(zip_path, Some(&out_path), verbose);
+            let n = count.fetch_add(1, Ordering::Relaxed) + 1;
+            if n.is_multiple_of(100) || n == total {
+                eprint!("\rProgress: {}/{} indexed", n, total);
             }
-            None => zip_path.with_extension("bin"),
-        };
+            (volume_key(zip_path, Some(dir)), result)
+        })
+        .collect();
 
-        match build_index(zip_path, Some(&out_path), verbose) {
-            Ok(()) => {
-                let n = count.fetch_add(1, Ordering::Relaxed) + 1;
-                if n.is_multiple_of(100) || n == total {
-                    eprint!("\rProgress: {}/{} indexed", n, total);
+    let mut totals = VolumeReport::default();
+    let mut errors = Vec::new();
+    let mut failures = Vec::new();
+    let mut allowed = 0;
+    for (key, result) in &results {
+        match result {
+            Ok(report) => {
+                totals.cases += report.cases;
+                totals.entries += report.entries;
+                totals.labeled += report.labeled;
+                totals.long_names += report.long_names;
+                if !report.problems.is_empty() {
+                    match check_failure(key, report, allow) {
+                        Some(reason) => failures.push(reason),
+                        None => allowed += 1,
+                    }
                 }
             }
-            Err(e) => {
-                eprintln!("\nError indexing {}: {}", zip_path.display(), e);
-                errors.fetch_add(1, Ordering::Relaxed);
-            }
+            Err(e) => errors.push(format!("{}: {:#}", key, e)),
         }
-    });
+    }
 
-    let indexed = count.load(Ordering::Relaxed);
-    let errs = errors.load(Ordering::Relaxed);
-    println!("\n\nBatch complete: {} indexed, {} errors", indexed, errs);
+    println!(
+        "\n\nBatch complete: {} indexed, {} errors; {} cases, {} entries ({} on unnumbered pages, {} pages with long names)",
+        results.len() - errors.len(),
+        errors.len(),
+        totals.cases,
+        totals.entries,
+        totals.labeled,
+        totals.long_names
+    );
+    for e in &errors {
+        eprintln!("Error indexing {}", e);
+    }
+    for f in &failures {
+        eprintln!("{}", f);
+    }
+    if allowed > 0 {
+        println!(
+            "{} volumes failed the index check with an allow-listed reason",
+            allowed
+        );
+    }
+    if !errors.is_empty() || !failures.is_empty() {
+        anyhow::bail!(
+            "{} volumes failed to index and {} failed the index check",
+            errors.len(),
+            failures.len()
+        );
+    }
     Ok(())
 }
 
 /// What one volume's index files hold.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct VolumeStats {
-    /// Index entries: cases in the .bin plus lines in the .multi.
+    /// Index entries: cases in the .bin (less long-name markers) plus lines in the .multi.
     entries: u64,
     /// The lowest and highest page any entry is at.
     pages: Option<(u32, u32)>,
@@ -233,33 +403,35 @@ struct VolumeStats {
 fn volume_stats(bin_path: &std::path::Path) -> anyhow::Result<VolumeStats> {
     let bin = std::fs::read(bin_path)
         .with_context(|| format!("failed to read {}", bin_path.display()))?;
-    let mut stats = VolumeStats::default();
-    let note_page = |page: u32, stats: &mut VolumeStats| {
-        stats.entries += 1;
-        stats.pages = Some(match stats.pages {
-            None => (page, page),
-            Some((lo, hi)) => (lo.min(page), hi.max(page)),
-        });
+    let multi_path = bin_path.with_extension("multi");
+    let multi = if multi_path.exists() {
+        Some(
+            std::fs::read_to_string(&multi_path)
+                .with_context(|| format!("failed to read {}", multi_path.display()))?,
+        )
+    } else {
+        None
     };
-    for (page, entry) in bin
+    // Every numbered page with an entry: the .bin's (markers included) and the .multi's.
+    let pages = bin
         .as_chunks::<{ stare::index::ENTRY_SIZE }>()
         .0
         .iter()
         .enumerate()
-    {
-        if entry.iter().any(|&b| b != 0) {
-            note_page(page as u32, &mut stats);
-        }
-    }
-    let multi_path = bin_path.with_extension("multi");
-    if multi_path.exists() {
-        let text = std::fs::read_to_string(&multi_path)
-            .with_context(|| format!("failed to read {}", multi_path.display()))?;
-        for (page, _) in stare::index::parse_multi(&text) {
-            note_page(page as u32, &mut stats);
-        }
-    }
-    Ok(stats)
+        .filter(|(_, entry)| entry.iter().any(|&b| b != 0))
+        .map(|(page, _)| page as u32)
+        .chain(
+            stare::index::parse_multi(multi.as_deref().unwrap_or(""))
+                .into_iter()
+                .map(|(page, _)| page as u32),
+        );
+    let pages = pages.fold(None, |range: Option<(u32, u32)>, page| {
+        Some(range.map_or((page, page), |(lo, hi)| (lo.min(page), hi.max(page))))
+    });
+    Ok(VolumeStats {
+        entries: stare::index::all_cases(&bin, multi.as_deref()).len() as u64,
+        pages,
+    })
 }
 
 /// The fields of CAP's VolumesMetadata.json that say which folders are parts of one
@@ -504,6 +676,119 @@ mod tests {
         assert_eq!(m.parts.len(), 1);
         assert_eq!(m.parts["a3d"].len(), 1);
         assert_eq!(m.candidates("a3d", "138", 1012), ["138", "138-2"]);
+    }
+
+    /// A volume zip with these case files, and CasesMetadata.json giving each its first
+    /// page (`None` leaves a case out of the metadata).
+    fn volume_zip(cases: &[(&str, Option<&str>)]) -> Vec<u8> {
+        use std::io::Write;
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let opts = zip::write::SimpleFileOptions::default();
+        let mut meta = Vec::new();
+        for (file, first_page) in cases {
+            zip.start_file(format!("json/{file}.json"), opts).unwrap();
+            zip.write_all(b"{}").unwrap();
+            if let Some(first_page) = first_page {
+                meta.push(serde_json::json!({
+                    "id": meta.len(), "name_abbreviation": file, "decision_date": "1900",
+                    "first_page": first_page, "last_page": first_page, "file_name": file,
+                }));
+            }
+        }
+        zip.start_file("metadata/CasesMetadata.json", opts).unwrap();
+        zip.write_all(serde_json::to_string(&meta).unwrap().as_bytes())
+            .unwrap();
+        zip.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn index_holds_every_case_once_including_long_names_and_front_matter() {
+        // File names and first pages as CAP has them (or-tax/8, mcgrath/1, cai-cas/1,
+        // cal-app-4th/15, mich-np-r/1, a2d/615).
+        let zip = volume_zip(&[
+            ("0001-01", Some("1")),
+            ("[106]-01", Some("[106]")),
+            ("1107-01", Some("1107")),
+            ("1107½-01", Some("1107½")),
+            ("1107½-02", Some("1107½")),
+            ("xxix-01", Some("xxix")),
+            ("000i-01", Some("i")),
+            ("Supp. 1-01", Some("Supp. 1")),
+            ("1114-1140-01", Some("1114-1140")),
+        ]);
+        let (result, report) = index_volume(&zip).unwrap();
+        assert_eq!(report.problems, Vec::<String>::new());
+        assert_eq!((report.cases, report.entries), (9, 9));
+        assert_eq!(report.labeled, 3);
+        assert_eq!(report.long_names, 2); // pages 106 and 1114
+
+        let multi = stare::index::parse_multi(&result.multi_file().unwrap());
+        assert_eq!(
+            stare::index::lookup_all(&result.bin, &multi, 106),
+            ["[106]-01"]
+        );
+        // Zero-padded front matter no longer collapses onto page 0.
+        assert!(stare::index::lookup_all(&result.bin, &multi, 0).is_empty());
+    }
+
+    #[test]
+    fn real_volume_passes_the_check() {
+        let zip = std::fs::read(format!("{FIXTURES}/a2d-31.zip")).unwrap();
+        let (_, report) = index_volume(&zip).unwrap();
+        assert!(report.problems.is_empty(), "{:?}", report.problems);
+        assert_eq!(report.entries, report.cases);
+    }
+
+    #[test]
+    fn metadata_and_files_that_disagree_fail_the_check_unless_allowed() {
+        let zip = volume_zip(&[("0001-01", Some("1")), ("0002-01", None)]);
+        let (_, report) = index_volume(&zip).unwrap();
+        assert_eq!(
+            report.problems,
+            ["in json/ but not CasesMetadata.json: 0002-01"]
+        );
+        // The file name still places the case.
+        assert_eq!(report.entries, 2);
+
+        let mut allow = Allowlist::new();
+        let failure = check_failure("x/1", &report, &allow).unwrap();
+        assert!(failure.starts_with("x/1: index check failed (2 cases, 2 entries)"));
+        allow.insert("x/1".into(), "CAP left 0002-01 out of the metadata".into());
+        assert_eq!(check_failure("x/1", &report, &allow), None);
+    }
+
+    #[test]
+    fn batch_fails_on_a_check_failure_and_writes_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let zips = dir.path().join("zips");
+        std::fs::create_dir_all(zips.join("x")).unwrap();
+        std::fs::write(zips.join("x/1.zip"), volume_zip(&[("0001-01", Some("1"))])).unwrap();
+        std::fs::write(
+            zips.join("x/2.zip"),
+            volume_zip(&[("0001-01", Some("1")), ("0002-01", None)]),
+        )
+        .unwrap();
+        let out = dir.path().join("idx");
+
+        let err = batch_index(&zips, Some(&out), &Allowlist::new(), false).unwrap_err();
+        assert!(
+            err.to_string().contains("1 failed the index check"),
+            "{err}"
+        );
+        assert!(out.join("x/1.bin").exists() && out.join("x/2.bin").exists());
+
+        let allow = Allowlist::from([("x/2".to_string(), "known".to_string())]);
+        batch_index(&zips, Some(&out), &allow, false).unwrap();
+    }
+
+    #[test]
+    fn rebuild_removes_a_stale_multi() {
+        let dir = tempfile::tempdir().unwrap();
+        let zip_path = dir.path().join("1.zip");
+        std::fs::write(&zip_path, volume_zip(&[("0001-01", Some("1"))])).unwrap();
+        std::fs::write(dir.path().join("1.multi"), "1,0001-02\n").unwrap();
+        build_index(&zip_path, None, false).unwrap();
+        assert!(!dir.path().join("1.multi").exists());
     }
 
     #[test]
