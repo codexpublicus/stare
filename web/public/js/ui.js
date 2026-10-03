@@ -1,4 +1,4 @@
-import { escapeHtml, renderTextHtml, safeExternalUrl } from './citations.js';
+import { citedCaseHtml, orderCitedCases, renderTextHtml } from './citations.js';
 import { pdfUrl as volumePdfUrl } from './sources.js';
 
 /**
@@ -62,33 +62,10 @@ function citationStatusParts(caseData, detectedCitations, citationStatus) {
   } else if (isError) {
     statusText = "Couldn't check citations.";
   } else if (detectedCitations && detectedCitations.length > 0) {
-    // Use detected citations if available, fall back to cites_to
-    const resolvable = detectedCitations.filter(c => c.resolvable);
-    // Only http(s) external URLs are linked; others list as unresolved.
-    const external = detectedCitations.filter(c => !c.resolvable && safeExternalUrl(c.externalUrl));
-    const unresolvable = detectedCitations.filter(c => !c.resolvable && !safeExternalUrl(c.externalUrl));
-
-    const renderCite = (c) => {
-      if (c.resolvable) {
-        const href = `${window.location.pathname}#${c.slug}/${c.volume}/${c.page}`;
-        return `<div class="cited-case">
-          <span class="cited-status ok">&#10003;</span>
-          <a class="cited-case-link" href="${href}" target="_blank" rel="noopener">${esc(c.raw)}</a>
-        </div>`;
-      } else if (safeExternalUrl(c.externalUrl)) {
-        return `<div class="cited-case">
-          <span class="cited-status ext">&#8599;</span>
-          <a class="cited-case-link" href="${escapeHtml(c.externalUrl)}" target="_blank" rel="noopener">${esc(c.raw)}</a>
-        </div>`;
-      } else {
-        return `<div class="cited-case">
-          <span class="cited-status no">&#10007;</span>
-          <span class="cited-case-unresolved">${esc(c.raw)}</span>
-        </div>`;
-      }
-    };
-
-    listHtml = [...resolvable, ...external, ...unresolvable].map(renderCite).join('');
+    // Held here, then statutes linked to their text, then cases to look
+    // for elsewhere, then the rest. Only http(s) URLs are ever linked.
+    const caseHref = (c) => `${window.location.pathname}#${c.slug}/${c.volume}/${c.page}`;
+    listHtml = orderCitedCases(detectedCitations).map(c => citedCaseHtml(c, caseHref)).join('');
     totalCites = detectedCitations.length;
     statusText = `${totalCites} citation${totalCites === 1 ? '' : 's'} found`;
   } else {
@@ -146,7 +123,7 @@ function fillCitationStatus(handle, caseData, detectedCitations, citationStatus)
  * @param {Element} el - sidebar container
  * @param {Object} caseData - parsed case JSON
  * @param {string} reporter - reporter slug
- * @param {number} volume - volume number
+ * @param {string} volume - CAP volume folder (e.g. "31", "138-2")
  * @param {Array} allCases - list of case files on this page
  * @param {Array|null} detectedCitations - citation objects from processCitations()
  * @param {'loading'|'error'|'done'|undefined} citationStatus - state of async

@@ -30,8 +30,28 @@ pub struct DetectedCitation {
     pub reporter: Option<String>,
     /// Year if detected
     pub year: Option<i32>,
-    /// External URL for statutes/regulations (Cornell, govinfo, ecfr)
+    /// External URL for statutes/regulations (Cornell, govinfo, eCFR and
+    /// the state legislatures listed in `external_url`)
     pub external_url: Option<String>,
+    /// Places to look for a full case citation stare.pub may not hold
+    /// (CourtListener's citation lookup, then a Google Scholar search).
+    /// Filled for every full case citation with a volume, reporter and
+    /// page, because only the caller knows whether the index has the
+    /// case; callers show these only when it doesn't. Empty otherwise.
+    #[serde(default)]
+    pub case_links: Vec<CaseLink>,
+}
+
+/// A link to a source outside stare.pub for a case citation (#7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CaseLink {
+    /// Where the link goes: "courtlistener" or "google_scholar".
+    pub source: String,
+    /// What the reader gets there: "full_text" (a citation lookup that
+    /// lands on the opinion, or a list when the citation is ambiguous) or
+    /// "search" (a search results page).
+    pub kind: String,
+    pub url: String,
 }
 
 /// Detect all citations in a text using citare-core.
@@ -64,64 +84,213 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
                 reporter: groups.get("reporter").cloned().flatten(),
                 year: c.resource_common().and_then(|r| r.year),
                 external_url: None,
+                case_links: Vec::new(),
             };
-            // Generate external URL for statutes/regulations
-            if det.harvard_slug.is_none() {
+            // Generate external URL for statutes/regulations. citare gives
+            // some law citations a reporter's slug ("N.Y. Penal Law" gets
+            // "ny"), so a law citation is checked whatever its slug.
+            if det.citation_type == "FullLawCitation" || det.harvard_slug.is_none() {
                 det.external_url = external_url(&det);
             }
+            det.case_links = case_links(&det);
             det
         })
         .collect()
 }
 
+/// Compile a pattern once and keep it for the life of the process.
+macro_rules! regex {
+    ($re:literal) => {{
+        static RE: std::sync::LazyLock<regex::Regex> =
+            std::sync::LazyLock::new(|| regex::Regex::new($re).expect("valid regex"));
+        &*RE
+    }};
+}
+
 /// Generate an external URL for a statute/regulation citation.
 /// Returns None for case citations (which we resolve ourselves).
+///
+/// This is the one place statute and regulation URLs are built. Every
+/// pattern here is deterministic from the citation alone and was checked
+/// against the live site when it was added; a state is listed only when
+/// its legislature publishes a URL per section that needs nothing but the
+/// section number, and its robots.txt allowed the check:
+///
+/// - U.S.C. and U.S.C.A.: Cornell LII
+/// - Stat., Pub. L. and Fed. Reg.: govinfo's link service, which finds the
+///   law or the issue holding any page, not only a first page. Public laws
+///   are there from the 104th Congress on.
+/// - C.F.R.: eCFR
+/// - Arizona, Michigan, Minnesota and Virginia: the legislature's own site
 pub fn external_url(citation: &DetectedCitation) -> Option<String> {
     let text = &citation.matched_text;
 
     // The abbreviations allow whitespace between their letters, since
     // citare finds spaced forms such as "18 U. S. C. § 4241" too.
 
-    // U.S. Code: "42 U.S.C. § 1983", "42 U. S. C. § 1983"
-    if let Some(caps) = regex::Regex::new(r"(\d+)\s+U\.?\s*S\.?\s*C\.?\s*(?:§+\s*)?(\d[\d.a-z-]*)")
-        .ok()
-        .and_then(|re| re.captures(text))
+    // U.S. Code: "42 U.S.C. § 1983", "42 U. S. C. § 1983", "42 U.S.C.A. § 1983"
+    if let Some(caps) =
+        regex!(r"(\d+)\s+U\.?\s*S\.?\s*C\.?(?:\s*A\.?)?\s*(?:§+\s*)?(\d[\d.a-z-]*)").captures(text)
     {
-        let title = caps.get(1)?.as_str();
-        let section = caps.get(2)?.as_str();
         return Some(format!(
             "https://www.law.cornell.edu/uscode/text/{}/{}",
-            title, section
+            &caps[1], &caps[2]
         ));
     }
 
-    // Statutes at Large: "56 Stat. 195"
-    if let Some(caps) = regex::Regex::new(r"(\d+)\s+Stat\.\s+(\d+)")
-        .ok()
-        .and_then(|re| re.captures(text))
-    {
-        let vol = caps.get(1)?.as_str();
-        let page = caps.get(2)?.as_str();
+    // Statutes at Large: "56 Stat. 195", "124 Stat. 1,025"
+    if let Some(caps) = regex!(r"(\d+)\s+Stat\.\s+(\d[\d,]*)").captures(text) {
         return Some(format!(
-            "https://www.govinfo.gov/content/pkg/STATUTE-{}/pdf/STATUTE-{}-Pg{}.pdf",
-            vol, vol, page
+            "https://www.govinfo.gov/link/statute/{}/{}",
+            &caps[1],
+            caps[2].replace(',', "")
+        ));
+    }
+
+    // Public laws: "Pub. L. No. 111-148", "Pub. L. 104-104"
+    if let Some(caps) = regex!(r"^Pub\.\s*L\.\s*(?:No\.\s*)?(\d+)-(\d+)").captures(text) {
+        let congress: u32 = caps[1].parse().ok()?;
+        if congress < 104 {
+            return None;
+        }
+        return Some(format!(
+            "https://www.govinfo.gov/link/plaw/{}/public/{}",
+            congress, &caps[2]
+        ));
+    }
+
+    // Federal Register: "85 Fed. Reg. 12345", "85 Fed. Reg. 12,345"
+    if let Some(caps) = regex!(r"(\d+)\s+Fed\.\s*Reg\.\s+(\d[\d,]*)").captures(text) {
+        return Some(format!(
+            "https://www.govinfo.gov/link/fr/{}/{}",
+            &caps[1],
+            caps[2].replace(',', "")
         ));
     }
 
     // CFR: "40 C.F.R. § 122.1", "40 C. F. R. § 122.1"
-    if let Some(caps) = regex::Regex::new(r"(\d+)\s+C\.?\s*F\.?\s*R\.?\s*(?:§+\s*)?(\d[\d.]*)")
-        .ok()
-        .and_then(|re| re.captures(text))
+    if let Some(caps) = regex!(r"(\d+)\s+C\.?\s*F\.?\s*R\.?\s*(?:§+\s*)?(\d[\d.]*)").captures(text)
     {
-        let title = caps.get(1)?.as_str();
-        let section = caps.get(2)?.as_str();
         return Some(format!(
             "https://www.ecfr.gov/current/title-{}/section-{}",
-            title, section
+            &caps[1], &caps[2]
         ));
     }
 
+    // State codes. Anchored at the start, so "W. Va. Code" is not Virginia.
+
+    // Arizona: "Ariz. Rev. Stat. Ann. § 13-1105", "... § 13-3601.01". The
+    // file name pads the section to five digits.
+    if let Some(caps) =
+        regex!(r"^Ariz\.\s*Rev\.\s*Stat\.(?:\s*Ann\.)?\s*§*\s*(\d+)-(\d+)(?:\.(\d+))?")
+            .captures(text)
+    {
+        let section: u32 = caps[2].parse().ok()?;
+        let sub = caps
+            .get(3)
+            .map(|m| format!("-{}", m.as_str()))
+            .unwrap_or_default();
+        return Some(format!(
+            "https://www.azleg.gov/viewdocument/?docName=https://www.azleg.gov/ars/{}/{:05}{}.htm",
+            &caps[1], section, sub
+        ));
+    }
+
+    // Michigan: "Mich. Comp. Laws § 750.316", "... Ann. § 600.2912". The
+    // site takes lettered sections too (mcl-600-2912a), though citare
+    // v0.4.1 stops "§ 600.2912a" at "600".
+    if let Some(caps) =
+        regex!(r"^Mich\.\s*Comp\.\s*Laws(?:\s*Ann\.)?\s*§*\s*(\d+)\.(\d+[a-z]*)").captures(text)
+    {
+        return Some(format!(
+            "https://www.legislature.mi.gov/Laws/MCL?objectName=mcl-{}-{}",
+            &caps[1], &caps[2]
+        ));
+    }
+
+    // Minnesota: "Minn. Stat. § 609.185", "Minn. Stat. Ann. § 13D.01"
+    if let Some(caps) =
+        regex!(r"^Minn\.\s*Stat\.(?:\s*Ann\.)?\s*§*\s*(\d+[A-Z]?\.\d+[A-Za-z]*)").captures(text)
+    {
+        return Some(format!(
+            "https://www.revisor.mn.gov/statutes/cite/{}",
+            &caps[1]
+        ));
+    }
+
+    // Virginia: "Va. Code Ann. § 18.2-32", "... § 8.01-581.15"
+    if let Some(caps) =
+        regex!(r"^Va\.\s*Code(?:\s*Ann\.)?\s*§*\s*(\d+(?:\.\d+)?-\d+(?:\.\d+)*)").captures(text)
+    {
+        return Some(format!("https://law.lis.virginia.gov/vacode/{}/", &caps[1]));
+    }
+
     None
+}
+
+/// Percent-encode everything but RFC 3986's unreserved characters, for a
+/// URL path segment.
+fn encode_path_segment(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
+}
+
+/// Encode a query value as a form field: spaces become `+`.
+fn encode_query_value(s: &str) -> String {
+    s.split(' ')
+        .map(encode_path_segment)
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+/// Links to sources outside stare.pub for a full case citation (#7), in
+/// the order to offer them: CourtListener's citation lookup, which needs
+/// no account and lands on the opinion, then a Google Scholar case law
+/// search for the citation as a phrase. Empty for anything but a full case
+/// citation with a volume, reporter and page.
+///
+/// This is the one place case link-out URLs are built, beside
+/// `external_url`, so the website, the CLI and a later MCP server offer
+/// the same links.
+pub fn case_links(citation: &DetectedCitation) -> Vec<CaseLink> {
+    if citation.citation_type != "FullCaseCitation" {
+        return Vec::new();
+    }
+    let (Some(volume), Some(reporter), Some(page)) = (
+        citation.volume.as_deref(),
+        citation.reporter.as_deref(),
+        citation.page.as_deref(),
+    ) else {
+        return Vec::new();
+    };
+    let phrase = format!("\"{} {} {}\"", volume, reporter, page);
+    vec![
+        CaseLink {
+            source: "courtlistener".into(),
+            kind: "full_text".into(),
+            url: format!(
+                "https://www.courtlistener.com/c/{}/{}/{}/",
+                encode_path_segment(reporter),
+                encode_path_segment(volume),
+                encode_path_segment(page)
+            ),
+        },
+        CaseLink {
+            source: "google_scholar".into(),
+            kind: "search".into(),
+            url: format!(
+                "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q={}",
+                encode_query_value(&phrase)
+            ),
+        },
+    ]
 }
 
 /// A citation span that could not be converted from UTF-8 byte offsets to
@@ -227,6 +396,180 @@ mod tests {
         }
     }
 
+    /// Every statute and regulation pattern `external_url` knows, with the
+    /// URL each should build. Each URL's form was checked against the live
+    /// site when the pattern was added.
+    #[test]
+    fn external_url_patterns() {
+        let cases = [
+            // U.S.C.A. links to the same Cornell page as the U.S.C.
+            (
+                "See 42 U.S.C.A. § 1983.",
+                "https://www.law.cornell.edu/uscode/text/42/1983",
+            ),
+            // govinfo's link service accepts a page inside a law, not only
+            // the first page, and drops the thousands comma.
+            (
+                "See 124 Stat. 119.",
+                "https://www.govinfo.gov/link/statute/124/119",
+            ),
+            (
+                "See 124 Stat. 1,025.",
+                "https://www.govinfo.gov/link/statute/124/1025",
+            ),
+            (
+                "See Pub. L. No. 111-148.",
+                "https://www.govinfo.gov/link/plaw/111/public/148",
+            ),
+            (
+                "See Pub. L. 104-104.",
+                "https://www.govinfo.gov/link/plaw/104/public/104",
+            ),
+            (
+                "See 85 Fed. Reg. 12345 (Mar. 2, 2020).",
+                "https://www.govinfo.gov/link/fr/85/12345",
+            ),
+            (
+                "See 85 Fed. Reg. 12,345.",
+                "https://www.govinfo.gov/link/fr/85/12345",
+            ),
+            (
+                "See Ariz. Rev. Stat. Ann. § 13-1105.",
+                "https://www.azleg.gov/viewdocument/?docName=https://www.azleg.gov/ars/13/01105.htm",
+            ),
+            (
+                "See Ariz. Rev. Stat. Ann. § 13-3601.01.",
+                "https://www.azleg.gov/viewdocument/?docName=https://www.azleg.gov/ars/13/03601-01.htm",
+            ),
+            (
+                "See Mich. Comp. Laws § 750.316.",
+                "https://www.legislature.mi.gov/Laws/MCL?objectName=mcl-750-316",
+            ),
+            (
+                "See Mich. Comp. Laws Ann. § 600.2912.",
+                "https://www.legislature.mi.gov/Laws/MCL?objectName=mcl-600-2912",
+            ),
+            (
+                "See Minn. Stat. § 609.185.",
+                "https://www.revisor.mn.gov/statutes/cite/609.185",
+            ),
+            (
+                "See Minn. Stat. Ann. § 609.185.",
+                "https://www.revisor.mn.gov/statutes/cite/609.185",
+            ),
+            (
+                "See Va. Code Ann. § 18.2-32.",
+                "https://law.lis.virginia.gov/vacode/18.2-32/",
+            ),
+            (
+                "See Va. Code Ann. § 8.01-581.15.",
+                "https://law.lis.virginia.gov/vacode/8.01-581.15/",
+            ),
+        ];
+        for (text, url) in cases {
+            assert_eq!(sole_external_url(text).as_deref(), Some(url), "{text}");
+        }
+    }
+
+    /// Law citations with no deterministic per-section URL stay unlinked:
+    /// public laws before the 104th Congress (govinfo's link service has
+    /// none), state codes not in the list, and a Michigan section citare
+    /// cut short.
+    #[test]
+    fn external_url_none_without_a_pattern() {
+        for text in [
+            "See Pub. L. No. 93-205.",
+            "See Mich. Comp. Laws § 600.2912a.",
+            "See Ga. Code Ann. § 16-5-1.",
+            "See Colo. Rev. Stat. § 18-3-102.",
+        ] {
+            assert_eq!(sole_external_url(text), None, "{text}");
+        }
+    }
+
+    /// citare gives "N.Y. Penal Law" the slug "ny". A law citation is still
+    /// checked for an external URL, and gets no case links.
+    #[test]
+    fn law_citation_with_a_slug_gets_no_case_links() {
+        let cites = detect_citations("See N.Y. Penal Law § 125.25.");
+        assert_eq!(cites.len(), 1);
+        assert_eq!(cites[0].citation_type, "FullLawCitation");
+        assert!(cites[0].case_links.is_empty());
+    }
+
+    #[test]
+    fn case_links_for_a_case_citation() {
+        let cites = detect_citations("Axon Enterprise, Inc. v. FTC, 598 U.S. 175 (2023).");
+        let c = cites
+            .iter()
+            .find(|c| c.matched_text == "598 U.S. 175")
+            .expect("should detect 598 U.S. 175");
+        assert_eq!(
+            c.case_links,
+            vec![
+                CaseLink {
+                    source: "courtlistener".into(),
+                    kind: "full_text".into(),
+                    url: "https://www.courtlistener.com/c/U.S./598/175/".into(),
+                },
+                CaseLink {
+                    source: "google_scholar".into(),
+                    kind: "search".into(),
+                    url:
+                        "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%22598+U.S.+175%22"
+                            .into(),
+                },
+            ]
+        );
+    }
+
+    /// A reporter with a space is percent-encoded in CourtListener's path
+    /// and joined with `+` in Scholar's query.
+    #[test]
+    fn case_links_encode_reporter_spaces() {
+        let cites = detect_citations("See 143 S. Ct. 1 (2022).");
+        let c = cites
+            .iter()
+            .find(|c| c.matched_text == "143 S. Ct. 1")
+            .expect("should detect 143 S. Ct. 1");
+        let urls: Vec<&str> = c.case_links.iter().map(|l| l.url.as_str()).collect();
+        assert_eq!(
+            urls,
+            [
+                "https://www.courtlistener.com/c/S.%20Ct./143/1/",
+                "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%22143+S.+Ct.+1%22",
+            ]
+        );
+    }
+
+    /// No page, no link: `599 U.S. ___` has nothing to look up. Statutes
+    /// and short forms get none either.
+    #[test]
+    fn case_links_empty_without_a_full_case_citation() {
+        for text in [
+            "See Smith v. Jones, 599 U.S. ___ (2023).",
+            "See 42 U.S.C. § 1983.",
+        ] {
+            for c in detect_citations(text) {
+                assert!(c.case_links.is_empty(), "{text}: {:?}", c.matched_text);
+            }
+        }
+        let cites = detect_citations("See 31 A.2d 647. Id. at 650.");
+        let id = cites
+            .iter()
+            .find(|c| c.citation_type != "FullCaseCitation")
+            .expect("should detect Id.");
+        assert!(id.case_links.is_empty());
+    }
+
+    #[test]
+    fn case_links_serialize_for_js() {
+        let cites = detect_citations("See 598 U.S. 175.");
+        let json = serde_json::to_value(&cites[0]).unwrap();
+        assert_eq!(json["case_links"][0]["source"], "courtlistener");
+        assert_eq!(json["case_links"][1]["kind"], "search");
+    }
+
     /// The external URL for the one citation `text` should contain.
     fn sole_external_url(text: &str) -> Option<String> {
         let cites = detect_citations(text);
@@ -275,7 +618,7 @@ mod tests {
             ),
             (
                 "See 56 Stat. 195.",
-                "https://www.govinfo.gov/content/pkg/STATUTE-56/pdf/STATUTE-56-Pg195.pdf",
+                "https://www.govinfo.gov/link/statute/56/195",
             ),
         ];
         for (text, url) in cases {

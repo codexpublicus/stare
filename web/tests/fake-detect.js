@@ -26,5 +26,6 @@ export function fakeDetect(text) {
     start: codePointOffset(text, m.index),
     end: codePointOffset(text, m.index + m[0].length),
     externalUrl: null,
+    caseLinks: [],
   }));
 }

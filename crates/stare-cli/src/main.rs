@@ -395,6 +395,7 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             "reporter": c.reporter, "slug": slug,
             "volume": volume, "page": c.page, "resolvable": resolvable,
             "external_url": c.external_url,
+            "case_links": c.case_links,
         }));
     }
 
@@ -426,6 +427,12 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             print!("  {} {}", status, c["raw"].as_str().unwrap_or(""));
             if let Some(url) = c["external_url"].as_str() {
                 print!("  → {}", url);
+            } else if !resolvable {
+                // A volume stare.pub doesn't hold: point at the first place that
+                // may have the case. Nothing checks that it does (citare#39).
+                if let Some(url) = c["case_links"][0]["url"].as_str() {
+                    print!("  → not in stare.pub, may be at {}", url);
+                }
             }
             println!();
         }
