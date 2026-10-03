@@ -48,7 +48,7 @@ describe('processCitations', () => {
 
     const check = mock.fn(async () => true);
 
-    const { unique: result } = await processCitations(caseData, check, fakeDetect);
+    const { unique: result } = await processCitations(caseData, check, fakeDetect, async () => true);
 
     // Two opinions detect the same "123 U.S. 456" twice; dedup by raw
     // string must leave exactly two unique citations.
@@ -81,6 +81,7 @@ describe('processCitations', () => {
       { casebody: { opinions: [{ text: 'See 599 U.S. ___ and 12 Foo ___.' }] } },
       check,
       blank,
+      async () => true,
     );
 
     assert.equal(check.mock.calls.length, 0);
@@ -97,7 +98,7 @@ describe('processCitations', () => {
       },
     };
 
-    const { unique, occurrencesByOpinion } = await processCitations(caseData, async () => false, fakeDetect);
+    const { unique, occurrencesByOpinion } = await processCitations(caseData, async () => false, fakeDetect, async () => true);
 
     assert.equal(unique.length, 2);
     assert.deepEqual(occurrencesByOpinion, [

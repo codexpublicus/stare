@@ -2,6 +2,7 @@
 // if the WASM fails to load, detectCitations rejects with a WasmLoadError and
 // callers show an error, not empty or degraded results.
 
+import { fetchCached } from './cache.js';
 import { indexUrl } from './sources.js';
 import { loadWasm } from './wasm.js';
 
@@ -76,6 +77,52 @@ export async function checkAvailability(slug, volume) {
   return volumes.includes(typeof volume === 'number' ? volume : parseInt(volume, 10));
 }
 
+/**
+ * Whether a case starts at `page` in an indexed volume, from the volume's
+ * .bin (a few KB, cached like the case viewer's). Null when that can't be
+ * told (the .bin or the WASM didn't load); callers then treat the
+ * citation as resolvable, as they did before pages were checked.
+ */
+export async function checkPage(slug, volume, page) {
+  try {
+    const w = await loadWasm();
+    const key = `${slug}/${volume}.bin`;
+    const bin = await fetchCached('bins', key, indexUrl(key));
+    return w.lookup_page(bin, parseInt(page, 10)) != null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Availability for one detected citation, as the fields the renderers read:
+ * - `slug`: the index slug when the volume is indexed, else null
+ * - `volumeHeld`: the manifest lists the cited reporter and volume
+ * - `resolvable`: held, and a case starts at the cited page (or that
+ *   couldn't be checked)
+ *
+ * A held volume with no case at the page is not linked out: it may be an
+ * index gap or a bad citation, and nothing here can tell which. Only a
+ * volume stare.pub doesn't hold gets the outside links (citedCaseHtml).
+ * `check` and `pageCheck` are injectable for tests, as in processCitations.
+ */
+export async function checkCitation(c, check = checkAvailability, pageCheck = checkPage) {
+  const none = { ...c, slug: null, volumeHeld: false, resolvable: false };
+  if (c.externalUrl) return none;
+  // A blank page (`1 U.S. ___`) arrives as page: null and can't be looked
+  // up, so it doesn't fall through to the slug guess below either.
+  if (!c.page || !c.volume) return none;
+  const slug = c.harvard_slug || (c.reporter ? guessSlug(c.reporter) : null);
+  if (!slug) return none;
+  const held = await check(slug, c.volume);
+  if (!held) {
+    // A guessed slug that isn't indexed is no slug at all.
+    return { ...none, slug: c.harvard_slug ? slug : null };
+  }
+  const found = await pageCheck(slug, c.volume, c.page);
+  return { ...c, slug, volumeHeld: true, resolvable: found !== false };
+}
+
 // ---------------------------------------------------------------------------
 // Process citations for a case
 // ---------------------------------------------------------------------------
@@ -92,12 +139,12 @@ export async function checkAvailability(slug, volume) {
  *   `start`/`end` are code point offsets into that opinion's `text`. The
  *   reader highlights from these, looking each `raw` up in `unique`.
  *
- * `check` and `detect` are injectable replacements for `checkAvailability`
- * and `detectCitations`, used by tests to stub the network fetch and the
- * WASM, which Node can't load from the site path. Rejects, with a
- * WasmLoadError, if the WASM fails to load.
+ * `check`, `detect` and `pageCheck` are injectable replacements for
+ * `checkAvailability`, `detectCitations` and `checkPage`, used by tests to
+ * stub the network fetch and the WASM, which Node can't load from the site
+ * path. Rejects, with a WasmLoadError, if the WASM fails to load.
  */
-export async function processCitations(caseData, check = checkAvailability, detect = detectCitations) {
+export async function processCitations(caseData, check = checkAvailability, detect = detectCitations, pageCheck = checkPage) {
   const allCites = [];
   const occurrencesByOpinion = [];
 
@@ -115,28 +162,7 @@ export async function processCitations(caseData, check = checkAvailability, dete
     return true;
   });
 
-  // Check availability for case citations with harvard_slug
-  const checks = deduped.map(async (c) => {
-    if (c.externalUrl) {
-      return { ...c, slug: null, resolvable: false };
-    }
-    // A blank page (`1 U.S. ___`) arrives as page: null and can't be looked
-    // up, so it doesn't fall through to the slug guess below either.
-    if (!c.page) {
-      return { ...c, slug: null, resolvable: false };
-    }
-    if (c.harvard_slug && c.volume) {
-      const available = await check(c.harvard_slug, c.volume);
-      return { ...c, slug: c.harvard_slug, resolvable: available };
-    }
-    // No slug — try guessing
-    if (c.reporter && c.volume) {
-      const slug = guessSlug(c.reporter);
-      const available = await check(slug, c.volume);
-      return { ...c, slug: available ? slug : null, resolvable: available };
-    }
-    return { ...c, slug: null, resolvable: false };
-  });
+  const checks = deduped.map(c => checkCitation(c, check, pageCheck));
 
   return { unique: await Promise.all(checks), occurrencesByOpinion };
 }
@@ -184,19 +210,33 @@ export const LOOKUP_SOURCES = {
 };
 
 /**
- * The outside links to offer for a citation stare.pub doesn't hold: its
- * `caseLinks` with a known source and an http(s) URL, in order. Empty when
- * the citation resolves here or links to a statute's text instead.
+ * The outside links to offer for a citation to a volume stare.pub doesn't
+ * hold: its `caseLinks` with a known source and an http(s) URL, in order.
+ * Empty when the citation resolves here, links to a statute's text, or
+ * cites a volume stare.pub holds (see heldVolumeMiss).
  */
 export function caseLookupLinks(info) {
-  if (!info || info.resolvable || safeExternalUrl(info.externalUrl)) return [];
+  if (!info || info.resolvable || info.volumeHeld || safeExternalUrl(info.externalUrl)) return [];
   return (info.caseLinks || []).filter(l =>
     l && Object.hasOwn(LOOKUP_SOURCES, l.source) && safeExternalUrl(l.url));
 }
 
-/** "Not in stare.pub: find on CourtListener", for a case link. */
+/**
+ * "Not in stare.pub: may be at CourtListener", for a case link. "May be":
+ * nothing checks that the case exists there (codexpublicus/citare#39).
+ */
 export function lookupLabel(link) {
-  return `Not in stare.pub: find on ${LOOKUP_SOURCES[link.source]}`;
+  return `Not in stare.pub: may be at ${LOOKUP_SOURCES[link.source]}`;
+}
+
+/**
+ * For a citation to a volume stare.pub holds where no case starts at the
+ * cited page, the neutral note to show; else null. It claims nothing about
+ * whether the case exists: an index gap and a bad citation look the same.
+ */
+export function heldVolumeMiss(info) {
+  if (!info || info.resolvable || !info.volumeHeld || safeExternalUrl(info.externalUrl)) return null;
+  return `No case found at this page in ${info.reporter || info.slug} vol. ${info.volume}`;
 }
 
 /**
@@ -213,6 +253,10 @@ function citationHtml(raw, inner, info) {
     const volume = escapeHtml(String(info.volume));
     const page = escapeHtml(String(info.page));
     return `<a class="cite-link" href="#${slug}/${volume}/${page}" data-slug="${slug}" data-volume="${volume}" data-page="${page}" title="${escapeHtml(raw)}">${inner}</a>`;
+  }
+  const miss = heldVolumeMiss(info);
+  if (miss) {
+    return `<span class="cite-unresolved" title="${escapeHtml(miss)}">${inner}</span>`;
   }
   const [lookup] = caseLookupLinks(info);
   if (lookup) {
@@ -240,7 +284,12 @@ export function orderCitedCases(citations) {
 }
 
 /**
- * One entry in a cited-cases list (the case viewer's sidebar and /check).
+ * One entry in a cited-cases list (the case viewer's sidebar and /check),
+ * and where the link-out decision is made: a case stare.pub holds links
+ * here; a statute links to its text; a held volume with no case at the
+ * cited page gets a neutral note and no outside link; a volume stare.pub
+ * doesn't hold links to CourtListener and Google Scholar, labelled as
+ * unverified.
  * `caseHref(c)` gives the stare.pub link for a citation it holds; that link
  * opens in a new tab with `caseRel` (pass '' for none).
  */
@@ -258,6 +307,14 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
     return `<div class="cited-case">
           <span class="cited-status ext">&#8599;</span>
           <a class="cited-case-link" href="${escapeHtml(externalUrl)}" ${OUTBOUND}>${raw}</a>
+        </div>`;
+  }
+  const miss = heldVolumeMiss(c);
+  if (miss) {
+    return `<div class="cited-case cited-case-lookup">
+          <span class="cited-status no">&#10007;</span>
+          <span class="cited-case-unresolved">${raw}</span>
+          <span class="cited-lookup cited-miss">${escapeHtml(miss)}</span>
         </div>`;
   }
   const links = caseLookupLinks(c);

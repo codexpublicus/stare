@@ -392,9 +392,10 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             if let Some(url) = c["external_url"].as_str() {
                 print!("  → {}", url);
             } else if !resolvable {
-                // Not in stare.pub: point at the first place that may hold it.
+                // A volume stare.pub doesn't hold: point at the first place that
+                // may have the case. Nothing checks that it does (citare#39).
                 if let Some(url) = c["case_links"][0]["url"].as_str() {
-                    print!("  → not in stare.pub, try {}", url);
+                    print!("  → not in stare.pub, may be at {}", url);
                 }
             }
             println!();

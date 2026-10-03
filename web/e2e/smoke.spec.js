@@ -86,10 +86,12 @@ test('/check lists the citations citare finds', async ({ page }) => {
   await expect(links.nth(2)).toHaveAttribute('href', 'https://www.law.cornell.edu/uscode/text/42/1983');
 });
 
-test('/check links out for a case and a state statute stare.pub does not hold', async ({ page }) => {
+test('/check links out only for volumes and statutes stare.pub does not hold', async ({ page }) => {
   // Axon (2023) is past CAP's last volumes of the U.S. Reports, so the
-  // index can't have it; the Minnesota statute links to the revisor.
-  const text = 'See Axon Enterprise, Inc. v. FTC, 598 U.S. 175 (2023); Minn. Stat. § 609.185.';
+  // index can't have it; the Minnesota statute links to the revisor. A.2d
+  // 31 is indexed and its last case starts at page 894, so 31 A.2d 950 is a
+  // miss in a held volume: a neutral note, and no outside link.
+  const text = 'See Axon Enterprise, Inc. v. FTC, 598 U.S. 175 (2023); Minn. Stat. § 609.185; Doe v. Roe, 31 A.2d 950 (1943).';
 
   // Links only: the page itself must make no request to either site.
   const outside = [];
@@ -103,17 +105,21 @@ test('/check links out for a case and a state statute stare.pub does not hold', 
   await page.click('#check-btn');
 
   await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
-  await expect(page.locator('#check-summary')).toHaveText('2 citations found (0 resolvable)');
+  await expect(page.locator('#check-summary')).toHaveText('3 citations found (0 resolvable)');
   await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
     '↗ Minn. Stat. § 609.185',
-    '↗ 598 U.S. 175 Not in stare.pub: find on CourtListener or Google Scholar',
+    '↗ 598 U.S. 175 Not in stare.pub: may be at CourtListener or Google Scholar',
+    '✗ 31 A.2d 950 No case found at this page in A.2d vol. 31',
   ]);
+  await expect(page.locator('#check-cite-list .cited-case', { hasText: '31 A.2d 950' }).locator('a')).toHaveCount(0);
+  await expect(page.locator('#check-rendered .cite-unresolved', { hasText: '31 A.2d 950' }))
+    .toHaveAttribute('title', 'No case found at this page in A.2d vol. 31');
 
   const statute = page.locator('#check-cite-list a.cited-case-link');
   await expect(statute).toHaveAttribute('href', 'https://www.revisor.mn.gov/statutes/cite/609.185');
   await expect(statute).toHaveAttribute('rel', 'noopener noreferrer');
 
-  const courtListener = page.getByRole('link', { name: 'Not in stare.pub: find on CourtListener' });
+  const courtListener = page.getByRole('link', { name: 'Not in stare.pub: may be at CourtListener' });
   await expect(courtListener).toHaveAttribute('href', 'https://www.courtlistener.com/c/U.S./598/175/');
   await expect(courtListener).toHaveAttribute('target', '_blank');
   await expect(courtListener).toHaveAttribute('rel', 'noopener noreferrer');

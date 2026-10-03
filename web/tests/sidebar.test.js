@@ -96,7 +96,7 @@ describe('renderSidebar external citations', () => {
     const held = { raw: '1 A.2d 2', resolvable: true, slug: 'a2d', volume: 1, page: 2, externalUrl: null, caseLinks: [] };
     renderSidebar(el, caseData, 'a2d', 1, [], [notHeld, external('56 Stat. 195', 'https://example.org/s'), held], 'done');
     assert.match(el.innerHTML,
-      /<a class="cited-lookup-link" href="https:\/\/www.courtlistener.com\/c\/U.S.\/598\/175\/" target="_blank" rel="noopener noreferrer">Not in stare.pub: find on CourtListener<\/a>/);
+      /<a class="cited-lookup-link" href="https:\/\/www.courtlistener.com\/c\/U.S.\/598\/175\/" target="_blank" rel="noopener noreferrer">Not in stare.pub: may be at CourtListener<\/a>/);
     const order = [...el.innerHTML.matchAll(/>(1 A\.2d 2|56 Stat\. 195|598 U\.S\. 175)</g)].map(m => m[1]);
     assert.deepEqual(order, ['1 A.2d 2', '56 Stat. 195', '598 U.S. 175']);
   });

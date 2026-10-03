@@ -73,7 +73,7 @@ import '../styles/reader.css';
 		<div class="check-container">
 			<div class="check-header">
 				<h1>Check Citations</h1>
-				<p>Paste a legal brief or any text containing case citations. We'll identify each citation and check whether we can resolve it to the full case text. A case we don't hold links to CourtListener and Google Scholar instead, and a statute or regulation links to its text where it's published.</p>
+				<p>Paste a legal brief or any text containing case citations. We'll identify each citation and check whether we can resolve it to the full case text. A case from a volume we don't hold links to CourtListener and Google Scholar, where it may be, and a statute or regulation links to its text where it's published.</p>
 			</div>
 
 			<div class="check-input-area">
@@ -102,7 +102,7 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 		</div>
 
 		<script is:inline type="module">
-			import { detectCitations, guessSlug, checkAvailability, escapeHtml, renderTextHtml, citedCaseHtml, orderCitedCases } from '/js/citations.js';
+			import { detectCitations, checkCitation, escapeHtml, renderTextHtml, citedCaseHtml, orderCitedCases } from '/js/citations.js';
 
 			const input = document.getElementById('check-input');
 			const btn = document.getElementById('check-btn');
@@ -139,24 +139,9 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 						return true;
 					});
 
-					// Check availability
-					const checked = await Promise.all(unique.map(async (c) => {
-						if (c.externalUrl) {
-							return { ...c, slug: null, resolvable: false };
-						}
-						// A blank page (`1 U.S. ___`) arrives as page: null; there
-						// is nothing to link to, whether or not the volume is indexed.
-						if (!c.page) {
-							return { ...c, slug: null, resolvable: false };
-						}
-						if (c.harvard_slug && c.volume) {
-							const available = await checkAvailability(c.harvard_slug, c.volume);
-							return { ...c, slug: c.harvard_slug, resolvable: available };
-						}
-						const slug = guessSlug(c.reporter || '');
-						const available = c.volume ? await checkAvailability(slug, c.volume) : false;
-						return { ...c, slug: available ? slug : null, resolvable: available };
-					}));
+					// Check availability: the volume in the manifest, then the
+					// page in the volume's index.
+					const checked = await Promise.all(unique.map(c => checkCitation(c)));
 
 					const resolvable = checked.filter(c => c.resolvable);
 
