@@ -164,6 +164,37 @@ test('/#a2d/31/647-01 resolves through idx.stare.pub and renders the case', asyn
   await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ citations? found$/);
 });
 
+test('a case page loads Source Serif 4 from stare.pub and nothing from Google Fonts', async ({ page, baseURL }) => {
+  // The fonts are self-hosted under /fonts/ (#102); no page may ask Google for one.
+  const google = [];
+  const fonts = [];
+  page.on('request', (req) => {
+    const url = new URL(req.url());
+    if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') google.push(req.url());
+    if (url.pathname.endsWith('.woff2')) fonts.push(url);
+  });
+
+  await page.goto('/#a2d/31/647-01');
+  await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
+
+  await expect.poll(() => page.evaluate(async () => {
+    await document.fonts.ready;
+    return [...document.fonts].some(
+      (face) => face.family.replace(/["']/g, '') === 'Source Serif 4' && face.status === 'loaded',
+    );
+  })).toBe(true);
+  const origin = new URL(baseURL).origin;
+  expect(fonts.length).toBeGreaterThan(0);
+  for (const url of fonts) {
+    expect(url.origin).toBe(origin);
+    expect(url.pathname).toMatch(/^\/fonts\//);
+  }
+
+  await page.goto('/check');
+  await page.goto('/about');
+  expect(google).toEqual([]);
+});
+
 test('138 A.3d 1012 resolves into a3d/138-2, the second folder CAP split the volume over', async ({ page }) => {
   // CAP split 138 A.3d over two folders, a3d/138 and a3d/138-2 (#94). Page 1012 is
   // only in the second; the resolver tries 138 first, then asks the manifest.
