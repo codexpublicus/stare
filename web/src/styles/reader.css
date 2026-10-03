@@ -1,10 +1,10 @@
 /* web/src/styles/reader.css */
 .reader { max-width: 680px; margin: 0 auto; padding: 32px 24px 64px; }
 .reader-header { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-light); }
-.reader-title { font-family: Georgia, 'Times New Roman', serif; font-size: 22px; font-weight: 600; line-height: 1.3; color: var(--text); }
+.reader-title { font-family: var(--font-text); font-size: 22px; font-weight: 600; line-height: 1.3; color: var(--text); }
 .reader-meta { margin-top: 6px; font-size: 14px; color: var(--text-secondary); }
-.reader-author { font-family: Georgia, 'Times New Roman', serif; font-style: italic; color: var(--text-secondary); margin-bottom: 16px; font-size: 15px; }
-.reader-text { font-family: Georgia, 'Times New Roman', serif; font-size: 16px; line-height: 1.8; color: var(--text-body); }
+.reader-author { font-family: var(--font-text); font-style: italic; color: var(--text-secondary); margin-bottom: 16px; font-size: 15px; }
+.reader-text { font-family: var(--font-text); font-size: 16px; line-height: 1.8; color: var(--text-body); }
 .reader-text p { margin-bottom: 16px; }
 
 .cite-link { color: var(--link); text-decoration: none; border-bottom: 1px dotted var(--link); cursor: pointer; transition: all 0.15s; }
@@ -17,9 +17,9 @@
 .cite-lookup { color: var(--unresolved); text-decoration: none; border-bottom: 1px dashed var(--unresolved); }
 .cite-lookup:hover { color: var(--text-secondary); border-bottom-style: solid; }
 .cite-lookup::after { content: ' ↗'; font-size: 0.75em; opacity: 0.6; }
-.page-marker { font-family: -apple-system, system-ui, sans-serif; font-size: 11px; color: var(--text-tertiary); display: inline; margin: 0 2px; user-select: none; }
+.page-marker { font-family: var(--font-ui); font-size: 11px; color: var(--text-tertiary); display: inline; margin: 0 2px; user-select: none; }
 
-.cite-badge { display: inline-block; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; padding: 3px 10px; background: var(--cite-badge-bg); border-radius: 4px; margin: 2px 4px 2px 0; color: var(--cite-badge-text); transition: background 0.2s, color 0.2s; }
+.cite-badge { display: inline-block; font-family: var(--font-mono); font-size: 12px; padding: 3px 10px; background: var(--cite-badge-bg); border-radius: 4px; margin: 2px 4px 2px 0; color: var(--cite-badge-text); transition: background 0.2s, color 0.2s; }
 .cite-badge.primary { background: var(--cite-badge-primary-bg); color: var(--cite-badge-primary-text); font-weight: 500; }
 
 .cited-case { padding: 6px 0; display: flex; align-items: center; gap: 6px; }
@@ -76,7 +76,7 @@
   position: fixed; z-index: 100;
   background: var(--topbar-bg); color: var(--topbar-text);
   padding: 8px 12px; border-radius: 6px;
-  font-family: -apple-system, system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: 13px; line-height: 1.4;
   max-width: 320px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);

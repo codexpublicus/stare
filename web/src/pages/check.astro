@@ -29,12 +29,12 @@ import '../styles/reader.css';
 		<style>
 			.check-container { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
 			.check-header { margin-bottom: 1.5rem; }
-			.check-header h1 { font-family: Georgia, 'Times New Roman', serif; font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem; }
+			.check-header h1 { font-family: var(--font-text); font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem; }
 			.check-header p { font-size: 0.9rem; color: var(--text-secondary); }
 			.check-input-area { margin-bottom: 1rem; }
 			.check-textarea {
 				width: 100%; min-height: 200px; padding: 16px;
-				font-family: Georgia, 'Times New Roman', serif; font-size: 15px; line-height: 1.7;
+				font-family: var(--font-text); font-size: 15px; line-height: 1.7;
 				border: 2px solid var(--border); border-radius: 8px;
 				background: var(--bg); color: var(--text);
 				resize: vertical;
@@ -55,7 +55,7 @@ import '../styles/reader.css';
 			.check-text-panel { flex: 1; min-width: 0; }
 			.check-cite-panel { width: 280px; min-width: 280px; background: var(--bg-alt); border-radius: 8px; padding: 16px; font-size: 13px; max-height: 60vh; overflow-y: auto; }
 			.check-rendered {
-				font-family: Georgia, 'Times New Roman', serif; font-size: 15px;
+				font-family: var(--font-text); font-size: 15px;
 				line-height: 1.8; color: var(--text-body); padding: 16px;
 				border: 1px solid var(--border); border-radius: 8px;
 				background: var(--bg); min-height: 100px;
