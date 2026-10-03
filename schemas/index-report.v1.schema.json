@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stare.pub/schemas/index-report.v1.schema.json",
+  "title": "stare.pub index build report, format 1",
+  "description": "What one citation index build found: who built it from what, the totals, per-reporter counts, the volumes that failed or were allow-listed, and what changed since the previous build. Written by `stare-admin build-report` as builds/<version>/report.json and published at idx.stare.pub/v/<version>/report.json. A change that breaks a reader bumps `format` and this file's name.",
+  "type": "object",
+  "required": ["format", "version", "generated_at", "build", "totals", "reporters", "allowed", "failed", "volumes", "diff"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": 1 },
+    "version": { "$ref": "#/$defs/data_version" },
+    "generated_at": { "$ref": "#/$defs/timestamp", "description": "When build-report wrote this report." },
+    "build": {
+      "type": "object",
+      "description": "Build identity.",
+      "required": ["stare_tag", "stare_commit", "stare_admin", "citare", "cap_release", "started_at", "finished_at", "duration_seconds"],
+      "additionalProperties": false,
+      "properties": {
+        "stare_tag": { "type": ["string", "null"], "description": "The stare release tag stare-admin was built from." },
+        "stare_commit": { "type": ["string", "null"], "description": "That tag's commit." },
+        "stare_admin": { "type": "string", "description": "stare-admin's package version." },
+        "citare": { "type": ["string", "null"], "description": "The citare-core version stare-admin was built with (its git tag when it has one), from Cargo.lock." },
+        "cap_release": { "type": ["string", "null"], "description": "What identifies the CAP data the build read. CAP publishes no release numbers; index-build gives the SHA-256 of the mirror's VolumesMetadata.json." },
+        "started_at": { "oneOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
+        "finished_at": { "$ref": "#/$defs/timestamp" },
+        "duration_seconds": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "totals": { "$ref": "#/$defs/totals" },
+    "reporters": {
+      "type": "object",
+      "description": "Per reporter slug: the volumes indexed and their counts.",
+      "additionalProperties": { "$ref": "#/$defs/reporter" }
+    },
+    "allowed": {
+      "type": "array",
+      "description": "Every volume in the --allow file, with its reason and the problems the index check found (empty when the volume passed).",
+      "items": {
+        "type": "object",
+        "required": ["volume", "reason", "problems"],
+        "additionalProperties": false,
+        "properties": {
+          "volume": { "$ref": "#/$defs/volume_key" },
+          "reason": { "type": "string" },
+          "problems": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "failed": {
+      "type": "array",
+      "description": "Every volume that failed: `error` when it couldn't be indexed, `check` when its index failed the check and it isn't allow-listed.",
+      "items": {
+        "type": "object",
+        "required": ["volume", "kind", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "volume": { "$ref": "#/$defs/volume_key" },
+          "kind": { "enum": ["error", "check"] },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "volumes": {
+      "type": "object",
+      "description": "Per reporter, per volume folder: the counts and a digest of the index files. Volumes that couldn't be indexed aren't here. The next build's diff reads this.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "$ref": "#/$defs/volume" }
+      }
+    },
+    "diff": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/diff" }],
+      "description": "What changed since the report given as --previous; null when there was none."
+    }
+  },
+  "$defs": {
+    "data_version": {
+      "type": "string",
+      "pattern": "^v[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}(\\.[1-9][0-9]*)?$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "volume_key": {
+      "type": "string",
+      "description": "reporter/volume folder, e.g. a3d/138-2.",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "count": { "type": "integer", "minimum": 0 },
+    "pair": {
+      "type": "array",
+      "description": "[before, after].",
+      "items": { "type": "integer", "minimum": 0 },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "totals": {
+      "type": "object",
+      "required": ["reporters", "volumes", "split_volumes", "split_parts", "cases", "entries", "shortfall", "labeled", "long_names", "allowed", "failed"],
+      "additionalProperties": false,
+      "properties": {
+        "reporters": { "$ref": "#/$defs/count" },
+        "volumes": { "$ref": "#/$defs/count", "description": "Volume folders indexed." },
+        "split_volumes": { "type": ["integer", "null"], "minimum": 0, "description": "Volume numbers CAP split over several folders, from the build's manifest.json; null without one." },
+        "split_parts": { "type": ["integer", "null"], "minimum": 0, "description": "The folders those volumes are split over." },
+        "cases": { "$ref": "#/$defs/count", "description": "Case files in the indexed volumes' zips." },
+        "entries": { "$ref": "#/$defs/count", "description": "Index entries, .bin and .multi." },
+        "shortfall": { "$ref": "#/$defs/count", "description": "Cases without an entry, summed per volume (a volume with extra entries counts 0)." },
+        "labeled": { "$ref": "#/$defs/count", "description": "Entries on unnumbered pages." },
+        "long_names": { "$ref": "#/$defs/count", "description": "Pages whose first case's name is too long for the .bin." },
+        "allowed": { "$ref": "#/$defs/count", "description": "Allow-listed volumes that failed the check." },
+        "failed": { "$ref": "#/$defs/count", "description": "Volumes in `failed`." }
+      }
+    },
+    "reporter": {
+      "type": "object",
+      "required": ["volumes", "cases", "entries", "shortfall"],
+      "additionalProperties": false,
+      "properties": {
+        "volumes": { "$ref": "#/$defs/count" },
+        "cases": { "$ref": "#/$defs/count" },
+        "entries": { "$ref": "#/$defs/count" },
+        "shortfall": { "$ref": "#/$defs/count" }
+      }
+    },
+    "volume": {
+      "type": "object",
+      "required": ["cases", "entries", "digest"],
+      "additionalProperties": false,
+      "properties": {
+        "cases": { "$ref": "#/$defs/count" },
+        "entries": { "$ref": "#/$defs/count" },
+        "digest": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{16}$",
+          "description": "The first 16 hex digits of the SHA-256 of the .bin, then the .multi when there is one; null when the .bin is missing."
+        }
+      }
+    },
+    "diff": {
+      "type": "object",
+      "required": ["previous_version", "previous_generated_at", "volumes_added", "volumes_removed", "volumes_changed", "counts_changed", "reporters", "totals"],
+      "additionalProperties": false,
+      "properties": {
+        "previous_version": { "$ref": "#/$defs/data_version" },
+        "previous_generated_at": { "$ref": "#/$defs/timestamp" },
+        "volumes_added": { "type": "array", "items": { "$ref": "#/$defs/volume_key" } },
+        "volumes_removed": { "type": "array", "items": { "$ref": "#/$defs/volume_key" } },
+        "volumes_changed": {
+          "type": "array",
+          "description": "Volumes in both builds whose counts or index files differ.",
+          "items": { "$ref": "#/$defs/volume_key" }
+        },
+        "counts_changed": {
+          "type": "array",
+          "description": "The changed volumes whose case or entry counts differ.",
+          "items": {
+            "type": "object",
+            "required": ["volume", "cases", "entries"],
+            "additionalProperties": false,
+            "properties": {
+              "volume": { "$ref": "#/$defs/volume_key" },
+              "cases": { "$ref": "#/$defs/pair" },
+              "entries": { "$ref": "#/$defs/pair" }
+            }
+          }
+        },
+        "reporters": {
+          "type": "object",
+          "description": "Reporters whose entry count changed (0 for a reporter that wasn't there).",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["entries"],
+            "additionalProperties": false,
+            "properties": { "entries": { "$ref": "#/$defs/pair" } }
+          }
+        },
+        "totals": {
+          "type": "object",
+          "required": ["volumes", "cases", "entries"],
+          "additionalProperties": false,
+          "properties": {
+            "volumes": { "$ref": "#/$defs/pair" },
+            "cases": { "$ref": "#/$defs/pair" },
+            "entries": { "$ref": "#/$defs/pair" }
+          }
+        }
+      }
+    }
+  }
+}

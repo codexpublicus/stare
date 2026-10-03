@@ -2,6 +2,7 @@
 #MISE description="Build a versioned citation index from the CAP mirror into codexpublicus-index:/builds/<version>/ (operator-run, on ml-01)"
 #USAGE arg "<tag>" help="The stare release tag to build stare-admin from, e.g. v2026.10.04.1"
 #USAGE arg "[version]" help="The index's data version, vYYYY.MM.DD[.N] (default: today's UTC date, vYYYY.MM.DD)"
+#USAGE flag "--allow <file>" help="JSON object of volumes (\"reporter/volume\") allowed to fail the index check, each with its reason"
 set -euo pipefail
 
 # Builds stare-admin from <tag> on this host, then runs batch-index and build-manifest in
@@ -10,12 +11,21 @@ set -euo pipefail
 # never written over; a second build the same day is vYYYY.MM.DD.1 and so on.
 #
 # The build directory gets the .bin and .multi files, the build's manifest.json (with
-# `version` and `generated_at`, no `base`), build.log, and build.json with the exit
-# status of each step. `mise run index-publish <version>` checks those before uploading.
+# `version` and `generated_at`, no `base`), build.log, batch-index.json (what indexing
+# each volume found), report.json (schemas/index-report.v1.schema.json), and build.json
+# with the exit status of each step. `mise run index-publish <version>` checks those
+# before uploading.
+#
+# report.json is written whenever batch-index got far enough to record its results,
+# so a failed build still says which volumes failed. Its diff is against the published
+# build's report, /index/current/report.json, when there is one. The CAP data is
+# identified by the SHA-256 of the mirror's VolumesMetadata.json, since CAP publishes no
+# release numbers.
 
 root="${MISE_PROJECT_ROOT}"
 tag="${usage_tag:?}"
 version="${usage_version:-v$(date -u +%Y.%m.%d)}"
+allow="${usage_allow:-}"
 
 image=debian:trixie-slim
 mirror_volume=codexpublicus-cap-mirror
@@ -29,6 +39,12 @@ fi
 in_index() {
   docker run --rm --network none --user 1000:1000 -v "$index_volume:/index" "$image" "$@"
 }
+
+allow_mount=()
+if [ -n "$allow" ]; then
+  [ -f "$allow" ] || { echo "index-build: no allow file $allow" >&2; exit 2; }
+  allow_mount=(-v "$(realpath "$allow"):/allow.json:ro" -e ALLOW=/allow.json)
+fi
 
 if in_index test -e "/index/builds/$version"; then
   echo "index-build: builds/$version already exists; builds are never written over. Use the next .N." >&2
@@ -52,12 +68,17 @@ if ! "$bin" build-manifest --help | grep -q -- '--version'; then
   echo "index-build: stare-admin at $tag has no build-manifest --version; use a later tag" >&2
   exit 1
 fi
+if ! "$bin" build-report --help >/dev/null 2>&1; then
+  echo "index-build: stare-admin at $tag has no build-report; use a later tag" >&2
+  exit 1
+fi
 
 echo "Building index $version with stare $tag ($commit)"
 docker run --rm --network none --user 1000:1000 \
   -v "$mirror_volume:/mirror:ro" \
   -v "$index_volume:/index" \
   -v "$bin:/usr/local/bin/stare-admin:ro" \
+  "${allow_mount[@]}" \
   -e VERSION="$version" -e TAG="$tag" -e COMMIT="$commit" \
   "$image" bash -c '
     set -u -o pipefail
@@ -65,7 +86,10 @@ docker run --rm --network none --user 1000:1000 \
     mkdir -p /index/builds
     mkdir "$out" || exit 1
     started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    stare-admin batch-index /mirror/downloads -o "$out" 2>&1 | tee "$out/build.log"
+    allow_args=()
+    [ -n "${ALLOW:-}" ] && allow_args=(--allow "$ALLOW")
+    stare-admin batch-index /mirror/downloads -o "$out" \
+      --results "$out/batch-index.json" "${allow_args[@]}" 2>&1 | tee "$out/build.log"
     batch=${PIPESTATUS[0]}
     manifest=null
     if [ "$batch" -eq 0 ]; then
@@ -74,10 +98,24 @@ docker run --rm --network none --user 1000:1000 \
         --version "$VERSION" 2>&1 | tee -a "$out/build.log"
       manifest=${PIPESTATUS[0]}
     fi
-    printf "{\"version\": \"%s\", \"stare_tag\": \"%s\", \"stare_commit\": \"%s\", \"started_at\": \"%s\", \"finished_at\": \"%s\", \"batch_index_exit\": %s, \"build_manifest_exit\": %s}\n" \
-      "$VERSION" "$TAG" "$COMMIT" "$started" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$batch" "$manifest" \
+    report=null
+    previous=null
+    if [ -f "$out/batch-index.json" ]; then
+      previous_args=()
+      if [ -f /index/current/report.json ]; then
+        previous="\"$(readlink /index/current)\""
+        previous_args=(--previous /index/current/report.json)
+      fi
+      cap="VolumesMetadata.json sha256:$(sha256sum /mirror/downloads/VolumesMetadata.json | cut -d" " -f1)"
+      stare-admin build-report "$out" --version "$VERSION" \
+        --stare-tag "$TAG" --stare-commit "$COMMIT" --cap-release "$cap" \
+        --started-at "$started" "${previous_args[@]}" 2>&1 | tee -a "$out/build.log"
+      report=${PIPESTATUS[0]}
+    fi
+    printf "{\"version\": \"%s\", \"stare_tag\": \"%s\", \"stare_commit\": \"%s\", \"started_at\": \"%s\", \"finished_at\": \"%s\", \"batch_index_exit\": %s, \"build_manifest_exit\": %s, \"build_report_exit\": %s, \"previous_report\": %s}\n" \
+      "$VERSION" "$TAG" "$COMMIT" "$started" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$batch" "$manifest" "$report" "$previous" \
       > "$out/build.json"
     cat "$out/build.json"
-    [ "$batch" -eq 0 ] && [ "$manifest" = 0 ]
+    [ "$batch" -eq 0 ] && [ "$manifest" = 0 ] && [ "$report" = 0 ]
   '
 echo "Built builds/$version. Publish it with: mise run index-publish $version"
