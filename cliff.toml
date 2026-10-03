@@ -75,6 +75,7 @@ commit_parsers = [
   { message = "^feat", group = "<!-- 0 -->Features" },
   { message = "^fix", group = "<!-- 1 -->Fixes" },
   { message = "^perf", group = "<!-- 2 -->Performance" },
+  { message = "^chore\\(deps\\)", group = "<!-- 3 -->Dependencies" },
   { message = "^(docs|chore|ci|test|build|style|refactor)", skip = true },
   { message = ".*", skip = true },
 ]
