@@ -103,7 +103,7 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 		</div>
 
 		<script is:inline type="module">
-			import { detectCitations, checkCitation, escapeHtml, renderTextHtml, citedCaseHtml, orderCitedCases } from '/js/citations.js';
+			import { detectCitations, checkCitations, occurrence, escapeHtml, renderTextHtml, citedCaseHtml, orderCitedCases } from '/js/citations.js';
 			import { preloadWasm, WasmLoadError } from '/js/wasm.js';
 			import { showWasmProgress } from '/js/wasmbar.js';
 
@@ -137,28 +137,21 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 
 					status.textContent = `Found ${citations.length} citations. Checking availability...`;
 
-					// Deduplicate
-					const seen = new Set();
-					const unique = citations.filter(c => {
-						if (seen.has(c.raw)) return false;
-						seen.add(c.raw);
-						return true;
-					});
-
-					// Check availability: the volume in the manifest, then the
-					// page in the volume's index.
-					const checked = await Promise.all(unique.map(c => checkCitation(c)));
+					// Check availability, once per citation (a short form once
+					// per antecedent, through it): the volume in the manifest,
+					// then the page in the volume's index.
+					const checked = await checkCitations(citations);
 
 					const resolvable = checked.filter(c => c.resolvable);
 
 					// Build citation map for highlighting
 					const citationMap = new Map();
 					for (const c of checked) {
-						citationMap.set(c.raw, c);
+						citationMap.set(c.key, c);
 					}
 
 					// Render highlighted text; detectCitations' offsets are into `text`
-					rendered.innerHTML = renderTextHtml(text, citations, citationMap, escapeHtml)
+					rendered.innerHTML = renderTextHtml(text, citations.map(occurrence), citationMap, escapeHtml)
 						.map(p => `<p>${p}</p>`)
 						.join('');
 

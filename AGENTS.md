@@ -242,8 +242,12 @@ the site links to no GitHub page: the cliff.toml template emits no commit, PR or
 links, and `web/src/lib/changelog.js` strips any link from a CHANGELOG line.
 
 Don't hand-edit `CHANGELOG.md` or push `v*` tags yourself; the workflows own both. Changes to
-the workflows need the operator's workflow-scoped token to merge, and `release-prepare.yml`
-needs the repo setting "Allow GitHub Actions to create and approve pull requests". Wrangler is
+the workflows need the operator's workflow-scoped token to merge. `release-prepare.yml` opens
+its PRs with the yeet GitHub App's token (`YEET_APP_ID` and `YEET_APP_PRIVATE_KEY`, pushed by
+codexpublicus/infra), so CI runs on them without an approval, and `release.yml` accepts a
+release PR from `codexpublicus-yeet[bot]`. Without those values it falls back to
+`GITHUB_TOKEN` with a warning, which needs the repo setting "Allow GitHub Actions to create
+and approve pull requests" and leaves the PR's CI waiting for approval. Wrangler is
 pinned to 4.141.0, git-cliff to 2.14.2, and Actions by commit SHA. Locally, `mise run check`,
 `mise run build-wasm` and `mise run build-web` run the same steps, `mise run e2e [url]` runs
 the smoke suite against a deployed site (the main preview by default), and

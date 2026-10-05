@@ -103,10 +103,10 @@ describe('processCitations', () => {
     assert.equal(unique.length, 2);
     assert.deepEqual(occurrencesByOpinion, [
       [
-        { raw: '123 U.S. 456', start: 4, end: 16 },
-        { raw: '123 U.S. 456', start: 25, end: 37 },
+        { raw: '123 U.S. 456', key: '123 U.S. 456', pin: null, start: 4, end: 16 },
+        { raw: '123 U.S. 456', key: '123 U.S. 456', pin: null, start: 25, end: 37 },
       ],
-      [{ raw: '78 N.E.2d 90', start: 2, end: 14 }],
+      [{ raw: '78 N.E.2d 90', key: '78 N.E.2d 90', pin: null, start: 2, end: 14 }],
     ]);
   });
 });

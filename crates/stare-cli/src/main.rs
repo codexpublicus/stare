@@ -479,6 +479,128 @@ fn list_cases(src: &Sources, reporter: &str, volume: &str, json: bool) -> Result
     Ok(())
 }
 
+/// How a citation in `stare check` resolves, as the site shows it
+/// (`web/public/js/citations.js`, `checkCitation`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CheckStatus {
+    /// A case starts at the page: stare.pub has it.
+    Found,
+    /// A statute or regulation, linked to its text.
+    External,
+    /// stare.pub holds the volume, but no case starts at the page.
+    HeldMiss,
+    /// stare.pub doesn't hold the volume; the case links may have it.
+    NotHeld,
+    /// A short form citare couldn't tie to an earlier citation.
+    NoAntecedent,
+    /// Nothing to look up: no reporter, volume or page.
+    Unchecked,
+}
+
+impl CheckStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            CheckStatus::Found => "found",
+            CheckStatus::External => "external",
+            CheckStatus::HeldMiss => "held_miss",
+            CheckStatus::NotHeld => "not_held",
+            CheckStatus::NoAntecedent => "no_antecedent",
+            CheckStatus::Unchecked => "unchecked",
+        }
+    }
+}
+
+/// What one citation is looked up as: the citation itself, or a short
+/// form's antecedent. A short form is never looked up at its pin page.
+struct CheckTarget<'a> {
+    slug: Option<String>,
+    reporter: Option<&'a str>,
+    volume: Option<u32>,
+    page: Option<&'a str>,
+    external_url: Option<&'a str>,
+    case_links: &'a [stare::cite::CaseLink],
+}
+
+fn check_target(c: &stare::cite::DetectedCitation) -> Option<CheckTarget<'_>> {
+    let slug_for = |slug: &Option<String>, reporter: &Option<String>| {
+        slug.clone().or_else(|| {
+            reporter
+                .as_deref()
+                .map(|r| r.to_lowercase().replace(['.', ' '], ""))
+                .filter(|s| !s.is_empty())
+        })
+    };
+    if c.is_short_form() {
+        let a = c.antecedent.as_ref()?;
+        return Some(CheckTarget {
+            slug: slug_for(&a.harvard_slug, &a.reporter),
+            reporter: a.reporter.as_deref(),
+            volume: a.volume.as_deref().and_then(|v| v.parse().ok()),
+            page: a.page.as_deref(),
+            external_url: a.external_url.as_deref(),
+            case_links: &a.case_links,
+        });
+    }
+    Some(CheckTarget {
+        slug: slug_for(&c.harvard_slug, &c.reporter),
+        reporter: c.reporter.as_deref(),
+        volume: c.volume.as_deref().and_then(|v| v.parse().ok()),
+        page: c.page.as_deref(),
+        external_url: c.external_url.as_deref(),
+        case_links: &c.case_links,
+    })
+}
+
+/// Whether stare.pub holds `volume` of `slug`, and whether a case starts at
+/// `page` in it (or in another part of a volume CAP split).
+fn check_page(src: &Sources, slug: &str, volume: u32, page: u32) -> (bool, bool) {
+    let cited = volume.to_string();
+    let mut candidates = vec![cited.clone()];
+    if let Some(m) = src.manifest() {
+        for v in m.candidates(slug, &cited, page) {
+            if !candidates.contains(&v) {
+                candidates.push(v);
+            }
+        }
+    }
+    let found = stare::manifest::locate(&candidates, page, |v| fetch_bin(src, slug, v)).is_ok();
+    let held = found
+        || src.manifest().is_some_and(|m| {
+            m.has_volume(slug, &cited) || m.parts.get(slug).is_some_and(|p| p.contains_key(&cited))
+        })
+        || fetch_bin(src, slug, &cited).is_ok();
+    (held, found)
+}
+
+fn check_status(src: &Sources, c: &stare::cite::DetectedCitation) -> CheckStatus {
+    let Some(t) = check_target(c) else {
+        return CheckStatus::NoAntecedent;
+    };
+    if t.external_url.is_some() {
+        // A statute's text is the place for a plain `Id.`; with a pin
+        // (`Id. § 1985`) it is a different section, which nothing here
+        // can link to.
+        return if c.is_short_form() && c.pin.is_some() {
+            CheckStatus::Unchecked
+        } else {
+            CheckStatus::External
+        };
+    }
+    let (Some(slug), Some(volume), Some(page)) = (
+        t.slug.as_deref(),
+        t.volume,
+        t.page.and_then(|p| p.parse::<u32>().ok()),
+    ) else {
+        return CheckStatus::Unchecked;
+    };
+    match check_page(src, slug, volume, page) {
+        (_, true) => CheckStatus::Found,
+        (true, false) => CheckStatus::HeldMiss,
+        (false, false) if !t.case_links.is_empty() => CheckStatus::NotHeld,
+        _ => CheckStatus::Unchecked,
+    }
+}
+
 fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
     let text = if file == "-" {
         use std::io::Read;
@@ -491,38 +613,33 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
 
     let detected = stare::cite::detect_citations(&text);
 
+    // One entry per citation and antecedent: every `Id.` that refers to
+    // the same case shares one, and `Id.`s that refer to different cases
+    // don't.
+    let mut seen = std::collections::HashSet::new();
     let mut citations = Vec::new();
     for c in &detected {
-        let slug = c.harvard_slug.clone().unwrap_or_else(|| {
-            c.reporter
-                .as_deref()
-                .unwrap_or("")
-                .to_lowercase()
-                .replace(['.', ' '], "")
-        });
-        let volume: u32 = c
-            .volume
-            .as_deref()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
-        // A blank page (`1 U.S. ___`) has `page: None` and nothing to look up.
-        let resolvable = if !slug.is_empty() && volume > 0 && c.page.is_some() {
-            fetch_bin(src, &slug, &volume.to_string()).is_ok()
-        } else {
-            false
-        };
-
+        let antecedent = c.antecedent.as_ref().map(|a| a.matched_text.clone());
+        if !seen.insert((c.matched_text.clone(), antecedent.clone())) {
+            continue;
+        }
+        let status = check_status(src, c);
+        let target = check_target(c);
         citations.push(serde_json::json!({
             "raw": c.matched_text, "type": c.citation_type,
-            "reporter": c.reporter, "slug": slug,
-            "volume": volume, "page": c.page, "resolvable": resolvable,
-            "external_url": c.external_url,
-            "case_links": c.case_links,
+            "reporter": target.as_ref().and_then(|t| t.reporter),
+            "slug": target.as_ref().and_then(|t| t.slug.clone()),
+            "volume": target.as_ref().and_then(|t| t.volume),
+            "page": target.as_ref().and_then(|t| t.page),
+            "pin": c.pin,
+            "antecedent": antecedent,
+            "status": status.as_str(),
+            "resolvable": status == CheckStatus::Found,
+            "external_url": target.as_ref().and_then(|t| t.external_url)
+                .filter(|_| status == CheckStatus::External),
+            "case_links": target.as_ref().map(|t| t.case_links).unwrap_or(&[]),
         }));
     }
-
-    let mut seen = std::collections::HashSet::new();
-    citations.retain(|c| seen.insert(c["raw"].as_str().unwrap_or("").to_string()));
     let resolvable_count = citations
         .iter()
         .filter(|c| c["resolvable"].as_bool().unwrap_or(false))
@@ -537,24 +654,38 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             resolvable_count
         );
         for c in &citations {
-            let resolvable = c["resolvable"].as_bool().unwrap_or(false);
-            let has_url = c["external_url"].as_str().is_some();
-            let status = if resolvable {
-                "✓"
-            } else if has_url {
-                "↗"
-            } else {
-                "✗"
+            let status = c["status"].as_str().unwrap_or("");
+            let mark = match status {
+                "found" => "✓",
+                "external" | "not_held" => "↗",
+                "no_antecedent" => "·",
+                _ => "✗",
             };
-            print!("  {} {}", status, c["raw"].as_str().unwrap_or(""));
-            if let Some(url) = c["external_url"].as_str() {
-                print!("  → {}", url);
-            } else if !resolvable {
-                // A volume stare.pub doesn't hold: point at the first place that
-                // may have the case. Nothing checks that it does (citare#39).
-                if let Some(url) = c["case_links"][0]["url"].as_str() {
-                    print!("  → not in stare.pub, may be at {}", url);
+            print!("  {} {}", mark, c["raw"].as_str().unwrap_or(""));
+            if let Some(a) = c["antecedent"].as_str() {
+                print!("  (refers to {}", a);
+                if let Some(pin) = c["pin"].as_str() {
+                    print!(", at {}", pin);
                 }
+                print!(")");
+            }
+            match status {
+                "external" => print!("  → {}", c["external_url"].as_str().unwrap_or("")),
+                "held_miss" => print!(
+                    "  → no case found at this page in {} vol. {}",
+                    c["reporter"].as_str().or(c["slug"].as_str()).unwrap_or(""),
+                    c["volume"]
+                ),
+                // Nothing checks that the case is there (citare#39).
+                "not_held" => {
+                    if let Some(url) = c["case_links"][0]["url"].as_str() {
+                        print!("  → not in stare.pub, may be at {}", url);
+                    }
+                }
+                "no_antecedent" => {
+                    print!("  (refers to an earlier citation that couldn't be identified)")
+                }
+                _ => {}
             }
             println!();
         }
@@ -744,10 +875,13 @@ mod tests {
         }
     }
 
-    // One test, since it points the cache at a temporary directory through the
-    // environment.
+    /// Held by every test that points the cache at a temporary directory
+    /// through the environment, which all tests share.
+    static CACHE_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn index_files_resolve_through_the_manifest_base() {
+        let _env = CACHE_ENV.lock().unwrap_or_else(|e| e.into_inner());
         let cache = tempfile::tempdir().unwrap();
         std::env::set_var("XDG_CACHE_HOME", cache.path());
 
@@ -788,5 +922,61 @@ mod tests {
         let cache2 = tempfile::tempdir().unwrap();
         std::env::set_var("XDG_CACHE_HOME", cache2.path());
         assert_eq!(sources(empty.path()).index_key("a2d/31.bin"), "a2d/31.bin");
+    }
+
+    /// #120 in `stare check`: a short form is looked up through its
+    /// antecedent, never at its pin page, and one with no antecedent isn't
+    /// looked up at all.
+    #[test]
+    fn check_looks_short_forms_up_through_their_antecedent() {
+        let _env = CACHE_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let cache = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", cache.path());
+
+        // Roe starts at 1021 and Burnett v. State at 1023, Roe's pin page.
+        let idx = tempfile::tempdir().unwrap();
+        std::fs::write(
+            idx.path().join("manifest.json"),
+            r#"{"format": 2, "reporters": {"p2d": ["997"]}}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(idx.path().join("p2d")).unwrap();
+        let built = stare::index::build(&[("1021-01", 1021usize), ("1023-01", 1023)]);
+        std::fs::write(idx.path().join("p2d/997.bin"), &built.bin).unwrap();
+        let src = sources(idx.path());
+
+        let text = "Id. at 5. Roe v. Board of County Commissioners, 997 P.2d 1021 (Wyo. 2000). \
+                    Roe, 997 P.2d at 1023. Id. at 1024. \
+                    Axon Enterprise, Inc. v. FTC, 598 U.S. 175 (2023). Axon, 598 U.S. at 180.";
+        let detected = stare::cite::detect_citations(text);
+        let status = |raw: &str, ty: &str| {
+            let c = detected
+                .iter()
+                .find(|c| c.matched_text == raw && c.citation_type == ty)
+                .unwrap_or_else(|| panic!("no {ty} {raw}"));
+            (check_status(&src, c), check_target(c).and_then(|t| t.page))
+        };
+        assert_eq!(
+            status("997 P.2d at 1023", "ShortCaseCitation"),
+            (CheckStatus::Found, Some("1021"))
+        );
+        let ids: Vec<_> = detected
+            .iter()
+            .filter(|c| c.citation_type == "IdCitation")
+            .map(|c| (check_status(&src, c), c.pin.as_deref()))
+            .collect();
+        assert_eq!(
+            ids,
+            [
+                (CheckStatus::NoAntecedent, Some("5")),
+                (CheckStatus::Found, Some("1024")),
+            ]
+        );
+        // The antecedent is a volume stare.pub doesn't hold: the short cite
+        // links out with it.
+        assert_eq!(
+            status("598 U.S. at 180", "ShortCaseCitation"),
+            (CheckStatus::NotHeld, Some("175"))
+        );
     }
 }
