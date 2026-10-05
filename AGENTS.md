@@ -103,8 +103,9 @@ wasm-opt, which made the compressed module larger. Measured 2026-10-03 (gzip -9,
 | #73 release profile, no wasm-opt | 2,769,808 | 877,310 | 606,251 |
 | plus citare without unused regex Unicode tables (citare#46) | 2,538,007 | 815,660 | 582,080 |
 | citare v0.5.0, which ships citare#46 | 2,553,624 | 826,044 | 588,268 |
-| citare v0.5.1 without embedded data (#117), 2026-10-05 | 1,549,194 | 571,934 | 419,375 |
-| its data bundle, `citare-data-2166a845e9ece1b1.bin` | 422,388 | 124,699 | 97,727 |
+| citare v0.5.2 without embedded data (#117), with #123, 2026-10-05 | 1,651,074 | 605,210 | 443,615 |
+| its data bundle, `citare-data-d23ebb063eb8f24b.bin` | 424,260 | 124,747 | 97,901 |
+| the same bundle with zopfli, as served (`.bin.gz`) | | 113,812 | |
 
 The Worker compresses on the fly, less tightly than brotli 11. Bytes on the wire, same day:
 
@@ -112,24 +113,32 @@ The Worker compresses on the fly, less tightly than brotli 11. Bytes on the wire
 |---|---:|---:|---:|
 | main preview before #73 | 969,934 | 981,923 | 1,048,261 |
 | #73 preview | 783,415 | 790,873 | 875,281 |
-| main preview before #117, 2026-10-05 | 751,553 | 758,051 | 822,684 |
-| #117 preview, module | 528,809 | 546,661 | 570,944 |
-| #117 preview, bundle | 117,117 | 128,092 | 124,959 |
-| #117 preview, module plus bundle | 645,926 | 674,753 | 695,903 |
+| main preview before #117 (citare v0.5.0, embedded), 2026-10-05 | 777,748 | 787,495 | 852,556 |
+| #117 preview, module | 561,305 | 578,475 | 604,320 |
+| #117 preview, `.bin.gz` bundle, sent as is | 113,812 | 113,812 | 113,812 |
+| #117 preview, module plus bundle | 675,117 | 692,287 | 718,132 |
 
 Since #117 the module is built without citare's reporter, edition and court tables
 (citare's `embedded-data` feature, off in stare-wasm through `stare`'s own). The build
-exports them with `stare-admin export-citare-data` to
-`/data/citare/v1/citare-data-<SHA-256 prefix>.bin`, served `immutable` for a year as
-`application/x-protobuf` (Cloudflare doesn't compress `application/octet-stream`), and names
-the file in `/wasm/stare_wasm_bg.json`; `web/public/js/wasm.js` fetches it alongside the
-module and loads it with `init_data` before `loadWasm()` resolves. The name changes only
-when reporters-db or courts-db does, so a stare release re-downloads the module alone, and
-a data change the bundle alone. In Chromium on the previews (median of 9, ml-01, zstd), a
-first visit transfers 677,762 bytes of module and bundle against 758,351 before; a repeat
-visit after a stare release about 547 KB against 758 KB; the load takes 178 to 188 ms
-against 160 to 178 ms, and the first `detect_citations` 211 to 222 ms against 230 to
-237 ms, since decoding the tables moves from the first call into the load.
+exports them with `stare-admin export-citare-data`, gzipped with zopfli, to
+`/data/citare/v1/citare-data-<SHA-256 prefix>.bin.gz`; the prefix is the uncompressed
+bundle's, citare's own name for it. `_headers` serves it as `application/gzip`,
+`immutable` for a year and with no Content-Encoding, so Cloudflare sends the file as it is
+and the browser doesn't decompress it. `/wasm/stare_wasm_bg.json` names it with its gzipped
+size, uncompressed size and SHA-256. `web/public/js/wasm.js` fetches it alongside the
+module, counts the gzip bytes in the progress bar, gunzips it with `DecompressionStream`,
+checks the length and hash, and loads it with `init_data` before `loadWasm()` resolves.
+The name changes only when reporters-db or courts-db does, so a stare release
+re-downloads the module alone, and a data change the bundle alone.
+
+In Chromium on the previews (median of 9, two rounds, from ml-01, zstd chosen), a first
+visit transfers 697,960 bytes of WASM files against 792,477 to 792,540 before; a repeat
+visit to the same deploy 900 bytes either way (three 304s, and the bundle from the cache
+with nothing sent); a repeat visit after a stare release about 579 KB against 787 KB.
+`loadWasm()` takes 250 to 279 ms against 171 to 227 ms, since the gunzip, hash check and
+table decode now happen inside it; the first `detect_citations` takes 133 to 140 ms against
+227 to 238 ms, and a second one 18 to 21 ms against 101 to 102 ms. Most of the detection
+speedup is citare v0.5.2's linear scaling (citare#59), not the split.
 
 The module left is mostly code, the regex engines, plus the Unicode tables regex needs.
 opt-level `"z"` everywhere was smaller still before #117 (540 KB brotli against 588 KB)
