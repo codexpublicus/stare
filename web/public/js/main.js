@@ -152,7 +152,7 @@ async function showResolved(result) {
     const handle = citationStatusHandle;
     try {
       const { unique, occurrencesByOpinion } = await processCitations(caseData);
-      const citationMap = new Map(unique.map(c => [c.raw, c]));
+      const citationMap = new Map(unique.map(c => [c.key, c]));
       const citations = { unique, citationMap, occurrencesByOpinion };
       // Cache empty results too, so switching back doesn't detect again.
       citationsByCase.set(caseFile, citations);

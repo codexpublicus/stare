@@ -14,8 +14,41 @@ import { loadWasm } from './wasm.js';
 // ---------------------------------------------------------------------------
 
 /**
+ * The citation types that refer back to an earlier full citation (the Rust
+ * `SHORT_FORM_TYPES`). Their page is a pin page, so they are looked up only
+ * through their `antecedent`.
+ */
+export const SHORT_FORM_TYPES = new Set(['ShortCaseCitation', 'IdCitation', 'SupraCitation', 'ReferenceCitation']);
+
+export function isShortForm(c) {
+  return SHORT_FORM_TYPES.has(c?.type);
+}
+
+// One detected citation, or a short form's antecedent, as the renderers read it.
+function fromRust(c) {
+  return {
+    raw: c.matched_text,
+    type: c.citation_type,
+    harvard_slug: c.harvard_slug || null,
+    volume: c.volume ? parseInt(c.volume, 10) : null,
+    page: c.page || null,
+    reporter: c.reporter || null,
+    year: c.year || null,
+    start: c.span[0],
+    end: c.span[1],
+    externalUrl: c.external_url || null,
+    caseLinks: Array.isArray(c.case_links) ? c.case_links : [],
+  };
+}
+
+/**
  * Detect citations using citare WASM.
- * Returns array of { raw, type, harvard_slug, volume, page, reporter, year, start, end, externalUrl, caseLinks }
+ * Returns array of { raw, type, harvard_slug, volume, page, reporter, year, start, end, externalUrl, caseLinks, pin, antecedent }
+ *
+ * `pin` is the pin cite (`1023` for `997 P.2d at 1023`), or null. A short
+ * form (`isShortForm`) has `page: null` and, when citare could tell which
+ * earlier citation it refers to, that citation as `antecedent`, in the same
+ * shape (without `pin` and `antecedent`); else `antecedent: null`.
  *
  * `caseLinks` are the Rust `case_links`: `{ source, kind, url }` for places
  * outside stare.pub that may hold a case citation, offered only when the
@@ -32,17 +65,9 @@ export async function detectCitations(text) {
   const raw = JSON.parse(w.detect_citations(text));
 
   return raw.map(c => ({
-    raw: c.matched_text,
-    type: c.citation_type,
-    harvard_slug: c.harvard_slug || null,
-    volume: c.volume ? parseInt(c.volume, 10) : null,
-    page: c.page || null,
-    reporter: c.reporter || null,
-    year: c.year || null,
-    start: c.span[0],
-    end: c.span[1],
-    externalUrl: c.external_url || null,
-    caseLinks: Array.isArray(c.case_links) ? c.case_links : [],
+    ...fromRust(c),
+    pin: c.pin || null,
+    antecedent: c.antecedent ? fromRust(c.antecedent) : null,
   }));
 }
 
@@ -132,7 +157,11 @@ export async function checkPage(slug, volume, page, deps = {}) {
  * `check` and `pageCheck` are injectable for tests, as in processCitations.
  */
 export async function checkCitation(c, check = checkAvailability, pageCheck = checkPage) {
-  const none = { ...c, slug: null, volumeHeld: false, resolvable: false };
+  if (isShortForm(c)) {
+    const a = c.antecedent ? await checkCitation(c.antecedent, check, pageCheck) : null;
+    return inheritStatus(c, a);
+  }
+  const none = { ...c, key: citationKey(c), slug: null, volumeHeld: false, resolvable: false };
   if (c.externalUrl) return none;
   // A blank page (`1 U.S. ___`) arrives as page: null and can't be looked
   // up, so it doesn't fall through to the slug guess below either.
@@ -145,7 +174,69 @@ export async function checkCitation(c, check = checkAvailability, pageCheck = ch
     return { ...none, slug: c.harvard_slug ? slug : null };
   }
   const found = await pageCheck(slug, c.volume, c.page);
-  return { ...c, slug, volumeHeld: true, resolvable: found !== false };
+  return { ...c, key: citationKey(c), slug, volumeHeld: true, resolvable: found !== false };
+}
+
+/**
+ * The key a citation's status is kept under: its raw string, and for a
+ * short form the raw string of its antecedent too. Every `Id.` that refers
+ * to the same case shares one status; `Id.`s that refer to different cases,
+ * or to none, don't. A pinned `Id.` to a statute (`Id. § 1985`) has a
+ * status of its own (see inheritStatus), so its key has the pin.
+ */
+export function citationKey(c) {
+  if (!isShortForm(c) || !c.antecedent) return c.raw;
+  const pinned = c.pin && safeExternalUrl(c.antecedent.externalUrl) ? `\u00a0${c.pin}` : '';
+  return `${c.raw}\u2192${c.antecedent.raw}${pinned}`;
+}
+
+/**
+ * A short form's status, from its antecedent's (`a`, as checkCitation
+ * returns it, or null when it has none). The short form links where its
+ * antecedent does, with the antecedent's reporter, volume and first page,
+ * and keeps its own `raw`, `pin` and `antecedent`. With no antecedent it is
+ * `noAntecedent` and never looked up. An `Id.` to a statute links to its
+ * text only without a pin: `Id. § 1985` is a different section.
+ */
+export function inheritStatus(c, a) {
+  const own = { ...c, key: citationKey(c), page: null, slug: null, volumeHeld: false, resolvable: false, externalUrl: null, caseLinks: [] };
+  if (!a) return { ...own, noAntecedent: true };
+  if (safeExternalUrl(a.externalUrl) && c.pin) return own;
+  return {
+    ...own,
+    slug: a.slug,
+    harvard_slug: a.harvard_slug,
+    reporter: a.reporter,
+    volume: a.volume,
+    page: a.page,
+    volumeHeld: a.volumeHeld,
+    resolvable: a.resolvable,
+    externalUrl: a.externalUrl,
+    caseLinks: a.caseLinks,
+  };
+}
+
+/**
+ * Check a list of detected citations, each distinct citation once: full
+ * citations by raw string, short forms through their antecedent's status
+ * (looked up once, with the antecedent's own entry). Returns one entry per
+ * `citationKey`, in order of first occurrence. `check` and `pageCheck` are
+ * injectable for tests, as in processCitations.
+ */
+export async function checkCitations(citations, check = checkAvailability, pageCheck = checkPage) {
+  const byRaw = new Map();
+  const full = (c) => {
+    if (!byRaw.has(c.raw)) byRaw.set(c.raw, checkCitation(c, check, pageCheck));
+    return byRaw.get(c.raw);
+  };
+  const entries = new Map();
+  for (const c of citations) {
+    const key = citationKey(c);
+    if (entries.has(key)) continue;
+    if (!isShortForm(c)) entries.set(key, full(c));
+    else entries.set(key, (c.antecedent ? full(c.antecedent) : Promise.resolve(null)).then(a => inheritStatus(c, a)));
+  }
+  return Promise.all(entries.values());
 }
 
 // ---------------------------------------------------------------------------
@@ -157,12 +248,13 @@ export async function checkCitation(c, check = checkAvailability, pageCheck = ch
  * Uses citare for detection, checks availability for each.
  *
  * Returns `{ unique, occurrencesByOpinion }`:
- * - `unique`: one entry per distinct raw citation string, with availability
- *   (`slug`, `resolvable`) resolved; the sidebar's list.
+ * - `unique`: one entry per `citationKey` (a full citation's raw string; a
+ *   short form's raw string and antecedent), with availability (`slug`,
+ *   `resolvable`) resolved; the sidebar's list.
  * - `occurrencesByOpinion`: for each opinion in `casebody.opinions`, in
- *   order, every detected occurrence as `{ raw, start, end }`, where
- *   `start`/`end` are code point offsets into that opinion's `text`. The
- *   reader highlights from these, looking each `raw` up in `unique`.
+ *   order, every detected occurrence as `{ raw, key, pin, start, end }`,
+ *   where `start`/`end` are code point offsets into that opinion's `text`.
+ *   The reader highlights from these, looking each `key` up in `unique`.
  *
  * `check`, `detect` and `pageCheck` are injectable replacements for
  * `checkAvailability`, `detectCitations` and `checkPage`, used by tests to
@@ -176,20 +268,15 @@ export async function processCitations(caseData, check = checkAvailability, dete
   for (const op of caseData.casebody?.opinions || []) {
     const detected = await detect(op.text);
     allCites.push(...detected);
-    occurrencesByOpinion.push(detected.map(({ raw, start, end }) => ({ raw, start, end })));
+    occurrencesByOpinion.push(detected.map(c => occurrence(c)));
   }
 
-  // Deduplicate by raw string
-  const seen = new Set();
-  const deduped = allCites.filter(c => {
-    if (seen.has(c.raw)) return false;
-    seen.add(c.raw);
-    return true;
-  });
+  return { unique: await checkCitations(allCites, check, pageCheck), occurrencesByOpinion };
+}
 
-  const checks = deduped.map(c => checkCitation(c, check, pageCheck));
-
-  return { unique: await Promise.all(checks), occurrencesByOpinion };
+/** One detected citation as the renderers place it: `{ raw, key, pin, start, end }`. */
+export function occurrence(c) {
+  return { raw: c.raw, key: citationKey(c), pin: c.pin || null, start: c.start, end: c.end };
 }
 
 // ---------------------------------------------------------------------------
@@ -264,30 +351,64 @@ export function heldVolumeMiss(info) {
   return `No case found at this page in ${info.reporter || info.slug} vol. ${info.volume}`;
 }
 
+/** The note for a short form citare couldn't tie to an earlier citation. */
+export const NO_ANTECEDENT = "Refers to an earlier citation that couldn't be identified";
+
+/**
+ * "at 1023" for a pin cite that starts with a number, else the pin as
+ * written (`§ 1985`); '' for none.
+ */
+export function pinLabel(pin) {
+  if (!pin) return '';
+  return /^\d/.test(pin) ? `at ${pin}` : pin;
+}
+
+/**
+ * For a short form, what it refers to: "Refers to 997 P.2d 1021, at 1023",
+ * or NO_ANTECEDENT. Null for a full citation. `pin` is the occurrence's own
+ * pin, which entries sharing a key don't share.
+ */
+export function refersTo(info, pin = info?.pin) {
+  if (!isShortForm(info)) return null;
+  if (!info.antecedent) return NO_ANTECEDENT;
+  const at = pinLabel(pin);
+  return `Refers to ${info.antecedent.raw}${at ? `, ${at}` : ''}`;
+}
+
 /**
  * Markup for one citation occurrence. `inner` is the already formatted
- * citation text; `info` is the citation's entry from processCitations.
+ * citation text; `info` is the citation's entry from processCitations;
+ * `pin` is the occurrence's own pin cite. A short form links to its
+ * antecedent's case (`info` carries the antecedent's slug, volume and
+ * first page) and says what it refers to in its title. The case viewer has
+ * no page anchors, so the pin is shown, not linked.
  */
-function citationHtml(raw, inner, info) {
+function citationHtml(raw, inner, info, pin = info.pin) {
+  const refers = refersTo(info, pin);
+  if (info.noAntecedent) {
+    return `<span class="cite-unresolved cite-no-antecedent" title="${escapeHtml(NO_ANTECEDENT)}">${inner}</span>`;
+  }
+  const titled = (note) => escapeHtml(refers ? `${refers}. ${note}` : note);
   const externalUrl = safeExternalUrl(info.externalUrl);
   if (externalUrl) {
-    return `<a class="cite-link cite-external" href="${escapeHtml(externalUrl)}" ${OUTBOUND} title="View on external site">${inner}</a>`;
+    return `<a class="cite-link cite-external" href="${escapeHtml(externalUrl)}" ${OUTBOUND} title="${titled('View on external site')}">${inner}</a>`;
   }
   if (info.resolvable) {
     const slug = escapeHtml(info.slug);
     const volume = escapeHtml(String(info.volume));
     const page = escapeHtml(String(info.page));
-    return `<a class="cite-link" href="#${slug}/${volume}/${page}" data-slug="${slug}" data-volume="${volume}" data-page="${page}" title="${escapeHtml(raw)}">${inner}</a>`;
+    const pinAttr = pin ? ` data-pin="${escapeHtml(pin)}"` : '';
+    return `<a class="cite-link" href="#${slug}/${volume}/${page}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr} title="${escapeHtml(refers || raw)}">${inner}</a>`;
   }
   const miss = heldVolumeMiss(info);
   if (miss) {
-    return `<span class="cite-unresolved" title="${escapeHtml(miss)}">${inner}</span>`;
+    return `<span class="cite-unresolved" title="${titled(miss)}">${inner}</span>`;
   }
   const [lookup] = caseLookupLinks(info);
   if (lookup) {
-    return `<a class="cite-lookup" href="${escapeHtml(lookup.url)}" ${OUTBOUND} title="${escapeHtml(lookupLabel(lookup))}">${inner}</a>`;
+    return `<a class="cite-lookup" href="${escapeHtml(lookup.url)}" ${OUTBOUND} title="${titled(lookupLabel(lookup))}">${inner}</a>`;
   }
-  return `<span class="cite-unresolved" title="Not yet indexed">${inner}</span>`;
+  return `<span class="cite-unresolved" title="${escapeHtml(refers || 'Not yet indexed')}">${inner}</span>`;
 }
 
 /**
@@ -320,25 +441,36 @@ export function orderCitedCases(citations) {
  */
 export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
   const raw = escapeHtml(c.raw);
+  // A short form's entry stands for every occurrence with its key, whose
+  // pins differ, so the sidebar names the antecedent without a pin.
+  const refers = refersTo(c, null);
+  const refersHtml = refers ? `\n          <span class="cited-lookup cited-miss cited-refers">${escapeHtml(refers)}</span>` : '';
+  const wrap = refers ? ' cited-case-lookup' : '';
+  if (c.noAntecedent) {
+    return `<div class="cited-case${wrap}">
+          <span class="cited-status none">&#8211;</span>
+          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
+        </div>`;
+  }
   if (c.resolvable) {
     const rel = caseRel ? ` rel="${escapeHtml(caseRel)}"` : '';
-    return `<div class="cited-case">
+    return `<div class="cited-case${wrap}">
           <span class="cited-status ok">&#10003;</span>
-          <a class="cited-case-link" href="${escapeHtml(caseHref(c))}" target="_blank"${rel}>${raw}</a>
+          <a class="cited-case-link" href="${escapeHtml(caseHref(c))}" target="_blank"${rel}>${raw}</a>${refersHtml}
         </div>`;
   }
   const externalUrl = safeExternalUrl(c.externalUrl);
   if (externalUrl) {
-    return `<div class="cited-case">
+    return `<div class="cited-case${wrap}">
           <span class="cited-status ext">&#8599;</span>
-          <a class="cited-case-link" href="${escapeHtml(externalUrl)}" ${OUTBOUND}>${raw}</a>
+          <a class="cited-case-link" href="${escapeHtml(externalUrl)}" ${OUTBOUND}>${raw}</a>${refersHtml}
         </div>`;
   }
   const miss = heldVolumeMiss(c);
   if (miss) {
     return `<div class="cited-case cited-case-lookup">
           <span class="cited-status no">&#10007;</span>
-          <span class="cited-case-unresolved">${raw}</span>
+          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
           <span class="cited-lookup cited-miss">${escapeHtml(miss)}</span>
         </div>`;
   }
@@ -349,13 +481,13 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
       ` <a class="cited-lookup-link" href="${escapeHtml(l.url)}" ${OUTBOUND}>or ${escapeHtml(LOOKUP_SOURCES[l.source])}</a>`).join('');
     return `<div class="cited-case cited-case-lookup">
           <span class="cited-status lookup">&#8599;</span>
-          <span class="cited-case-unresolved">${raw}</span>
+          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
           <span class="cited-lookup"><a class="cited-lookup-link" href="${escapeHtml(first.url)}" ${OUTBOUND}>${escapeHtml(lookupLabel(first))}</a>${more}</span>
         </div>`;
   }
-  return `<div class="cited-case">
+  return `<div class="cited-case${wrap}">
           <span class="cited-status no">&#10007;</span>
-          <span class="cited-case-unresolved">${raw}</span>
+          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
         </div>`;
 }
 
@@ -363,12 +495,13 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
  * Render one paragraph as HTML, highlighting citations by offset.
  *
  * `text` is the paragraph; `paragraphStart` is its code point offset in the
- * text the occurrences were detected in. `occurrences` are `{ raw, start,
- * end }` with code point offsets into that same text; only those lying
- * wholly inside this paragraph are highlighted, and of overlapping ones the
- * earliest (then longest) wins. `citationMap` maps raw string to citation
- * info; an occurrence without an entry stays plain. `formatPlain` turns a
- * raw text segment into HTML.
+ * text the occurrences were detected in. `occurrences` are `{ raw, key,
+ * pin, start, end }` with code point offsets into that same text; only
+ * those lying wholly inside this paragraph are highlighted, and of
+ * overlapping ones the earliest (then longest) wins. `citationMap` maps
+ * `key` (or, for an occurrence without one, `raw`) to citation info; an
+ * occurrence without an entry stays plain. `formatPlain` turns a raw text
+ * segment into HTML.
  */
 export function renderParagraphHtml(text, paragraphStart, occurrences, citationMap, formatPlain = formatPlainText) {
   // UTF-16 index of each code point boundary in the paragraph.
@@ -379,7 +512,7 @@ export function renderParagraphHtml(text, paragraphStart, occurrences, citationM
   const inside = (occurrences || [])
     .map(o => ({ ...o, start: o.start - paragraphStart, end: o.end - paragraphStart }))
     .filter(o => Number.isInteger(o.start) && Number.isInteger(o.end))
-    .filter(o => o.start >= 0 && o.end <= length && o.start < o.end && citationMap?.get(o.raw))
+    .filter(o => o.start >= 0 && o.end <= length && o.start < o.end && citationMap?.get(o.key ?? o.raw))
     .sort((a, b) => a.start - b.start || b.end - a.end);
 
   let html = '';
@@ -389,7 +522,7 @@ export function renderParagraphHtml(text, paragraphStart, occurrences, citationM
     const from = utf16At[o.start];
     const to = utf16At[o.end];
     html += formatPlain(text.slice(utf16At[cursor], from));
-    html += citationHtml(o.raw, formatPlain(text.slice(from, to)), citationMap.get(o.raw));
+    html += citationHtml(o.raw, formatPlain(text.slice(from, to)), citationMap.get(o.key ?? o.raw), o.pin);
     cursor = o.end;
   }
   html += formatPlain(text.slice(utf16At[cursor]));

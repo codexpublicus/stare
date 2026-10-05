@@ -6,7 +6,7 @@ import { pdfUrl as volumePdfUrl } from './sources.js';
  * @param {Element} el - container element
  * @param {Object} caseData - parsed case JSON
  * @param {Object|null} citations - `{ citationMap, occurrencesByOpinion }`:
- *   citationMap maps raw cite string to its entry from processCitations();
+ *   citationMap maps each entry's `key` to it, from processCitations();
  *   occurrencesByOpinion is processCitations()' per-opinion occurrence list
  *   for this same caseData. Null renders without highlighting.
  */
