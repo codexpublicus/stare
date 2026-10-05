@@ -12,9 +12,16 @@ name: release-prepare
 # opens a "sync CHANGELOG.md" PR from release/changelog-sync. That branch isn't
 # release/next, so merging it releases nothing.
 #
-# Needs "Allow GitHub Actions to create and approve pull requests" enabled for
-# the repo. The PR is opened with GITHUB_TOKEN, so no pull_request workflows run
-# on it; the checks that gate a release run on the merge commit instead.
+# Both PRs are opened with the yeet GitHub App's token, so their CI runs like
+# any other PR's; GitHub holds the checks on a PR that GITHUB_TOKEN opens until
+# someone approves them. YEET_APP_ID (a variable, the App's client ID) and
+# YEET_APP_PRIVATE_KEY (a secret) are pushed by codexpublicus/infra (yeet.py),
+# and the App's installation must list this repo. While either value is
+# missing, the PRs are opened with GITHUB_TOKEN as before, with a warning on the
+# run; that path needs "Allow GitHub Actions to create and approve pull
+# requests" enabled for the repo. With the values set, a token that won't mint
+# (the App not installed here) fails the run. The checks that gate a release
+# still run on the merge commit (release.yml).
 
 on:
   push:
@@ -54,6 +61,38 @@ jobs:
             *)
               echo "skip=false" >> "$GITHUB_OUTPUT" ;;
           esac
+
+      - name: Is the yeet App configured?
+        id: yeet
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          APP_ID: ${{ vars.YEET_APP_ID }}
+          HAS_KEY: ${{ secrets.YEET_APP_PRIVATE_KEY != '' }}
+        run: |
+          if [ -n "$APP_ID" ] && [ "$HAS_KEY" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=yeet App not configured::YEET_APP_ID or YEET_APP_PRIVATE_KEY is missing (codexpublicus/infra, yeet.py). Opening PRs with GITHUB_TOKEN, so their CI waits for approval."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate the yeet App token
+        id: app-token
+        if: steps.yeet.outputs.configured == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.YEET_APP_ID }}
+          private-key: ${{ secrets.YEET_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Explain a token that wouldn't mint
+        if: failure() && steps.app-token.outcome == 'failure'
+        run: |
+          echo "::error title=yeet App token::The yeet App's values are set, but no token minted. Add ${GITHUB_REPOSITORY} under Repository access in the App's settings, or check that YEET_APP_PRIVATE_KEY matches the App."
+          exit 1
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.gate.outputs.skip != 'true'
@@ -114,6 +153,7 @@ jobs:
           title: "chore(release): next site release"
           body-path: ${{ runner.temp }}/release-pr-body.md
           delete-branch: true
+          token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Close a release PR with nothing left to release
         if: steps.notes.outputs.releasable == 'false'
@@ -136,3 +176,4 @@ jobs:
           title: "chore(release): sync CHANGELOG.md with the release tags"
           body: "Rewrites CHANGELOG.md from the release tags, replacing the heading the release PR previewed. Merging this releases and deploys nothing."
           delete-branch: true
+          token: ${{ steps.app-token.outputs.token || github.token }}

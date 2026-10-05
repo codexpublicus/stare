@@ -1,7 +1,9 @@
 name: release
 
 # The sanctioned path to production. Runs when the bot's release PR (branch
-# release/next, kept up to date by release-prepare.yml) is merged into main:
+# release/next, kept up to date by release-prepare.yml) is merged into main.
+# The bot is the yeet App (codexpublicus-yeet[bot]), or github-actions[bot]
+# while release-prepare falls back to GITHUB_TOKEN:
 #
 # build (contents: read, no git credentials on disk):
 #   1. wait for the merge commit's push checks (site.yml) and refuse if any failed;
@@ -54,7 +56,8 @@ jobs:
       github.event.pull_request.head.ref == 'release/next' &&
       github.event.pull_request.base.ref == 'main' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login == 'github-actions[bot]'
+      (github.event.pull_request.user.login == 'codexpublicus-yeet[bot]' ||
+      github.event.pull_request.user.login == 'github-actions[bot]')
     runs-on: homelab
     permissions:
       contents: read
