@@ -182,7 +182,12 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
                 antecedent: None,
             };
             // A short form's page is its pin page, not where a case starts.
+            // citare doesn't always report it as the pin cite too
+            // (`TC, ¶ 10, 431 P.3d at 565`).
             if det.is_short_form() {
+                if det.pin.is_none() {
+                    det.pin = det.page.take();
+                }
                 det.page = None;
             }
             // Generate external URL for statutes/regulations. citare gives
@@ -736,6 +741,21 @@ mod tests {
         assert!(find(&cites, "FullCaseCitation", "997 P.2d 1021")
             .antecedent
             .is_none());
+    }
+
+    /// citare reports no pin cite for `TC, ¶ 10, 431 P.3d at 565`; the
+    /// pin page is still the pin.
+    #[test]
+    fn short_cite_pin_falls_back_to_its_page() {
+        let cites =
+            detect_citations("TC v. Wyo., 431 P.3d 560 (Wyo. 2018). TC, ¶ 10, 431 P.3d at 565.");
+        let short = find(&cites, "ShortCaseCitation", "431 P.3d at 565");
+        assert_eq!(short.pin.as_deref(), Some("565"));
+        assert_eq!(short.page, None);
+        assert_eq!(
+            short.antecedent.as_ref().unwrap().page.as_deref(),
+            Some("560")
+        );
     }
 
     /// Each Id. refers to the citation before it, through a chain of Id.s,
