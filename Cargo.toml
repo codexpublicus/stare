@@ -1,3 +1,8 @@
 [workspace]
 members = ["crates/stare", "crates/stare-cli", "crates/stare-admin", "crates/stare-wasm"]
 resolver = "2"
+
+# stare-admin export-citare-data runs zopfli in the site build's dev-profile
+# build; unoptimized it takes about 20 s on the bundle, optimized about 1 s.
+[profile.dev.package.zopfli]
+opt-level = 3

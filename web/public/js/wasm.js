@@ -12,21 +12,24 @@
 //   onWasmProgress(fn)  Calls fn(progress) now and on every change; returns an
 //                       unsubscribe function. progress is { state, loaded,
 //                       total }: state is 'idle', 'loading', 'ready' or
-//                       'error'; loaded and total are uncompressed bytes of the
-//                       module and the bundle together, and total is null
-//                       until the build info says the sizes.
+//                       'error'; loaded and total are bytes of the module
+//                       (uncompressed) and the gzipped bundle together, and
+//                       total is null until the build info says the sizes.
 //   wasmProgress()      The current progress.
 //   retryWasm()         Starts a fresh load after a failure (the progress
 //                       bar's Retry button); a no-op otherwise.
 //   progressFraction(p) loaded / total in [0, 1], or null when unknown.
 //
 // The build writes /wasm/stare_wasm_bg.json (web/astro.config.mjs): the
-// module's byte count and the bundle's URL and byte count. The bundle's name
-// is its content hash and it's served immutable, so a repeat visit reads it
-// from the browser's cache until reporters-db or courts-db changes. The
-// loader fetches the module straight away and the bundle as soon as that
-// JSON names it, both at the same priority, and hands the bundle to the
-// module's init_data before the load resolves.
+// module's byte count, and the bundle's URL, gzipped size, uncompressed size
+// and SHA-256. The bundle is a .gz file served as application/gzip with no
+// Content-Encoding, so the browser hands over the gzip bytes and the loader
+// gunzips them with DecompressionStream. Its name is the uncompressed
+// bundle's hash and it's served immutable, so a repeat visit reads it from
+// the browser's cache until reporters-db or courts-db changes. The loader
+// fetches the module straight away and the bundle as soon as that JSON names
+// it, both at the same priority, checks the bundle's length and SHA-256, and
+// hands it to the module's init_data before the load resolves.
 //
 // A failed load, of either file, that a caller asked for is cached until
 // retryWasm(): both are static files of the same deployment, so an automatic
@@ -34,8 +37,8 @@
 // otherwise retry, and log, once per opinion. A failed preload nobody waited
 // on isn't cached, so the first real use tries again.
 //
-// The sizes: the body streams are decompressed, so Content-Length (the
-// compressed size, when there is one) can't measure them.
+// The module's size: its body stream is decompressed, so Content-Length (the
+// compressed size, when there is one) can't measure it.
 
 const GLUE_URL = '/wasm/stare_wasm.js';
 const WASM_URL = '/wasm/stare_wasm_bg.wasm';
@@ -97,30 +100,23 @@ function positive(n) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-// Reads a response's body, calling onBytes(n) as each chunk arrives.
-async function readCounted(res, onBytes) {
-  if (!res.body) {
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    onBytes(bytes.byteLength);
-    return bytes;
-  }
-  const chunks = [];
-  let size = 0;
-  const reader = res.body.getReader();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    size += value.byteLength;
-    onBytes(value.byteLength);
-  }
-  const bytes = new Uint8Array(size);
-  let at = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, at);
-    at += chunk.byteLength;
-  }
-  return bytes;
+// Reads a gzipped response body, calling onBytes(n) as each compressed chunk
+// arrives, and returns the gunzipped bytes.
+async function readGunzipped(res, onBytes) {
+  const source = res.body ?? new Blob([await res.arrayBuffer()]).stream();
+  const counted = source.pipeThrough(new TransformStream({
+    transform(chunk, controller) {
+      onBytes(chunk.byteLength);
+      controller.enqueue(chunk);
+    },
+  }));
+  const body = counted.pipeThrough(new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(body).arrayBuffer());
+}
+
+async function sha256Hex(bytes) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  return Array.from(digest, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 async function compileStreaming(response) {
@@ -156,13 +152,23 @@ export function createWasmLoader({
     for (const fn of listeners) fn(progress);
   }
 
-  // What the build wrote: { bytes, data: { url, bytes, sha256 } }.
+  // What the build wrote:
+  // { bytes, data: { url, bytes, uncompressedBytes, sha256 } }.
   async function buildInfo() {
     const res = await fetchFn(infoUrl);
     if (!res.ok) throw new Error(`${infoUrl}: HTTP ${res.status}`);
     const info = await res.json();
-    if (typeof info?.data?.url !== 'string') throw new Error(`${infoUrl} names no citare data bundle`);
-    return { moduleBytes: positive(info.bytes), dataUrl: info.data.url, dataBytes: positive(info.data.bytes) };
+    const data = info?.data;
+    if (typeof data?.url !== 'string' || typeof data.sha256 !== 'string' || !positive(data.uncompressedBytes)) {
+      throw new Error(`${infoUrl} names no citare data bundle`);
+    }
+    return {
+      moduleBytes: positive(info.bytes),
+      dataUrl: data.url,
+      dataBytes: positive(data.bytes),
+      dataSize: data.uncompressedBytes,
+      dataSha256: data.sha256,
+    };
   }
 
   async function run(priority) {
@@ -175,16 +181,20 @@ export function createWasmLoader({
     const infoLoad = buildInfo();
     // The bundle starts as soon as the build info names it, alongside the
     // module, and at the same priority.
-    const dataLoad = infoLoad.then(async ({ moduleBytes, dataUrl, dataBytes }) => {
+    const dataLoad = infoLoad.then(async ({ moduleBytes, dataUrl, dataBytes, dataSize, dataSha256 }) => {
       update({ total: moduleBytes && dataBytes ? moduleBytes + dataBytes : null });
       const res = await fetchFn(dataUrl, { priority });
       if (!res.ok) throw new Error(`${dataUrl}: HTTP ${res.status}`);
-      const bytes = await readCounted(res, (n) => {
+      const bytes = await readGunzipped(res, (n) => {
         dataLoaded += n;
         counted();
       });
-      if (dataBytes && bytes.byteLength !== dataBytes) {
-        throw new Error(`${dataUrl}: ${bytes.byteLength} bytes, expected ${dataBytes}`);
+      if (bytes.byteLength !== dataSize) {
+        throw new Error(`${dataUrl}: ${bytes.byteLength} bytes gunzipped, expected ${dataSize}`);
+      }
+      const sha256 = await sha256Hex(bytes);
+      if (sha256 !== dataSha256) {
+        throw new Error(`${dataUrl}: SHA-256 ${sha256}, expected ${dataSha256}`);
       }
       return bytes;
     });

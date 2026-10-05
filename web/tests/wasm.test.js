@@ -1,11 +1,17 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 
 import { createWasmLoader, progressFraction, WasmLoadError } from '../public/js/wasm.js';
 
 const MODULE_BYTES = 1000;
+// The bundle: 100 bytes of 1, then 100 of 2, served gzipped.
 const DATA_BYTES = 200;
-const DATA_URL = '/data/citare/v1/citare-data-0123456789abcdef.bin';
+const DATA = new Uint8Array(DATA_BYTES).fill(1, 0, 100).fill(2, 100);
+const DATA_SHA256 = createHash('sha256').update(DATA).digest('hex');
+const GZ = new Uint8Array(gzipSync(DATA, { level: 9 }));
+const DATA_URL = `/data/citare/v1/citare-data-${DATA_SHA256.slice(0, 16)}.bin.gz`;
 
 // A Response of `bytes` bytes whose body arrives in `chunks` pieces, with
 // optional headers. `gate`, when given, is awaited before each piece.
@@ -25,15 +31,29 @@ function bodyResponse({ bytes, chunks = 4, headers = {}, gate }) {
 
 const wasmResponse = ({ chunks = 4, headers = {}, gate } = {}) =>
   bodyResponse({ bytes: MODULE_BYTES, chunks, gate, headers: { 'Content-Type': 'application/wasm', ...headers } });
-const dataResponse = ({ chunks = 2, headers = {}, gate } = {}) =>
-  bodyResponse({ bytes: DATA_BYTES, chunks, gate, headers: { 'Content-Type': 'application/x-protobuf', ...headers } });
+// The gzipped bundle `gz` as a Response in two pieces, as served: gzip
+// bytes, application/gzip, no Content-Encoding.
+function dataResponse({ gz = GZ } = {}) {
+  const half = Math.floor(gz.byteLength / 2);
+  const pieces = [gz.slice(0, half), gz.slice(half)];
+  const body = new ReadableStream({
+    pull(controller) {
+      if (!pieces.length) return controller.close();
+      controller.enqueue(pieces.shift());
+    },
+  });
+  return new Response(body, { headers: { 'Content-Type': 'application/gzip' } });
+}
 
 // A fake fetch for the module, the bundle and the build info JSON. `wasm`
 // and `data` are lists of handlers, one per request (the last repeats):
 // each returns a Response or throws. `info` is the JSON's body, or null for
 // a 404.
 function fakeFetch({
-  info = { bytes: MODULE_BYTES, data: { url: DATA_URL, bytes: DATA_BYTES, sha256: '0123456789abcdef' } },
+  info = {
+    bytes: MODULE_BYTES,
+    data: { url: DATA_URL, bytes: GZ.byteLength, uncompressedBytes: DATA_BYTES, sha256: DATA_SHA256 },
+  },
   wasm = [() => wasmResponse()],
   data = [() => dataResponse()],
 } = {}) {
@@ -45,12 +65,12 @@ function fakeFetch({
       if (info == null) return new Response('not found', { status: 404 });
       return Response.json(info);
     }
-    if (url.endsWith('.bin')) return nth(data, '.bin')();
+    if (url.endsWith('.gz')) return nth(data, '.gz')();
     return nth(wasm, '.wasm')();
   };
   fetch.calls = calls;
   fetch.wasmCalls = () => calls.filter((c) => c.url.endsWith('.wasm'));
-  fetch.dataCalls = () => calls.filter((c) => c.url.endsWith('.bin'));
+  fetch.dataCalls = () => calls.filter((c) => c.url.endsWith('.gz'));
   return fetch;
 }
 
@@ -128,13 +148,11 @@ describe('createWasmLoader', () => {
 
     assert.equal(await loading, loader.glue);
     assert.ok(loader.glue.data instanceof Uint8Array);
-    assert.equal(loader.glue.data.byteLength, DATA_BYTES);
-    // Both chunks, in order, as one buffer.
-    assert.equal(loader.glue.data[0], 1);
-    assert.equal(loader.glue.data[DATA_BYTES - 1], 2);
+    // Gunzipped, whole and in order.
+    assert.deepEqual(loader.glue.data, DATA);
   });
 
-  test('reports progress in uncompressed bytes of both files against the build info', async () => {
+  test('reports progress in module bytes plus gzipped bundle bytes against the build info', async () => {
     // Content-Encoding makes Content-Length the compressed size; the loader
     // must take the total from the build info, not the header.
     let releaseWasm;
@@ -151,11 +169,12 @@ describe('createWasmLoader', () => {
     releaseWasm();
     await loading;
 
-    const total = MODULE_BYTES + DATA_BYTES;
+    const gz = GZ.byteLength;
+    const total = MODULE_BYTES + gz;
     assert.deepEqual(seen[0], { state: 'idle', loaded: 0, total: null });
     const steps = seen.filter((p) => p.state === 'loading' && p.total != null);
     assert.ok(steps.every((p) => p.total === total));
-    assert.deepEqual(steps.map((p) => p.loaded), [0, 100, 200, 450, 700, 950, 1200]);
+    assert.deepEqual(steps.map((p) => p.loaded), [0, Math.floor(gz / 2), gz, gz + 250, gz + 500, gz + 750, gz + 1000]);
     assert.deepEqual(steps.map(progressFraction).at(-1), 1);
     assert.deepEqual(seen.at(-1), { state: 'ready', loaded: total, total });
     assert.deepEqual(loader.progress(), seen.at(-1));
@@ -170,6 +189,11 @@ describe('createWasmLoader', () => {
     const noData = makeLoader(fakeFetch({ info: { bytes: MODULE_BYTES } }));
     const e2 = await noData.load().catch((err) => err);
     assert.match(e2.cause.message, /names no citare data bundle/);
+
+    // Without the uncompressed size and hash the loader can't check it.
+    const unchecked = makeLoader(fakeFetch({ info: { bytes: MODULE_BYTES, data: { url: DATA_URL, bytes: GZ.byteLength } } }));
+    const e3 = await unchecked.load().catch((err) => err);
+    assert.match(e3.cause.message, /names no citare data bundle/);
   });
 
   test('a failed bundle fetch fails the load, and a retry fetches both again', async () => {
@@ -193,14 +217,24 @@ describe('createWasmLoader', () => {
     assert.equal(await loader.retry(), loader.glue);
     assert.equal(fetch.dataCalls().length, 2);
     assert.equal(fetch.wasmCalls().length, 2);
-    assert.equal(loader.glue.data.byteLength, DATA_BYTES);
+    assert.deepEqual(loader.glue.data, DATA);
     assert.equal(loader.progress().state, 'ready');
   });
 
-  test('a truncated bundle or one the module rejects fails the load', async () => {
-    const short = makeLoader(fakeFetch({ data: [() => bodyResponse({ bytes: 100, chunks: 1 })] }));
+  test('a short, altered, non-gzip or rejected bundle fails the load', async () => {
+    const short = makeLoader(fakeFetch({ data: [() => dataResponse({ gz: gzipSync(DATA.slice(0, 100)) })] }));
     const e = await short.load().catch((err) => err);
-    assert.match(e.cause.message, /100 bytes, expected 200/);
+    assert.ok(e instanceof WasmLoadError);
+    assert.match(e.cause.message, /100 bytes gunzipped, expected 200/);
+
+    const altered = makeLoader(fakeFetch({ data: [() => dataResponse({ gz: gzipSync(new Uint8Array(DATA_BYTES)) })] }));
+    const e1 = await altered.load().catch((err) => err);
+    assert.match(e1.cause.message, new RegExp(`SHA-256 [0-9a-f]{64}, expected ${DATA_SHA256}`));
+
+    const plain = makeLoader(fakeFetch({ data: [() => dataResponse({ gz: DATA })] }));
+    const e3 = await plain.load().catch((err) => err);
+    assert.ok(e3 instanceof WasmLoadError);
+    assert.equal(plain.glue.data, undefined);
 
     const rejected = makeLoader(fakeFetch());
     rejected.glue.init_data = () => { throw new Error('not a citare data bundle'); };
@@ -264,7 +298,7 @@ describe('createWasmLoader', () => {
     assert.equal(fetch.wasmCalls().length, 1);
     assert.equal(fetch.wasmCalls()[0].init.priority, 'low');
     assert.equal(fetch.dataCalls()[0].init.priority, 'low');
-    assert.equal(loader.glue.data.byteLength, DATA_BYTES);
+    assert.deepEqual(loader.glue.data, DATA);
   });
 
   test('a load asked for before the preload runs takes its place', async () => {

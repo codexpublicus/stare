@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 import { defineConfig } from 'astro/config';
 
 // Writes /wasm/stare_wasm_bg.json for the loader (public/js/wasm.js): the WASM
@@ -11,8 +12,10 @@ import { defineConfig } from 'astro/config';
 // can't give the size the stream adds up to.
 //
 // The bundle is the one `stare-admin export-citare-data` wrote to
-// public/data/citare/v1/ from the same Cargo.lock as the module, named
-// citare-data-<first 16 hex digits of its SHA-256>.bin. The build fails if
+// public/data/citare/v1/ from the same Cargo.lock as the module, gzipped and
+// named citare-data-<first 16 hex digits of the uncompressed SHA-256>.bin.gz.
+// The JSON gives the .gz's size (`bytes`, what the progress bar counts) and
+// the uncompressed size and SHA-256 the loader checks. The build fails if
 // the module is there and the bundle isn't, since the module can't detect
 // citations without it. Skipped when the module wasn't built.
 const BUNDLE_DIR = 'data/citare/v1/';
@@ -32,7 +35,7 @@ const wasmSize = {
 				fileURLToPath(new URL('wasm/stare_wasm_bg.json', dir)),
 				`${JSON.stringify({ bytes, data })}\n`,
 			);
-			logger.info(`wasm/stare_wasm_bg.json: ${bytes} bytes, ${data.url} ${data.bytes} bytes`);
+			logger.info(`wasm/stare_wasm_bg.json: ${bytes} bytes, ${data.url} ${data.bytes} bytes (${data.uncompressedBytes} gunzipped)`);
 		},
 	},
 };
@@ -40,7 +43,7 @@ const wasmSize = {
 function citareBundle(dirUrl) {
 	const dir = fileURLToPath(dirUrl);
 	const names = existsSync(dir)
-		? readdirSync(dir).filter((n) => /^citare-data-[0-9a-f]{16}\.bin$/.test(n))
+		? readdirSync(dir).filter((n) => /^citare-data-[0-9a-f]{16}\.bin\.gz$/.test(n))
 		: [];
 	if (names.length !== 1) {
 		throw new Error(
@@ -49,12 +52,13 @@ function citareBundle(dirUrl) {
 		);
 	}
 	const [name] = names;
-	const body = readFileSync(new URL(name, dirUrl));
+	const gz = readFileSync(new URL(name, dirUrl));
+	const body = gunzipSync(gz);
 	const sha256 = createHash('sha256').update(body).digest('hex');
 	if (!name.includes(sha256.slice(0, 16))) {
-		throw new Error(`${BUNDLE_DIR}${name}: its SHA-256 is ${sha256}`);
+		throw new Error(`${BUNDLE_DIR}${name}: its bundle's SHA-256 is ${sha256}`);
 	}
-	return { url: `/${BUNDLE_DIR}${name}`, bytes: body.length, sha256 };
+	return { url: `/${BUNDLE_DIR}${name}`, bytes: gz.length, uncompressedBytes: body.length, sha256 };
 }
 
 // https://astro.build/config

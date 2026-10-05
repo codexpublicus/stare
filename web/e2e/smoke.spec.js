@@ -3,6 +3,7 @@
 // docs/superpowers/plans/2026-09-27-stare-infra-and-workers.md (Task 6,
 // step 5), plus /check exercising citare through the WASM.
 import { createHash } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
 
 import { test as base, expect } from '@playwright/test';
 
@@ -78,20 +79,25 @@ async function bundleInfo(request) {
   const info = await request.get(WASM_SIZE_PATH);
   expect(info.status()).toBe(200);
   const { data } = await info.json();
-  expect(data.url).toMatch(/^\/data\/citare\/v1\/citare-data-[0-9a-f]{16}\.bin$/);
+  expect(data.url).toMatch(/^\/data\/citare\/v1\/citare-data-[0-9a-f]{16}\.bin\.gz$/);
   return data;
 }
 
-test('citare\'s data bundle is served immutable and compressed, matching the build info', async ({ request }) => {
+test('citare\'s data bundle is served as immutable application/gzip, not re-encoded, matching the build info', async ({ request }) => {
   const data = await bundleInfo(request);
-  expect(data.sha256.startsWith(data.url.slice(-20, -4))).toBe(true);
-  const response = await request.get(data.url, { headers: { 'Accept-Encoding': 'br, gzip' } });
+  expect(data.sha256.startsWith(data.url.slice(-23, -7))).toBe(true);
+  const response = await request.get(data.url, { headers: { 'Accept-Encoding': 'br, gzip, zstd' } });
   expect(response.status()).toBe(200);
   const headers = response.headers();
   expect(headers['cache-control']).toBe('public, max-age=31536000, immutable');
-  expect(['br', 'gzip']).toContain(headers['content-encoding']);
-  const body = await response.body();
-  expect(body.length).toBe(data.bytes);
+  expect(headers['content-type']).toBe('application/gzip');
+  // No Content-Encoding: Cloudflare sends the file as it is and the browser
+  // hands the loader the gzip bytes.
+  expect(headers['content-encoding']).toBeUndefined();
+  const gz = await response.body();
+  expect(gz.length).toBe(data.bytes);
+  const body = gunzipSync(gz);
+  expect(body.length).toBe(data.uncompressedBytes);
   expect(createHash('sha256').update(body).digest('hex')).toBe(data.sha256);
 });
 

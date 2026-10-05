@@ -60,8 +60,9 @@ pub fn parse_alto(gz_data: &[u8]) -> Result<String, JsError> {
     serde_json::to_string(&page).map_err(|e| JsError::new(&e.to_string()))
 }
 
-/// Load citare's data bundle (`/data/citare/v1/citare-data-<hash>.bin`, named in
-/// `/wasm/stare_wasm_bg.json`). This module is built without the bundle, so
+/// Load citare's data bundle: the gunzipped contents of
+/// `/data/citare/v1/citare-data-<hash>.bin.gz`, which `/wasm/stare_wasm_bg.json`
+/// names. This module is built without the bundle, so
 /// `detect_citations` throws until this has run; the page's loader
 /// (`web/public/js/wasm.js`) calls it before handing the module out. Throws on
 /// bytes that aren't a bundle this build reads, or if data is already loaded.

@@ -2,12 +2,12 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
 
-# citare's data bundle (#117). The name is the content's SHA-256 prefix, so a
-# URL never changes content and browsers keep it for good. Cloudflare doesn't
-# compress application/octet-stream, the default for .bin, and the bundle is
-# 422 KB raw against about 100 KB compressed; x-protobuf is on its list of
-# compressible types and is the nearest kind of file (varint-coded tables).
-# The loader reads the bytes and ignores the type.
+# citare's data bundle (#117), gzipped by the build. The name is the
+# uncompressed bundle's SHA-256 prefix, so a URL never changes content and
+# browsers keep it for good. Served as the gzip file it is, with no
+# Content-Encoding: Cloudflare doesn't compress application/gzip again, the
+# browser doesn't decompress it on the way in, and the loader gunzips it with
+# DecompressionStream.
 /data/citare/*
   Cache-Control: public, max-age=31536000, immutable
-  Content-Type: application/x-protobuf
+  Content-Type: application/gzip

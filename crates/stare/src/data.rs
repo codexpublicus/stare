@@ -3,8 +3,8 @@
 //!
 //! With the default `embedded-data` feature the bundle is compiled in and
 //! loads itself on first use. stare-wasm builds without it; the site serves
-//! the bundle as `/data/citare/v1/<file_name>` and the page hands it to
-//! [`load`] before detecting citations (#117).
+//! the bundle gzipped as `/data/citare/v1/<file_name>.gz`, and the page
+//! gunzips it and hands it to [`load`] before detecting citations (#117).
 
 pub use citare_core::data::{is_available, LoadError, FORMAT_VERSION};
 
