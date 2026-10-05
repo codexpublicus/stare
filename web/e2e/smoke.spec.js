@@ -187,19 +187,23 @@ test('/check lists the citations citare finds', async ({ page }) => {
   await expect(page.locator('#check-status')).not.toHaveClass(/check-error/);
   // Resolvability comes from idx.stare.pub's manifest; a2d/31 and us/138
   // are both indexed.
-  await expect(page.locator('#check-summary')).toHaveText('4 citations found (2 resolvable)');
+  await expect(page.locator('#check-summary')).toHaveText('4 citations found (3 resolvable)');
   // Resolvable citations first, as links to the case viewer; then the
-  // statute, linked to its text; then the rest.
+  // statute, linked to its text. "Id." resolves through Barney, the
+  // citation before it (#120).
   await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
     '✓ 31 A.2d 647',
     '✓ 138 U.S. 529',
+    '✓ Id. Refers to 138 U.S. 529',
     '↗ 42 U.S.C. § 1983',
-    '✗ Id.',
   ]);
   const links = page.locator('#check-cite-list a.cited-case-link');
   await expect(links.nth(0)).toHaveAttribute('href', '/#a2d/31/647-01');
   await expect(links.nth(1)).toHaveAttribute('href', '/#us/138/529-01');
-  await expect(links.nth(2)).toHaveAttribute('href', 'https://www.law.cornell.edu/uscode/text/42/1983');
+  await expect(links.nth(2)).toHaveAttribute('href', '/#us/138/529-01');
+  await expect(links.nth(3)).toHaveAttribute('href', 'https://www.law.cornell.edu/uscode/text/42/1983');
+  await expect(page.locator('#check-rendered a.cite-link', { hasText: 'Id.' }))
+    .toHaveAttribute('title', 'Refers to 138 U.S. 529, at 533');
 });
 
 test('/check links out only for volumes and statutes stare.pub does not hold', async ({ page }) => {
@@ -278,6 +282,31 @@ test('/#a2d/31/647-01 resolves through idx.stare.pub and renders the case', asyn
   await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
   // The sidebar's citation pass finished without its error state.
   await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ citations? found$/);
+});
+
+test('short cites and Id.s in a case link to their antecedent\'s case (#120)', async ({ page }) => {
+  // McCallister v. State, 2019 WY 47, cites Roe v. Board of County
+  // Commissioners, 997 P.2d 1021, then "997 P.2d at 1023". Burnett v.
+  // State starts at page 1023, where the short cite used to link.
+  await page.goto('/#p3d/440/1078-01');
+  await expect(page.locator('#reader .reader-title')).toContainText('McCallister');
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ citations? found$/);
+
+  const roe = page.locator('#reader a.cite-link', { hasText: '997 P.2d at 1023' });
+  await expect(roe).toHaveAttribute('href', '#p2d/997/1021');
+  await expect(roe).toHaveAttribute('title', 'Refers to 997 P.2d 1021, at 1023');
+  await expect(page.locator('#reader a.cite-link[href="#p2d/997/1023"]')).toHaveCount(0);
+  await expect(page.locator('#sidebar .cited-case', { hasText: '997 P.2d at 1023' }))
+    .toHaveText('✓ 997 P.2d at 1023 Refers to 997 P.2d 1021');
+
+  // Three Id.s after Anderson v. W. Hodgeman & Sons, 524 N.W.2d 418, each
+  // with its own pin, link to Anderson.
+  const ids = page.locator('#reader a.cite-link[href="#nw2d/524/418"]', { hasText: /^Id\./ });
+  await expect(ids).toHaveCount(3);
+  await expect(ids.last()).toHaveAttribute('title', 'Refers to 524 N.W.2d 418, at 421');
+  // An Id. citare can't tie to a citation says so, and isn't "Not yet indexed".
+  await expect(page.locator('#reader .cite-no-antecedent').first())
+    .toHaveAttribute('title', "Refers to an earlier citation that couldn't be identified");
 });
 
 test('a case page loads Source Serif 4 from stare.pub and nothing from Google Fonts', async ({ page, baseURL }) => {
