@@ -2,7 +2,7 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
-## v2026.10.05.1 - 2026-10-05
+## v2026.10.05.2 - 2026-10-05
 
 ### Features
 
@@ -23,6 +23,7 @@ Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed 
 - web: take the collection figures from one data file
 - index: string volume keys for split volumes
 - index: index every case, fail short volumes
+- web: resolve short cites via antecedent
 
 ### Performance
 
