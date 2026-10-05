@@ -1,9 +1,25 @@
 //! Citation detection and resolution using citare-core.
 //!
 //! Wraps citare's get_citations to produce structured results
-//! with Harvard CAP slugs for direct index resolution.
+//! with Harvard CAP slugs for direct index resolution, and its
+//! resolve_citations to tie each short form to the full citation it
+//! refers to.
 
+use std::collections::HashMap;
+
+use citare_core::Citation;
 use serde::{Deserialize, Serialize};
+
+/// The citation types that refer back to an earlier full citation instead
+/// of naming a case themselves: `997 P.2d at 1023`, `Id. at 5`,
+/// `Martel, supra, 275 Conn. at 46`. Their own page is a pin page, never a
+/// first page, so they are looked up only through their antecedent.
+pub const SHORT_FORM_TYPES: [&str; 4] = [
+    "ShortCaseCitation",
+    "IdCitation",
+    "SupraCitation",
+    "ReferenceCitation",
+];
 
 /// A detected citation with enough info to resolve via stare.
 #[derive(Debug, Serialize, Deserialize)]
@@ -23,8 +39,9 @@ pub struct DetectedCitation {
     pub harvard_slug: Option<String>,
     /// Volume number from the citation groups
     pub volume: Option<String>,
-    /// Page number from the citation groups. `None` for a blank page
-    /// (`1 U.S. ___`), which can't be looked up.
+    /// First page from the citation groups. `None` for a blank page
+    /// (`1 U.S. ___`), which can't be looked up, and for a short form,
+    /// whose page is a pin page (see `pin`).
     pub page: Option<String>,
     /// Reporter abbreviation from the citation groups
     pub reporter: Option<String>,
@@ -40,6 +57,82 @@ pub struct DetectedCitation {
     /// case; callers show these only when it doesn't. Empty otherwise.
     #[serde(default)]
     pub case_links: Vec<CaseLink>,
+    /// The pin cite as written, without a leading "at" or comma: `1023`
+    /// for `997 P.2d at 1023`, `5` for `Id. at 5`, `46 n.3`. `None` when
+    /// the citation has none.
+    #[serde(default)]
+    pub pin: Option<String>,
+    /// For a short form (see `SHORT_FORM_TYPES`), the full citation
+    /// citare's `resolve_citations` ties it to. A short form is looked up
+    /// through this, never through its own pin page; `None` means citare
+    /// couldn't tell which earlier citation it refers to, and then it
+    /// isn't looked up at all. Always `None` for a full citation.
+    #[serde(default)]
+    pub antecedent: Option<Antecedent>,
+}
+
+/// The full citation a short form refers to: what a reader looks up to
+/// follow the short form. The same fields as the full citation's own
+/// `DetectedCitation`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Antecedent {
+    pub matched_text: String,
+    pub citation_type: String,
+    /// Same unit as `DetectedCitation::span`: bytes in Rust, chars once
+    /// `spans_to_char_offsets` has run.
+    pub span: (usize, usize),
+    pub harvard_slug: Option<String>,
+    pub volume: Option<String>,
+    pub page: Option<String>,
+    pub reporter: Option<String>,
+    pub year: Option<i32>,
+    pub external_url: Option<String>,
+    #[serde(default)]
+    pub case_links: Vec<CaseLink>,
+}
+
+impl DetectedCitation {
+    /// Whether this is a short form, which refers to an earlier citation.
+    pub fn is_short_form(&self) -> bool {
+        SHORT_FORM_TYPES.contains(&self.citation_type.as_str())
+    }
+
+    fn as_antecedent(&self) -> Antecedent {
+        Antecedent {
+            matched_text: self.matched_text.clone(),
+            citation_type: self.citation_type.clone(),
+            span: self.span,
+            harvard_slug: self.harvard_slug.clone(),
+            volume: self.volume.clone(),
+            page: self.page.clone(),
+            reporter: self.reporter.clone(),
+            year: self.year,
+            external_url: self.external_url.clone(),
+            case_links: self.case_links.clone(),
+        }
+    }
+}
+
+/// A citation's pin cite as citare found it, if it has one.
+fn pin_cite(c: &Citation) -> Option<&str> {
+    match c {
+        Citation::FullCase(d) => d.metadata.case.pin_cite.as_deref(),
+        Citation::ShortCase(d) => d.metadata.case.pin_cite.as_deref(),
+        Citation::FullLaw(d) => d.metadata.pin_cite.as_deref(),
+        Citation::FullJournal(d) => d.metadata.pin_cite.as_deref(),
+        Citation::Supra(d) => d.metadata.pin_cite.as_deref(),
+        Citation::Id(d) => d.metadata.pin_cite.as_deref(),
+        Citation::Reference(d) => d.metadata.pin_cite.as_deref(),
+        Citation::Unknown(_) => None,
+    }
+}
+
+/// `at 1023`, `, 1023` and ` 1023` all become `1023`.
+fn normalize_pin(pin: &str) -> Option<String> {
+    let p = pin.trim_start_matches([',', ' ']);
+    let p = p.strip_prefix("at ").unwrap_or(p);
+    let p = p.trim().trim_end_matches([',', '.', ';']).trim();
+    (!p.is_empty()).then(|| p.to_string())
 }
 
 /// A link to a source outside stare.pub for a case citation (#7).
@@ -58,7 +151,7 @@ pub struct CaseLink {
 pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
     let citations = citare_core::get_citations(text, false, "", &[]);
 
-    citations
+    let mut detected: Vec<DetectedCitation> = citations
         .iter()
         .map(|c| {
             let (start, end) = c.span();
@@ -85,7 +178,13 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
                 year: c.resource_common().and_then(|r| r.year),
                 external_url: None,
                 case_links: Vec::new(),
+                pin: pin_cite(c).and_then(normalize_pin),
+                antecedent: None,
             };
+            // A short form's page is its pin page, not where a case starts.
+            if det.is_short_form() {
+                det.page = None;
+            }
             // Generate external URL for statutes/regulations. citare gives
             // some law citations a reporter's slug ("N.Y. Penal Law" gets
             // "ny"), so a law citation is checked whatever its slug.
@@ -95,7 +194,39 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
             det.case_links = case_links(&det);
             det
         })
-        .collect()
+        .collect();
+
+    // Tie each short form to its antecedent. citare's resolutions map each
+    // resource (keyed by its first full citation) to every citation that
+    // refers to it; a citation is identified by its span, which no two
+    // citations share.
+    let position: HashMap<(usize, usize), usize> = citations
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (c.span(), i))
+        .collect();
+    let mut antecedent_of: HashMap<usize, usize> = HashMap::new();
+    for (resource, cites) in citare_core::resolve_citations(&citations) {
+        let Some(&full) = position.get(&resource.citation.span()) else {
+            continue;
+        };
+        for c in &cites {
+            if let Some(&i) = position.get(&c.span()) {
+                antecedent_of.insert(i, full);
+            }
+        }
+    }
+    for i in 0..detected.len() {
+        if !detected[i].is_short_form() {
+            continue;
+        }
+        if let Some(&full) = antecedent_of.get(&i) {
+            if !detected[full].is_short_form() {
+                detected[i].antecedent = Some(detected[full].as_antecedent());
+            }
+        }
+    }
+    detected
 }
 
 /// Compile a pattern once and keep it for the life of the process.
@@ -332,6 +463,9 @@ pub fn spans_to_char_offsets(
     let map = OffsetMap::new(text);
     for c in citations.iter_mut() {
         c.span = map.convert_span(c.span, OffsetUnit::Chars)?;
+        if let Some(a) = c.antecedent.as_mut() {
+            a.span = map.convert_span(a.span, OffsetUnit::Chars)?;
+        }
     }
     Ok(())
 }
@@ -568,6 +702,136 @@ mod tests {
         let json = serde_json::to_value(&cites[0]).unwrap();
         assert_eq!(json["case_links"][0]["source"], "courtlistener");
         assert_eq!(json["case_links"][1]["kind"], "search");
+    }
+
+    /// The one citation of `ty` in `cites` whose text is `raw`.
+    fn find<'a>(cites: &'a [DetectedCitation], ty: &str, raw: &str) -> &'a DetectedCitation {
+        cites
+            .iter()
+            .find(|c| c.citation_type == ty && c.matched_text == raw)
+            .unwrap_or_else(|| panic!("no {ty} {raw:?} in {cites:#?}"))
+    }
+
+    /// #120: `997 P.2d at 1023` refers to Roe, which starts at 1021. It was
+    /// looked up at its pin page, 1023, where Burnett v. State starts. It
+    /// now carries Roe's citation, and no page of its own.
+    #[test]
+    fn short_cite_refers_to_its_antecedent_not_its_pin_page() {
+        let cites = detect_citations(
+            "Roe v. Board of County Commissioners, 997 P.2d 1021 (Wyo. 2000). Roe, 997 P.2d at 1023.",
+        );
+        let short = find(&cites, "ShortCaseCitation", "997 P.2d at 1023");
+        assert_eq!(short.page, None, "a pin page is not a first page");
+        assert_eq!(short.pin.as_deref(), Some("1023"));
+        let a = short.antecedent.as_ref().expect("antecedent");
+        assert_eq!(a.matched_text, "997 P.2d 1021");
+        assert_eq!(a.citation_type, "FullCaseCitation");
+        assert_eq!(a.harvard_slug.as_deref(), Some("p2d"));
+        assert_eq!(a.volume.as_deref(), Some("997"));
+        assert_eq!(a.page.as_deref(), Some("1021"));
+        assert!(resolvable_citations(&cites)
+            .iter()
+            .all(|c| c.matched_text == "997 P.2d 1021"));
+        // A full citation has no antecedent.
+        assert!(find(&cites, "FullCaseCitation", "997 P.2d 1021")
+            .antecedent
+            .is_none());
+    }
+
+    /// Each Id. refers to the citation before it, through a chain of Id.s,
+    /// and two Id.s with the same text can refer to different cases.
+    #[test]
+    fn id_chain_follows_the_preceding_citation() {
+        let text = "See Lyon, 31 A.2d 647 (1943). Id. at 650. Id. at 651. \
+                    Roe v. Wade, 410 U.S. 113 (1973). Id. at 120.";
+        let cites = detect_citations(text);
+        let ids: Vec<&DetectedCitation> = cites
+            .iter()
+            .filter(|c| c.citation_type == "IdCitation")
+            .collect();
+        assert_eq!(ids.len(), 3, "{cites:#?}");
+        let to: Vec<(&str, Option<&str>)> = ids
+            .iter()
+            .map(|c| {
+                (
+                    c.antecedent.as_ref().unwrap().matched_text.as_str(),
+                    c.pin.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            to,
+            [
+                ("31 A.2d 647", Some("650")),
+                ("31 A.2d 647", Some("651")),
+                ("410 U.S. 113", Some("120")),
+            ]
+        );
+        assert!(ids.iter().all(|c| c.page.is_none()));
+    }
+
+    #[test]
+    fn supra_refers_to_the_named_case() {
+        let cites = detect_citations(
+            "Martel v. Metropolitan District Commission, 275 Conn. 38 (2005). \
+             The court agreed. Martel, supra, at 46.",
+        );
+        let supra = cites
+            .iter()
+            .find(|c| c.citation_type == "SupraCitation")
+            .expect("supra");
+        let a = supra.antecedent.as_ref().expect("antecedent");
+        assert_eq!(a.matched_text, "275 Conn. 38");
+        assert_eq!(a.harvard_slug.as_deref(), Some("conn"));
+        assert_eq!(supra.pin.as_deref(), Some("46"));
+    }
+
+    /// A short cite to a case stare.pub may not hold carries the
+    /// antecedent's outside links, so it can link out the same way.
+    #[test]
+    fn short_cite_carries_its_antecedents_case_links() {
+        let cites = detect_citations(
+            "Axon Enterprise, Inc. v. FTC, 598 U.S. 175 (2023). Axon, 598 U.S. at 180.",
+        );
+        let short = find(&cites, "ShortCaseCitation", "598 U.S. at 180");
+        assert!(short.case_links.is_empty());
+        let a = short.antecedent.as_ref().expect("antecedent");
+        assert_eq!(
+            a.case_links[0].url,
+            "https://www.courtlistener.com/c/U.S./598/175/"
+        );
+    }
+
+    /// An Id. with nothing before it, and a short cite to a volume no
+    /// earlier citation names, have no antecedent and no page.
+    #[test]
+    fn short_form_without_antecedent_has_none() {
+        let cites = detect_citations("Id. at 5. See also 997 P.2d at 1023.");
+        assert_eq!(cites.len(), 2, "{cites:#?}");
+        for c in &cites {
+            assert!(c.is_short_form());
+            assert!(c.antecedent.is_none());
+            assert_eq!(c.page, None);
+        }
+    }
+
+    /// Antecedent spans are converted to char offsets with the rest.
+    #[test]
+    fn antecedent_span_in_char_offsets() {
+        let text = "\u{a7} Fran\u{e7}ois v. Roe, 997 P.2d 1021 (2000). Id. at 1023.";
+        let mut cites = detect_citations(text);
+        spans_to_char_offsets(text, &mut cites).unwrap();
+        let id = find(&cites, "IdCitation", "Id.");
+        let (start, end) = id.antecedent.as_ref().unwrap().span;
+        let chars: Vec<char> = text.chars().collect();
+        assert_eq!(
+            chars[start..end].iter().collect::<String>(),
+            "997 P.2d 1021"
+        );
+        let json = serde_json::to_value(id).unwrap();
+        assert_eq!(json["antecedent"]["page"], "1021");
+        assert_eq!(json["pin"], "1023");
+        assert!(json["page"].is_null());
     }
 
     /// The external URL for the one citation `text` should contain.
