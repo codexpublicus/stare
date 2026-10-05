@@ -55,7 +55,7 @@ jobs:
       github.event.pull_request.base.ref == 'main' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login == 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: homelab
     permissions:
       contents: read
       actions: read
@@ -103,6 +103,11 @@ jobs:
             echo "$failed"
             exit 1
           fi
+
+      # scripts/calver.mjs; the homelab runner image has no Node
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
 
       - name: Compute the release tag
         id: version
@@ -198,7 +203,7 @@ jobs:
   release:
     name: Release and deploy production
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: homelab
     permissions:
       contents: write
       actions: write
@@ -211,6 +216,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           persist-credentials: false
+
+      # scripts/calver.mjs and wrangler; the homelab runner image has no Node
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:

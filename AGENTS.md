@@ -159,6 +159,21 @@ of `site.yml` with `CLOUDFLARE_API_TOKEN`. A PR that edits a workflow to run `wr
 would deploy production without a release, and a Workers token can't be scoped to preview
 uploads only. Review workflow changes in PRs with that in mind.
 
+Every job runs on `runs-on: homelab`, the org's self-hosted runners: GARM in lokkju/infra
+(`homelab/platform/garm/`, "CI runners (GARM)" in its `homelab/README.md`) starts an ephemeral
+Kubernetes pod per job on ml-01, with a privileged Docker-in-Docker sidecar. The image is
+actions-runner plus gh, git, curl, jq and ca-certificates; it has no compiler, Node, Python,
+Rust or Playwright libraries, so jobs install what they need. `.github/actions/homelab-setup`
+apt-installs the packages a job names (with the image's passwordless sudo) and sets `TMPDIR`
+to `$RUNNER_TEMP`, because the sidecar sees only the runner's work volume and a
+`docker run -v` of a `/tmp` path would mount an empty directory. `build-site` asks it for
+`build-essential pkg-config openssh-client`, the archival-pdf job for `poppler-utils`, and the
+archival-image job for nothing but `TMPDIR`. Toolchains still come from their setup actions
+(`setup-node`, `rust-toolchain`, `setup-uv`), the Playwright suite installs Chromium's system
+libraries itself, and pip, uv and npm go through the homelab's Nexus proxy, set by the runner's
+environment. A job on these runners can get root on ml-01 through the sidecar, so no workflow
+may run code from a fork or check out PR code under `pull_request_target`.
+
 - **Pull requests** (`site.yml`, job "Preview PR") run `cargo fmt --check`, clippy with
   `-D warnings`, `cargo test --workspace`, the JS tests, the WASM build and the Astro build,
   then upload a Worker version and keep one updating comment with its preview URL

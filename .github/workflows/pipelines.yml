@@ -17,12 +17,17 @@ permissions:
 
 jobs:
   archival-pdf:
-    runs-on: ubuntu-latest
+    runs-on: homelab
     defaults:
       run:
         working-directory: pipelines/archival-pdf
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # poppler (pdfimages/pdftotext) for the marked tests
+      - uses: ./.github/actions/homelab-setup
+        with:
+          packages: poppler-utils
 
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
@@ -33,12 +38,10 @@ jobs:
       - name: Install
         run: uv sync --locked
 
-      # external tools for the marked tests: poppler (pdfimages/pdftotext), plus jbig2enc and
-      # veraPDF from the images pinned in stare_archival.images (the only copy of the digests)
+      # jbig2enc and veraPDF for the marked tests, from the images pinned in
+      # stare_archival.images (the only copy of the digests)
       - name: Test tools
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends poppler-utils
           for image in $(uv run python -m stare_archival.images); do docker pull -q "$image"; done
 
       - name: ruff check
@@ -58,9 +61,12 @@ jobs:
   # the pipeline image (pipelines/archival-pdf/Dockerfile) builds, and builds the fixture
   # volume with its native jbig2, then skips it on a second run
   archival-image:
-    runs-on: ubuntu-latest
+    runs-on: homelab
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # TMPDIR, so image_smoke.sh's mktemp output is visible to the Docker sidecar
+      - uses: ./.github/actions/homelab-setup
 
       - name: Build the image
         run: >-

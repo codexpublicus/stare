@@ -1,0 +1,37 @@
+name: Prepare the homelab runner
+description: >
+  The setup a job needs on the org's self-hosted `homelab` runners (GARM,
+  lokkju/infra), whose image is actions-runner plus gh, git, curl, jq and
+  ca-certificates and nothing else. Installs the apt packages the job asks for
+  with passwordless sudo, and points TMPDIR at $RUNNER_TEMP: the runner's
+  /tmp isn't visible to the Docker-in-Docker sidecar, which shares only the
+  runner's work volume, so `docker run -v "$(mktemp -d):..."` would mount an
+  empty directory. Expects the repo to be checked out already.
+
+inputs:
+  packages:
+    description: Space-separated apt packages to install, such as build-essential
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install apt packages and set TMPDIR
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        set -euo pipefail
+        echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+        if [ -z "${PACKAGES// /}" ]; then
+          exit 0
+        fi
+        if ! sudo -n true 2>/dev/null; then
+          echo "::error::passwordless sudo isn't available on this runner; add $PACKAGES to the runner image (lokkju/infra homelab/images/garm-runner)"
+          exit 1
+        fi
+        sudo DEBIAN_FRONTEND=noninteractive apt-get update -q
+        # word splitting is intended: one argument per package
+        # shellcheck disable=SC2086
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends $PACKAGES
