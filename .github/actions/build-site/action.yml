@@ -2,8 +2,8 @@ name: Build and check the site
 description: >
   The checks and build every site workflow runs (site.yml's previews and
   release.yml's production release): cargo fmt, clippy and tests, the JS tests,
-  the stare-wasm build and the Astro build into web/dist. Expects the repo to be
-  checked out already.
+  the stare-wasm build, citare's data bundle and the Astro build into web/dist.
+  Expects the repo to be checked out already.
 
 inputs:
   ssh-private-key:
@@ -70,6 +70,12 @@ runs:
     - name: Build stare-wasm
       shell: bash
       run: wasm-pack build crates/stare-wasm --target web --out-dir ../../web/public/wasm
+
+    # The citare data bundle the module loads at runtime (#117), from the
+    # citare version in Cargo.lock
+    - name: Export citare's data bundle
+      shell: bash
+      run: cargo run --quiet -p stare-admin -- export-citare-data web/public/data/citare/v1
 
     - name: Install web dependencies
       shell: bash
