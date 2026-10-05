@@ -2,6 +2,7 @@ pub mod alto;
 pub mod case;
 pub mod cite;
 pub mod config;
+pub mod data;
 pub mod index;
 pub mod manifest;
 
