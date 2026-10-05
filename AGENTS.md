@@ -103,6 +103,8 @@ wasm-opt, which made the compressed module larger. Measured 2026-10-03 (gzip -9,
 | #73 release profile, no wasm-opt | 2,769,808 | 877,310 | 606,251 |
 | plus citare without unused regex Unicode tables (citare#46) | 2,538,007 | 815,660 | 582,080 |
 | citare v0.5.0, which ships citare#46 | 2,553,624 | 826,044 | 588,268 |
+| citare v0.5.1 without embedded data (#117), 2026-10-05 | 1,549,194 | 571,934 | 419,375 |
+| its data bundle, `citare-data-2166a845e9ece1b1.bin` | 422,388 | 124,699 | 97,727 |
 
 The Worker compresses on the fly, less tightly than brotli 11. Bytes on the wire, same day:
 
@@ -110,11 +112,28 @@ The Worker compresses on the fly, less tightly than brotli 11. Bytes on the wire
 |---|---:|---:|---:|
 | main preview before #73 | 969,934 | 981,923 | 1,048,261 |
 | #73 preview | 783,415 | 790,873 | 875,281 |
+| main preview before #117, 2026-10-05 | 751,553 | 758,051 | 822,684 |
+| #117 preview, module | 528,809 | 546,661 | 570,944 |
+| #117 preview, bundle | 117,117 | 128,092 | 124,959 |
+| #117 preview, module plus bundle | 645,926 | 674,753 | 695,903 |
 
-About half the module is data: citare's reporter tables, regex templates and edition
-strings generated from reporters-db, and the Unicode tables regex needs. The rest is
-code, most of it the regex engines. opt-level `"z"` everywhere is smaller still (540 KB
-brotli) but doubles citation detection time; keep the matching engines at 3. Check
+Since #117 the module is built without citare's reporter, edition and court tables
+(citare's `embedded-data` feature, off in stare-wasm through `stare`'s own). The build
+exports them with `stare-admin export-citare-data` to
+`/data/citare/v1/citare-data-<SHA-256 prefix>.bin`, served `immutable` for a year as
+`application/x-protobuf` (Cloudflare doesn't compress `application/octet-stream`), and names
+the file in `/wasm/stare_wasm_bg.json`; `web/public/js/wasm.js` fetches it alongside the
+module and loads it with `init_data` before `loadWasm()` resolves. The name changes only
+when reporters-db or courts-db does, so a stare release re-downloads the module alone, and
+a data change the bundle alone. In Chromium on the previews (median of 9, ml-01, zstd), a
+first visit transfers 677,762 bytes of module and bundle against 758,351 before; a repeat
+visit after a stare release about 547 KB against 758 KB; the load takes 178 to 188 ms
+against 160 to 178 ms, and the first `detect_citations` 211 to 222 ms against 230 to
+237 ms, since decoding the tables moves from the first call into the load.
+
+The module left is mostly code, the regex engines, plus the Unicode tables regex needs.
+opt-level `"z"` everywhere was smaller still before #117 (540 KB brotli against 588 KB)
+but doubles citation detection time; keep the matching engines at 3. Check
 `twiggy top` and the brotli size when adding a dependency to `stare` or `stare-wasm`.
 
 ## Data Source: static.case.law
