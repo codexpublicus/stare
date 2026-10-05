@@ -21,6 +21,12 @@ jobs:
     defaults:
       run:
         working-directory: pipelines/archival-pdf
+    env:
+      # The runner points UV_INDEX_URL at the homelab's Nexus proxy, and uv treats a lockfile
+      # resolved against another index as out of date, so `uv sync --locked` (and any `uv run`
+      # that re-locks) fails. Install exactly what uv.lock says instead; the Install step checks
+      # the lockfile against its own index, pypi.org.
+      UV_FROZEN: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -36,7 +42,9 @@ jobs:
           cache-dependency-glob: pipelines/archival-pdf/uv.lock
 
       - name: Install
-        run: uv sync --locked
+        run: |
+          uv lock --check --default-index https://pypi.org/simple
+          uv sync
 
       # jbig2enc and veraPDF for the marked tests, from the images pinned in
       # stare_archival.images (the only copy of the digests)
