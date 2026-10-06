@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-#MISE description="Build the stare-wasm crate into web/public/wasm"
+#MISE description="Build the stare-wasm crate into web/public/wasm and export citare's data bundle"
 set -euo pipefail
 
 wasm-pack build crates/stare-wasm --target web --out-dir ../../web/public/wasm
+cargo run --quiet -p stare-admin -- export-citare-data web/public/data/citare/v1

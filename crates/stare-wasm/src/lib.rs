@@ -60,6 +60,23 @@ pub fn parse_alto(gz_data: &[u8]) -> Result<String, JsError> {
     serde_json::to_string(&page).map_err(|e| JsError::new(&e.to_string()))
 }
 
+/// Load citare's data bundle: the gunzipped contents of
+/// `/data/citare/v1/citare-data-<hash>.bin.gz`, which `/wasm/stare_wasm_bg.json`
+/// names. This module is built without the bundle, so
+/// `detect_citations` throws until this has run; the page's loader
+/// (`web/public/js/wasm.js`) calls it before handing the module out. Throws on
+/// bytes that aren't a bundle this build reads, or if data is already loaded.
+#[wasm_bindgen]
+pub fn init_data(bytes: &[u8]) -> Result<(), JsError> {
+    stare::data::load(bytes).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Whether citare's data is loaded (or compiled in, in a native build).
+#[wasm_bindgen]
+pub fn data_loaded() -> bool {
+    stare::data::is_available()
+}
+
 /// Detect citations in text using citare. Returns JSON array of DetectedCitation.
 /// Each has: matched_text, citation_type, span, harvard_slug, volume, page, reporter, year.
 ///
@@ -74,6 +91,11 @@ pub fn parse_alto(gz_data: &[u8]) -> Result<String, JsError> {
 /// not something this function guesses its way past.
 #[wasm_bindgen]
 pub fn detect_citations(text: &str) -> Result<String, JsError> {
+    if !stare::data::is_available() {
+        return Err(JsError::new(
+            "citare data is not loaded: call init_data with the citare data bundle first",
+        ));
+    }
     let mut citations = stare::cite::detect_citations(text);
     stare::cite::spans_to_char_offsets(text, &mut citations)
         .map_err(|e| JsError::new(&e.to_string()))?;

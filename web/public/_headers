@@ -1,3 +1,13 @@
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+
+# citare's data bundle (#117), gzipped by the build. The name is the
+# uncompressed bundle's SHA-256 prefix, so a URL never changes content and
+# browsers keep it for good. Served as the gzip file it is, with no
+# Content-Encoding: Cloudflare doesn't compress application/gzip again, the
+# browser doesn't decompress it on the way in, and the loader gunzips it with
+# DecompressionStream.
+/data/citare/*
+  Cache-Control: public, max-age=31536000, immutable
+  Content-Type: application/gzip

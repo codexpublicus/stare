@@ -332,9 +332,9 @@ pub fn external_url(citation: &DetectedCitation) -> Option<String> {
         ));
     }
 
-    // Michigan: "Mich. Comp. Laws § 750.316", "... Ann. § 600.2912". The
-    // site takes lettered sections too (mcl-600-2912a), though citare
-    // v0.5.0 still stops "§ 600.2912a" at "600".
+    // Michigan: "Mich. Comp. Laws § 750.316", "... Ann. § 600.2912", and
+    // lettered sections, "§ 600.2912a" (mcl-600-2912a), which citare reads
+    // whole since v0.5.2.
     if let Some(caps) =
         regex!(r"^Mich\.\s*Comp\.\s*Laws(?:\s*Ann\.)?\s*§*\s*(\d+)\.(\d+[a-z]*)").captures(text)
     {
@@ -589,6 +589,10 @@ mod tests {
                 "https://www.legislature.mi.gov/Laws/MCL?objectName=mcl-600-2912",
             ),
             (
+                "See Mich. Comp. Laws § 600.2912a.",
+                "https://www.legislature.mi.gov/Laws/MCL?objectName=mcl-600-2912a",
+            ),
+            (
                 "See Minn. Stat. § 609.185.",
                 "https://www.revisor.mn.gov/statutes/cite/609.185",
             ),
@@ -612,13 +616,11 @@ mod tests {
 
     /// Law citations with no deterministic per-section URL stay unlinked:
     /// public laws before the 104th Congress (govinfo's link service has
-    /// none), state codes not in the list, and a Michigan section citare
-    /// cut short.
+    /// none) and state codes not in the list.
     #[test]
     fn external_url_none_without_a_pattern() {
         for text in [
             "See Pub. L. No. 93-205.",
-            "See Mich. Comp. Laws § 600.2912a.",
             "See Ga. Code Ann. § 16-5-1.",
             "See Colo. Rev. Stat. § 18-3-102.",
         ] {

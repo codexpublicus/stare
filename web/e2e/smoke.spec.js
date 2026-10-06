@@ -2,12 +2,16 @@
 // the manual preview checks in
 // docs/superpowers/plans/2026-09-27-stare-infra-and-workers.md (Task 6,
 // step 5), plus /check exercising citare through the WASM.
+import { createHash } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
+
 import { test as base, expect } from '@playwright/test';
 
 import { casesLabel, yearRange } from '../src/lib/collection.js';
 
 const WASM_PATH = '/wasm/stare_wasm_bg.wasm';
 const WASM_SIZE_PATH = '/wasm/stare_wasm_bg.json';
+const BUNDLE_DIR = '/data/citare/v1/';
 
 // Every test fails on a console error or warning, or an uncaught exception.
 // `expectedMissing` lists URLs a test expects to 404: Chromium logs every failed
@@ -68,6 +72,71 @@ test('/wasm/stare_wasm_bg.json gives the WASM module\'s uncompressed size', asyn
   const { bytes } = await size.json();
   const wasm = await request.get(WASM_PATH);
   expect((await wasm.body()).length).toBe(bytes);
+});
+
+// citare's data bundle (#117), as the build info names it.
+async function bundleInfo(request) {
+  const info = await request.get(WASM_SIZE_PATH);
+  expect(info.status()).toBe(200);
+  const { data } = await info.json();
+  expect(data.url).toMatch(/^\/data\/citare\/v1\/citare-data-[0-9a-f]{16}\.bin\.gz$/);
+  return data;
+}
+
+test('citare\'s data bundle is served as immutable application/gzip, not re-encoded, matching the build info', async ({ request }) => {
+  const data = await bundleInfo(request);
+  expect(data.sha256.startsWith(data.url.slice(-23, -7))).toBe(true);
+  const response = await request.get(data.url, { headers: { 'Accept-Encoding': 'br, gzip, zstd' } });
+  expect(response.status()).toBe(200);
+  const headers = response.headers();
+  expect(headers['cache-control']).toBe('public, max-age=31536000, immutable');
+  expect(headers['content-type']).toBe('application/gzip');
+  // No Content-Encoding: Cloudflare sends the file as it is and the browser
+  // hands the loader the gzip bytes.
+  expect(headers['content-encoding']).toBeUndefined();
+  const gz = await response.body();
+  expect(gz.length).toBe(data.bytes);
+  const body = gunzipSync(gz);
+  expect(body.length).toBe(data.uncompressedBytes);
+  expect(createHash('sha256').update(body).digest('hex')).toBe(data.sha256);
+});
+
+test('/check fetches the bundle alongside the WASM and keeps it cached across a reload', async ({ page, request }) => {
+  const data = await bundleInfo(request);
+  const fetched = page.waitForResponse((r) => new URL(r.url()).pathname === data.url);
+  await page.goto('/check');
+  expect((await fetched).status()).toBe(200);
+  await page.fill('#check-input', 'See Barney v. Oelrichs, 138 U.S. 529 (1891).');
+  await page.click('#check-btn');
+  await expect(page.locator('#check-summary')).toHaveText('1 citations found (1 resolvable)');
+
+  // On the next visit the bundle comes from the browser's cache: no bytes
+  // transferred and no revalidation.
+  await page.reload();
+  await page.fill('#check-input', 'See Barney v. Oelrichs, 138 U.S. 529 (1891).');
+  await page.click('#check-btn');
+  await expect(page.locator('#check-summary')).toHaveText('1 citations found (1 resolvable)');
+  const entry = await page.evaluate((url) => {
+    const e = performance.getEntriesByType('resource').find((r) => new URL(r.name).pathname === url);
+    return e && { transferSize: e.transferSize, decodedBodySize: e.decodedBodySize };
+  }, data.url);
+  expect(entry).toEqual({ transferSize: 0, decodedBodySize: data.bytes });
+});
+
+// A plain test: the failed loads log console errors on purpose.
+base('/check reports a failed bundle load and retries it', async ({ page }) => {
+  let failing = true;
+  await page.route(`**${BUNDLE_DIR}*`, (route) => (failing ? route.abort() : route.continue()));
+  await page.goto('/check');
+  await page.fill('#check-input', 'See Barney v. Oelrichs, 138 U.S. 529 (1891).');
+  await page.click('#check-btn');
+
+  const alert = page.getByRole('alert');
+  await expect(alert).toHaveText("Couldn't load the citation parser. Retry");
+  failing = false;
+  await alert.getByRole('button', { name: 'Retry' }).click();
+  await expect(alert).toHaveCount(0);
+  await expect(page.locator('#check-summary')).toHaveText('1 citations found (1 resolvable)');
 });
 
 for (const path of ['/', '/check']) {
