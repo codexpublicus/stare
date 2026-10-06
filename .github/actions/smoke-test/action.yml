@@ -28,10 +28,10 @@ runs:
           echo "::error::couldn't find the headless shell's install location in 'playwright install --dry-run'"
           exit 1
         fi
-        # The runner image's version, so a new image doesn't restore browsers
+        # The runner image's version (GARM_RUNNER_VERSION), so a new image doesn't restore browsers
         # cached under an old one (lokkju/infra#106); "unknown" until the
         # image sets it.
-        image=${GARM_RUNNER_IMAGE:-unknown}
+        image=${GARM_RUNNER_VERSION:-${GARM_RUNNER_IMAGE:-unknown}}
         {
           echo "version=$version"
           echo "location=$location"
