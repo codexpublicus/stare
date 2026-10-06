@@ -57,6 +57,11 @@ protect_breaking_commits = false
 # The CLIs, the archival pipeline, docs and the release files are left out; a
 # release-workflow change moves no visitor's experience.
 include_paths = [
+  # Release tags point at the release PR's merge commit, which touches only
+  # CHANGELOG.md. Without it here git-cliff never sees the tagged commits,
+  # drops every tag, and the changelog collapses into one section. The
+  # commits themselves are chore(release) and skipped by commit_parsers.
+  "CHANGELOG.md",
   "web/**",
   "crates/stare/**",
   "crates/stare-wasm/**",
