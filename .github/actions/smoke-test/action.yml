@@ -13,27 +13,84 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Playwright version
+    # Where this Playwright puts its headless shell, and which revision it pins.
+    # The browsers' directory comes from Playwright rather than a fixed
+    # ~/.cache/ms-playwright, so the cache follows the runner's HOME if it moves.
+    - name: Locate Chromium
       id: playwright
       shell: bash
-      run: echo "version=$(node -p "require('./web/node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      run: |
+        set -euo pipefail
+        version=$(node -p "require('./web/node_modules/@playwright/test/package.json').version")
+        location=$(web/node_modules/.bin/playwright install --dry-run --only-shell chromium \
+          | awk '/chromium-headless-shell v/ { found = 1 } found && /Install location:/ { print $3; exit }')
+        if [ -z "$location" ]; then
+          echo "::error::couldn't find the headless shell's install location in 'playwright install --dry-run'"
+          exit 1
+        fi
+        # The runner image's version, so a new image doesn't restore browsers
+        # cached under an old one (lokkju/infra#106); "unknown" until the
+        # image sets it.
+        image=${GARM_RUNNER_IMAGE:-unknown}
+        {
+          echo "version=$version"
+          echo "location=$location"
+          echo "browsers=$(dirname "$location")"
+          echo "revision=$(basename "$location")"
+          echo "image=$(printf '%s' "$image" | tr -c 'A-Za-z0-9._-' '_')"
+        } >> "$GITHUB_OUTPUT"
 
-    # Browsers are keyed by the Playwright version, which pins them.
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      id: browsers
       with:
-        path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium-headless-shell
+        path: ${{ steps.playwright.outputs.browsers }}
+        key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-${{ steps.playwright.outputs.revision }}
 
+    # Checked rather than trusting a cache hit: in stare run 37386159181 the
+    # cache hit but the headless shell wasn't where Playwright looked.
     - name: Install Chromium
-      if: steps.browsers.outputs.cache-hit != 'true'
       shell: bash
-      run: web/node_modules/.bin/playwright install --with-deps --only-shell chromium
+      env:
+        LOCATION: ${{ steps.playwright.outputs.location }}
+      run: |
+        set -euo pipefail
+        shell() { find "$LOCATION" -name chrome-headless-shell -type f -perm -u+x -print -quit 2>/dev/null || true; }
+        if [ -n "$(shell)" ]; then
+          echo "headless shell present: $(shell)"
+          exit 0
+        fi
+        web/node_modules/.bin/playwright install --only-shell chromium
+        if [ -z "$(shell)" ]; then
+          echo "::error::playwright install finished, but there's no chrome-headless-shell under $LOCATION"
+          exit 1
+        fi
 
-    - name: Install Chromium's system dependencies
-      if: steps.browsers.outputs.cache-hit == 'true'
+    # The image is meant to have Chromium's shared libraries, since without
+    # passwordless sudo (lokkju/infra#105) install-deps can't apt-get them.
+    # ldd says exactly what the headless shell can't load; install-deps
+    # --dry-run also lists fonts and X packages it doesn't need to start.
+    - name: Check Chromium's system libraries
       shell: bash
-      run: web/node_modules/.bin/playwright install-deps chromium
+      env:
+        LOCATION: ${{ steps.playwright.outputs.location }}
+      run: |
+        set -euo pipefail
+        unresolved() {
+          { find "$LOCATION" -type f \( -name chrome-headless-shell -o -name '*.so' -o -name '*.so.*' \) \
+            -exec ldd {} + 2>/dev/null || true; } | awk '/not found/ { print $1 }' | sort -u
+        }
+        missing=$(unresolved)
+        if [ -z "$missing" ]; then
+          echo "the headless shell's shared libraries all resolve"
+          exit 0
+        fi
+        echo "unresolved libraries: ${missing//$'\n'/ }"
+        if [[ "$(id -u)" == 0 ]] || sudo -n true 2>/dev/null; then
+          web/node_modules/.bin/playwright install-deps chromium-headless-shell
+          missing=$(unresolved)
+          [ -z "$missing" ] && exit 0
+        fi
+        echo "::error::Chromium can't load ${missing//$'\n'/ } and the runner has no passwordless sudo for 'playwright install-deps' (lokkju/infra#105); add Chromium's libraries to homelab/images/garm-runner/Dockerfile in lokkju/infra"
+        exit 1
 
     - name: Wait for the preview
       shell: bash
