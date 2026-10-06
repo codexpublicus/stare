@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   archival-pdf:
-    runs-on: homelab
+    runs-on: homelab-docker
     defaults:
       run:
         working-directory: pipelines/archival-pdf
@@ -69,7 +69,7 @@ jobs:
   # the pipeline image (pipelines/archival-pdf/Dockerfile) builds, and builds the fixture
   # volume with its native jbig2, then skips it on a second run
   archival-image:
-    runs-on: homelab
+    runs-on: homelab-docker
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
