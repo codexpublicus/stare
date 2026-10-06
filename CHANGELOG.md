@@ -2,7 +2,7 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
-## v2026.10.05.2 - 2026-10-05
+## v2026.10.06.1 - 2026-10-06
 
 ### Features
 
@@ -14,6 +14,7 @@ Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed 
 - web: self-host subset web fonts
 - index build reports and /data page
 - web: load the WASM in the background
+- load citare's data bundle separately
 
 ### Fixes
 
