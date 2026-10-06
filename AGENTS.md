@@ -190,15 +190,18 @@ uploads only. Review workflow changes in PRs with that in mind.
 Every job runs on `runs-on: homelab`, the org's self-hosted runners: GARM in lokkju/infra
 (`homelab/platform/garm/`, "CI runners (GARM)" in its `homelab/README.md`) starts an ephemeral
 Kubernetes pod per job on ml-01, with a privileged Docker-in-Docker sidecar. The image is
-actions-runner plus gh, git, curl, jq and ca-certificates; it has no compiler, Node, Python,
-Rust or Playwright libraries, so jobs install what they need. `.github/actions/homelab-setup`
-apt-installs the packages a job names (with the image's passwordless sudo) and sets `TMPDIR`
-to `$RUNNER_TEMP`, because the sidecar sees only the runner's work volume and a
+actions-runner plus gh, git, curl, jq, ca-certificates, build-essential, pkg-config,
+openssh-client and poppler-utils (lokkju/infra#81), and has no passwordless sudo
+(lokkju/infra#105). `.github/actions/homelab-setup` checks that the packages a job names are
+installed, tries `sudo -n apt-get` only for missing ones and fails naming them otherwise, and
+sets `TMPDIR` to `$RUNNER_TEMP`, because the sidecar sees only the runner's work volume and a
 `docker run -v` of a `/tmp` path would mount an empty directory. `build-site` asks it for
 `build-essential pkg-config openssh-client`, the archival-pdf job for `poppler-utils`, and the
 archival-image job for nothing but `TMPDIR`. Toolchains still come from their setup actions
-(`setup-node`, `rust-toolchain`, `setup-uv`), the Playwright suite installs Chromium's system
-libraries itself, and pip, uv and npm go through the homelab's Nexus proxy, set by the runner's
+(`setup-node`, `rust-toolchain`, `setup-uv`). The Playwright suite installs Chromium's
+headless shell itself and checks its shared libraries with `ldd`; it runs
+`playwright install-deps` only if some are missing and sudo works, so those libraries have to
+be in the image. pip, uv and npm go through the homelab's Nexus proxy, set by the runner's
 environment. A job on these runners can get root on ml-01 through the sidecar, so no workflow
 may run code from a fork or check out PR code under `pull_request_target`.
 
