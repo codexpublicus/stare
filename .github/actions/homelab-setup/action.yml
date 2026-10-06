@@ -1,37 +1,64 @@
 name: Prepare the homelab runner
 description: >
   The setup a job needs on the org's self-hosted `homelab` runners (GARM,
-  lokkju/infra), whose image is actions-runner plus gh, git, curl, jq and
-  ca-certificates and nothing else. Installs the apt packages the job asks for
-  with passwordless sudo, and points TMPDIR at $RUNNER_TEMP: the runner's
-  /tmp isn't visible to the Docker-in-Docker sidecar, which shares only the
-  runner's work volume, so `docker run -v "$(mktemp -d):..."` would mount an
-  empty directory. Expects the repo to be checked out already.
+  lokkju/infra). The runner image has build-essential, pkg-config,
+  openssh-client and poppler-utils (lokkju/infra#81) but no passwordless sudo
+  (lokkju/infra#105), so this checks the packages the job asks for and only
+  tries `sudo -n apt-get` for the ones that are missing, failing if it can't.
+  It also points TMPDIR at $RUNNER_TEMP: the runner's /tmp isn't visible to the
+  Docker-in-Docker sidecar, which shares only the runner's work volume, so
+  `docker run -v "$(mktemp -d):..."` would mount an empty directory. Expects
+  the repo to be checked out already.
 
 inputs:
   packages:
-    description: Space-separated apt packages to install, such as build-essential
+    description: Space-separated apt packages the job needs, such as build-essential
     required: false
     default: ""
 
 runs:
   using: composite
   steps:
-    - name: Install apt packages and set TMPDIR
+    - name: Check apt packages and set TMPDIR
       shell: bash
       env:
         PACKAGES: ${{ inputs.packages }}
       run: |
         set -euo pipefail
         echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
-        if [ -z "${PACKAGES// /}" ]; then
+
+        # A package counts as present if dpkg has it or, for the image's build
+        # tools, if the commands it provides are on PATH.
+        present() {
+          dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install ok installed' && return 0
+          case "$1" in
+            build-essential) command -v cc && command -v c++ && command -v make ;;
+            pkg-config) command -v pkg-config ;;
+            openssh-client) command -v ssh ;;
+            poppler-utils) command -v pdftoppm ;;
+            *) false ;;
+          esac >/dev/null
+        }
+
+        missing=()
+        # word splitting is intended: one package per word
+        # shellcheck disable=SC2086
+        for p in $PACKAGES; do
+          present "$p" || missing+=("$p")
+        done
+        if (( ${#missing[@]} == 0 )); then
+          [ -n "${PACKAGES// /}" ] && echo "already installed: $PACKAGES"
           exit 0
         fi
-        if ! sudo -n true 2>/dev/null; then
-          echo "::error::passwordless sudo isn't available on this runner; add $PACKAGES to the runner image (lokkju/infra homelab/images/garm-runner)"
+
+        if [[ "$(id -u)" == 0 ]]; then
+          sudo=()
+        elif sudo -n true 2>/dev/null; then
+          sudo=(sudo -n)
+        else
+          echo "::error::the runner image lacks ${missing[*]} and has no passwordless sudo to install them (lokkju/infra#105); add them to homelab/images/garm-runner/Dockerfile in lokkju/infra"
           exit 1
         fi
-        sudo DEBIAN_FRONTEND=noninteractive apt-get update -q
-        # word splitting is intended: one argument per package
-        # shellcheck disable=SC2086
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends $PACKAGES
+        echo "installing ${missing[*]}"
+        "${sudo[@]}" env DEBIAN_FRONTEND=noninteractive apt-get update -q
+        "${sudo[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends "${missing[@]}"
