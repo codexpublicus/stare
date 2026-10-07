@@ -487,6 +487,8 @@ enum CheckStatus {
     Found,
     /// A statute or regulation, linked to its text.
     External,
+    /// A statute or regulation with no link to its text yet.
+    Statute,
     /// stare.pub holds the volume, but no case starts at the page.
     HeldMiss,
     /// stare.pub doesn't hold the volume; the case links may have it.
@@ -502,6 +504,7 @@ impl CheckStatus {
         match self {
             CheckStatus::Found => "found",
             CheckStatus::External => "external",
+            CheckStatus::Statute => "statute",
             CheckStatus::HeldMiss => "held_miss",
             CheckStatus::NotHeld => "not_held",
             CheckStatus::NoAntecedent => "no_antecedent",
@@ -518,6 +521,8 @@ struct CheckTarget<'a> {
     volume: Option<u32>,
     page: Option<&'a str>,
     external_url: Option<&'a str>,
+    /// A statute or regulation (it has a `LawRef`).
+    law: bool,
     case_links: &'a [stare::cite::CaseLink],
 }
 
@@ -538,6 +543,7 @@ fn check_target(c: &stare::cite::DetectedCitation) -> Option<CheckTarget<'_>> {
             volume: a.volume.as_deref().and_then(|v| v.parse().ok()),
             page: a.page.as_deref(),
             external_url: a.external_url.as_deref(),
+            law: a.law.is_some(),
             case_links: &a.case_links,
         });
     }
@@ -547,6 +553,7 @@ fn check_target(c: &stare::cite::DetectedCitation) -> Option<CheckTarget<'_>> {
         volume: c.volume.as_deref().and_then(|v| v.parse().ok()),
         page: c.page.as_deref(),
         external_url: c.external_url.as_deref(),
+        law: c.law.is_some() || c.citation_type == "FullLawCitation",
         case_links: &c.case_links,
     })
 }
@@ -581,10 +588,13 @@ fn check_status(src: &Sources, c: &stare::cite::DetectedCitation) -> CheckStatus
         // (`Id. § 1985`) it is a different section, which nothing here
         // can link to.
         return if c.is_short_form() && c.pin.is_some() {
-            CheckStatus::Unchecked
+            CheckStatus::Statute
         } else {
             CheckStatus::External
         };
+    }
+    if t.law {
+        return CheckStatus::Statute;
     }
     let (Some(slug), Some(volume), Some(page)) = (
         t.slug.as_deref(),
@@ -619,6 +629,11 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
     let mut seen = std::collections::HashSet::new();
     let mut citations = Vec::new();
     for c in &detected {
+        // A bare `§` citare can't tie to a code names nothing to look up,
+        // and the site neither lists nor counts it.
+        if c.citation_type == "UnknownCitation" {
+            continue;
+        }
         let antecedent = c.antecedent.as_ref().map(|a| a.matched_text.clone());
         if !seen.insert((c.matched_text.clone(), antecedent.clone())) {
             continue;
@@ -644,14 +659,19 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
         .iter()
         .filter(|c| c["resolvable"].as_bool().unwrap_or(false))
         .count();
+    let statute_count = citations
+        .iter()
+        .filter(|c| matches!(c["status"].as_str(), Some("statute" | "external")))
+        .count();
 
     if json {
         println!("{}", serde_json::to_string_pretty(&citations)?);
     } else {
         println!(
-            "Found {} citations ({} resolvable)\n",
-            citations.len(),
-            resolvable_count
+            "Found {} case citations ({} resolvable), {} statutes\n",
+            citations.len() - statute_count,
+            resolvable_count,
+            statute_count
         );
         for c in &citations {
             let status = c["status"].as_str().unwrap_or("");
@@ -671,11 +691,17 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             }
             match status {
                 "external" => print!("  → {}", c["external_url"].as_str().unwrap_or("")),
-                "held_miss" => print!(
-                    "  → no case found at this page in {} vol. {}",
-                    c["reporter"].as_str().or(c["slug"].as_str()).unwrap_or(""),
-                    c["volume"]
-                ),
+                "held_miss" => {
+                    print!(
+                        "  → no case found at this page in {} vol. {}",
+                        c["reporter"].as_str().or(c["slug"].as_str()).unwrap_or(""),
+                        c["volume"]
+                    );
+                    if let Some(url) = c["case_links"][0]["url"].as_str() {
+                        print!("; may be at {}", url);
+                    }
+                }
+                "statute" => print!("  (statute; no free source linked yet)"),
                 // Nothing checks that the case is there (citare#39).
                 "not_held" => {
                     if let Some(url) = c["case_links"][0]["url"].as_str() {
@@ -922,6 +948,32 @@ mod tests {
         let cache2 = tempfile::tempdir().unwrap();
         std::env::set_var("XDG_CACHE_HOME", cache2.path());
         assert_eq!(sources(empty.path()).index_key("a2d/31.bin"), "a2d/31.bin");
+    }
+
+    /// A statute with no link is a statute, not an unchecked case; one
+    /// with a link is external, and an `Id.` to another of its sections a
+    /// statute too. None of them touches the index.
+    #[test]
+    fn check_tells_statutes_from_cases() {
+        let _env = CACHE_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let cache = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", cache.path());
+        let src = sources(tempfile::tempdir().unwrap().path());
+        let detected = stare::cite::detect_citations(
+            "See Conn. Gen. Stat. § 52-584; Minn. Stat. § 609.185. Id. § 609.19.",
+        );
+        let statuses: Vec<_> = detected
+            .iter()
+            .map(|c| (c.matched_text.as_str(), check_status(&src, c)))
+            .collect();
+        assert_eq!(
+            statuses,
+            [
+                ("Conn. Gen. Stat. § 52-584", CheckStatus::Statute),
+                ("Minn. Stat. § 609.185", CheckStatus::External),
+                ("Id.", CheckStatus::Statute),
+            ]
+        );
     }
 
     /// #120 in `stare check`: a short form is looked up through its
