@@ -17,6 +17,12 @@
 .cite-lookup { color: var(--unresolved); text-decoration: none; border-bottom: 1px dashed var(--unresolved); }
 .cite-lookup:hover { color: var(--text-secondary); border-bottom-style: solid; }
 .cite-lookup::after { content: ' ↗'; font-size: 0.75em; opacity: 0.6; }
+/* A statute or regulation stare.pub recognizes but links nowhere yet: not
+   a missing case, so the text color, with only a faint underline. */
+.cite-statute { border-bottom: 1px dotted var(--unresolved-border); cursor: default; }
+/* A bare section reference (a § citare can't tie to a code): plain text
+   to the eye, with the note on hover. */
+.cite-section { cursor: default; }
 /* A short form citare couldn't tie to an earlier citation (#120): not a
    miss, so quieter than .cite-unresolved. */
 .cite-no-antecedent { color: inherit; border-bottom-color: var(--text-tertiary); }
@@ -36,6 +42,7 @@
 .cited-status.no { color: var(--status-no); }
 .cited-status.none { color: var(--text-tertiary); }
 .cited-status.lookup { color: var(--unresolved); font-size: 13px; }
+.cited-status.statute { color: var(--text-tertiary); font-size: 12px; }
 .cited-case-lookup { flex-wrap: wrap; }
 .cited-lookup { flex-basis: 100%; padding-left: 20px; font-size: 12px; }
 .cited-lookup-link { color: var(--text-secondary); }

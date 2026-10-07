@@ -132,7 +132,21 @@ describe('renderSidebar citation status', () => {
     assert.doesNotMatch(el.innerHTML, /Finding citations/);
     assert.match(el.innerHTML, /cited-case-link/);
     assert.match(el.innerHTML, /Cited Cases \(1\)/);
-    assert.match(el.innerHTML, /1 citation found/);
+    assert.match(el.innerHTML, /1 case citation found \(1 resolvable\)/);
+  });
+
+  test('statutes are counted apart from cases, and bare section references not at all', () => {
+    const el = new FakeElement();
+    const mixed = [
+      ...detected,
+      { raw: 'N.C. Gen. Stat. § 1-289', type: 'FullLawCitation', law: { code: 'N.C. Gen. Stat.' }, resolvable: false, externalUrl: null, caseLinks: [] },
+      { raw: '§', type: 'UnknownCitation', resolvable: false, externalUrl: null, caseLinks: [] },
+    ];
+    renderSidebar(el, caseData, 'a2d', 1, [], mixed, 'done');
+    assert.match(el.innerHTML, /Cited Cases \(2\)/);
+    assert.match(el.innerHTML, /1 case citation found \(1 resolvable\), 1 statute/);
+    assert.match(el.innerHTML, /Statute; no free source linked yet/);
+    assert.doesNotMatch(el.innerHTML, /<span class="cited-case-unresolved">§<\/span>/);
   });
 
   test('a cached hit (status "done" from the first render) never shows the loading message', () => {
@@ -185,7 +199,7 @@ describe('citation status: the live region holds a short sentence, not the list'
     assert.doesNotMatch(handle.statusEl.innerHTML, /cited-case-link/);
     assert.doesNotMatch(handle.statusEl.innerHTML, /<a /);
     assert.equal(handle.statusEl.innerHTML.length < 40, true, `expected a short status, got: ${handle.statusEl.innerHTML}`);
-    assert.match(handle.statusEl.innerHTML, /11 citations found/);
+    assert.match(handle.statusEl.innerHTML, /11 case citations found/);
   });
 
   test('the list itself lives in listEl, which has no aria-live', () => {
@@ -223,7 +237,7 @@ describe('updateCitationStatus persists the status and list nodes', () => {
     assert.equal(handle.listEl, listEl);
 
     assert.doesNotMatch(statusEl.innerHTML, /Finding citations/);
-    assert.match(statusEl.innerHTML, /1 citation found/);
+    assert.match(statusEl.innerHTML, /1 case citation found/);
     assert.doesNotMatch(statusEl.innerHTML, /cited-case-link/);
 
     assert.match(listEl.innerHTML, /cited-case-link/);

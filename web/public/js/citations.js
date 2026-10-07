@@ -24,6 +24,24 @@ export function isShortForm(c) {
   return SHORT_FORM_TYPES.has(c?.type);
 }
 
+/**
+ * A statute or regulation: citare's `FullLawCitation`, or a short form
+ * (`Id. § 1985`) whose antecedent is one, which carries its `law`.
+ */
+export function isStatute(c) {
+  return c?.type === 'FullLawCitation' || !!c?.law;
+}
+
+/**
+ * A bare section reference: a `§` or `§§` citare found without a code it
+ * recognizes (`General Statutes § 52-584`, `§ 3(a)`), which it reports as
+ * an `UnknownCitation`. It names no case and no code stare.pub could look
+ * up, so it is neither linked, listed nor counted.
+ */
+export function isSectionReference(c) {
+  return c?.type === 'UnknownCitation';
+}
+
 // One detected citation, or a short form's antecedent, as the renderers read it.
 function fromRust(c) {
   return {
@@ -37,13 +55,18 @@ function fromRust(c) {
     start: c.span[0],
     end: c.span[1],
     externalUrl: c.external_url || null,
+    law: c.law || null,
     caseLinks: Array.isArray(c.case_links) ? c.case_links : [],
   };
 }
 
 /**
  * Detect citations using citare WASM.
- * Returns array of { raw, type, harvard_slug, volume, page, reporter, year, start, end, externalUrl, caseLinks, pin, antecedent }
+ * Returns array of { raw, type, harvard_slug, volume, page, reporter, year, start, end, externalUrl, law, caseLinks, pin, antecedent }
+ *
+ * `law` is the Rust `LawRef` of a statute or regulation (`{ jurisdiction,
+ * code, title, subject, section }`), set whether or not `externalUrl` links
+ * it; null for anything else.
  *
  * `pin` is the pin cite (`1023` for `997 P.2d at 1023`), or null. A short
  * form (`isShortForm`) has `page: null` and, when citare could tell which
@@ -151,10 +174,10 @@ export async function checkPage(slug, volume, page, deps = {}) {
  * - `resolvable`: held, and a case starts at the cited page (or that
  *   couldn't be checked)
  *
- * A held volume with no case at the page is not linked out: it may be an
- * index gap or a bad citation, and nothing here can tell which. Only a
- * volume stare.pub doesn't hold gets the outside links (citedCaseHtml).
- * `check` and `pageCheck` are injectable for tests, as in processCitations.
+ * A held volume with no case at the page gets the same outside links as a
+ * volume stare.pub doesn't hold, beside a note that no case starts there
+ * (see caseLookupLinks). `check` and `pageCheck` are injectable for tests,
+ * as in processCitations.
  */
 export async function checkCitation(c, check = checkAvailability, pageCheck = checkPage) {
   if (isShortForm(c)) {
@@ -199,7 +222,7 @@ export function citationKey(c) {
  * text only without a pin: `Id. § 1985` is a different section.
  */
 export function inheritStatus(c, a) {
-  const own = { ...c, key: citationKey(c), page: null, slug: null, volumeHeld: false, resolvable: false, externalUrl: null, caseLinks: [] };
+  const own = { ...c, key: citationKey(c), page: null, slug: null, volumeHeld: false, resolvable: false, externalUrl: null, law: a?.law || null, caseLinks: [] };
   if (!a) return { ...own, noAntecedent: true };
   if (safeExternalUrl(a.externalUrl) && c.pin) return own;
   return {
@@ -322,24 +345,44 @@ export const LOOKUP_SOURCES = {
 };
 
 /**
- * The outside links to offer for a citation to a volume stare.pub doesn't
- * hold: its `caseLinks` with a known source and an http(s) URL, in order.
- * Empty when the citation resolves here, links to a statute's text, or
- * cites a volume stare.pub holds (see heldVolumeMiss).
+ * The outside links to offer for a case citation stare.pub can't resolve:
+ * its `caseLinks` with a known source and an http(s) URL, in order. Empty
+ * when the citation resolves here or links to a statute's text.
+ *
+ * A held volume with no case at the cited page gets them too, beside the
+ * heldVolumeMiss note. That miss is often a case CAP doesn't hold in that
+ * reporter: CAP redacted regional reporters' reprints of some states'
+ * decisions ("Case_Body_Duplicative" in a volume's CASEMETS), so 881 A.2d
+ * 194, Connecticut's 275 Conn. 38, has no case in a2d/881. It can also be
+ * an index gap or a bad citation, which a link labelled "may be" doesn't
+ * hide: nothing checks that the case exists there (codexpublicus/citare#39).
  */
 export function caseLookupLinks(info) {
-  if (!info || info.resolvable || info.volumeHeld || safeExternalUrl(info.externalUrl)) return [];
+  if (!info || info.resolvable || safeExternalUrl(info.externalUrl)) return [];
   return (info.caseLinks || []).filter(l =>
     l && Object.hasOwn(LOOKUP_SOURCES, l.source) && safeExternalUrl(l.url));
 }
 
 /**
- * "Not in stare.pub: may be at CourtListener", for a case link. "May be":
- * nothing checks that the case exists there (codexpublicus/citare#39).
+ * "Not in stare.pub: may be at CourtListener", for a case link; for a held
+ * volume with no case at the page (`info.volumeHeld`), which heldVolumeMiss
+ * already describes, "May be at CourtListener". "May be": nothing checks
+ * that the case exists there (codexpublicus/citare#39).
  */
-export function lookupLabel(link) {
-  return `Not in stare.pub: may be at ${LOOKUP_SOURCES[link.source]}`;
+export function lookupLabel(link, info = null) {
+  const name = LOOKUP_SOURCES[link.source];
+  return info?.volumeHeld ? `May be at ${name}` : `Not in stare.pub: may be at ${name}`;
 }
+
+/**
+ * The note for a statute or regulation with no link to its text: one
+ * stare.pub recognizes but has no free source for yet (STATE_CODES in
+ * crates/stare/src/cite.rs lists the codes it links).
+ */
+export const STATUTE_NOTE = 'Statute; no free source linked yet';
+
+/** The note on a bare section reference (isSectionReference). */
+export const SECTION_NOTE = 'Section reference';
 
 /**
  * For a citation to a volume stare.pub holds where no case starts at the
@@ -384,6 +427,9 @@ export function refersTo(info, pin = info?.pin) {
  * no page anchors, so the pin is shown, not linked.
  */
 function citationHtml(raw, inner, info, pin = info.pin) {
+  if (isSectionReference(info)) {
+    return `<span class="cite-section" title="${escapeHtml(SECTION_NOTE)}">${inner}</span>`;
+  }
   const refers = refersTo(info, pin);
   if (info.noAntecedent) {
     return `<span class="cite-unresolved cite-no-antecedent" title="${escapeHtml(NO_ANTECEDENT)}">${inner}</span>`;
@@ -400,13 +446,17 @@ function citationHtml(raw, inner, info, pin = info.pin) {
     const pinAttr = pin ? ` data-pin="${escapeHtml(pin)}"` : '';
     return `<a class="cite-link" href="#${slug}/${volume}/${page}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr} title="${escapeHtml(refers || raw)}">${inner}</a>`;
   }
-  const miss = heldVolumeMiss(info);
-  if (miss) {
-    return `<span class="cite-unresolved" title="${titled(miss)}">${inner}</span>`;
+  if (isStatute(info)) {
+    return `<span class="cite-statute" title="${titled(STATUTE_NOTE)}">${inner}</span>`;
   }
+  const miss = heldVolumeMiss(info);
   const [lookup] = caseLookupLinks(info);
   if (lookup) {
-    return `<a class="cite-lookup" href="${escapeHtml(lookup.url)}" ${OUTBOUND} title="${titled(lookupLabel(lookup))}">${inner}</a>`;
+    const note = miss ? `${miss}; may be at ${LOOKUP_SOURCES[lookup.source]}` : lookupLabel(lookup);
+    return `<a class="cite-lookup" href="${escapeHtml(lookup.url)}" ${OUTBOUND} title="${titled(note)}">${inner}</a>`;
+  }
+  if (miss) {
+    return `<span class="cite-unresolved" title="${titled(miss)}">${inner}</span>`;
   }
   return `<span class="cite-unresolved" title="${escapeHtml(refers || 'Not yet indexed')}">${inner}</span>`;
 }
@@ -414,16 +464,19 @@ function citationHtml(raw, inner, info, pin = info.pin) {
 /**
  * Sort citations for a cited-cases list: ones stare.pub holds, then
  * statutes linked to their text, then cases to look for elsewhere, then
- * the rest. Stable within each group.
+ * statutes with no link, then the rest. Stable within each group. Bare
+ * section references (isSectionReference) are left out.
  */
 export function orderCitedCases(citations) {
   const rank = (c) => {
     if (c.resolvable) return 0;
     if (safeExternalUrl(c.externalUrl)) return 1;
     if (caseLookupLinks(c).length) return 2;
-    return 3;
+    if (isStatute(c)) return 3;
+    return 4;
   };
   return citations
+    .filter(c => !isSectionReference(c))
     .map((c, i) => ({ c, i, r: rank(c) }))
     .sort((a, b) => a.r - b.r || a.i - b.i)
     .map(({ c }) => c);
@@ -432,14 +485,16 @@ export function orderCitedCases(citations) {
 /**
  * One entry in a cited-cases list (the case viewer's sidebar and /check),
  * and where the link-out decision is made: a case stare.pub holds links
- * here; a statute links to its text; a held volume with no case at the
- * cited page gets a neutral note and no outside link; a volume stare.pub
- * doesn't hold links to CourtListener and Google Scholar, labelled as
- * unverified.
+ * here; a statute links to its text, or says it has no free source yet; a
+ * held volume with no case at the cited page gets a neutral note; that and
+ * a volume stare.pub doesn't hold link to CourtListener and Google
+ * Scholar, labelled as unverified. A bare section reference has no entry
+ * ('').
  * `caseHref(c)` gives the stare.pub link for a citation it holds; that link
  * opens in a new tab with `caseRel` (pass '' for none).
  */
 export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
+  if (isSectionReference(c)) return '';
   const raw = escapeHtml(c.raw);
   // A short form's entry stands for every occurrence with its key, whose
   // pins differ, so the sidebar names the antecedent without a pin.
@@ -466,29 +521,72 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
           <a class="cited-case-link" href="${escapeHtml(externalUrl)}" ${OUTBOUND}>${raw}</a>${refersHtml}
         </div>`;
   }
-  const miss = heldVolumeMiss(c);
-  if (miss) {
+  if (isStatute(c)) {
     return `<div class="cited-case cited-case-lookup">
-          <span class="cited-status no">&#10007;</span>
+          <span class="cited-status statute">&#167;</span>
           <span class="cited-case-unresolved">${raw}</span>${refersHtml}
-          <span class="cited-lookup cited-miss">${escapeHtml(miss)}</span>
+          <span class="cited-lookup cited-miss">${escapeHtml(STATUTE_NOTE)}</span>
         </div>`;
   }
+  const miss = heldVolumeMiss(c);
+  const missHtml = miss ? `\n          <span class="cited-lookup cited-miss">${escapeHtml(miss)}</span>` : '';
   const links = caseLookupLinks(c);
   if (links.length) {
     const [first, ...rest] = links;
     const more = rest.map(l =>
       ` <a class="cited-lookup-link" href="${escapeHtml(l.url)}" ${OUTBOUND}>or ${escapeHtml(LOOKUP_SOURCES[l.source])}</a>`).join('');
     return `<div class="cited-case cited-case-lookup">
-          <span class="cited-status lookup">&#8599;</span>
-          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
-          <span class="cited-lookup"><a class="cited-lookup-link" href="${escapeHtml(first.url)}" ${OUTBOUND}>${escapeHtml(lookupLabel(first))}</a>${more}</span>
+          <span class="cited-status ${miss ? 'no">&#10007;' : 'lookup">&#8599;'}</span>
+          <span class="cited-case-unresolved">${raw}</span>${refersHtml}${missHtml}
+          <span class="cited-lookup"><a class="cited-lookup-link" href="${escapeHtml(first.url)}" ${OUTBOUND}>${escapeHtml(lookupLabel(first, c))}</a>${more}</span>
+        </div>`;
+  }
+  if (miss) {
+    return `<div class="cited-case cited-case-lookup">
+          <span class="cited-status no">&#10007;</span>
+          <span class="cited-case-unresolved">${raw}</span>${refersHtml}${missHtml}
         </div>`;
   }
   return `<div class="cited-case${wrap}">
           <span class="cited-status no">&#10007;</span>
           <span class="cited-case-unresolved">${raw}</span>${refersHtml}
         </div>`;
+}
+
+/**
+ * Counts for a list of checked citations (checkCitations' entries), with
+ * statutes apart from cases: `{ cases, resolvable, statutes, other }`.
+ * `cases` counts case citations and short forms that don't refer to a
+ * statute, `resolvable` those of them stare.pub holds, `statutes` statutes
+ * and regulations, linked or not, and `other` anything else citare names
+ * (law reviews). Bare section references aren't counted.
+ */
+export function citationCounts(citations) {
+  const n = { cases: 0, resolvable: 0, statutes: 0, other: 0 };
+  for (const c of citations || []) {
+    if (isSectionReference(c)) continue;
+    if (isStatute(c) || safeExternalUrl(c.externalUrl)) n.statutes++;
+    else if (c.type === 'FullJournalCitation') n.other++;
+    else {
+      n.cases++;
+      if (c.resolvable) n.resolvable++;
+    }
+  }
+  return n;
+}
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * "3 case citations found (2 resolvable), 1 statute", from
+ * citationCounts; the statute and other parts only when there are any.
+ */
+export function citationSummary(citations) {
+  const n = citationCounts(citations);
+  let text = `${plural(n.cases, 'case citation', 'case citations')} found (${n.resolvable} resolvable)`;
+  if (n.statutes) text += `, ${plural(n.statutes, 'statute', 'statutes')}`;
+  if (n.other) text += `, ${n.other} other`;
+  return text;
 }
 
 /**

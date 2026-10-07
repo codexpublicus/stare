@@ -1,7 +1,7 @@
 // Link-outs for citations stare.pub doesn't hold (#7, #9): a case from a
 // volume it doesn't hold links to CourtListener and Google Scholar, a
 // statute to its text, and a held volume with no case at the page gets a
-// neutral note instead. The URLs come
+// neutral note beside the same outside links. The URLs come
 // from Rust (stare::cite::case_links and external_url); these tests cover
 // only how the site renders them.
 import { test, describe } from 'node:test';
@@ -70,9 +70,12 @@ describe('caseLookupLinks', () => {
     assert.deepEqual(caseLookupLinks(NOT_HELD).map(l => l.url), [CL, SCHOLAR]);
   });
 
-  test('offers none for a case it holds, a held volume, a statute, or a citation without links', () => {
+  test('offers them for a held volume with no case at the page too', () => {
+    assert.deepEqual(caseLookupLinks(HELD_MISS).map(l => l.url), [CL, SCHOLAR]);
+  });
+
+  test('offers none for a case it holds, a statute, or a citation without links', () => {
     assert.deepEqual(caseLookupLinks(HELD), []);
-    assert.deepEqual(caseLookupLinks(HELD_MISS), []);
     assert.deepEqual(caseLookupLinks({ ...NOT_HELD, externalUrl: 'https://example.org/s' }), []);
     assert.deepEqual(caseLookupLinks(BARE), []);
     assert.deepEqual(caseLookupLinks({ ...BARE, caseLinks: undefined }), []);
@@ -91,6 +94,11 @@ describe('caseLookupLinks', () => {
     assert.equal(lookupLabel(CASE_LINKS[0]), 'Not in stare.pub: may be at CourtListener');
     assert.equal(lookupLabel(CASE_LINKS[1]), 'Not in stare.pub: may be at Google Scholar');
   });
+
+  test('says only "may be" for a held volume, whose miss note already says what is missing', () => {
+    assert.equal(lookupLabel(CASE_LINKS[0], HELD_MISS), 'May be at CourtListener');
+    assert.equal(lookupLabel(CASE_LINKS[0], NOT_HELD), 'Not in stare.pub: may be at CourtListener');
+  });
 });
 
 describe('inline citations', () => {
@@ -106,10 +114,18 @@ describe('inline citations', () => {
     assert.doesNotMatch(html, /class="cite-link[^"]*"[^>]*courtlistener/);
   });
 
-  test('a held volume with no case at the page gets a neutral note, no link', () => {
+  test('a held volume with no case at the page links out, with the neutral note', () => {
     const text = 'See 31 A.2d 950.';
     const occurrences = [{ raw: '31 A.2d 950', start: 4, end: 15 }];
     const html = renderParagraphHtml(text, 0, occurrences, new Map([[HELD_MISS.raw, HELD_MISS]]));
+    assert.equal(html, `See <a class="cite-lookup" href="${CL}" target="_blank" rel="noopener noreferrer" title="No case found at this page in A.2d vol. 31; may be at CourtListener">31 A.2d 950</a>.`);
+  });
+
+  test('a held volume with no case at the page and no usable link keeps the note alone', () => {
+    const text = 'See 31 A.2d 950.';
+    const occurrences = [{ raw: '31 A.2d 950', start: 4, end: 15 }];
+    const info = { ...HELD_MISS, caseLinks: [] };
+    const html = renderParagraphHtml(text, 0, occurrences, new Map([[info.raw, info]]));
     assert.equal(html, 'See <span class="cite-unresolved" title="No case found at this page in A.2d vol. 31">31 A.2d 950</span>.');
   });
 
@@ -135,15 +151,21 @@ describe('citedCaseHtml', () => {
     assert.doesNotMatch(html, /cited-case-link/);
   });
 
-  test('a held volume with no case at the page: a neutral note, no outside link', () => {
+  test('a held volume with no case at the page: the neutral note, then the outside links', () => {
     assert.equal(heldVolumeMiss(HELD_MISS), 'No case found at this page in A.2d vol. 31');
     assert.equal(heldVolumeMiss(NOT_HELD), null);
     assert.equal(heldVolumeMiss(HELD), null);
     const html = citedCaseHtml(HELD_MISS, caseHref);
     assert.match(html, /<span class="cited-status no">&#10007;<\/span>/);
     assert.match(html, /<span class="cited-case-unresolved">31 A\.2d 950<\/span>/);
+    assert.match(html, /<span class="cited-lookup cited-miss">No case found at this page in A\.2d vol\. 31<\/span>\s*<span class="cited-lookup"><a class="cited-lookup-link" href="https:\/\/www\.courtlistener\.com\/c\/U\.S\.\/598\/175\/" target="_blank" rel="noopener noreferrer">May be at CourtListener<\/a> <a class="cited-lookup-link" href="https:\/\/scholar\.google\.com\/[^"]*" target="_blank" rel="noopener noreferrer">or Google Scholar<\/a><\/span>/);
+    assert.doesNotMatch(html, /cited-case-link/);
+  });
+
+  test('a held volume with no case at the page and no usable link: the note alone', () => {
+    const html = citedCaseHtml({ ...HELD_MISS, caseLinks: [] }, caseHref);
     assert.match(html, /<span class="cited-lookup cited-miss">No case found at this page in A\.2d vol\. 31<\/span>/);
-    assert.doesNotMatch(html, /<a |courtlistener|scholar/);
+    assert.doesNotMatch(html, /<a /);
   });
 
   test('a statute links to its text with no referrer', () => {
@@ -174,6 +196,6 @@ describe('citedCaseHtml', () => {
 describe('orderCitedCases', () => {
   test('held, then statutes, then cases to look for elsewhere, then the rest', () => {
     const order = orderCitedCases([BARE, HELD_MISS, NOT_HELD, STATUTE, HELD]).map(c => c.raw);
-    assert.deepEqual(order, [HELD.raw, STATUTE.raw, NOT_HELD.raw, BARE.raw, HELD_MISS.raw]);
+    assert.deepEqual(order, [HELD.raw, STATUTE.raw, HELD_MISS.raw, NOT_HELD.raw, BARE.raw]);
   });
 });
