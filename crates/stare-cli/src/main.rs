@@ -691,16 +691,11 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             }
             match status {
                 "external" => print!("  → {}", c["external_url"].as_str().unwrap_or("")),
-                "held_miss" => {
-                    print!(
-                        "  → no case found at this page in {} vol. {}",
-                        c["reporter"].as_str().or(c["slug"].as_str()).unwrap_or(""),
-                        c["volume"]
-                    );
-                    if let Some(url) = c["case_links"][0]["url"].as_str() {
-                        print!("; may be at {}", url);
-                    }
-                }
+                "held_miss" => print!(
+                    "  → no case found at this page in {} vol. {}",
+                    c["reporter"].as_str().or(c["slug"].as_str()).unwrap_or(""),
+                    c["volume"]
+                ),
                 "statute" => print!("  (statute; no free source linked yet)"),
                 // Nothing checks that the case is there (citare#39).
                 "not_held" => {

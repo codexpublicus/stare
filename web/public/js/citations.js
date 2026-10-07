@@ -175,10 +175,10 @@ export async function checkPage(slug, volume, page, deps = {}) {
  * - `resolvable`: held, and a case starts at the cited page (or that
  *   couldn't be checked)
  *
- * A held volume with no case at the page gets the same outside links as a
- * volume stare.pub doesn't hold, beside a note that no case starts there
- * (see caseLookupLinks). `check` and `pageCheck` are injectable for tests,
- * as in processCitations.
+ * A held volume with no case at the page is not linked out: it may be an
+ * index gap or a bad citation, and nothing here can tell which. Only a
+ * volume stare.pub doesn't hold gets the outside links (citedCaseHtml).
+ * `check` and `pageCheck` are injectable for tests, as in processCitations.
  */
 export async function checkCitation(c, check = checkAvailability, pageCheck = checkPage) {
   if (isShortForm(c)) {
@@ -346,33 +346,25 @@ export const LOOKUP_SOURCES = {
 };
 
 /**
- * The outside links to offer for a case citation stare.pub can't resolve:
- * its `caseLinks` with a known source and an http(s) URL, in order. Empty
- * when the citation resolves here or links to a statute's text.
- *
- * A held volume with no case at the cited page gets them too, beside the
- * heldVolumeMiss note. That miss is often a case CAP doesn't hold in that
- * reporter: CAP redacted regional reporters' reprints of some states'
- * decisions ("Case_Body_Duplicative" in a volume's CASEMETS), so 881 A.2d
- * 194, Connecticut's 275 Conn. 38, has no case in a2d/881. It can also be
- * an index gap or a bad citation, which a link labelled "may be" doesn't
- * hide: nothing checks that the case exists there (codexpublicus/citare#39).
+ * The outside links to offer for a citation to a volume stare.pub doesn't
+ * hold: its `caseLinks` with a known source and an http(s) URL, in order.
+ * Empty when the citation resolves here, links to a statute's text, or
+ * cites a volume stare.pub holds (see heldVolumeMiss): a case missing from
+ * a held volume isn't linked out until something can tell that it exists
+ * (codexpublicus/citare#39; CAP's redacted reprints are #143).
  */
 export function caseLookupLinks(info) {
-  if (!info || info.resolvable || safeExternalUrl(info.externalUrl)) return [];
+  if (!info || info.resolvable || info.volumeHeld || safeExternalUrl(info.externalUrl)) return [];
   return (info.caseLinks || []).filter(l =>
     l && Object.hasOwn(LOOKUP_SOURCES, l.source) && safeExternalUrl(l.url));
 }
 
 /**
- * "Not in stare.pub: may be at CourtListener", for a case link; for a held
- * volume with no case at the page (`info.volumeHeld`), which heldVolumeMiss
- * already describes, "May be at CourtListener". "May be": nothing checks
- * that the case exists there (codexpublicus/citare#39).
+ * "Not in stare.pub: may be at CourtListener", for a case link. "May be":
+ * nothing checks that the case exists there (codexpublicus/citare#39).
  */
-export function lookupLabel(link, info = null) {
-  const name = LOOKUP_SOURCES[link.source];
-  return info?.volumeHeld ? `May be at ${name}` : `Not in stare.pub: may be at ${name}`;
+export function lookupLabel(link) {
+  return `Not in stare.pub: may be at ${LOOKUP_SOURCES[link.source]}`;
 }
 
 /**
@@ -451,13 +443,12 @@ function citationHtml(raw, inner, info, pin = info.pin) {
     return `<span class="cite-statute" title="${titled(STATUTE_NOTE)}">${inner}</span>`;
   }
   const miss = heldVolumeMiss(info);
-  const [lookup] = caseLookupLinks(info);
-  if (lookup) {
-    const note = miss ? `${miss}; may be at ${LOOKUP_SOURCES[lookup.source]}` : lookupLabel(lookup);
-    return `<a class="cite-lookup" href="${escapeHtml(lookup.url)}" ${OUTBOUND} title="${titled(note)}">${inner}</a>`;
-  }
   if (miss) {
     return `<span class="cite-unresolved" title="${titled(miss)}">${inner}</span>`;
+  }
+  const [lookup] = caseLookupLinks(info);
+  if (lookup) {
+    return `<a class="cite-lookup" href="${escapeHtml(lookup.url)}" ${OUTBOUND} title="${titled(lookupLabel(lookup))}">${inner}</a>`;
   }
   return `<span class="cite-unresolved" title="${escapeHtml(refers || 'Not yet indexed')}">${inner}</span>`;
 }
@@ -487,10 +478,10 @@ export function orderCitedCases(citations) {
  * One entry in a cited-cases list (the case viewer's sidebar and /check),
  * and where the link-out decision is made: a case stare.pub holds links
  * here; a statute links to its text, or says it has no free source yet; a
- * held volume with no case at the cited page gets a neutral note; that and
- * a volume stare.pub doesn't hold link to CourtListener and Google
- * Scholar, labelled as unverified. A bare section reference has no entry
- * ('').
+ * held volume with no case at the cited page gets a neutral note and no
+ * outside link; a volume stare.pub doesn't hold links to CourtListener and
+ * Google Scholar, labelled as unverified. A bare section reference has no
+ * entry ('').
  * `caseHref(c)` gives the stare.pub link for a citation it holds; that link
  * opens in a new tab with `caseRel` (pass '' for none).
  */
@@ -530,22 +521,22 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
         </div>`;
   }
   const miss = heldVolumeMiss(c);
-  const missHtml = miss ? `\n          <span class="cited-lookup cited-miss">${escapeHtml(miss)}</span>` : '';
+  if (miss) {
+    return `<div class="cited-case cited-case-lookup">
+          <span class="cited-status no">&#10007;</span>
+          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
+          <span class="cited-lookup cited-miss">${escapeHtml(miss)}</span>
+        </div>`;
+  }
   const links = caseLookupLinks(c);
   if (links.length) {
     const [first, ...rest] = links;
     const more = rest.map(l =>
       ` <a class="cited-lookup-link" href="${escapeHtml(l.url)}" ${OUTBOUND}>or ${escapeHtml(LOOKUP_SOURCES[l.source])}</a>`).join('');
     return `<div class="cited-case cited-case-lookup">
-          <span class="cited-status ${miss ? 'no">&#10007;' : 'lookup">&#8599;'}</span>
-          <span class="cited-case-unresolved">${raw}</span>${refersHtml}${missHtml}
-          <span class="cited-lookup"><a class="cited-lookup-link" href="${escapeHtml(first.url)}" ${OUTBOUND}>${escapeHtml(lookupLabel(first, c))}</a>${more}</span>
-        </div>`;
-  }
-  if (miss) {
-    return `<div class="cited-case cited-case-lookup">
-          <span class="cited-status no">&#10007;</span>
-          <span class="cited-case-unresolved">${raw}</span>${refersHtml}${missHtml}
+          <span class="cited-status lookup">&#8599;</span>
+          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
+          <span class="cited-lookup"><a class="cited-lookup-link" href="${escapeHtml(first.url)}" ${OUTBOUND}>${escapeHtml(lookupLabel(first))}</a>${more}</span>
         </div>`;
   }
   return `<div class="cited-case${wrap}">

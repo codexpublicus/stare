@@ -2,8 +2,9 @@
 // through the same functions the reader, the sidebar and /check use. A
 // statute stare.pub can't link says it is a statute, not "Not yet indexed";
 // a bare § is neither linked, listed nor counted; and a case missing from a
-// held volume (a reprint CAP redacted, as in 138 A.3d 1012) links out as a
-// volume stare.pub doesn't hold does.
+// held volume (a reprint CAP redacted, as in 138 A.3d 1012) keeps its
+// neutral note, with no outside link until something can tell the case
+// exists (codexpublicus/citare#39, #143).
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -110,10 +111,10 @@ describe('statutes', () => {
     assert.ok(isStatute(unique.find(c => c.raw === 'Id.')));
   });
 
-  test('the sidebar lists an unlinked statute with its note, after link-outs', async () => {
+  test('the sidebar lists an unlinked statute with its note, after linked ones', async () => {
     const { unique } = await render();
     const order = orderCitedCases(unique).map(c => c.raw);
-    assert.deepEqual(order, ['275 Conn. 38', 'Minn. Stat. § 609.185', '881 A.2d 194', 'N.C. Gen. Stat. § 1-289', 'Id.', '68 Fordham L.Rev. 1581']);
+    assert.deepEqual(order, ['275 Conn. 38', 'Minn. Stat. § 609.185', 'N.C. Gen. Stat. § 1-289', 'Id.', '881 A.2d 194', '68 Fordham L.Rev. 1581']);
     const html = citedCaseHtml(unique.find(c => c.raw === 'N.C. Gen. Stat. § 1-289'), () => '');
     assert.match(html, /<span class="cited-status statute">&#167;<\/span>/);
     assert.match(html, new RegExp(`<span class="cited-lookup cited-miss">${STATUTE_NOTE}</span>`));
@@ -151,14 +152,13 @@ describe('counts', () => {
 });
 
 describe('a case missing from a volume stare.pub holds', () => {
-  test('links out, labelled "may be", and keeps the neutral note', async () => {
+  test('keeps the neutral note and links nowhere', async () => {
     const { unique, html } = await render();
     assert.equal(tagFor(html, '881 A.2d 194'),
-      `<a class="cite-lookup" href="${CL}" target="_blank" rel="noopener noreferrer" title="No case found at this page in A.2d vol. 881; may be at CourtListener">881 A.2d 194</a>`);
+      '<span class="cite-unresolved" title="No case found at this page in A.2d vol. 881">881 A.2d 194</span>');
     const entry = citedCaseHtml(unique.find(c => c.raw === '881 A.2d 194'), () => '');
     assert.match(entry, /<span class="cited-lookup cited-miss">No case found at this page in A\.2d vol\. 881<\/span>/);
-    assert.match(entry, /<a class="cited-lookup-link" href="https:\/\/www\.courtlistener\.com\/c\/A\.2d\/881\/194\/" target="_blank" rel="noopener noreferrer">May be at CourtListener<\/a>/);
-    assert.match(entry, />or Google Scholar<\/a>/);
+    assert.doesNotMatch(entry, /<a |courtlistener|scholar/);
   });
 
   test('its parallel citation in a held volume still links into stare.pub', async () => {
