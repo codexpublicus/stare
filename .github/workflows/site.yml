@@ -123,6 +123,9 @@ jobs:
           fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
+      # No retries: this run gates releases, and a test that passes only on
+      # its retry is flaky and should fail here, where it shows (#133).
       - uses: ./.github/actions/smoke-test
         with:
           url: ${{ steps.preview.outputs.url }}
+          retries: '0'

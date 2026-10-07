@@ -9,6 +9,12 @@ inputs:
   url:
     description: Base URL of the site to test
     required: true
+  retries:
+    description: >
+      Retries for a failed test, overriding playwright.config.js (one in
+      CI). Empty keeps the config's.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -103,7 +109,8 @@ runs:
       shell: bash
       env:
         STARE_BASE_URL: ${{ inputs.url }}
-      run: web/node_modules/.bin/playwright test --config web/playwright.config.js
+        RETRIES: ${{ inputs.retries }}
+      run: web/node_modules/.bin/playwright test --config web/playwright.config.js ${RETRIES:+--retries="$RETRIES"}
 
     - name: Upload traces
       if: failure()
