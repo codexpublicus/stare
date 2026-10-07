@@ -32,7 +32,7 @@ function cite(text, raw, fields = {}, from = 0) {
   };
 }
 
-const law = (code, section, jurisdiction = null) => ({ jurisdiction, code, title: null, subject: null, section });
+const law = (code, section, jurisdiction = null) => ({ jurisdiction, code, subject: null, title: null, chapter: null, section });
 
 const CL = 'https://www.courtlistener.com/c/A.2d/881/194/';
 const SCHOLAR = 'https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%22881+A.2d+194%22';
@@ -46,7 +46,7 @@ const TEXT = 'Martel v. Metropolitan District Commission, 275 Conn. 38, 881 A.2d
 
 function detected() {
   const minn = cite(TEXT, 'Minn. Stat. § 609.185', {
-    type: 'FullLawCitation', harvard_slug: null, law: law('Minn. Stat.', '609.185', 'mn'),
+    type: 'FullLawCitation', harvard_slug: null, law: law('Minn. Stat.', '609.185', 'Minnesota'),
     externalUrl: 'https://www.revisor.mn.gov/statutes/cite/609.185',
   });
   return [

@@ -65,7 +65,8 @@ function fromRust(c) {
  * Returns array of { raw, type, harvard_slug, volume, page, reporter, year, start, end, externalUrl, law, caseLinks, pin, antecedent }
  *
  * `law` is the Rust `LawRef` of a statute or regulation (`{ jurisdiction,
- * code, title, subject, section }`), set whether or not `externalUrl` links
+ * code, subject, title, chapter, section }`, the shape of citare's own `law`
+ * object), set whether or not `externalUrl` links
  * it; null for anything else.
  *
  * `pin` is the pin cite (`1023` for `997 P.2d at 1023`), or null. A short
