@@ -383,7 +383,7 @@ test('/#a2d/31/647-01 resolves through idx.stare.pub and renders the case', asyn
   await expect(page.locator('#reader .reader-title')).toHaveText("D'Elia & Marks Co. v. Lyon");
   await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
   // The sidebar's citation pass finished without its error state.
-  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ citations? found$/);
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?$/);
 });
 
 test('short cites and Id.s in a case link to their antecedent\'s case (#120)', async ({ page }) => {
@@ -392,7 +392,7 @@ test('short cites and Id.s in a case link to their antecedent\'s case (#120)', a
   // State starts at page 1023, where the short cite used to link.
   await page.goto('/#p3d/440/1078-01');
   await expect(page.locator('#reader .reader-title')).toContainText('McCallister');
-  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ citations? found$/);
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?$/);
 
   const roe = page.locator('#reader a.cite-link', { hasText: '997 P.2d at 1023' });
   await expect(roe).toHaveAttribute('href', '#p2d/997/1021');
