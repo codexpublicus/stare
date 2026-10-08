@@ -5,6 +5,7 @@
 import { fetchCached } from './cache.js';
 import { hasVolume, indexPath, loadManifest, volumeCandidates } from './manifest.js';
 import { indexUrl } from './sources.js';
+import { pinSuffix } from './router.js';
 import { loadWasm } from './wasm.js';
 
 // External URL generation is now in Rust (stare::cite::external_url)
@@ -380,8 +381,8 @@ export function refersTo(info, pin = info?.pin) {
  * citation text; `info` is the citation's entry from processCitations;
  * `pin` is the occurrence's own pin cite. A short form links to its
  * antecedent's case (`info` carries the antecedent's slug, volume and
- * first page) and says what it refers to in its title. The case viewer has
- * no page anchors, so the pin is shown, not linked.
+ * first page) and says what it refers to in its title. A pin page is
+ * linked as `@1023` after the case, which the case view scrolls to.
  */
 function citationHtml(raw, inner, info, pin = info.pin) {
   const refers = refersTo(info, pin);
@@ -398,7 +399,8 @@ function citationHtml(raw, inner, info, pin = info.pin) {
     const volume = escapeHtml(String(info.volume));
     const page = escapeHtml(String(info.page));
     const pinAttr = pin ? ` data-pin="${escapeHtml(pin)}"` : '';
-    return `<a class="cite-link" href="#${slug}/${volume}/${page}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr} title="${escapeHtml(refers || raw)}">${inner}</a>`;
+    const at = escapeHtml(pinSuffix(pin, info.page));
+    return `<a class="cite-link" href="#${slug}/${volume}/${page}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr} title="${escapeHtml(refers || raw)}">${inner}</a>`;
   }
   const miss = heldVolumeMiss(info);
   if (miss) {
