@@ -166,3 +166,24 @@ describe('a case missing from a volume stare.pub holds', () => {
     assert.match(tagFor(html, '275 Conn. 38'), /^<a class="cite-link" href="#conn\/275\/38"/);
   });
 });
+
+describe('statutes and pin cites', () => {
+  test('a statute is never looked up as a case, so it never gets a page pin', async () => {
+    const text = 'See N.Y. Penal Law § 125.25.';
+    const nyPenal = cite(text, 'N.Y. Penal Law § 125.25', {
+      type: 'FullLawCitation', harvard_slug: 'ny', volume: 125, page: '25', pin: '26',
+      law: law('N.Y. Penal Law', '125.25', 'New York'),
+    });
+    const lookups = [];
+    const { unique, occurrencesByOpinion } = await processCitations(
+      { casebody: { opinions: [{ text }] } },
+      async (slug, volume) => { lookups.push(`${slug}/${volume}`); return true; },
+      async () => [nyPenal],
+      async () => true,
+    );
+    assert.deepEqual(lookups, []);
+    const html = renderTextHtml(text, occurrencesByOpinion[0], new Map(unique.map(c => [c.key, c]))).join('');
+    assert.doesNotMatch(html, /href="#|@/);
+    assert.match(html, /class="cite-statute"/);
+  });
+});

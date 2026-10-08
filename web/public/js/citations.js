@@ -5,6 +5,7 @@
 import { fetchCached } from './cache.js';
 import { hasVolume, indexPath, loadManifest, volumeCandidates } from './manifest.js';
 import { indexUrl } from './sources.js';
+import { pinSuffix } from './router.js';
 import { loadWasm } from './wasm.js';
 
 // External URL generation is now in Rust (stare::cite::external_url)
@@ -186,7 +187,9 @@ export async function checkCitation(c, check = checkAvailability, pageCheck = ch
     return inheritStatus(c, a);
   }
   const none = { ...c, key: citationKey(c), slug: null, volumeHeld: false, resolvable: false };
-  if (c.externalUrl) return none;
+  // A statute is never looked up in the case index, so it never links
+  // into stare.pub or picks up a page pin there.
+  if (c.externalUrl || isStatute(c)) return none;
   // A blank page (`1 U.S. ___`) arrives as page: null and can't be looked
   // up, so it doesn't fall through to the slug guess below either.
   if (!c.page || !c.volume) return none;
@@ -416,8 +419,8 @@ export function refersTo(info, pin = info?.pin) {
  * citation text; `info` is the citation's entry from processCitations;
  * `pin` is the occurrence's own pin cite. A short form links to its
  * antecedent's case (`info` carries the antecedent's slug, volume and
- * first page) and says what it refers to in its title. The case viewer has
- * no page anchors, so the pin is shown, not linked.
+ * first page) and says what it refers to in its title. A pin page is
+ * linked as `@1023` after the case, which the case view scrolls to.
  */
 function citationHtml(raw, inner, info, pin = info.pin) {
   if (isSectionReference(info)) {
@@ -437,7 +440,8 @@ function citationHtml(raw, inner, info, pin = info.pin) {
     const volume = escapeHtml(String(info.volume));
     const page = escapeHtml(String(info.page));
     const pinAttr = pin ? ` data-pin="${escapeHtml(pin)}"` : '';
-    return `<a class="cite-link" href="#${slug}/${volume}/${page}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr} title="${escapeHtml(refers || raw)}">${inner}</a>`;
+    const at = escapeHtml(pinSuffix(pin, info.page));
+    return `<a class="cite-link" href="#${slug}/${volume}/${page}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr} title="${escapeHtml(refers || raw)}">${inner}</a>`;
   }
   if (isStatute(info)) {
     return `<span class="cite-statute" title="${titled(STATUTE_NOTE)}">${inner}</span>`;

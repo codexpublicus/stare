@@ -394,7 +394,7 @@ test('short cites and Id.s in a case link to their antecedent\'s case (#120)', a
   await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?$/);
 
   const roe = page.locator('#reader a.cite-link', { hasText: '997 P.2d at 1023' });
-  await expect(roe).toHaveAttribute('href', '#p2d/997/1021');
+  await expect(roe).toHaveAttribute('href', '#p2d/997/1021@1023');
   await expect(roe).toHaveAttribute('title', 'Refers to 997 P.2d 1021, at 1023');
   await expect(page.locator('#reader a.cite-link[href="#p2d/997/1023"]')).toHaveCount(0);
   await expect(page.locator('#sidebar .cited-case', { hasText: '997 P.2d at 1023' }))
@@ -402,12 +402,51 @@ test('short cites and Id.s in a case link to their antecedent\'s case (#120)', a
 
   // Three Id.s after Anderson v. W. Hodgeman & Sons, 524 N.W.2d 418, each
   // with its own pin, link to Anderson.
-  const ids = page.locator('#reader a.cite-link[href="#nw2d/524/418"]', { hasText: /^Id\./ });
+  const ids = page.locator('#reader a.cite-link[data-slug="nw2d"][data-volume="524"][data-page="418"]', { hasText: /^Id\./ });
   await expect(ids).toHaveCount(3);
   await expect(ids.last()).toHaveAttribute('title', 'Refers to 524 N.W.2d 418, at 421');
   // An Id. citare can't tie to a citation says so, and isn't "Not yet indexed".
   await expect(page.locator('#reader .cite-no-antecedent').first())
     .toHaveAttribute('title', "Refers to an earlier citation that couldn't be identified");
+});
+
+test('a pin cite opens the cited case at the pin page (#124)', async ({ page }) => {
+  // In McCallister v. State, "997 P.2d at 1023" refers to Roe v. Board of
+  // County Commissioners, 997 P.2d 1021; the link opens Roe at page 1023.
+  await page.goto('/#p3d/440/1078-01');
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ citations? found$/);
+  const roe = page.locator('#reader a.cite-link', { hasText: '997 P.2d at 1023' });
+  const [popup] = await Promise.all([page.waitForEvent('popup'), roe.click()]);
+
+  await expect(popup.locator('#topbar-case')).toHaveText('Roe v. Board of County Commissioners');
+  await expect(popup).toHaveURL(/#p2d\/997\/1021-01@1023$/);
+  const marker = popup.locator('#reader #page-1023');
+  await expect(marker).toHaveText('[*1023]');
+  await expect(marker).toBeInViewport();
+  await expect(marker).toHaveClass(/\bpage-target\b/);
+  // The highlight fades after a moment; the marker stays where it was.
+  await expect(marker).not.toHaveClass(/\bpage-target\b/, { timeout: 10_000 });
+  await expect(marker).toBeInViewport();
+
+  // Another page of the same case scrolls without reloading it, and back
+  // and forward move between the two.
+  await popup.evaluate(() => { window.location.hash = '#p2d/997/1021-01@1022'; });
+  await expect(popup.locator('#reader #page-1022')).toBeInViewport();
+  await expect(popup.locator('#reader #page-1022')).toHaveClass(/\bpage-target\b/);
+  await popup.goBack();
+  await expect(popup).toHaveURL(/@1023$/);
+  await expect(marker).toBeInViewport();
+  await popup.goForward();
+  await expect(popup.locator('#reader #page-1022')).toBeInViewport();
+});
+
+test('a pin page the case does not have opens it at the top, with no error', async ({ page }) => {
+  await page.goto('/#p2d/997/1021-01@1099');
+  await expect(page.locator('#topbar-case')).toHaveText('Roe v. Board of County Commissioners');
+  await expect(page.locator('#reader .reader-title')).toBeInViewport();
+  await expect(page.locator('#reader #page-1023')).toHaveCount(1);
+  await expect(page.locator('#reader .page-target')).toHaveCount(0);
+  await expect(page.locator('#status-bar')).toBeHidden();
 });
 
 test('a case page loads Source Serif 4 from stare.pub and nothing from Google Fonts', async ({ page, baseURL }) => {
@@ -448,11 +487,11 @@ test('138 A.3d 1012 resolves into a3d/138-2, the second folder CAP split the vol
   await page.fill('#landing-input', '138 A.3d 1012');
   await page.click('#landing-btn');
 
+  // The URL is set once the case is found: it names the folder the case is in.
+  await expect(page).toHaveURL(/#a3d\/138-2\/1012-01$/);
   await expect(page.locator('#resolved')).toBeVisible();
   await expect(page.locator('#topbar-case')).toHaveText('Brooks v. Powers');
   await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
-  // The page's URL names the folder the case is in.
-  await expect(page).toHaveURL(/#a3d\/138-2\/1012-01$/);
 });
 
 test.describe('/data before the first index report', () => {

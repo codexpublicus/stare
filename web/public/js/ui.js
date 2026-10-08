@@ -1,4 +1,5 @@
 import { citationSummary, citedCaseHtml, orderCitedCases, renderTextHtml } from './citations.js';
+import { insertPageMarkers } from './pages.js';
 import { pdfUrl as volumePdfUrl } from './sources.js';
 
 /**
@@ -9,8 +10,10 @@ import { pdfUrl as volumePdfUrl } from './sources.js';
  *   citationMap maps each entry's `key` to it, from processCitations();
  *   occurrencesByOpinion is processCitations()' per-opinion occurrence list
  *   for this same caseData. Null renders without highlighting.
+ * @param {Array|null} pages - page breaks for each opinion, from pageBreaks()
+ *   in pages.js; shown as `[*1023]` markers with the id `page-1023`.
  */
-export function renderReader(el, caseData, citations) {
+export function renderReader(el, caseData, citations, pages = null) {
   const cite = caseData.citations?.[0]?.cite || '';
   const court = caseData.court?.name || '';
 
@@ -33,6 +36,7 @@ export function renderReader(el, caseData, citations) {
   });
 
   el.innerHTML = html;
+  insertPageMarkers(el, pages);
 }
 
 /**

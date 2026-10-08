@@ -66,7 +66,8 @@ describe('short case citations', () => {
       cases: { 'p2d/997/1021': true, 'p2d/997/1023': true },
     });
     const a = tagFor(html, '997 P.2d at 1023');
-    assert.match(a, /href="#p2d\/997\/1021"/);
+    // It links to the antecedent's case, at the pin page (#124).
+    assert.match(a, /href="#p2d\/997\/1021@1023"/);
     assert.match(a, /data-pin="1023"/);
     assert.match(a, /title="Refers to 997 P.2d 1021, at 1023"/);
     assert.ok(!pageChecks.includes('p2d/997/1023'), 'the pin page is never looked up');
@@ -108,22 +109,22 @@ describe('Id. and supra', () => {
 
   test('each Id. resolves to its own antecedent', async () => {
     const { unique, html } = await render(text, detected, { cases: { 'a2d/31/647': true, 'us/410/113': true } });
-    assert.match(tagFor(html, 'Id.', 0), /href="#a2d\/31\/647"[^>]*data-pin="650"[^>]*title="Refers to 31 A\.2d 647, at 650"/);
-    assert.match(tagFor(html, 'Id.', 1), /href="#us\/410\/113"[^>]*data-pin="120"[^>]*title="Refers to 410 U\.S\. 113, at 120"/);
+    assert.match(tagFor(html, 'Id.', 0), /href="#a2d\/31\/647@650"[^>]*data-pin="650"[^>]*title="Refers to 31 A\.2d 647, at 650"/);
+    assert.match(tagFor(html, 'Id.', 1), /href="#us\/410\/113@120"[^>]*data-pin="120"[^>]*title="Refers to 410 U\.S\. 113, at 120"/);
     // Two entries, one per antecedent.
     assert.equal(unique.filter(c => c.raw === 'Id.').length, 2);
   });
 
   test('a supra links to the case it names', async () => {
     const { html } = await render(text, detected, { cases: { 'a2d/31/647': true, 'us/410/113': true } });
-    assert.match(tagFor(html, 'supra'), /href="#a2d\/31\/647"[^>]*title="Refers to 31 A\.2d 647, at 649"/);
+    assert.match(tagFor(html, 'supra'), /href="#a2d\/31\/647@649"[^>]*title="Refers to 31 A\.2d 647, at 649"/);
   });
 
   test('an Id. whose antecedent is a held-volume miss says what it refers to', async () => {
     const { html } = await render(text, detected, { cases: { 'us/410/113': true } });
     assert.match(tagFor(html, 'Id.', 0),
       /class="cite-unresolved" title="Refers to 31 A\.2d 647, at 650\. No case found at this page in A\.2d vol\. 31"/);
-    assert.match(tagFor(html, 'Id.', 1), /href="#us\/410\/113"/);
+    assert.match(tagFor(html, 'Id.', 1), /href="#us\/410\/113@120"/);
   });
 });
 
