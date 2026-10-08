@@ -455,11 +455,11 @@ test('138 A.3d 1012 resolves into a3d/138-2, the second folder CAP split the vol
   await page.fill('#landing-input', '138 A.3d 1012');
   await page.click('#landing-btn');
 
+  // The URL is set once the case is found: it names the folder the case is in.
+  await expect(page).toHaveURL(/#a3d\/138-2\/1012-01$/);
   await expect(page.locator('#resolved')).toBeVisible();
   await expect(page.locator('#topbar-case')).toHaveText('Brooks v. Powers');
   await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
-  // The page's URL names the folder the case is in.
-  await expect(page).toHaveURL(/#a3d\/138-2\/1012-01$/);
 });
 
 test.describe('/data before the first index report', () => {
