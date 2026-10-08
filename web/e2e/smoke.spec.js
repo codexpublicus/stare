@@ -415,7 +415,7 @@ test('a pin cite opens the cited case at the pin page (#124)', async ({ page }) 
   // In McCallister v. State, "997 P.2d at 1023" refers to Roe v. Board of
   // County Commissioners, 997 P.2d 1021; the link opens Roe at page 1023.
   await page.goto('/#p3d/440/1078-01');
-  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ citations? found$/);
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?$/);
   const roe = page.locator('#reader a.cite-link', { hasText: '997 P.2d at 1023' });
   const [popup] = await Promise.all([page.waitForEvent('popup'), roe.click()]);
 
