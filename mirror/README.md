@@ -21,7 +21,7 @@ actual digest, status (`ok`, `mismatch`, `missing_tar`, `missing_sha`, `bad_sha`
 and seconds. The run is resumable: rerunning the same command skips every path already in the
 JSONL except `unreadable` ones, which are retried. `--path a2d/142.tar` or `--reporter a2d`
 limits it; keep `--jobs` at 4 or below so the NAS stays responsive. At three jobs the full
-mirror (about 10 TB) takes roughly 7 hours.
+mirror (9.6 TB) took 6.5 hours, about 410 MB/s, in October 2026.
 
 Then, for the files that aren't `ok`:
 
