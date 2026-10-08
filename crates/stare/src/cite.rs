@@ -113,10 +113,6 @@ pub struct Antecedent {
 /// jurisdiction, the code, and the `subject`, `title`, `chapter` and
 /// `section` where the citation has them (`42 Pa. Cons. Stat. § 5524` has
 /// title `42`; `N.Y. Penal Law § 125.25` has subject `Penal`).
-///
-/// Until stare's citare has `Citation::law()`, `law_ref` builds this from
-/// citare's groups: the code is the `reporter` group as written, and the
-/// jurisdiction comes from `STATE_CODES`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LawRef {
     /// reporters-db's name for the jurisdiction (`Pennsylvania`, `District
@@ -225,7 +221,7 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
                 antecedent: None,
             };
             if det.citation_type == "FullLawCitation" {
-                det.law = law_ref(&det.reporter, groups);
+                det.law = c.law().map(LawRef::from);
                 // citare can stop a section short: `D.C. Code § 22–2101`
                 // (an en dash) gives section `22`, `Neb. Rev. Stat. §
                 // 60-6,196` gives `60-6`. A section the text runs on past
@@ -368,29 +364,17 @@ pub fn external_url(citation: &DetectedCitation) -> Option<String> {
     citation.law.as_ref().and_then(state_code_url)
 }
 
-/// A citation's `LawRef`, from citare's groups. `reporter` is the code as
-/// citare names it; a law citation without one has no `LawRef`. Once
-/// stare's citare has `Citation::law()` (codexpublicus/citare#69), its
-/// jurisdiction, normalized code and section replace these.
-fn law_ref(reporter: &Option<String>, groups: &HashMap<String, Option<String>>) -> Option<LawRef> {
-    let code = reporter.clone()?;
-    let group = |k: &str| groups.get(k).cloned().flatten();
-    let jurisdiction =
-        if regex!(r"^U\.?\s*S\.?\s*C|^C\.?\s*F\.?\s*R|^Stat\.|^Fed\.\s*Reg|^Pub\.\s*L")
-            .is_match(&code)
-        {
-            Some("United States".to_string())
-        } else {
-            state_code(&code).map(|s| s.jurisdiction.to_string())
-        };
-    Some(LawRef {
-        jurisdiction,
-        code,
-        subject: group("subject"),
-        title: group("title"),
-        chapter: group("chapter"),
-        section: group("section"),
-    })
+impl From<citare_core::models::citation::LawFields> for LawRef {
+    fn from(l: citare_core::models::citation::LawFields) -> Self {
+        LawRef {
+            jurisdiction: l.jurisdiction,
+            code: l.code,
+            subject: l.subject,
+            title: l.title,
+            chapter: l.chapter,
+            section: l.section,
+        }
+    }
 }
 
 /// One state's code: the names citare gives it and how to build a
@@ -417,7 +401,7 @@ struct StateCode {
 /// allowed the check. Adding a code is adding a row. A citation is matched
 /// by its `law.jurisdiction` and `law.code` when citare names the
 /// jurisdiction (codexpublicus/citare#69), and by the code alone when it
-/// doesn't, which is also how `law_ref` fills the jurisdiction in today.
+/// doesn't (citare leaves it out when a code's candidate editions disagree).
 static STATE_CODES: &[StateCode] = &[
     // Arizona: "Ariz. Rev. Stat. Ann. § 13-1105", "... § 13-3601.01". The
     // file name pads the section to five digits.
@@ -726,40 +710,74 @@ fn subject_code(law: &LawRef, table: &[(&str, &'static str)]) -> Option<&'static
 }
 
 /// New York's consolidated laws and court acts, by the subject citare
-/// gives them, to the law IDs nysenate.gov uses.
+/// gives them, to the law IDs nysenate.gov uses: the Bluebook
+/// abbreviation (`N.Y. Penal Law`) and the full name New York's own
+/// courts cite (`Judiciary Law`, `Family Ct Act`).
 const NY_LAWS: &[(&str, &str)] = &[
     ("Banking", "BNK"),
     ("Bus. Corp.", "BSC"),
+    ("Business Corporation", "BSC"),
     ("C.P.L.R.", "CVP"),
+    ("CPLR", "CVP"),
     ("Civ. Prac. L. & R.", "CVP"),
+    ("Civil Practice Law and Rules", "CVP"),
     ("Civ. Rights", "CVR"),
+    ("Civil Rights", "CVR"),
     ("Civ. Serv.", "CVS"),
+    ("Civil Service", "CVS"),
     ("Correct.", "COR"),
+    ("Correction", "COR"),
     ("Crim. Proc.", "CPL"),
+    ("Criminal Procedure", "CPL"),
     ("Dom. Rel.", "DOM"),
+    ("Domestic Relations", "DOM"),
     ("Educ.", "EDN"),
+    ("Education", "EDN"),
     ("Elec.", "ELN"),
+    ("Election", "ELN"),
     ("Env't Conserv.", "ENV"),
+    ("Environmental Conservation", "ENV"),
     ("Est. Powers & Trusts", "EPT"),
+    ("Estates, Powers and Trusts", "EPT"),
     ("Exec.", "EXC"),
+    ("Executive", "EXC"),
     ("Fam. Ct. Act", "FCT"),
+    ("Family Ct Act", "FCT"),
+    ("Family Court Act", "FCT"),
     ("Gen. Bus.", "GBS"),
+    ("General Business", "GBS"),
     ("Gen. Mun.", "GMU"),
+    ("General Municipal", "GMU"),
     ("Gen. Oblig.", "GOB"),
+    ("General Obligations", "GOB"),
     ("Ins.", "ISC"),
+    ("Insurance", "ISC"),
     ("Jud.", "JUD"),
+    ("Judiciary", "JUD"),
     ("Lab.", "LAB"),
+    ("Labor", "LAB"),
     ("Ltd. Liab. Co.", "LLC"),
+    ("Limited Liability Company", "LLC"),
     ("Mental Hyg.", "MHY"),
+    ("Mental Hygiene", "MHY"),
     ("Penal", "PEN"),
     ("Pub. Health", "PBH"),
+    ("Public Health", "PBH"),
     ("Real Prop.", "RPP"),
+    ("Real Property", "RPP"),
+    ("Real Prop. Acts.", "RPA"),
+    ("Real Property Actions and Proceedings", "RPA"),
     ("Retire. & Soc. Sec.", "RSS"),
+    ("Retirement and Social Security", "RSS"),
     ("Soc. Serv.", "SOS"),
+    ("Social Services", "SOS"),
     ("Surr. Ct. Proc. Act", "SCP"),
+    ("Surrogate's Court Procedure Act", "SCP"),
     ("Tax", "TAX"),
     ("Veh. & Traf.", "VAT"),
+    ("Vehicle and Traffic", "VAT"),
     ("Workers' Comp.", "WKC"),
+    ("Workers' Compensation", "WKC"),
 ];
 
 /// Texas codes, by the subject citare gives them, to the abbreviations of
@@ -1117,6 +1135,40 @@ mod tests {
                 "See W. Va. Code § 61-2-14a.",
                 "https://code.wvlegislature.gov/61-2-14a/",
             ),
+            // State courts' own forms, which citare recognizes since
+            // v0.5.3 (citare#69) and normalizes to the codes above.
+            (
+                "See 42 Pa.C.S. § 5322.",
+                "https://www.palegis.us/statutes/consolidated/view-statute?txtType=HTM&ttl=42&div=0&chapter=53&section=22&subsctn=0",
+            ),
+            (
+                "See Penal Law § 160.05.",
+                "https://www.nysenate.gov/legislation/laws/PEN/160.05",
+            ),
+            (
+                "See Judiciary Law § 487.",
+                "https://www.nysenate.gov/legislation/laws/JUD/487",
+            ),
+            (
+                "See Family Ct Act § 413.",
+                "https://www.nysenate.gov/legislation/laws/FCT/413",
+            ),
+            (
+                "See N.C.G.S. § 50-13.4.",
+                "https://www.ncleg.gov/EnactedLegislation/Statutes/HTML/BySection/Chapter_50/GS_50-13.4.html",
+            ),
+            (
+                "See TEX. PENAL CODE ANN. § 19.02.",
+                "https://tcss.legis.texas.gov/resources/PE/htm/PE.19.htm#19.02",
+            ),
+            (
+                "See West Virginia Code § 61-11-18.",
+                "https://code.wvlegislature.gov/61-11-18/",
+            ),
+            (
+                "See A.R.S. § 13-1105.",
+                "https://www.azleg.gov/viewdocument/?docName=https://www.azleg.gov/ars/13/01105.htm",
+            ),
         ];
         for (text, url) in cases {
             assert_eq!(sole_external_url(text).as_deref(), Some(url), "{text}");
@@ -1153,9 +1205,30 @@ mod tests {
                 .as_deref(),
             Some("United States")
         );
-        let unknown = law("See Ga. Code Ann. § 16-5-1.").unwrap();
-        assert_eq!(unknown.jurisdiction, None);
-        assert_eq!(unknown.code, "Ga. Code Ann.");
+        // A code with no row in STATE_CODES still has citare's jurisdiction.
+        let georgia = law("See Ga. Code Ann. § 16-5-1.").unwrap();
+        assert_eq!(georgia.jurisdiction.as_deref(), Some("Georgia"));
+        assert_eq!(georgia.code, "Ga. Code Ann.");
+        // Forms citare v0.5.3 recognizes (citare#69), with its normalized
+        // code: Connecticut's own form, and a New York law by name.
+        let ct = law("Under General Statutes § 52-584, the action is barred.").unwrap();
+        assert_eq!(
+            (
+                ct.jurisdiction.as_deref(),
+                ct.code.as_str(),
+                ct.section.as_deref()
+            ),
+            (Some("Connecticut"), "Conn. Gen. Stat.", Some("52-584"))
+        );
+        let ny = law("See N.Y. Gen. Bus. Law § 349.").unwrap();
+        assert_eq!(
+            (
+                ny.jurisdiction.as_deref(),
+                ny.code.as_str(),
+                ny.subject.as_deref()
+            ),
+            (Some("New York"), "N.Y. Gen. Bus. Law", Some("Gen. Bus."))
+        );
         assert_eq!(law("See 31 A.2d 647."), None);
         let json = serde_json::to_value(&detect_citations("See Wis. Stat. § 752.31.")[0]).unwrap();
         assert_eq!(json["law"]["jurisdiction"], "Wisconsin");
@@ -1201,8 +1274,17 @@ mod tests {
             ),
             // `Family Ct Act § 413`
             (
-                law("New York", "N.Y. Fam. Ct. Act", None, None, "413"),
+                law("New York", "N.Y. Family Ct Act", Some("Family Ct Act"), None, "413"),
                 Some("https://www.nysenate.gov/legislation/laws/FCT/413"),
+            ),
+            // `Judiciary Law § 487`, `Vehicle and Traffic Law § 1192`
+            (
+                law("New York", "N.Y. Judiciary Law", Some("Judiciary"), None, "487"),
+                Some("https://www.nysenate.gov/legislation/laws/JUD/487"),
+            ),
+            (
+                law("New York", "N.Y. Vehicle and Traffic Law", Some("Vehicle and Traffic"), None, "1192"),
+                Some("https://www.nysenate.gov/legislation/laws/VAT/1192"),
             ),
             // `TEX. PENAL CODE ANN. § 19.02`, `Tex. Fam.Code Ann. § 153.002`
             (
@@ -1280,6 +1362,9 @@ mod tests {
             "See Pub. L. No. 93-205.",
             "See Ga. Code Ann. § 16-5-1.",
             "See Colo. Rev. Stat. § 18-3-102.",
+            "Under General Statutes § 52-584, it is barred.",
+            "See OCGA § 16-9-93.",
+            "See 40 P.S. § 1301.101.",
             "See Conn. Gen. Stat. § 52-584.",
             "See Cal. Penal Code § 187.",
             "See Ohio Rev. Code Ann. § 2903.01.",
