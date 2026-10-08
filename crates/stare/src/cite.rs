@@ -10,6 +10,15 @@ use std::collections::HashMap;
 use citare_core::Citation;
 use serde::{Deserialize, Serialize};
 
+/// Compile a pattern once and keep it for the life of the process.
+macro_rules! regex {
+    ($re:literal) => {{
+        static RE: std::sync::LazyLock<regex::Regex> =
+            std::sync::LazyLock::new(|| regex::Regex::new($re).expect("valid regex"));
+        &*RE
+    }};
+}
+
 /// The citation types that refer back to an earlier full citation instead
 /// of naming a case themselves: `997 P.2d at 1023`, `Id. at 5`,
 /// `Martel, supra, 275 Conn. at 46`. Their own page is a pin page, never a
@@ -48,8 +57,14 @@ pub struct DetectedCitation {
     /// Year if detected
     pub year: Option<i32>,
     /// External URL for statutes/regulations (Cornell, govinfo, eCFR and
-    /// the state legislatures listed in `external_url`)
+    /// the state legislatures in `STATE_CODES`)
     pub external_url: Option<String>,
+    /// For a statute or regulation (`FullLawCitation`), its parts as
+    /// citare splits them. A law citation has this whether or not
+    /// `external_url` can link it, so a reader can tell a statute without a
+    /// link from a case stare.pub hasn't indexed. `None` otherwise.
+    #[serde(default)]
+    pub law: Option<LawRef>,
     /// Places to look for a full case citation stare.pub may not hold
     /// (CourtListener's citation lookup, then a Google Scholar search).
     /// Filled for every full case citation with a volume, reporter and
@@ -88,7 +103,29 @@ pub struct Antecedent {
     pub year: Option<i32>,
     pub external_url: Option<String>,
     #[serde(default)]
+    pub law: Option<LawRef>,
+    #[serde(default)]
     pub case_links: Vec<CaseLink>,
+}
+
+/// A statute or regulation citation's parts, in the shape of citare's
+/// `law` object (codexpublicus/citare#69, `Citation::law()`): the
+/// jurisdiction, the code, and the `subject`, `title`, `chapter` and
+/// `section` where the citation has them (`42 Pa. Cons. Stat. § 5524` has
+/// title `42`; `N.Y. Penal Law § 125.25` has subject `Penal`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LawRef {
+    /// reporters-db's name for the jurisdiction (`Pennsylvania`, `District
+    /// of Columbia`, `United States`); `None` when nothing names it.
+    pub jurisdiction: Option<String>,
+    /// The code (`Pa. Cons. Stat.`, `N.Y. Penal Law`).
+    pub code: String,
+    pub subject: Option<String>,
+    pub title: Option<String>,
+    #[serde(default)]
+    pub chapter: Option<String>,
+    /// The section without subsections (`52-557n`).
+    pub section: Option<String>,
 }
 
 impl DetectedCitation {
@@ -108,6 +145,7 @@ impl DetectedCitation {
             reporter: self.reporter.clone(),
             year: self.year,
             external_url: self.external_url.clone(),
+            law: self.law.clone(),
             case_links: self.case_links.clone(),
         }
     }
@@ -177,10 +215,27 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
                 reporter: groups.get("reporter").cloned().flatten(),
                 year: c.resource_common().and_then(|r| r.year),
                 external_url: None,
+                law: None,
                 case_links: Vec::new(),
                 pin: pin_cite(c).and_then(normalize_pin),
                 antecedent: None,
             };
+            if det.citation_type == "FullLawCitation" {
+                det.law = c.law().map(LawRef::from);
+                // citare can stop a section short: `D.C. Code § 22–2101`
+                // (an en dash) gives section `22`, `Neb. Rev. Stat. §
+                // 60-6,196` gives `60-6`. A section the text runs on past
+                // is not the one cited, so it isn't linked.
+                if let Some(law) = det.law.as_mut() {
+                    let cut = law.section.as_deref().is_some_and(|sec| {
+                        det.matched_text.ends_with(sec)
+                            && regex!(r"^(?:[,.\-\u{2010}-\u{2014}]\d|\w)").is_match(&text[end..])
+                    });
+                    if cut {
+                        law.section = None;
+                    }
+                }
+            }
             // A short form's page is its pin page, not where a case starts.
             // citare doesn't always report it as the pin cite too
             // (`TC, ¶ 10, 431 P.3d at 565`).
@@ -234,15 +289,6 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
     detected
 }
 
-/// Compile a pattern once and keep it for the life of the process.
-macro_rules! regex {
-    ($re:literal) => {{
-        static RE: std::sync::LazyLock<regex::Regex> =
-            std::sync::LazyLock::new(|| regex::Regex::new($re).expect("valid regex"));
-        &*RE
-    }};
-}
-
 /// Generate an external URL for a statute/regulation citation.
 /// Returns None for case citations (which we resolve ourselves).
 ///
@@ -257,7 +303,8 @@ macro_rules! regex {
 ///   law or the issue holding any page, not only a first page. Public laws
 ///   are there from the 104th Congress on.
 /// - C.F.R.: eCFR
-/// - Arizona, Michigan, Minnesota and Virginia: the legislature's own site
+/// - state codes: the rows of `STATE_CODES` with a URL, each on the
+///   state's own site
 pub fn external_url(citation: &DetectedCitation) -> Option<String> {
     let text = &citation.matched_text;
 
@@ -313,55 +360,467 @@ pub fn external_url(citation: &DetectedCitation) -> Option<String> {
         ));
     }
 
-    // State codes. Anchored at the start, so "W. Va. Code" is not Virginia.
+    // State codes, by the code citare names (see `STATE_CODES`).
+    citation.law.as_ref().and_then(state_code_url)
+}
 
+impl From<citare_core::models::citation::LawFields> for LawRef {
+    fn from(l: citare_core::models::citation::LawFields) -> Self {
+        LawRef {
+            jurisdiction: l.jurisdiction,
+            code: l.code,
+            subject: l.subject,
+            title: l.title,
+            chapter: l.chapter,
+            section: l.section,
+        }
+    }
+}
+
+/// One state's code: the names citare gives it and how to build a
+/// section's URL on the state's own site.
+struct StateCode {
+    /// reporters-db's name for the jurisdiction, as citare's `law` gives it.
+    jurisdiction: &'static str,
+    /// The code's names, as citare's `law.code` or `reporter` group gives
+    /// them, compared by `code_key`: without spaces, periods, case or a
+    /// final "Ann.". A name ending in ` *` is a prefix, for a state with a
+    /// code per subject (`N.Y. *` matches `N.Y. Penal Law` and `N.Y.`, not
+    /// `N.Y.C. Admin. Code`).
+    names: &'static [&'static str],
+    /// The URL for one section, or `None` when the citation lacks a part
+    /// the URL needs. A code listed without one is a statute stare.pub
+    /// knows but can't link; the comment beside it says why.
+    url: Option<fn(&LawRef) -> Option<String>>,
+}
+
+/// State codes, by jurisdiction. A code is linked only when its
+/// legislature (or the state's official code site) publishes a page per
+/// section whose URL needs nothing but the citation's own parts, that page
+/// returned the section's text when the pattern was added, and robots.txt
+/// allowed the check. Adding a code is adding a row. A citation is matched
+/// by its `law.jurisdiction` and `law.code` when citare names the
+/// jurisdiction (codexpublicus/citare#69), and by the code alone when it
+/// doesn't (citare leaves it out when a code's candidate editions disagree).
+static STATE_CODES: &[StateCode] = &[
     // Arizona: "Ariz. Rev. Stat. Ann. § 13-1105", "... § 13-3601.01". The
     // file name pads the section to five digits.
-    if let Some(caps) =
-        regex!(r"^Ariz\.\s*Rev\.\s*Stat\.(?:\s*Ann\.)?\s*§*\s*(\d+)-(\d+)(?:\.(\d+))?")
-            .captures(text)
-    {
-        let section: u32 = caps[2].parse().ok()?;
-        let sub = caps
-            .get(3)
-            .map(|m| format!("-{}", m.as_str()))
-            .unwrap_or_default();
-        return Some(format!(
-            "https://www.azleg.gov/viewdocument/?docName=https://www.azleg.gov/ars/{}/{:05}{}.htm",
-            &caps[1], section, sub
-        ));
-    }
-
-    // Michigan: "Mich. Comp. Laws § 750.316", "... Ann. § 600.2912", and
-    // lettered sections, "§ 600.2912a" (mcl-600-2912a), which citare reads
-    // whole since v0.5.2.
-    if let Some(caps) =
-        regex!(r"^Mich\.\s*Comp\.\s*Laws(?:\s*Ann\.)?\s*§*\s*(\d+)\.(\d+[a-z]*)").captures(text)
-    {
-        return Some(format!(
-            "https://www.legislature.mi.gov/Laws/MCL?objectName=mcl-{}-{}",
-            &caps[1], &caps[2]
-        ));
-    }
-
+    StateCode {
+        jurisdiction: "Arizona",
+        names: &["Ariz. Rev. Stat."],
+        url: Some(|l| {
+            let caps = regex!(r"^(\d+)-(\d+)(?:\.(\d+))?").captures(l.section.as_deref()?)?;
+            let section: u32 = caps[2].parse().ok()?;
+            let sub = caps
+                .get(3)
+                .map(|m| format!("-{}", m.as_str()))
+                .unwrap_or_default();
+            Some(format!(
+                "https://www.azleg.gov/viewdocument/?docName=https://www.azleg.gov/ars/{}/{:05}{}.htm",
+                &caps[1], section, sub
+            ))
+        }),
+    },
+    // Michigan: "Mich. Comp. Laws § 750.316", and lettered sections,
+    // "§ 600.2912a" (mcl-600-2912a).
+    StateCode {
+        jurisdiction: "Michigan",
+        names: &["Mich. Comp. Laws"],
+        url: Some(|l| {
+            let caps = regex!(r"^(\d+)\.(\d+[a-z]*)").captures(l.section.as_deref()?)?;
+            Some(format!(
+                "https://www.legislature.mi.gov/Laws/MCL?objectName=mcl-{}-{}",
+                &caps[1], &caps[2]
+            ))
+        }),
+    },
     // Minnesota: "Minn. Stat. § 609.185", "Minn. Stat. Ann. § 13D.01"
-    if let Some(caps) =
-        regex!(r"^Minn\.\s*Stat\.(?:\s*Ann\.)?\s*§*\s*(\d+[A-Z]?\.\d+[A-Za-z]*)").captures(text)
-    {
-        return Some(format!(
-            "https://www.revisor.mn.gov/statutes/cite/{}",
-            &caps[1]
-        ));
-    }
-
+    StateCode {
+        jurisdiction: "Minnesota",
+        names: &["Minn. Stat."],
+        url: Some(|l| {
+            let m = regex!(r"^\d+[A-Z]?\.\d+[A-Za-z]*").find(l.section.as_deref()?)?;
+            Some(format!(
+                "https://www.revisor.mn.gov/statutes/cite/{}",
+                m.as_str()
+            ))
+        }),
+    },
     // Virginia: "Va. Code Ann. § 18.2-32", "... § 8.01-581.15"
-    if let Some(caps) =
-        regex!(r"^Va\.\s*Code(?:\s*Ann\.)?\s*§*\s*(\d+(?:\.\d+)?-\d+(?:\.\d+)*)").captures(text)
-    {
-        return Some(format!("https://law.lis.virginia.gov/vacode/{}/", &caps[1]));
-    }
+    StateCode {
+        jurisdiction: "Virginia",
+        names: &["Va. Code"],
+        url: Some(|l| {
+            let m = regex!(r"^\d+(?:\.\d+)?-\d+(?:\.\d+)*").find(l.section.as_deref()?)?;
+            Some(format!(
+                "https://law.lis.virginia.gov/vacode/{}/",
+                m.as_str()
+            ))
+        }),
+    },
+    // District of Columbia: "D.C. Code § 48-904.01". The council's site
+    // shows en dashes but its URLs take hyphens.
+    StateCode {
+        jurisdiction: "District of Columbia",
+        names: &["D.C. Code"],
+        url: Some(|l| {
+            let sec = l.section.as_deref()?.replace(['\u{2013}', '\u{2014}'], "-");
+            let m = regex!(r"^\d+-\d+(?:\.\d+)?").find(&sec)?;
+            Some(format!(
+                "https://code.dccouncil.gov/us/dc/council/code/sections/{}",
+                m.as_str()
+            ))
+        }),
+    },
+    // Florida: "Fla. Stat. § 782.04". The path groups chapters by hundred
+    // and pads the chapter to four digits: 0700-0799/0782/Sections/0782.04.
+    StateCode {
+        jurisdiction: "Florida",
+        names: &["Fla. Stat."],
+        url: Some(|l| {
+            let caps = regex!(r"^(\d+)\.(\d+)").captures(l.section.as_deref()?)?;
+            let chapter: u32 = caps[1].parse().ok()?;
+            let from = chapter / 100 * 100;
+            Some(format!(
+                "https://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL={:04}-{:04}/{:04}/Sections/{:04}.{}.html",
+                from,
+                from + 99,
+                chapter,
+                chapter,
+                &caps[2]
+            ))
+        }),
+    },
+    // Maine: "19-A M.R.S. § 1653", "Me. Rev. Stat. Ann. tit. 17-A, § 201",
+    // lettered sections ("§ 408-A"). One page per section, named by title
+    // and section (title19-Asec1653.html). A range links to its first section.
+    StateCode {
+        jurisdiction: "Maine",
+        names: &["Me. Rev. Stat.", "M.R.S.", "M.R.S.A."],
+        url: Some(|l| {
+            let title = regex!(r"^\d+(?:-[A-Z])?$").find(l.title.as_deref()?)?;
+            let sec = regex!(r"^\d+(?:-[A-Z]+)?").find(l.section.as_deref()?)?;
+            Some(format!(
+                "https://legislature.maine.gov/statutes/{0}/title{0}sec{1}.html",
+                title.as_str(),
+                sec.as_str()
+            ))
+        }),
+    },
+    // Missouri: "Mo. Rev. Stat. § 537.080", "Mo. Ann. Stat. § 537.080"
+    StateCode {
+        jurisdiction: "Missouri",
+        names: &["Mo. Rev. Stat.", "Mo. Ann. Stat.", "Mo. Stat."],
+        url: Some(|l| {
+            let m = regex!(r"^\d+\.\d+").find(l.section.as_deref()?)?;
+            Some(format!(
+                "https://revisor.mo.gov/main/OneSection.aspx?section={}",
+                m.as_str()
+            ))
+        }),
+    },
+    // North Carolina: "N.C. Gen. Stat. § 50-13.4", "§ 15A-1340.14"; the
+    // chapter is the part before the hyphen, letters and all.
+    StateCode {
+        jurisdiction: "North Carolina",
+        names: &["N.C. Gen. Stat."],
+        url: Some(|l| {
+            let caps = regex!(r"^(\d+[A-Z]*)-\d+[A-Za-z]*(?:\.\d+[A-Za-z]*)?")
+                .captures(l.section.as_deref()?)?;
+            Some(format!(
+                "https://www.ncleg.gov/EnactedLegislation/Statutes/HTML/BySection/Chapter_{}/GS_{}.html",
+                &caps[1], &caps[0]
+            ))
+        }),
+    },
+    // Nebraska: "Neb. Rev. Stat. § 84-917", "§ 60-6,196" (Nebraska's
+    // section numbers have commas)
+    StateCode {
+        jurisdiction: "Nebraska",
+        names: &["Neb. Rev. Stat."],
+        url: Some(|l| {
+            let m = regex!(r"^\d+-\d+(?:,\d+)?(?:\.\d+)?").find(l.section.as_deref()?)?;
+            Some(format!(
+                "https://nebraskalegislature.gov/laws/statutes.php?statute={}",
+                m.as_str()
+            ))
+        }),
+    },
+    // New York: "N.Y. Penal Law § 125.25", "N.Y. Fam. Ct. Act § 413".
+    // citare names the code in `subject`; the Senate's URLs take the law ID
+    // and the section with its letters in upper case (214-A).
+    StateCode {
+        jurisdiction: "New York",
+        names: &["N.Y. *"],
+        url: Some(|l| {
+            let law = subject_code(l, NY_LAWS)?;
+            let m = regex!(r"^\d+(?:[.-]?[\dA-Za-z]+)*").find(l.section.as_deref()?)?;
+            Some(format!(
+                "https://www.nysenate.gov/legislation/laws/{}/{}",
+                law,
+                m.as_str().to_uppercase()
+            ))
+        }),
+    },
+    // Pennsylvania: "42 Pa. Cons. Stat. § 5524". A section's last two
+    // digits are its number in the chapter the rest name (5524: chapter
+    // 55, section 24); a decimal part is the subsection (2702.1).
+    StateCode {
+        jurisdiction: "Pennsylvania",
+        names: &["Pa. Cons. Stat.", "Pa.C.S."],
+        url: Some(|l| {
+            let title = l.title.as_deref()?;
+            let caps = regex!(r"^(\d+)(\d\d)(?:\.(\d+))?").captures(l.section.as_deref()?)?;
+            Some(format!(
+                "https://www.palegis.us/statutes/consolidated/view-statute?txtType=HTM&ttl={}&div=0&chapter={}&section={}&subsctn={}",
+                title,
+                &caps[1],
+                &caps[2],
+                caps.get(3).map_or("0", |m| m.as_str())
+            ))
+        }),
+    },
+    // Texas: "Tex. Penal Code Ann. § 19.02". One file per chapter, with an
+    // anchor per section, on the legislature's statute file server.
+    StateCode {
+        jurisdiction: "Texas",
+        names: &["Tex. *"],
+        url: Some(|l| {
+            let code = subject_code(l, TX_CODES)?;
+            let caps = regex!(r"^(\d+[A-Z]?)\.\d+").captures(l.section.as_deref()?)?;
+            Some(format!(
+                "https://tcss.legis.texas.gov/resources/{0}/htm/{0}.{1}.htm#{2}",
+                code, &caps[1], &caps[0]
+            ))
+        }),
+    },
+    // Wisconsin: "Wis. Stat. § 752.31". /document/ redirects to the page
+    // under its subchapter, which the citation doesn't give.
+    StateCode {
+        jurisdiction: "Wisconsin",
+        names: &["Wis. Stat."],
+        url: Some(|l| {
+            let m = regex!(r"^\d+\.\d+").find(l.section.as_deref()?)?;
+            Some(format!(
+                "https://docs.legis.wisconsin.gov/document/statutes/{}",
+                m.as_str()
+            ))
+        }),
+    },
+    // West Virginia: "W. Va. Code § 61-11-18", "§ 17C-5-2", "§ 61-2-14a"
+    StateCode {
+        jurisdiction: "West Virginia",
+        names: &["W. Va. Code"],
+        url: Some(|l| {
+            let m = regex!(r"^\d+[A-Z]*-\d+[A-Z]*-\d+[a-z]*").find(l.section.as_deref()?)?;
+            Some(format!("https://code.wvlegislature.gov/{}/", m.as_str()))
+        }),
+    },
+    // Known, not linked; each checked in October 2026.
+    // Connecticut: cga.ct.gov has a page per chapter
+    // (chap_926.htm#sec_52-584), and a section number doesn't name its
+    // chapter. It needs a title-to-chapter table, built from the title
+    // pages' section ranges.
+    StateCode {
+        jurisdiction: "Connecticut",
+        names: &["Conn. Gen. Stat."],
+        url: None,
+    },
+    // California: leginfo.legislature.ca.gov answers robots.txt and every
+    // section page with a Cloudflare challenge, so nothing could be checked.
+    StateCode {
+        jurisdiction: "California",
+        names: &["Cal. *"],
+        url: None,
+    },
+    // New Jersey: the statutes are only in the NXT gateway, by internal IDs.
+    StateCode {
+        jurisdiction: "New Jersey",
+        names: &["N.J. Stat."],
+        url: None,
+    },
+    // Ohio: codes.ohio.gov's robots.txt is the one line "User-agent: *
+    // Disallow: /", taken as disallowing everything.
+    StateCode {
+        jurisdiction: "Ohio",
+        names: &["Ohio Rev. Code"],
+        url: None,
+    },
+    // Oregon: one page per chapter, with no anchor per section.
+    StateCode {
+        jurisdiction: "Oregon",
+        names: &["Or. Rev. Stat."],
+        url: None,
+    },
+    // Pennsylvania Code (regulations): pacodeandbulletin.gov's robots.txt
+    // disallows everything.
+    StateCode {
+        jurisdiction: "Pennsylvania",
+        names: &["Pa. Code"],
+        url: None,
+    },
+    // Wyoming: whole titles as PDFs only.
+    StateCode {
+        jurisdiction: "Wyoming",
+        names: &["Wyo. Stat."],
+        url: None,
+    },
+];
 
-    None
+/// A code name compared without spaces, periods, case or a final "Ann.":
+/// "Wyo.Stat.Ann." and "Wyo. Stat." are the same code.
+fn code_key(name: &str) -> String {
+    let key: String = name
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect();
+    match key.strip_suffix("ann") {
+        Some(k) if !k.is_empty() => k.to_string(),
+        _ => key,
+    }
+}
+
+impl StateCode {
+    /// Whether citare's code name `code` is one of this row's names.
+    fn matches(&self, code: &str) -> bool {
+        let code = code.trim();
+        self.names.iter().any(|n| match n.strip_suffix(" *") {
+            Some(prefix) => {
+                code == prefix
+                    || code
+                        .strip_prefix(prefix)
+                        .is_some_and(|rest| rest.starts_with(' '))
+            }
+            None => code_key(n) == code_key(code),
+        })
+    }
+}
+
+/// The `STATE_CODES` row for a code citare names `code`, if any.
+fn state_code(code: &str) -> Option<&'static StateCode> {
+    STATE_CODES.iter().find(|s| s.matches(code))
+}
+
+/// The code a citation names in `table` (`Penal` or `Educ. Law` to `PEN`):
+/// its `subject`, or, when citare gives none, its code without the
+/// jurisdiction's abbreviation (`N.Y. Penal Law` to `Penal Law`, `Tex. Fam.
+/// Code Ann.` to `Fam. Code Ann.`). Compared by `code_key` without a final
+/// "Law" or "Code".
+fn subject_code(law: &LawRef, table: &[(&str, &'static str)]) -> Option<&'static str> {
+    let key = |s: &str| {
+        let k = code_key(s);
+        match k.strip_suffix("law").or_else(|| k.strip_suffix("code")) {
+            Some(k) if !k.is_empty() => k.to_string(),
+            _ => k,
+        }
+    };
+    let subject = match law.subject.as_deref() {
+        Some(subject) => key(subject),
+        None => key(law.code.trim().split_once(' ')?.1),
+    };
+    table
+        .iter()
+        .find(|(name, _)| key(name) == subject)
+        .map(|(_, code)| *code)
+}
+
+/// New York's consolidated laws and court acts, by the subject citare
+/// gives them, to the law IDs nysenate.gov uses: the Bluebook
+/// abbreviation (`N.Y. Penal Law`) and the full name New York's own
+/// courts cite (`Judiciary Law`, `Family Ct Act`).
+const NY_LAWS: &[(&str, &str)] = &[
+    ("Banking", "BNK"),
+    ("Bus. Corp.", "BSC"),
+    ("Business Corporation", "BSC"),
+    ("C.P.L.R.", "CVP"),
+    ("CPLR", "CVP"),
+    ("Civ. Prac. L. & R.", "CVP"),
+    ("Civil Practice Law and Rules", "CVP"),
+    ("Civ. Rights", "CVR"),
+    ("Civil Rights", "CVR"),
+    ("Civ. Serv.", "CVS"),
+    ("Civil Service", "CVS"),
+    ("Correct.", "COR"),
+    ("Correction", "COR"),
+    ("Crim. Proc.", "CPL"),
+    ("Criminal Procedure", "CPL"),
+    ("Dom. Rel.", "DOM"),
+    ("Domestic Relations", "DOM"),
+    ("Educ.", "EDN"),
+    ("Education", "EDN"),
+    ("Elec.", "ELN"),
+    ("Election", "ELN"),
+    ("Env't Conserv.", "ENV"),
+    ("Environmental Conservation", "ENV"),
+    ("Est. Powers & Trusts", "EPT"),
+    ("Estates, Powers and Trusts", "EPT"),
+    ("Exec.", "EXC"),
+    ("Executive", "EXC"),
+    ("Fam. Ct. Act", "FCT"),
+    ("Family Ct Act", "FCT"),
+    ("Family Court Act", "FCT"),
+    ("Gen. Bus.", "GBS"),
+    ("General Business", "GBS"),
+    ("Gen. Mun.", "GMU"),
+    ("General Municipal", "GMU"),
+    ("Gen. Oblig.", "GOB"),
+    ("General Obligations", "GOB"),
+    ("Ins.", "ISC"),
+    ("Insurance", "ISC"),
+    ("Jud.", "JUD"),
+    ("Judiciary", "JUD"),
+    ("Lab.", "LAB"),
+    ("Labor", "LAB"),
+    ("Ltd. Liab. Co.", "LLC"),
+    ("Limited Liability Company", "LLC"),
+    ("Mental Hyg.", "MHY"),
+    ("Mental Hygiene", "MHY"),
+    ("Penal", "PEN"),
+    ("Pub. Health", "PBH"),
+    ("Public Health", "PBH"),
+    ("Real Prop.", "RPP"),
+    ("Real Property", "RPP"),
+    ("Real Prop. Acts.", "RPA"),
+    ("Real Property Actions and Proceedings", "RPA"),
+    ("Retire. & Soc. Sec.", "RSS"),
+    ("Retirement and Social Security", "RSS"),
+    ("Soc. Serv.", "SOS"),
+    ("Social Services", "SOS"),
+    ("Surr. Ct. Proc. Act", "SCP"),
+    ("Surrogate's Court Procedure Act", "SCP"),
+    ("Tax", "TAX"),
+    ("Veh. & Traf.", "VAT"),
+    ("Vehicle and Traffic", "VAT"),
+    ("Workers' Comp.", "WKC"),
+    ("Workers' Compensation", "WKC"),
+];
+
+/// Texas codes, by the subject citare gives them, to the abbreviations of
+/// the legislature's statute files. Only codes whose sections are cited
+/// with `§`: the Code of Criminal Procedure numbers articles.
+const TX_CODES: &[(&str, &str)] = &[
+    ("Bus. & Com.", "BC"),
+    ("Civ. Prac. & Rem.", "CP"),
+    ("Fam.", "FA"),
+    ("Gov't", "GV"),
+    ("Health & Safety", "HS"),
+    ("Penal", "PE"),
+    ("Prop.", "PR"),
+];
+
+/// The URL for a state statute's section: the `STATE_CODES` row for its
+/// jurisdiction and code, or for its code alone when the jurisdiction is
+/// unknown.
+pub fn state_code_url(law: &LawRef) -> Option<String> {
+    let row = match law.jurisdiction.as_deref() {
+        Some(j) => STATE_CODES
+            .iter()
+            .filter(|s| s.jurisdiction.eq_ignore_ascii_case(j))
+            .find(|s| s.matches(&law.code))?,
+        None => state_code(&law.code)?,
+    };
+    (row.url?)(law)
 }
 
 /// Percent-encode everything but RFC 3986's unreserved characters, for a
@@ -614,6 +1073,310 @@ mod tests {
         }
     }
 
+    /// The state codes added from the 38-opinion sample and the states
+    /// with the most opinions, each URL fetched and showing the section
+    /// when the row was added (October 2026).
+    #[test]
+    fn state_code_patterns() {
+        let cases = [
+            (
+                "See D.C. Code § 48-904.01.",
+                "https://code.dccouncil.gov/us/dc/council/code/sections/48-904.01",
+            ),
+            (
+                "See Fla. Stat. § 782.04.",
+                "https://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0700-0799/0782/Sections/0782.04.html",
+            ),
+            (
+                "See Fla. Stat. § 39.01.",
+                "https://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0000-0099/0039/Sections/0039.01.html",
+            ),
+            (
+                "See Mo. Rev. Stat. § 537.080.",
+                "https://revisor.mo.gov/main/OneSection.aspx?section=537.080",
+            ),
+            (
+                "See Mo. Ann. Stat. § 537.080.",
+                "https://revisor.mo.gov/main/OneSection.aspx?section=537.080",
+            ),
+            (
+                "See N.C. Gen. Stat. § 50-13.4.",
+                "https://www.ncleg.gov/EnactedLegislation/Statutes/HTML/BySection/Chapter_50/GS_50-13.4.html",
+            ),
+            (
+                "See N.C. Gen. Stat. § 15A-1340.14.",
+                "https://www.ncleg.gov/EnactedLegislation/Statutes/HTML/BySection/Chapter_15A/GS_15A-1340.14.html",
+            ),
+            (
+                "See Neb. Rev. Stat. § 84-917.",
+                "https://nebraskalegislature.gov/laws/statutes.php?statute=84-917",
+            ),
+            (
+                "See N.Y. Penal Law § 125.25.",
+                "https://www.nysenate.gov/legislation/laws/PEN/125.25",
+            ),
+            (
+                "See N.Y. Fam. Ct. Act § 413.",
+                "https://www.nysenate.gov/legislation/laws/FCT/413",
+            ),
+            (
+                "See N.Y. Educ. Law § 3020-a.",
+                "https://www.nysenate.gov/legislation/laws/EDN/3020-A",
+            ),
+            (
+                "See 42 Pa. Cons. Stat. § 5524.",
+                "https://www.palegis.us/statutes/consolidated/view-statute?txtType=HTM&ttl=42&div=0&chapter=55&section=24&subsctn=0",
+            ),
+            (
+                "See 18 Pa. Cons. Stat. § 2702.1.",
+                "https://www.palegis.us/statutes/consolidated/view-statute?txtType=HTM&ttl=18&div=0&chapter=27&section=02&subsctn=1",
+            ),
+            (
+                "See Tex. Penal Code Ann. § 19.02.",
+                "https://tcss.legis.texas.gov/resources/PE/htm/PE.19.htm#19.02",
+            ),
+            (
+                "See Tex. Gov't Code Ann. § 411.081.",
+                "https://tcss.legis.texas.gov/resources/GV/htm/GV.411.htm#411.081",
+            ),
+            (
+                "See Wis. Stat. § 752.31.",
+                "https://docs.legis.wisconsin.gov/document/statutes/752.31",
+            ),
+            (
+                "See W. Va. Code § 61-11-18.",
+                "https://code.wvlegislature.gov/61-11-18/",
+            ),
+            (
+                "See W. Va. Code § 61-2-14a.",
+                "https://code.wvlegislature.gov/61-2-14a/",
+            ),
+            // State courts' own forms, which citare recognizes since
+            // v0.5.3 (citare#69) and normalizes to the codes above.
+            (
+                "See 42 Pa.C.S. § 5322.",
+                "https://www.palegis.us/statutes/consolidated/view-statute?txtType=HTM&ttl=42&div=0&chapter=53&section=22&subsctn=0",
+            ),
+            (
+                "See Penal Law § 160.05.",
+                "https://www.nysenate.gov/legislation/laws/PEN/160.05",
+            ),
+            (
+                "See Judiciary Law § 487.",
+                "https://www.nysenate.gov/legislation/laws/JUD/487",
+            ),
+            (
+                "See Family Ct Act § 413.",
+                "https://www.nysenate.gov/legislation/laws/FCT/413",
+            ),
+            (
+                "See N.C.G.S. § 50-13.4.",
+                "https://www.ncleg.gov/EnactedLegislation/Statutes/HTML/BySection/Chapter_50/GS_50-13.4.html",
+            ),
+            (
+                "See TEX. PENAL CODE ANN. § 19.02.",
+                "https://tcss.legis.texas.gov/resources/PE/htm/PE.19.htm#19.02",
+            ),
+            (
+                "See West Virginia Code § 61-11-18.",
+                "https://code.wvlegislature.gov/61-11-18/",
+            ),
+            (
+                "See 19-A M.R.S. § 1653.",
+                "https://legislature.maine.gov/statutes/19-A/title19-Asec1653.html",
+            ),
+            (
+                "See 1 M.R.S. § 408-A.",
+                "https://legislature.maine.gov/statutes/1/title1sec408-A.html",
+            ),
+            (
+                "See A.R.S. § 13-1105.",
+                "https://www.azleg.gov/viewdocument/?docName=https://www.azleg.gov/ars/13/01105.htm",
+            ),
+        ];
+        for (text, url) in cases {
+            assert_eq!(sole_external_url(text).as_deref(), Some(url), "{text}");
+        }
+    }
+
+    /// Every law citation carries its parts, with the jurisdiction when
+    /// the code is known, linked or not; nothing else does.
+    #[test]
+    fn law_citations_carry_their_parts() {
+        let law = |text: &str| {
+            let cites = detect_citations(text);
+            assert_eq!(cites.len(), 1, "{text}");
+            cites[0].law.clone()
+        };
+        assert_eq!(
+            law("See 42 Pa. Cons. Stat. § 5524."),
+            Some(LawRef {
+                jurisdiction: Some("Pennsylvania".into()),
+                code: "Pa. Cons. Stat.".into(),
+                subject: None,
+                title: Some("42".into()),
+                chapter: None,
+                section: Some("5524".into()),
+            })
+        );
+        let ct = law("See Conn. Gen. Stat. § 52-584.").unwrap();
+        assert_eq!(ct.jurisdiction.as_deref(), Some("Connecticut"));
+        assert_eq!(ct.section.as_deref(), Some("52-584"));
+        assert_eq!(
+            law("See 42 U.S.C. § 1983.")
+                .unwrap()
+                .jurisdiction
+                .as_deref(),
+            Some("United States")
+        );
+        // A code with no row in STATE_CODES still has citare's jurisdiction.
+        let georgia = law("See Ga. Code Ann. § 16-5-1.").unwrap();
+        assert_eq!(georgia.jurisdiction.as_deref(), Some("Georgia"));
+        assert_eq!(georgia.code, "Ga. Code Ann.");
+        // Forms citare v0.5.3 recognizes (citare#69), with its normalized
+        // code: Connecticut's own form, and a New York law by name.
+        let ct = law("Under General Statutes § 52-584, the action is barred.").unwrap();
+        assert_eq!(
+            (
+                ct.jurisdiction.as_deref(),
+                ct.code.as_str(),
+                ct.section.as_deref()
+            ),
+            (Some("Connecticut"), "Conn. Gen. Stat.", Some("52-584"))
+        );
+        let ny = law("See N.Y. Gen. Bus. Law § 349.").unwrap();
+        assert_eq!(
+            (
+                ny.jurisdiction.as_deref(),
+                ny.code.as_str(),
+                ny.subject.as_deref()
+            ),
+            (Some("New York"), "N.Y. Gen. Bus. Law", Some("Gen. Bus."))
+        );
+        assert_eq!(law("See 31 A.2d 647."), None);
+        let json = serde_json::to_value(&detect_citations("See Wis. Stat. § 752.31.")[0]).unwrap();
+        assert_eq!(json["law"]["jurisdiction"], "Wisconsin");
+        assert_eq!(json["law"]["section"], "752.31");
+    }
+
+    /// The `law` object citare#69 adds, for forms stare's citare doesn't
+    /// recognize yet: the jurisdiction from reporters-db and the normalized
+    /// code, whatever the citation's spelling. Each links (or doesn't) by
+    /// that jurisdiction and code, so these light up with the citare bump.
+    #[test]
+    fn state_code_urls_from_citares_law_object() {
+        let law = |jurisdiction: &str,
+                   code: &str,
+                   subject: Option<&str>,
+                   title: Option<&str>,
+                   section: &str| LawRef {
+            jurisdiction: Some(jurisdiction.into()),
+            code: code.into(),
+            subject: subject.map(Into::into),
+            title: title.map(Into::into),
+            chapter: None,
+            section: Some(section.into()),
+        };
+        let cases = [
+            // `42 Pa.C.S. § 5322`
+            (
+                law("Pennsylvania", "Pa. Cons. Stat.", None, Some("42"), "5322"),
+                Some("https://www.palegis.us/statutes/consolidated/view-statute?txtType=HTM&ttl=42&div=0&chapter=53&section=22&subsctn=0"),
+            ),
+            // `Penal Law § 160.05`, with the subject and without one
+            (
+                law("New York", "N.Y. Penal Law", Some("Penal"), None, "160.05"),
+                Some("https://www.nysenate.gov/legislation/laws/PEN/160.05"),
+            ),
+            (
+                law("New York", "N.Y. Penal Law", None, None, "160.05"),
+                Some("https://www.nysenate.gov/legislation/laws/PEN/160.05"),
+            ),
+            (
+                law("New York", "N.Y. Gen. Bus. Law", Some("Gen. Bus."), None, "349"),
+                Some("https://www.nysenate.gov/legislation/laws/GBS/349"),
+            ),
+            // `Family Ct Act § 413`
+            (
+                law("New York", "N.Y. Family Ct Act", Some("Family Ct Act"), None, "413"),
+                Some("https://www.nysenate.gov/legislation/laws/FCT/413"),
+            ),
+            // `Judiciary Law § 487`, `Vehicle and Traffic Law § 1192`
+            (
+                law("New York", "N.Y. Judiciary Law", Some("Judiciary"), None, "487"),
+                Some("https://www.nysenate.gov/legislation/laws/JUD/487"),
+            ),
+            (
+                law("New York", "N.Y. Vehicle and Traffic Law", Some("Vehicle and Traffic"), None, "1192"),
+                Some("https://www.nysenate.gov/legislation/laws/VAT/1192"),
+            ),
+            // `TEX. PENAL CODE ANN. § 19.02`, `Tex. Fam.Code Ann. § 153.002`
+            (
+                law("Texas", "Tex. Penal Code Ann.", None, None, "19.02"),
+                Some("https://tcss.legis.texas.gov/resources/PE/htm/PE.19.htm#19.02"),
+            ),
+            (
+                law("Texas", "Tex. Fam. Code Ann.", Some("Fam."), None, "153.002"),
+                Some("https://tcss.legis.texas.gov/resources/FA/htm/FA.153.htm#153.002"),
+            ),
+            // `N.C.G.S. § 50-13.4`, `G.S. § 15A-1340.14`
+            (
+                law("North Carolina", "N.C. Gen. Stat.", None, None, "15A-1340.14"),
+                Some("https://www.ncleg.gov/EnactedLegislation/Statutes/HTML/BySection/Chapter_15A/GS_15A-1340.14.html"),
+            ),
+            // `WIS. STAT. § 752.31`, `West Virginia Code § 61-11-18`, `MCL § 750.316`
+            (
+                law("Wisconsin", "Wis. Stat.", None, None, "752.31"),
+                Some("https://docs.legis.wisconsin.gov/document/statutes/752.31"),
+            ),
+            (
+                law("West Virginia", "W. Va. Code", None, None, "61-11-18"),
+                Some("https://code.wvlegislature.gov/61-11-18/"),
+            ),
+            (
+                law("Michigan", "Mich. Comp. Laws", None, None, "750.316"),
+                Some("https://www.legislature.mi.gov/Laws/MCL?objectName=mcl-750-316"),
+            ),
+            // `A.R.S. § 13-1105`
+            (
+                law("Arizona", "Ariz. Rev. Stat. Ann.", None, None, "13-1105"),
+                Some("https://www.azleg.gov/viewdocument/?docName=https://www.azleg.gov/ars/13/01105.htm"),
+            ),
+            // Recognized, not linked: `General Statutes § 52-557n`,
+            // `(Pen. Code, § 211)`, `OCGA § 16-9-93`, `40 P.S. § 1301.101`,
+            // `Conn. Practice Book § 60-5`.
+            (law("Connecticut", "Conn. Gen. Stat.", None, None, "52-557n"), None),
+            (law("California", "Cal. Penal Code", None, None, "211"), None),
+            (law("Georgia", "Ga. Code Ann.", None, None, "16-9-93"), None),
+            (law("Pennsylvania", "Pa. Stat. Ann.", None, Some("40"), "1301.101"), None),
+            (law("Connecticut", "Conn. Practice Book", None, None, "60-5"), None),
+            // A code is linked only under its own jurisdiction.
+            (law("Virginia", "W. Va. Code", None, None, "61-11-18"), None),
+        ];
+        for (law, url) in cases {
+            assert_eq!(state_code_url(&law).as_deref(), url, "{law:?}");
+        }
+    }
+
+    /// citare stops some sections short, at an en dash or a comma. The
+    /// section it gives isn't the one cited, so there is no link to it.
+    #[test]
+    fn a_section_cut_short_is_not_linked() {
+        for text in [
+            "See D.C. Code § 22–2101.",
+            "See Neb. Rev. Stat. § 60-6,196.",
+        ] {
+            let cites = detect_citations(text);
+            let c = cites
+                .iter()
+                .find(|c| c.citation_type == "FullLawCitation")
+                .unwrap_or_else(|| panic!("no law citation in {text}"));
+            assert_eq!(c.external_url, None, "{text}");
+            assert!(c.law.as_ref().unwrap().jurisdiction.is_some(), "{text}");
+            assert_eq!(c.law.as_ref().unwrap().section, None, "{text}");
+        }
+    }
+
     /// Law citations with no deterministic per-section URL stay unlinked:
     /// public laws before the 104th Congress (govinfo's link service has
     /// none) and state codes not in the list.
@@ -623,6 +1386,14 @@ mod tests {
             "See Pub. L. No. 93-205.",
             "See Ga. Code Ann. § 16-5-1.",
             "See Colo. Rev. Stat. § 18-3-102.",
+            "Under General Statutes § 52-584, it is barred.",
+            "See OCGA § 16-9-93.",
+            "See 40 P.S. § 1301.101.",
+            "See Conn. Gen. Stat. § 52-584.",
+            "See Cal. Penal Code § 187.",
+            "See Ohio Rev. Code Ann. § 2903.01.",
+            "See Wyo. Stat. Ann. § 16-3-114.",
+            "See 34 Pa. Code § 121.7.",
         ] {
             assert_eq!(sole_external_url(text), None, "{text}");
         }

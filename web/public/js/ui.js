@@ -1,4 +1,4 @@
-import { citedCaseHtml, orderCitedCases, renderTextHtml } from './citations.js';
+import { citationSummary, citedCaseHtml, orderCitedCases, renderTextHtml } from './citations.js';
 import { insertPageMarkers } from './pages.js';
 import { pdfUrl as volumePdfUrl } from './sources.js';
 
@@ -67,11 +67,13 @@ function citationStatusParts(caseData, detectedCitations, citationStatus) {
     statusText = "Couldn't check citations.";
   } else if (detectedCitations && detectedCitations.length > 0) {
     // Held here, then statutes linked to their text, then cases to look
-    // for elsewhere, then the rest. Only http(s) URLs are ever linked.
+    // for elsewhere, then the rest; bare section references aren't
+    // listed or counted. Only http(s) URLs are ever linked.
     const caseHref = (c) => `${window.location.pathname}#${c.slug}/${c.volume}/${c.page}`;
-    listHtml = orderCitedCases(detectedCitations).map(c => citedCaseHtml(c, caseHref)).join('');
-    totalCites = detectedCitations.length;
-    statusText = `${totalCites} citation${totalCites === 1 ? '' : 's'} found`;
+    const listed = orderCitedCases(detectedCitations);
+    listHtml = listed.map(c => citedCaseHtml(c, caseHref)).join('');
+    totalCites = listed.length;
+    statusText = citationSummary(detectedCitations);
   } else {
     listHtml = (caseData.cites_to || [])
       .map(c => {

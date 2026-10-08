@@ -59,7 +59,7 @@ button, input, textarea, select { font-family: inherit; }
    line up and don't take the serif's old-style forms. */
 .topbar-cite, .topbar-cite-input, .landing-form input, .landing-example,
 .landing-feature-text strong, .site-footer-build, .sidebar, .page-marker,
-.cite-badge, .cite-link, .cite-unresolved, .cite-lookup, .cite-tooltip,
+.cite-badge, .cite-link, .cite-unresolved, .cite-lookup, .cite-statute, .cite-tooltip,
 .check-status, .check-summary, .check-cite-panel {
   font-variant-numeric: lining-nums tabular-nums;
 }

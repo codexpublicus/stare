@@ -108,14 +108,14 @@ test('/check fetches the bundle alongside the WASM and keeps it cached across a 
   expect((await fetched).status()).toBe(200);
   await page.fill('#check-input', 'See Barney v. Oelrichs, 138 U.S. 529 (1891).');
   await page.click('#check-btn');
-  await expect(page.locator('#check-summary')).toHaveText('1 citations found (1 resolvable)');
+  await expect(page.locator('#check-summary')).toHaveText('1 case citation found (1 resolvable)');
 
   // On the next visit the bundle comes from the browser's cache: no bytes
   // transferred and no revalidation.
   await page.reload();
   await page.fill('#check-input', 'See Barney v. Oelrichs, 138 U.S. 529 (1891).');
   await page.click('#check-btn');
-  await expect(page.locator('#check-summary')).toHaveText('1 citations found (1 resolvable)');
+  await expect(page.locator('#check-summary')).toHaveText('1 case citation found (1 resolvable)');
   const entry = await page.evaluate((url) => {
     const e = performance.getEntriesByType('resource').find((r) => new URL(r.name).pathname === url);
     return e && { transferSize: e.transferSize, decodedBodySize: e.decodedBodySize };
@@ -136,7 +136,7 @@ base('/check reports a failed bundle load and retries it', async ({ page }) => {
   failing = false;
   await alert.getByRole('button', { name: 'Retry' }).click();
   await expect(alert).toHaveCount(0);
-  await expect(page.locator('#check-summary')).toHaveText('1 citations found (1 resolvable)');
+  await expect(page.locator('#check-summary')).toHaveText('1 case citation found (1 resolvable)');
 });
 
 for (const path of ['/', '/check']) {
@@ -200,7 +200,7 @@ test('/check shows a loading bar while the WASM loads, then the results', async 
   release();
   await expect(bar).toHaveCount(0);
   await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
-  await expect(page.locator('#check-summary')).toHaveText('1 citations found (1 resolvable)');
+  await expect(page.locator('#check-summary')).toHaveText('1 case citation found (1 resolvable)');
 });
 
 test('the case view shows a loading bar while the WASM loads, then the case', async ({ page }) => {
@@ -232,7 +232,7 @@ base('/check reports a failed WASM load and retries it', async ({ page }) => {
   await expect(alert).toHaveCount(0);
   // The retry reruns the check.
   await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
-  await expect(page.locator('#check-summary')).toHaveText('1 citations found (1 resolvable)');
+  await expect(page.locator('#check-summary')).toHaveText('1 case citation found (1 resolvable)');
 });
 
 test('/check lists the citations citare finds', async ({ page }) => {
@@ -255,8 +255,8 @@ test('/check lists the citations citare finds', async ({ page }) => {
   await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
   await expect(page.locator('#check-status')).not.toHaveClass(/check-error/);
   // Resolvability comes from idx.stare.pub's manifest; a2d/31 and us/138
-  // are both indexed.
-  await expect(page.locator('#check-summary')).toHaveText('4 citations found (3 resolvable)');
+  // are both indexed. The statute is counted apart from the cases.
+  await expect(page.locator('#check-summary')).toHaveText('3 case citations found (3 resolvable), 1 statute');
   // Resolvable citations first, as links to the case viewer; then the
   // statute, linked to its text. "Id." resolves through Barney, the
   // citation before it (#120).
@@ -294,7 +294,7 @@ test('/check links out only for volumes and statutes stare.pub does not hold', a
   await page.click('#check-btn');
 
   await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
-  await expect(page.locator('#check-summary')).toHaveText('3 citations found (0 resolvable)');
+  await expect(page.locator('#check-summary')).toHaveText('2 case citations found (0 resolvable), 1 statute');
   await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
     '↗ Minn. Stat. § 609.185',
     '↗ 598 U.S. 175 Not in stare.pub: may be at CourtListener or Google Scholar',
@@ -322,6 +322,39 @@ test('/check links out only for volumes and statutes stare.pub does not hold', a
   expect(outside).toEqual([]);
 });
 
+test('/check tells statutes from cases, and leaves bare section references alone', async ({ page }) => {
+  // "§ 12 of the Act" names no code: a bare section reference. citare
+  // reads Connecticut's own "General Statutes § 52-584" as Conn. Gen. Stat.
+  // (citare#69), which has no per-section URL; North Carolina's links to
+  // the legislature, cited in its own form too.
+  const text = 'Under § 12 of the Act, see General Statutes § 52-584 and N.C.G.S. § 1-289.';
+
+  const outside = [];
+  page.on('request', (req) => {
+    if (/ncleg|cga\.ct/.test(new URL(req.url()).hostname)) outside.push(req.url());
+  });
+
+  await page.goto('/check');
+  await page.fill('#check-input', text);
+  await page.click('#check-btn');
+
+  await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
+  await expect(page.locator('#check-summary')).toHaveText('0 case citations found (0 resolvable), 2 statutes');
+  await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
+    '↗ N.C.G.S. § 1-289',
+    '§ General Statutes § 52-584 Statute; no free source linked yet',
+  ]);
+  await expect(page.locator('#check-cite-list a.cited-case-link'))
+    .toHaveAttribute('href', 'https://www.ncleg.gov/EnactedLegislation/Statutes/HTML/BySection/Chapter_1/GS_1-289.html');
+  await expect(page.locator('#check-rendered .cite-statute')).toHaveText('General Statutes § 52-584');
+  await expect(page.locator('#check-rendered .cite-statute')).toHaveAttribute('title', 'Statute; no free source linked yet');
+  await expect(page.locator('#check-rendered .cite-section')).toHaveText('§');
+  await expect(page.locator('#check-rendered .cite-section')).toHaveAttribute('title', 'Section reference');
+  await expect(page.locator('#check-rendered [title="Not yet indexed"]')).toHaveCount(0);
+
+  expect(outside).toEqual([]);
+});
+
 test('/check survives a multibyte character at the case-name scan boundary', async ({ page }) => {
   // citare v0.4.0 panicked (a WASM trap here) when a multibyte character,
   // here a three-byte curly apostrophe, straddled byte 300 of the
@@ -334,7 +367,7 @@ test('/check survives a multibyte character at the case-name scan boundary', asy
 
   await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
   await expect(page.locator('#check-status')).not.toHaveClass(/check-error/);
-  await expect(page.locator('#check-summary')).toHaveText(/^1 citations found/);
+  await expect(page.locator('#check-summary')).toHaveText(/^1 case citation found/);
   await expect(page.locator('#check-rendered').locator('.cite-link, .cite-unresolved')).toHaveText([
     '547 So.2d 1034',
   ]);
@@ -350,7 +383,7 @@ test('/#a2d/31/647-01 resolves through idx.stare.pub and renders the case', asyn
   await expect(page.locator('#reader .reader-title')).toHaveText("D'Elia & Marks Co. v. Lyon");
   await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
   // The sidebar's citation pass finished without its error state.
-  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ citations? found$/);
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?$/);
 });
 
 test('short cites and Id.s in a case link to their antecedent\'s case (#120)', async ({ page }) => {
@@ -359,7 +392,7 @@ test('short cites and Id.s in a case link to their antecedent\'s case (#120)', a
   // State starts at page 1023, where the short cite used to link.
   await page.goto('/#p3d/440/1078-01');
   await expect(page.locator('#reader .reader-title')).toContainText('McCallister');
-  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ citations? found$/);
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?$/);
 
   const roe = page.locator('#reader a.cite-link', { hasText: '997 P.2d at 1023' });
   await expect(roe).toHaveAttribute('href', '#p2d/997/1021@1023');
@@ -382,7 +415,7 @@ test('a pin cite opens the cited case at the pin page (#124)', async ({ page }) 
   // In McCallister v. State, "997 P.2d at 1023" refers to Roe v. Board of
   // County Commissioners, 997 P.2d 1021; the link opens Roe at page 1023.
   await page.goto('/#p3d/440/1078-01');
-  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ citations? found$/);
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?$/);
   const roe = page.locator('#reader a.cite-link', { hasText: '997 P.2d at 1023' });
   const [popup] = await Promise.all([page.waitForEvent('popup'), roe.click()]);
 
