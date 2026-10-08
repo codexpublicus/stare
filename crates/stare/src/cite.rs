@@ -491,6 +491,22 @@ static STATE_CODES: &[StateCode] = &[
             ))
         }),
     },
+    // Maine: "19-A M.R.S. § 1653", "Me. Rev. Stat. Ann. tit. 17-A, § 201",
+    // lettered sections ("§ 408-A"). One page per section, named by title
+    // and section (title19-Asec1653.html). A range links to its first section.
+    StateCode {
+        jurisdiction: "Maine",
+        names: &["Me. Rev. Stat.", "M.R.S.", "M.R.S.A."],
+        url: Some(|l| {
+            let title = regex!(r"^\d+(?:-[A-Z])?$").find(l.title.as_deref()?)?;
+            let sec = regex!(r"^\d+(?:-[A-Z]+)?").find(l.section.as_deref()?)?;
+            Some(format!(
+                "https://legislature.maine.gov/statutes/{0}/title{0}sec{1}.html",
+                title.as_str(),
+                sec.as_str()
+            ))
+        }),
+    },
     // Missouri: "Mo. Rev. Stat. § 537.080", "Mo. Ann. Stat. § 537.080"
     StateCode {
         jurisdiction: "Missouri",
@@ -1164,6 +1180,14 @@ mod tests {
             (
                 "See West Virginia Code § 61-11-18.",
                 "https://code.wvlegislature.gov/61-11-18/",
+            ),
+            (
+                "See 19-A M.R.S. § 1653.",
+                "https://legislature.maine.gov/statutes/19-A/title19-Asec1653.html",
+            ),
+            (
+                "See 1 M.R.S. § 408-A.",
+                "https://legislature.maine.gov/statutes/1/title1sec408-A.html",
             ),
             (
                 "See A.R.S. § 13-1105.",
