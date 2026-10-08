@@ -323,10 +323,11 @@ test('/check links out only for volumes and statutes stare.pub does not hold', a
 });
 
 test('/check tells statutes from cases, and leaves bare section references alone', async ({ page }) => {
-  // Connecticut opinions cite "General Statutes § 52-584", which citare
-  // finds only as a bare §. Connecticut's code has no per-section URL;
-  // North Carolina's links to the legislature.
-  const text = 'Under General Statutes § 52-584, see Conn. Gen. Stat. § 52-577 and N.C. Gen. Stat. § 1-289.';
+  // "§ 12 of the Act" names no code: a bare section reference. citare
+  // reads Connecticut's own "General Statutes § 52-584" as Conn. Gen. Stat.
+  // (citare#69), which has no per-section URL; North Carolina's links to
+  // the legislature, cited in its own form too.
+  const text = 'Under § 12 of the Act, see General Statutes § 52-584 and N.C.G.S. § 1-289.';
 
   const outside = [];
   page.on('request', (req) => {
@@ -340,12 +341,12 @@ test('/check tells statutes from cases, and leaves bare section references alone
   await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
   await expect(page.locator('#check-summary')).toHaveText('0 case citations found (0 resolvable), 2 statutes');
   await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
-    '↗ N.C. Gen. Stat. § 1-289',
-    '§ Conn. Gen. Stat. § 52-577 Statute; no free source linked yet',
+    '↗ N.C.G.S. § 1-289',
+    '§ General Statutes § 52-584 Statute; no free source linked yet',
   ]);
   await expect(page.locator('#check-cite-list a.cited-case-link'))
     .toHaveAttribute('href', 'https://www.ncleg.gov/EnactedLegislation/Statutes/HTML/BySection/Chapter_1/GS_1-289.html');
-  await expect(page.locator('#check-rendered .cite-statute')).toHaveText('Conn. Gen. Stat. § 52-577');
+  await expect(page.locator('#check-rendered .cite-statute')).toHaveText('General Statutes § 52-584');
   await expect(page.locator('#check-rendered .cite-statute')).toHaveAttribute('title', 'Statute; no free source linked yet');
   await expect(page.locator('#check-rendered .cite-section')).toHaveText('§');
   await expect(page.locator('#check-rendered .cite-section')).toHaveAttribute('title', 'Section reference');

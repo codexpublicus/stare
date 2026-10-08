@@ -18,6 +18,7 @@ import {
   isStatute,
   orderCitedCases,
   processCitations,
+  refersTo,
   renderTextHtml,
 } from '../public/js/citations.js';
 
@@ -185,5 +186,15 @@ describe('statutes and pin cites', () => {
     const html = renderTextHtml(text, occurrencesByOpinion[0], new Map(unique.map(c => [c.key, c]))).join('');
     assert.doesNotMatch(html, /href="#|@/);
     assert.match(html, /class="cite-statute"/);
+  });
+});
+
+describe('an Id. to a statute', () => {
+  test('names a numeric pin as a section, not a page', () => {
+    const info = {
+      raw: 'Id.', type: 'IdCitation', pin: '52-577', law: law('Conn. Gen. Stat.', '52-584', 'Connecticut'),
+      antecedent: { raw: 'General Statutes § 52-584' },
+    };
+    assert.equal(refersTo(info), 'Refers to General Statutes § 52-584, § 52-577');
   });
 });

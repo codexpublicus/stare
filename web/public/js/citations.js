@@ -410,7 +410,8 @@ export function pinLabel(pin) {
 export function refersTo(info, pin = info?.pin) {
   if (!isShortForm(info)) return null;
   if (!info.antecedent) return NO_ANTECEDENT;
-  const at = pinLabel(pin);
+  // A statute's pin is a section (`Id. 52-577`), not a page.
+  const at = isStatute(info) && /^\d/.test(pin || '') ? `§ ${pin}` : pinLabel(pin);
   return `Refers to ${info.antecedent.raw}${at ? `, ${at}` : ''}`;
 }
 
