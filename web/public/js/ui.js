@@ -171,7 +171,7 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
         ${docket ? `<strong>Docket:</strong> ${esc(docket)}<br>` : ''}
         <strong>Jurisdiction:</strong> ${esc(caseData.jurisdiction?.name_long || '')}
       </div>
-      ${sourceLineHtml(caseData, 'sidebar-meta sidebar-source')}
+      ${sourceLineHtml(caseData, 'sidebar-meta sidebar-source', { docket: false })}
     </div>
     <div class="sidebar-section">
       <div class="sidebar-label">Citations</div>

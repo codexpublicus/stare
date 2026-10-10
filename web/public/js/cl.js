@@ -83,10 +83,10 @@ export class ClRecordError extends Error {
 /**
  * The source line for a CourtListener record: "From CourtListener's bulk data, export
  * 2026-09-30", linking the case on CourtListener when the record has an http(s) URL,
- * then the docket number and precedential status when it has them, in a div of
- * `className`. '' for a CAP case.
+ * then the docket number (unless `docket` is false, where the docket is shown apart)
+ * and precedential status when it has them, in a div of `className`. '' for a CAP case.
  */
-export function sourceLineHtml(caseData, className = 'reader-source') {
+export function sourceLineHtml(caseData, className = 'reader-source', { docket = true } = {}) {
   if (!isClRecord(caseData)) return '';
   const s = caseData.source;
   const label = escapeHtml(`From CourtListener's bulk data${s.export ? `, export ${s.export}` : ''}`);
@@ -95,7 +95,7 @@ export function sourceLineHtml(caseData, className = 'reader-source') {
     ? `<a class="source-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`
     : label;
   const extra = [
-    s.docket_number ? `Docket ${escapeHtml(s.docket_number)}` : '',
+    docket && s.docket_number ? `Docket ${escapeHtml(s.docket_number)}` : '',
     s.precedential_status ? escapeHtml(s.precedential_status) : '',
   ].filter(Boolean).map((t) => ` &middot; <span>${t}</span>`).join('');
   return `<div class="${escapeHtml(className)}">${from}${extra}</div>`;

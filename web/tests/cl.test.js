@@ -196,6 +196,7 @@ describe('records', () => {
     const bare = { source: { name: 'courtlistener', export: '2026-09-30', url: 'javascript:alert(1)' } };
     assert.equal(sourceLineHtml(bare, 'x'),
       '<div class="x">From CourtListener&#39;s bulk data, export 2026-09-30</div>');
+    assert.ok(!sourceLineHtml(RECORD, 'x', { docket: false }).includes('Docket'));
     assert.equal(sourceLineHtml({ source: { name: 'courtlistener' } }),
       '<div class="reader-source">From CourtListener&#39;s bulk data</div>');
   });
