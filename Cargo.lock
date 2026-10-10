@@ -1752,6 +1752,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "flate2",
  "mockito",
  "reqwest",
  "serde_json",

@@ -271,7 +271,18 @@ fn fetch_bin(src: &Sources, reporter: &str, volume: &str) -> Result<Vec<u8>> {
 
 /// A volume's `.multi` file, or None if it has none.
 fn fetch_multi(src: &Sources, reporter: &str, volume: &str) -> Result<Option<String>> {
-    let key = src.index_key(&format!("{}/{}.multi", reporter, volume));
+    fetch_optional_index(src, &format!("{}/{}.multi", reporter, volume))
+}
+
+/// A volume's CourtListener sidecar (`.cl`), or None if it has none.
+fn fetch_sidecar(src: &Sources, reporter: &str, volume: &str) -> Result<Option<String>> {
+    fetch_optional_index(src, &stare::cl::sidecar_path(reporter, volume)?)
+}
+
+/// A text file of the index that a volume may not have, by its path under the
+/// manifest's `base`: None when the source has no such file.
+fn fetch_optional_index(src: &Sources, path: &str) -> Result<Option<String>> {
+    let key = src.index_key(path);
     if let Some(data) = config::cache_get("bins", &key) {
         return Ok(Some(String::from_utf8(data)?));
     }
@@ -322,6 +333,25 @@ fn fetch_zip(src: &Sources, reporter: &str, volume: &str) -> Result<Vec<u8>> {
     Ok(data)
 }
 
+/// A CourtListener record's bytes (gzip, as stored), from the data bucket's `cl/`
+/// prefix, which sits beside the `cap/` the data source names. Records never change
+/// under their path, so they're cached like the zips.
+fn fetch_record(src: &Sources, cluster_id: u64, hash: &str) -> Result<Vec<u8>> {
+    let key = stare::cl::record_path(cluster_id, hash)?;
+    if let Some(data) = config::cache_get("zips", &key) {
+        return Ok(data);
+    }
+    let base = stare::cl::data_base_for(&src.data);
+    let data = if Sources::is_url(base) {
+        fetch_url(&stare::cl::record_url(base, cluster_id, hash)?)?
+    } else {
+        let path = PathBuf::from(base).join(&key);
+        std::fs::read(&path).with_context(|| format!("record not found: {}", path.display()))?
+    };
+    let _ = config::cache_set("zips", &key, &data);
+    Ok(data)
+}
+
 fn fetch_url(url: &str) -> Result<Vec<u8>> {
     let client = reqwest::blocking::Client::builder()
         .user_agent("stare/0.1.0 (case law tool; github.com/codexpublicus/stare)")
@@ -366,31 +396,22 @@ fn fetch_manifest(src: &Sources) -> Result<stare::manifest::Manifest> {
 
 /// Resolve a citation to `volume` (a cited number or a CAP folder name). The volume's
 /// own folder is tried first; only when the page isn't there is the manifest consulted
-/// for the other parts of a volume CAP split over several folders.
+/// for the other parts of a volume CAP split over several folders. When CAP has no case
+/// at the page, or doesn't hold the volume, the volume's CourtListener sidecar is read,
+/// if the manifest lists one.
 fn resolve_case(
     src: &Sources,
     reporter: &str,
     volume: &str,
     page: u32,
 ) -> Result<stare::resolve::CaseResult> {
-    let read = |v: &str| fetch_bin(src, reporter, v);
-    let located = match stare::manifest::locate(&[volume.to_string()], page, read) {
+    let located = match locate_cap(src, reporter, volume, page) {
         Ok(found) => found,
-        Err(direct) => {
-            let Some(manifest) = src.manifest() else {
-                return Err(direct.context(format!("{}/{}", reporter, volume)));
-            };
-            let others: Vec<String> = manifest
-                .candidates(reporter, volume, page)
-                .into_iter()
-                .filter(|v| v != volume)
-                .collect();
-            if others.is_empty() {
-                return Err(direct.context(format!("{}/{}", reporter, volume)));
+        Err(miss) => {
+            return match resolve_cl(src, reporter, volume, page)? {
+                Some(result) => Ok(result),
+                None => Err(miss),
             }
-            stare::manifest::locate(&others, page, read).with_context(|| {
-                format!("no case at page {} in {} vol. {}", page, reporter, volume)
-            })?
         }
     };
     let mut case_file = located.case_file;
@@ -408,6 +429,82 @@ fn resolve_case(
     let zip_data = fetch_zip(src, reporter, &located.volume)?;
     let case = stare::case::extract_from_zip(&zip_data, &case_file)?;
     Ok(stare::resolve::CaseResult { case_file, case })
+}
+
+/// The CAP folder with a case at `page` for a citation to `volume`; an error is a miss.
+fn locate_cap(
+    src: &Sources,
+    reporter: &str,
+    volume: &str,
+    page: u32,
+) -> Result<stare::manifest::Located> {
+    let read = |v: &str| fetch_bin(src, reporter, v);
+    match stare::manifest::locate(&[volume.to_string()], page, read) {
+        Ok(found) => Ok(found),
+        Err(direct) => {
+            let Some(manifest) = src.manifest() else {
+                return Err(direct.context(format!("{}/{}", reporter, volume)));
+            };
+            let others: Vec<String> = manifest
+                .candidates(reporter, volume, page)
+                .into_iter()
+                .filter(|v| v != volume)
+                .collect();
+            if others.is_empty() {
+                return Err(direct.context(format!("{}/{}", reporter, volume)));
+            }
+            stare::manifest::locate(&others, page, read).with_context(|| {
+                format!("no case at page {} in {} vol. {}", page, reporter, volume)
+            })
+        }
+    }
+}
+
+/// The CourtListener records that start at `page` of `volume`, from its sidecar; empty
+/// when the manifest lists no sidecar for the volume.
+fn cl_entries(
+    src: &Sources,
+    reporter: &str,
+    volume: &str,
+    page: u32,
+) -> Result<Vec<stare::cl::Entry>> {
+    if !src
+        .manifest()
+        .is_some_and(|m| m.has_cl_volume(reporter, volume))
+    {
+        return Ok(Vec::new());
+    }
+    let Some(text) = fetch_sidecar(src, reporter, volume)? else {
+        return Ok(Vec::new());
+    };
+    Ok(stare::cl::parse_sidecar(&text)
+        .lookup(page)
+        .into_iter()
+        .cloned()
+        .collect())
+}
+
+/// The first CourtListener record at `page` of `volume`, or None when there's none.
+fn resolve_cl(
+    src: &Sources,
+    reporter: &str,
+    volume: &str,
+    page: u32,
+) -> Result<Option<stare::resolve::CaseResult>> {
+    let Some(entry) = cl_entries(src, reporter, volume, page)?.into_iter().next() else {
+        return Ok(None);
+    };
+    let bytes = fetch_record(src, entry.cluster_id, &entry.hash)?;
+    let case = stare::cl::decode_record(&bytes).with_context(|| {
+        format!(
+            "CourtListener record {}",
+            stare::cl::record_path(entry.cluster_id, &entry.hash).unwrap_or_default()
+        )
+    })?;
+    Ok(Some(stare::resolve::CaseResult {
+        case_file: format!("cl/{}", entry.cluster_id),
+        case,
+    }))
 }
 
 /// Resolve a case on an unnumbered page (`xxix`, `Supp. 1`) of a volume folder.
@@ -440,6 +537,9 @@ fn print_case(result: &stare::resolve::CaseResult) {
         "{}  |  {}  |  {}",
         cite, result.case.decision_date, result.case.court.name
     );
+    if let Some(line) = source_line(&result.case) {
+        println!("{}", line);
+    }
     println!();
     for opinion in &result.case.casebody.opinions {
         if let Some(author) = &opinion.author {
@@ -451,6 +551,16 @@ fn print_case(result: &stare::resolve::CaseResult) {
         println!("{}", opinion.text);
         println!();
     }
+}
+
+/// "Source: CourtListener (export 2026-09-30)" for a CourtListener record; None for
+/// CAP's, which is the default source.
+fn source_line(case: &stare::case::CaseJson) -> Option<String> {
+    let source = case.source.as_ref().filter(|s| s.name == "courtlistener")?;
+    Some(match &source.export {
+        Some(export) => format!("Source: CourtListener (export {})", export),
+        None => "Source: CourtListener".to_string(),
+    })
 }
 
 fn list_cases(src: &Sources, reporter: &str, volume: &str, json: bool) -> Result<()> {
@@ -559,7 +669,8 @@ fn check_target(c: &stare::cite::DetectedCitation) -> Option<CheckTarget<'_>> {
 }
 
 /// Whether stare.pub holds `volume` of `slug`, and whether a case starts at
-/// `page` in it (or in another part of a volume CAP split).
+/// `page` in it (or in another part of a volume CAP split, or in the volume's
+/// CourtListener sidecar).
 fn check_page(src: &Sources, slug: &str, volume: u32, page: u32) -> (bool, bool) {
     let cited = volume.to_string();
     let mut candidates = vec![cited.clone()];
@@ -570,11 +681,12 @@ fn check_page(src: &Sources, slug: &str, volume: u32, page: u32) -> (bool, bool)
             }
         }
     }
-    let found = stare::manifest::locate(&candidates, page, |v| fetch_bin(src, slug, v)).is_ok();
+    let found = stare::manifest::locate(&candidates, page, |v| fetch_bin(src, slug, v)).is_ok()
+        || cl_entries(src, slug, &cited, page).is_ok_and(|e| !e.is_empty());
     let held = found
-        || src.manifest().is_some_and(|m| {
-            m.has_volume(slug, &cited) || m.parts.get(slug).is_some_and(|p| p.contains_key(&cited))
-        })
+        || src
+            .manifest()
+            .is_some_and(|m| m.holds_cap_volume(slug, &cited) || m.has_cl_volume(slug, &cited))
         || fetch_bin(src, slug, &cited).is_ok();
     (held, found)
 }
@@ -943,6 +1055,68 @@ mod tests {
         let cache2 = tempfile::tempdir().unwrap();
         std::env::set_var("XDG_CACHE_HOME", cache2.path());
         assert_eq!(sources(empty.path()).index_key("a2d/31.bin"), "a2d/31.bin");
+    }
+
+    /// 250 A.3d 100 is in no CAP volume; the manifest's `cl` block lists a3d 250,
+    /// whose sidecar points at a record beside the data source's `cap/`.
+    fn cl_fixture() -> (tempfile::TempDir, tempfile::TempDir, Sources) {
+        use std::io::Write;
+        let idx = tempfile::tempdir().unwrap();
+        std::fs::write(
+            idx.path().join("manifest.json"),
+            r#"{"format": 2, "base": "v/v1/", "reporters": {"a3d": ["213"]},
+                "cl": {"export": "2026-09-30", "reporters": {"a3d": ["250"]}}}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(idx.path().join("v/v1/a3d")).unwrap();
+        std::fs::write(
+            idx.path().join("v/v1/a3d/250.cl"),
+            "100,9876543,0f3a9c2e7b1d4a65\n100,9876544,a1b2c3d4e5f60718\nbad line\n",
+        )
+        .unwrap();
+
+        let data = tempfile::tempdir().unwrap();
+        let dir = data.path().join("cl/c/9876543");
+        std::fs::create_dir_all(&dir).unwrap();
+        let json = std::fs::read("../stare/tests/fixtures/cl-record.json").unwrap();
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gz.write_all(&json).unwrap();
+        std::fs::write(dir.join("0f3a9c2e7b1d4a65.json.gz"), gz.finish().unwrap()).unwrap();
+
+        let src = Sources {
+            index: idx.path().to_string_lossy().into_owned(),
+            data: data.path().join("cap").to_string_lossy().into_owned(),
+            manifest: std::cell::OnceCell::new(),
+        };
+        (idx, data, src)
+    }
+
+    #[test]
+    fn a_cap_miss_resolves_through_the_courtlistener_sidecar() {
+        let _env = CACHE_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let cache = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", cache.path());
+        let (_idx, _data, src) = cl_fixture();
+
+        // The first of the two records at page 100.
+        let result = resolve_case(&src, "a3d", "250", 100).unwrap();
+        assert_eq!(result.case_file, "cl/9876543");
+        assert_eq!(result.case.name_abbreviation, "Smith v. Jones");
+        assert_eq!(result.case.source_name(), "courtlistener");
+        assert_eq!(
+            source_line(&result.case).as_deref(),
+            Some("Source: CourtListener (export 2026-09-30)")
+        );
+
+        // A page the sidecar doesn't have is still CAP's miss.
+        let err = resolve_case(&src, "a3d", "250", 101).err().unwrap();
+        assert!(format!("{err:#}").contains("a3d/250"), "{err:#}");
+        // A volume the cl block doesn't list never reads a sidecar.
+        assert!(cl_entries(&src, "a3d", "251", 100).unwrap().is_empty());
+
+        // `stare check` counts it as held and found.
+        assert_eq!(check_page(&src, "a3d", 250, 100), (true, true));
+        assert_eq!(check_page(&src, "a3d", 250, 101), (true, false));
     }
 
     /// A statute with no link is a statute, not an unchecked case; one

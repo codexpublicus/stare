@@ -46,6 +46,12 @@
 //! second source for the same book, not its second half), so a range only rules a part
 //! out; the part's index decides.
 //!
+//! `cl`, when present, lists the volumes with a CourtListener sidecar
+//! (`<base><reporter>/<volume>.cl`, see [`crate::cl`]) and the export they were built
+//! from: `"cl": {"export": "2026-09-30", "reporters": {"a3d": ["250"]}}`. A reporter
+//! here may be one CAP never had. Readers that predate it ignore the key, and a
+//! manifest without it has no CourtListener records.
+//!
 //! The legacy format (format 1, everything before it) is the bare reporter map with
 //! integer volumes, `{"a2d": [1, 2, 31]}`. It can't name split volumes, so reading it,
 //! [`Manifest::candidates`] guesses `<volume>-2`, the folder name every second part in
@@ -82,8 +88,29 @@ pub struct Manifest {
     /// Where the index files are, relative to the manifest (`v/v2026.10.03/`); see
     /// [`Manifest::index_path`].
     pub base: Option<String>,
+    /// The volumes with a CourtListener sidecar, and their export (format 2 only).
+    pub cl: Option<ClVolumes>,
     /// Read from the legacy format, which can't describe split volumes.
     pub legacy: bool,
+}
+
+/// The manifest's `cl` block: which volumes have a `.cl` sidecar in this build.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClVolumes {
+    /// The CourtListener bulk export the sidecars were built from (`2026-09-30`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export: Option<String>,
+    /// Reporter slug → volumes with a sidecar, in [`compare_volumes`] order.
+    #[serde(default)]
+    pub reporters: BTreeMap<String, Vec<String>>,
+}
+
+impl ClVolumes {
+    pub fn has_volume(&self, reporter: &str, volume: &str) -> bool {
+        self.reporters
+            .get(reporter)
+            .is_some_and(|v| v.iter().any(|x| x == volume))
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -102,6 +129,8 @@ struct Format2 {
     reporters: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     parts: BTreeMap<String, BTreeMap<String, Vec<Part>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cl: Option<ClVolumes>,
 }
 
 /// Whether `s` can name a volume folder: an ASCII digit first, then digits, lowercase
@@ -225,6 +254,7 @@ impl Manifest {
                 version: f.version,
                 generated_at: f.generated_at,
                 base: f.base,
+                cl: f.cl,
                 legacy: false,
             };
             m.normalize()?;
@@ -265,6 +295,18 @@ impl Manifest {
             volumes.sort_by(|a, b| compare_volumes(a, b));
             volumes.dedup();
         }
+        if let Some(cl) = &mut self.cl {
+            for (reporter, volumes) in &mut cl.reporters {
+                if !crate::cl::is_reporter_slug(reporter) {
+                    bail!("manifest: bad cl reporter {:?}", reporter);
+                }
+                if let Some(bad) = volumes.iter().find(|v| !is_volume_key(v)) {
+                    bail!("manifest: bad cl volume {:?} under {}", bad, reporter);
+                }
+                volumes.sort_by(|a, b| compare_volumes(a, b));
+                volumes.dedup();
+            }
+        }
         for (reporter, numbers) in &self.parts {
             for parts in numbers.values() {
                 if let Some(bad) = parts.iter().find(|p| !is_volume_key(&p.volume)) {
@@ -285,6 +327,7 @@ impl Manifest {
             entries: self.entries,
             reporters: self.reporters.clone(),
             parts: self.parts.clone(),
+            cl: self.cl.clone(),
         };
         Ok(serde_json::to_string_pretty(&f)?)
     }
@@ -304,6 +347,23 @@ impl Manifest {
 
     pub fn has_volume(&self, reporter: &str, volume: &str) -> bool {
         self.volumes(reporter).iter().any(|v| v == volume)
+    }
+
+    /// Whether CAP holds `volume` as cited: the folder itself, or parts of a volume
+    /// CAP split over several folders.
+    pub fn holds_cap_volume(&self, reporter: &str, volume: &str) -> bool {
+        self.has_volume(reporter, volume)
+            || self
+                .parts
+                .get(reporter)
+                .is_some_and(|p| p.contains_key(volume))
+    }
+
+    /// Whether the build has a CourtListener sidecar for `volume` of `reporter`.
+    pub fn has_cl_volume(&self, reporter: &str, volume: &str) -> bool {
+        self.cl
+            .as_ref()
+            .is_some_and(|cl| cl.has_volume(reporter, volume))
     }
 
     /// The folders to look `page` up in, in order, for a citation to `volume` (as cited,
@@ -560,6 +620,55 @@ mod tests {
         // A leap day, and the last second of a year.
         assert_eq!(rfc3339_utc(1_709_164_800), "2024-02-29T00:00:00Z");
         assert_eq!(rfc3339_utc(1_767_225_599), "2025-12-31T23:59:59Z");
+    }
+
+    #[test]
+    fn reads_and_round_trips_the_cl_block() {
+        let m = Manifest::parse(
+            br#"{"format": 2, "reporters": {"a3d": ["213"]},
+                 "cl": {"export": "2026-09-30", "reporters": {"a3d": ["251", "250", "250"], "ohio": ["2021"]}}}"#,
+        )
+        .unwrap();
+        let cl = m.cl.as_ref().unwrap();
+        assert_eq!(cl.export.as_deref(), Some("2026-09-30"));
+        assert_eq!(cl.reporters["a3d"], ["250", "251"]);
+        assert!(m.has_cl_volume("a3d", "250"));
+        assert!(m.has_cl_volume("ohio", "2021"));
+        assert!(!m.has_cl_volume("a3d", "213"));
+        // CourtListener volumes aren't CAP's.
+        assert!(!m.holds_cap_volume("a3d", "250"));
+        assert!(m.holds_cap_volume("a3d", "213"));
+        assert_eq!(Manifest::parse(m.to_json().unwrap().as_bytes()).unwrap(), m);
+    }
+
+    #[test]
+    fn manifests_without_cl_parse_unchanged() {
+        // The live manifest's shape before the cl block.
+        let m = Manifest::parse(
+            br#"{"format": 2, "version": "v2026.10.05", "generated_at": "2026-10-05T07:11:49Z",
+                 "base": "v/v2026.10.05/", "volumes": 1, "entries": 2, "reporters": {"a2d": ["31"]}}"#,
+        )
+        .unwrap();
+        assert_eq!(m.cl, None);
+        assert!(!m.has_cl_volume("a2d", "31"));
+        let raw: serde_json::Value = serde_json::from_str(&m.to_json().unwrap()).unwrap();
+        assert!(raw.get("cl").is_none());
+        let legacy = Manifest::parse(br#"{"a2d": [31]}"#).unwrap();
+        assert_eq!(legacy.cl, None);
+        // An empty block is a block with nothing in it.
+        let empty = Manifest::parse(br#"{"format": 2, "reporters": {}, "cl": {}}"#).unwrap();
+        assert_eq!(empty.cl, Some(ClVolumes::default()));
+    }
+
+    #[test]
+    fn rejects_unsafe_cl_names() {
+        for bad in [
+            r#"{"format": 2, "reporters": {}, "cl": {"reporters": {"a3d": ["../1"]}}}"#,
+            r#"{"format": 2, "reporters": {}, "cl": {"reporters": {"../a3d": ["1"]}}}"#,
+            r#"{"format": 2, "reporters": {}, "cl": {"reporters": {"A.3d": ["1"]}}}"#,
+        ] {
+            assert!(Manifest::parse(bad.as_bytes()).is_err(), "{bad}");
+        }
     }
 
     #[test]
