@@ -1,7 +1,8 @@
 # CourtListener bulk export: runbook
 
 `stare-cl` mirrors CourtListener's bulk export ([stare#83](https://github.com/codexpublicus/stare/issues/83)).
-This first slice only fetches and reads it; nothing here loads it anywhere yet.
+It fetches and reads the export, then turns it into per-case records on local disk;
+nothing here uploads anything yet.
 
 CourtListener publishes its database as dated CSV dumps in the public S3 bucket
 `com-courtlistener-storage`, under `bulk-data/`, one `<table>-<YYYY-MM-DD>.csv.bz2` per
@@ -98,6 +99,81 @@ stare-cl head --table dockets --date 2026-09-30 -n 1 --width 0   # nothing cut
 
 `head` decompresses with `lbzip2 -dc` when it's on PATH (every core) and Python's `bz2`
 when it isn't. Install `lbzip2` on the host before reading whole tables.
+
+## From an export to records
+
+Three steps turn a fetched export into one record per case
+([docs/plans/courtlistener-mirror.md](../../docs/plans/courtlistener-mirror.md), "Pipeline"
+steps 2 to 4). Each writes into `<dest>/<date>/` next to the tables and leaves a JSON
+report there.
+
+### stage
+
+```sh
+stare-cl stage --date 2026-09-30 --index-manifest manifest.json [--index-dir /path/to/v/v2026.10.05]
+```
+
+Loads `courts`, `opinion-clusters` and `citations` into `stage.sqlite`, classifies every
+cluster, then loads the `dockets` rows of the selected clusters. `--index-manifest` is the
+CAP index's root `manifest.json` (`https://idx.stare.pub/manifest.json`); its `reporters`
+say which volumes CAP holds. With `--index-dir`, a local copy of that index version (the
+directory holding `<slug>/<vol>.bin`), a cluster is held only when one of its citations
+lands on a page the index resolves, which catches the pages CAP left out of volumes it
+otherwise has.
+
+| class | meaning |
+|---|---|
+| `blocked` | CourtListener's `blocked` is set; never published |
+| `no_citation` | no reporter citation; the resolver can't reach it |
+| `cap_held` | a citation is in a CAP volume (or on a CAP page, with `--index-dir`) |
+| `selected` | the cases stare takes from CourtListener |
+| `docket_blocked` | selected, but its docket is blocked; held back too |
+
+CourtListener reporters are matched to CAP slugs through CAP's `ReportersMetadata.json`
+(packaged as `data/cap_reporters.json`; `scripts/cap_reporters.py` regenerates it) on
+letters and digits, against the slug and the short name both. Westlaw, LEXIS and neutral
+citations never match a CAP reporter. `stage-report.json` has the counts, the selected
+clusters' top reporters, and a cross-check against the first sizing's rule (slug against
+reporter only) naming the reporters where the two disagree.
+
+The whole run reads about 3 GB of compressed CSV plus `dockets`; it takes 25 minutes with
+Python's bz2 and less with `lbzip2` on PATH. The database is built as `stage.sqlite.tmp` and
+renamed at the end, so a rerun starts over.
+
+### text
+
+```sh
+stare-cl text --date 2026-09-30 [--restart]
+```
+
+Streams `opinions` (55 GB compressed, about 300 GB of CSV) once and keeps the opinions of the
+selected clusters in `text.sqlite`: metadata, the name of the first non-empty text field in
+the design's order, and that field's raw value, zlib-compressed. Memory stays flat (one
+record at a time plus the selected ids). Progress is committed every 20,000 records; a rerun
+after an interruption skips the records already read (it still decompresses and parses them,
+so it saves the writes, not the decode). `--restart` throws the progress away, which is
+needed after re-running `stage`.
+
+### records
+
+```sh
+stare-cl records --date 2026-09-30 [--out DIR] [--previous out/cl/exports/2026-06-30] [--jobs N]
+```
+
+Writes, under `--out` (default `<dest>/out`, laid out as the bucket is):
+
+- `cl/c/<cluster_id>/<hash>.json.gz`, one record per selected cluster with opinion text,
+  in CAP's case shape plus a `source` block. `<hash>` is the first 16 hex digits of the
+  SHA-256 of the canonical JSON without `source.export` and `source.first_seen`, so an
+  unchanged case keeps its object across exports. Existing objects are not rewritten.
+- `cl/exports/<date>/manifest.ndjson.gz`, one line per record: `id`, `hash`, `first_seen`,
+  and the citations with the CAP slugs each may be in.
+- `cl/exports/<date>/delta.json`, `added`, `changed` and `removed` ids against
+  `--previous` (an earlier export's directory or manifest); without it, all are added.
+- `cl/exports/<date>/export.json`, the fetch step's record of the source files.
+
+`first_seen` carries forward from the previous manifest. `records-report.json` in the export
+directory has the counts, the record size distribution and the opinion types seen.
 
 ## The CSV dialect
 
