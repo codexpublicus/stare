@@ -40,7 +40,7 @@ from typing import Any, TextIO
 
 from stare_courtlistener.capindex import CapIndex, PageIndex, volume_key
 from stare_courtlistener.listing import table_file
-from stare_courtlistener.reporters import ReporterMap, alnum_slug
+from stare_courtlistener.reporters import ReporterMap, alnum_slug, year_volume
 from stare_courtlistener.table import open_table, read_table
 
 STAGE_DB = "stage.sqlite"
@@ -89,9 +89,9 @@ CREATE TABLE clusters (
 );
 CREATE TABLE citations (
     id INTEGER PRIMARY KEY, cluster_id INTEGER, volume TEXT, reporter TEXT, page TEXT,
-    type INTEGER, volume_key TEXT
+    type INTEGER, volume_key TEXT, neutral_year INTEGER
 );
-CREATE TABLE reporter_slugs (reporter TEXT, type INTEGER, slug TEXT);
+CREATE TABLE reporter_slugs (reporter TEXT, type INTEGER, neutral_year INTEGER, slug TEXT);
 CREATE TABLE reporter_alnum (reporter TEXT PRIMARY KEY, slug TEXT);
 CREATE TABLE held_volumes (slug TEXT, volume TEXT, PRIMARY KEY (slug, volume)) WITHOUT ROWID;
 CREATE TABLE dockets (
@@ -187,15 +187,20 @@ def classify(
         "INSERT INTO held_volumes VALUES (?, ?)",
         ((slug, vol) for slug, vols in index.folders.items() for vol in vols),
     )
-    pairs = db.execute("SELECT DISTINCT reporter, type FROM citations").fetchall()
+    pairs = db.execute("SELECT DISTINCT reporter, type, neutral_year FROM citations").fetchall()
+    # a neutral citation stands for its kind by volume: a year (2021 ND 1) or not (310 Neb. 1)
     db.executemany(
-        "INSERT INTO reporter_slugs VALUES (?, ?, ?)",
-        ((r, t, slug) for r, t in pairs for slug in reporters.slugs(r, t)),
+        "INSERT INTO reporter_slugs VALUES (?, ?, ?, ?)",
+        (
+            (r, t, y, slug)
+            for r, t, y in pairs
+            for slug in reporters.slugs(r, t, "2000" if y else "1")
+        ),
     )
     held_slugs = list(index.folders)
     db.executemany(
         "INSERT OR IGNORE INTO reporter_alnum VALUES (?, ?)",
-        ((r, s) for r, _ in pairs if (s := alnum_slug(r, held_slugs)) is not None),
+        ((r, s) for r, _, _ in pairs if (s := alnum_slug(r, held_slugs)) is not None),
     )
     db.commit()
     log(f"  {len(pairs):,} reporter spellings, {len(index.folders)} CAP reporters")
@@ -205,7 +210,8 @@ def classify(
         CREATE TEMP TABLE cites_in_held AS
             SELECT c.cluster_id, s.slug, c.volume_key, c.page
             FROM citations c
-            JOIN reporter_slugs s ON s.reporter = c.reporter AND s.type IS c.type
+            JOIN reporter_slugs s
+              ON s.reporter = c.reporter AND s.type IS c.type AND s.neutral_year = c.neutral_year
             JOIN held_volumes h ON h.slug = s.slug AND h.volume = c.volume_key;
         CREATE TEMP TABLE volume_held (cluster_id INTEGER PRIMARY KEY);
         INSERT OR IGNORE INTO volume_held SELECT cluster_id FROM cites_in_held;
@@ -266,7 +272,8 @@ def _crosscheck(db: sqlite3.Connection) -> dict[str, Any]:
 
     held_new_only = reporters_of(
         """SELECT c.reporter, count(DISTINCT c.cluster_id) n FROM citations c
-           JOIN reporter_slugs s ON s.reporter = c.reporter AND s.type IS c.type
+           JOIN reporter_slugs s
+              ON s.reporter = c.reporter AND s.type IS c.type AND s.neutral_year = c.neutral_year
            JOIN held_volumes h ON h.slug = s.slug AND h.volume = c.volume_key
            JOIN clusters k ON k.id = c.cluster_id AND NOT k.blocked
            WHERE c.cluster_id NOT IN (SELECT cluster_id FROM temp.alnum_held)
@@ -380,7 +387,7 @@ def stage_export(
     log("citations")
     _load(
         db,
-        "INSERT INTO citations VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO citations VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (
             (
                 int(r["id"]),
@@ -390,6 +397,7 @@ def stage_export(
                 r["page"],
                 _int(r["type"]),
                 volume_key(r["volume"] or ""),
+                1 if r["type"] == "8" and year_volume(r["volume"]) else 0,
             )
             for r in _rows(export_dir, "citations", export, CITATION_COLUMNS)
         ),

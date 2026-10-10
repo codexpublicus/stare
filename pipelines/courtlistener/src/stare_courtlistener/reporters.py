@@ -7,12 +7,16 @@ the slug and the short name, after folding curly quotes. A short name CAP gives 
 reporters (``Ct. Cl.`` is both the U.S. Court of Claims and West Virginia's) maps to both
 slugs, and a citation in either counts as held.
 
-Citations CourtListener types as LEXIS (6), Westlaw (7) or neutral (8) never map to a CAP
-reporter, though some spell like one: the neutral ``2021 ND 123`` folds to the same
-letters as ``N.D.``, and ``2021-Ohio-1234`` is typed ``Ohio`` like the Ohio Reports.
+Citations CourtListener types as LEXIS (6) or Westlaw (7) never map to a CAP reporter, and
+neither does a neutral one (8) whose volume is a year, though some spell like one: ``2021
+ND 123`` folds to the same letters as ``N.D.``, and ``2021-Ohio-1234`` is typed ``Ohio``
+like the Ohio Reports. A "neutral" citation with an ordinary volume number is a mistyped
+reporter citation (``310 Neb. 1``, ``62 M.J. 4``) and maps as one.
 
-``OVERRIDES`` maps a CourtListener reporter to slugs by hand where the folding gets it
-wrong; it wins over the folded match.
+``OVERRIDES`` maps a CourtListener reporter to slugs by hand where its spelling doesn't fold
+to CAP's (``Serg. & Rawle`` for CAP's ``Serg. & Rawl.``, ``Ohio St. (N.S.)`` for ``Ohio
+St.``); it wins over the folded match. Each entry was checked against the CAP reporter's
+years and volume range.
 
 The CAP table is packaged as ``data/cap_reporters.json`` (see ``scripts/cap_reporters.py``).
 """
@@ -28,11 +32,32 @@ from importlib.resources import files
 from typing import Any
 
 LEXIS, WEST, NEUTRAL = 6, 7, 8
-UNMAPPED_TYPES = frozenset({LEXIS, WEST, NEUTRAL})
+UNMAPPED_TYPES = frozenset({LEXIS, WEST})
 """CourtListener citation types that are never a CAP reporter."""
 
-OVERRIDES: dict[str, tuple[str, ...]] = {}
-"""CourtListener reporter → CAP slugs, where the folded match is wrong. None needed so far."""
+OVERRIDES: dict[str, tuple[str, ...]] = {
+    "D.C. App.": ("app-dc",),
+    "Daly": ("daly-ny",),
+    "Free. Ch.": ("freem-ch",),
+    "Ill. Cir. Ct.": ("ill-cir-ct-rep",),
+    "Mart.": ("mart-os",),
+    "Mich. N.P.": ("mich-np-r",),
+    "Morr. St. Cas.": ("mor-st-cas",),
+    "Neb. Ct. App.": ("neb-app",),
+    "Ohio St. (N.S.)": ("ohio-st",),
+    "Patton & Heath": ("va-patt-heath",),
+    "Serg. & Rawle": ("serg-rawl",),
+    "Tiess.": ("teiss",),
+    "Walk.": ("walker",),
+}
+"""CourtListener reporter → CAP slugs, where the spellings don't fold to the same letters."""
+
+
+def year_volume(volume: str | None) -> bool:
+    """Whether a volume is a year (1900 to 2100), as a neutral citation's is."""
+    text = (volume or "").strip()
+    return text.isdigit() and 1900 <= int(text) <= 2100
+
 
 _QUOTES = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
 
@@ -66,9 +91,16 @@ class ReporterMap:
         self.by_key = {key: tuple(sorted(slugs)) for key, slugs in found.items() if key}
         self.overrides = OVERRIDES if overrides is None else overrides
 
-    def slugs(self, reporter: str, cite_type: int | None) -> tuple[str, ...]:
-        """The CAP slugs a citation's reporter may be; empty when CAP never had it."""
+    def slugs(
+        self, reporter: str, cite_type: int | None, volume: str | None = None
+    ) -> tuple[str, ...]:
+        """The CAP slugs a citation's reporter may be; empty when CAP never had it.
+
+        A neutral citation maps only when ``volume`` is given and isn't a year.
+        """
         if cite_type in UNMAPPED_TYPES:
+            return ()
+        if cite_type == NEUTRAL and (volume is None or year_volume(volume)):
             return ()
         if reporter in self.overrides:
             return self.overrides[reporter]

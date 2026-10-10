@@ -197,7 +197,7 @@ def _build_chunk(cluster_ids: list[int]) -> list[dict[str, Any]]:
                     "reporter": c.reporter,
                     "page": c.page,
                     "type": c.type,
-                    "cap_slugs": list(reporters.slugs(c.reporter, c.type)),
+                    "cap_slugs": list(reporters.slugs(c.reporter, c.type, c.volume)),
                 }
                 for c in cites
             ],

@@ -45,6 +45,35 @@ def test_only_known_ambiguities(reporters: ReporterMap) -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("reporter", "type_", "volume", "slugs"),
+    [
+        ("ND", NEUTRAL, "2021", ()),
+        ("Ohio", NEUTRAL, "1995", ()),
+        ("Neb.", NEUTRAL, "310", ("neb",)),  # a mistyped reporter citation
+        ("M.J.", NEUTRAL, "62", ("mj",)),
+        ("Neb.", STATE, "310", ("neb",)),
+    ],
+)
+def test_neutral_by_volume(
+    reporters: ReporterMap, reporter: str, type_: int, volume: str, slugs: tuple
+) -> None:
+    assert reporters.slugs(reporter, type_, volume) == slugs
+
+
+@pytest.mark.parametrize(
+    ("reporter", "slug"),
+    [("Ohio St. (N.S.)", "ohio-st"), ("Serg. & Rawle", "serg-rawl"), ("Daly", "daly-ny")],
+)
+def test_packaged_overrides(reporters: ReporterMap, reporter: str, slug: str) -> None:
+    assert reporters.slugs(reporter, STATE) == (slug,)
+
+
+def test_overrides_name_real_slugs(reporters: ReporterMap) -> None:
+    known = {s for slugs in reporters.by_key.values() for s in slugs}
+    assert {s for slugs in reporters.overrides.values() for s in slugs} <= known
+
+
 def test_overrides_win() -> None:
     mapped = ReporterMap(overrides={"Odd Rptr.": ("a2d",)})
     assert mapped.slugs("Odd Rptr.", STATE) == ("a2d",)
