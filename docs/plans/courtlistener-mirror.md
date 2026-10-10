@@ -50,6 +50,18 @@ numbers the viewer is built on. CourtListener contributes:
 
 A cluster is "held by CAP" when any of its citations falls on a page CAP's index resolves. A
 cluster with no reporter citation at all can't be reached by the resolver; those wait for search.
+A cluster whose docket is blocked is left out the same way as a blocked cluster.
+
+The page-level rule matters: in 400 sampled volumes, 5.9% of the clusters in volumes CAP holds
+had no citation on a page CAP resolves, mostly table dispositions in F.2d, N.E.2d, So. 2d and
+F.3d. Scaled up, that's about 426,000 cases that are "No case starts at page N" in stare today,
+and CourtListener fills them.
+
+Reporters are matched to CAP slugs through CAP's ReportersMetadata (short name or slug, compared
+on letters and digits) plus a short override table for misspellings CourtListener carries
+(`Ohio St. (N.S.)`, `Serg. & Rawle`, ...). Whether a citation is neutral is decided by its
+volume being a year, not by CourtListener's `type`, which is unreliable. Westlaw and LEXIS
+numbers never map to a CAP volume.
 
 Sizing for 2026-09-30 (`opinion-clusters` joined to `citations`, against index v2026.10.05):
 
@@ -57,20 +69,20 @@ Sizing for 2026-09-30 (`opinion-clusters` joined to `citations`, against index v
 |---|---|
 | All | 10,174,551 |
 | Blocked (`blocked = t`), never published | 825,839 |
-| With a citation in a volume stare holds from CAP | 7,160,260 |
+| With a citation in a volume stare holds from CAP | 7,204,826 |
 | With no citation at all | 1,860,920 |
-| **With citations, none in a volume stare holds** | **327,532** |
+| **With citations, none in a volume stare holds** | **282,966** |
 | of which decided 2019 or later | 145,815 |
-| of which CourtListener got from Harvard (`filepath_json_harvard` set) | 58,732 |
+| of which CourtListener got from Harvard (`filepath_json_harvard` set) | 14,171 |
 
 The new cases are mostly reporters CAP never had: `NY Slip Op` (70,128), Ohio's neutral citation
 (60,923), the Tax Court memorandum series (`T.C.M.`, `T.C. Memo.`, about 26,000 each), `N.Y.S.3d`
-(20,484), `Ct. Cl.` (19,406), `A.D.3d` (18,947), `F.4th` (12,935) and `P.3d` (9,396). Only 2,195
+(20,484), `A.D.3d` (18,947), `F.4th` (12,935) and `P.3d` (9,396). Only 2,195
 are `A.3d`: CourtListener has few West regional citations for recent state cases, so much of the
 post-2018 material is reachable only by neutral or slip-opinion citations.
 
-The count is per volume, not per page, so it misses cases CourtListener holds on pages CAP left
-out of a volume it otherwise has (the redacted reprints); the stage step counts those per page.
+These counts are per volume (from `stare-cl stage` on the full tables). Per page adds about
+426,000 more, described below.
 
 ## The record
 
