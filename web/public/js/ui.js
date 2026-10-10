@@ -1,4 +1,5 @@
 import { citationSummary, citedCaseHtml, orderCitedCases, renderTextHtml } from './citations.js';
+import { isClRecord, sourceLineHtml } from './cl.js';
 import { insertPageMarkers } from './pages.js';
 import { pdfUrl as volumePdfUrl } from './sources.js';
 
@@ -21,6 +22,7 @@ export function renderReader(el, caseData, citations, pages = null) {
     <div class="reader-header">
       <div class="reader-title">${esc(caseData.name_abbreviation)}</div>
       <div class="reader-meta">${esc(cite)} &mdash; ${esc(court)} &mdash; ${esc(caseData.decision_date)}</div>
+      ${sourceLineHtml(caseData)}
     </div>
   `;
 
@@ -150,7 +152,14 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
     .map((c, i) => `<span class="cite-badge${i === 0 ? ' primary' : ''}">${esc(c.cite)}</span>`)
     .join(' ');
 
-  const pdfUrl = volumePdfUrl(reporter, volume);
+  // A CourtListener record has no scans, so no volume PDF; its source line says
+  // where it came from instead.
+  const fromCl = isClRecord(caseData);
+  const docket = caseData.docket_number || (fromCl ? caseData.source.docket_number : null);
+  const pdfAction = fromCl ? '' : `
+      <a class="sidebar-action" href="${volumePdfUrl(reporter, volume)}" target="_blank" rel="noopener">
+        <span class="sidebar-action-icon">&#128196;</span>View original PDF
+      </a>`;
 
   const beforeHtml = `
     <div class="sidebar-section">
@@ -159,9 +168,10 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
       <div class="sidebar-meta">
         <strong>Date:</strong> ${esc(caseData.decision_date)}<br>
         <strong>Court:</strong> ${esc(caseData.court?.name || '')}<br>
-        ${caseData.docket_number ? `<strong>Docket:</strong> ${esc(caseData.docket_number)}<br>` : ''}
+        ${docket ? `<strong>Docket:</strong> ${esc(docket)}<br>` : ''}
         <strong>Jurisdiction:</strong> ${esc(caseData.jurisdiction?.name_long || '')}
       </div>
+      ${sourceLineHtml(caseData, 'sidebar-meta sidebar-source')}
     </div>
     <div class="sidebar-section">
       <div class="sidebar-label">Citations</div>
@@ -171,10 +181,7 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
 
   const afterHtml = `
     <div class="sidebar-section">
-      <div class="sidebar-label">Actions</div>
-      <a class="sidebar-action" href="${pdfUrl}" target="_blank" rel="noopener">
-        <span class="sidebar-action-icon">&#128196;</span>View original PDF
-      </a>
+      <div class="sidebar-label">Actions</div>${pdfAction}
       <a class="sidebar-action" href="#" id="copy-link-btn">
         <span class="sidebar-action-icon">&#128279;</span>Copy permalink
       </a>

@@ -76,8 +76,10 @@ function goToPage(page) {
 }
 
 // The page breaks in a case's opinions, from the case's CAP HTML in the
-// volume zip; none when the zip has no HTML for it.
+// volume zip; none when the zip has no HTML for it, or there's no zip (a
+// CourtListener record, which has no pages).
 function casePages(zipData, caseFile, caseData) {
+  if (!zipData) return null;
   try {
     return pageBreaks(extractFile(zipData, `html/${caseFile}.html`), caseData.casebody?.opinions || []);
   } catch {
@@ -153,6 +155,8 @@ async function showResolved(result, pin = null) {
   reader.classList.remove('hidden');
   tabReader.classList.add('active');
   tabPages.classList.remove('active');
+  // A CourtListener record has no page scans to show.
+  tabPages.classList.toggle('hidden', !result.zipData);
 
   const multiEl = document.createElement('div');
   reader.innerHTML = '';
@@ -230,6 +234,11 @@ async function showResolved(result, pin = null) {
   }
 
   function switchCase(caseFile) {
+    if (!result.zipData) {
+      // Several CourtListener records start on the page; each is its own fetch.
+      doResolve(result.reporter, result.volume, result.page, result.allCases.indexOf(caseFile) + 1);
+      return;
+    }
     const caseData = extractCase(result.zipData, caseFile);
     const seq = seqFromFile(caseFile);
     const page = pageFromFile(caseFile);
@@ -434,7 +443,7 @@ tabPages.addEventListener('click', async () => {
   pageViewerEl.classList.remove('hidden');
   reader.classList.add('hidden');
 
-  if (!pageViewerLoaded && currentResult) {
+  if (!pageViewerLoaded && currentResult?.zipData) {
     pageViewerLoaded = true;
     await renderPageViewer(pageViewerEl, currentResult, (msg) => setStatus(msg, false));
   }

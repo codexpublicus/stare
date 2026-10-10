@@ -3,6 +3,10 @@
 .reader-header { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-light); }
 .reader-title { font-family: var(--font-text); font-size: 22px; font-weight: 600; line-height: 1.3; color: var(--text); }
 .reader-meta { margin-top: 6px; font-size: 14px; color: var(--text-secondary); }
+.reader-source { margin-top: 4px; font-size: 13px; color: var(--text-secondary); }
+.reader-source a, .sidebar-source a { color: var(--link); text-decoration: none; }
+.reader-source a:hover, .sidebar-source a:hover { color: var(--link-hover); text-decoration: underline; }
+.sidebar-source { margin-top: 6px; font-size: 12px; }
 .reader-author { font-family: var(--font-text); font-style: italic; color: var(--text-secondary); margin-bottom: 16px; font-size: 15px; }
 .reader-text { font-family: var(--font-text); font-size: 16px; line-height: 1.8; color: var(--text-body); }
 .reader-text p { margin-bottom: 16px; }
