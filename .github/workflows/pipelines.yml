@@ -66,6 +66,38 @@ jobs:
           STARE_JBIG2: docker
           STARE_VERAPDF: docker
 
+  courtlistener:
+    # no Docker: unit tests only, against a fake bucket and fixtures cut from a real export
+    runs-on: homelab
+    defaults:
+      run:
+        working-directory: pipelines/courtlistener
+    env:
+      # as for archival-pdf: install exactly what uv.lock says (see that job's comment)
+      UV_FROZEN: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          working-directory: pipelines/courtlistener
+          enable-cache: true
+          cache-dependency-glob: pipelines/courtlistener/uv.lock
+
+      - name: Install
+        run: |
+          uv lock --check --default-index https://pypi.org/simple
+          uv sync
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format
+        run: uv run ruff format --check .
+
+      - name: pytest
+        run: uv run pytest
+
   # the pipeline image (pipelines/archival-pdf/Dockerfile) builds, and builds the fixture
   # volume with its native jbig2, then skips it on a second run
   archival-image:
