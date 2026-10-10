@@ -21,6 +21,7 @@ docs/plans/extraction-plan.md       — Citation index + data pipeline: bin inde
 docs/plans/search-plan.md           — Search + data products: RoaringBuckets, DuckLake, comparisons
 mirror/                             — Docker compose + config for the aria2 mirror job
 pipelines/archival-pdf/             - archival per-volume PDF builder (#51): uv project, image, RUNBOOK.md
+pipelines/courtlistener/            - CourtListener bulk-export fetcher and reader (#83): uv project, RUNBOOK.md
 ```
 
 ## Architecture
@@ -293,6 +294,15 @@ read-only Docker volume `codexpublicus-cap-mirror`, the output goes to
 `codexpublicus-derived` (`cap-pdf/<reporter>/<volume>.pdf`,
 `cap-pdf/_manifests/<reporter>/<volume>.json`), and rclone uploads `cap-pdf/` to
 `codex-data/cap-pdf/`. Nothing in the pipeline writes to the mirror.
+
+### CourtListener bulk export (`pipelines/courtlistener/`, #83)
+
+`stare-cl` lists CourtListener's quarterly bulk export in its public S3 bucket, fetches one
+export's tables resumably into `$STARE_CL_DIR/<date>/` with an `export.json` of sizes,
+ETags and SHA-256s, re-verifies them, and reads the PostgreSQL CSV dialect. `mise run
+cl-fetch` runs the fetch (operator-run on ml-01, about 63 GB); `mise run cl-test` runs ruff
+and pytest, as CI (`.github/workflows/pipelines.yml`) does. See
+`pipelines/courtlistener/RUNBOOK.md`.
 
 ## Current Status
 
