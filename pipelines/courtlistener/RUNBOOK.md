@@ -131,13 +131,16 @@ otherwise has.
 
 CourtListener reporters are matched to CAP slugs through CAP's `ReportersMetadata.json`
 (packaged as `data/cap_reporters.json`; `scripts/cap_reporters.py` regenerates it) on
-letters and digits, against the slug and the short name both. Westlaw, LEXIS and neutral
-citations never match a CAP reporter. `stage-report.json` has the counts, the selected
+letters and digits, against the slug and the short name both, with a table of overrides
+for spellings that don't fold alike (`Ohio St. (N.S.)` is CAP's `Ohio St.`). Westlaw and
+LEXIS citations never match a CAP reporter, and a citation whose volume is a year (`2021 ND
+123`, `2004-Ohio-3319`) matches only CAP's one year-numbered reporter. `stage-report.json` has the counts, the selected
 clusters' top reporters, and a cross-check against the first sizing's rule (slug against
 reporter only) naming the reporters where the two disagree.
 
-The whole run reads about 3 GB of compressed CSV plus `dockets`; it takes 25 minutes with
-Python's bz2 and less with `lbzip2` on PATH. The database is built as `stage.sqlite.tmp` and
+On 2026-09-30, clusters and citations took 13 minutes on ml-01 with Python's bz2 (no
+`lbzip2`), peaking at 1.6 GB of memory, and left a 3.5 GB `stage.sqlite`; the full `dockets`
+table adds one more pass over 5 GB compressed. The database is built as `stage.sqlite.tmp` and
 renamed at the end, so a rerun starts over.
 
 ### text
