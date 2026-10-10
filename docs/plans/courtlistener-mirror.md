@@ -124,6 +124,10 @@ cl/exports/<date>/delta.json          added / changed / removed ids against the 
 cl/exports/<date>/export.json         the source tables' keys, sizes, ETags, sha256 and terms
 ```
 
+Records are served like the citare data bundle: `Content-Type: application/gzip`, no
+`Content-Encoding`, immutable cache headers. The reader gunzips them itself, and accepts plain
+JSON too in case a proxy decodes them.
+
 `<hash>` is the first 16 hex digits of the sha256 of the record's canonical JSON (sorted keys,
 no `source.export`/`first_seen`, so an unchanged case hashes the same in every export). One object
 per case, rather than CAP-style volume zips, is what makes
@@ -142,10 +146,26 @@ CourtListener volume gets a sidecar in the same version directory:
 v/<ver>/<reporter>/<vol>.cl     text lines: page,cluster_id,hash
 ```
 
+The sidecar format:
+- One record per line, `page,cluster_id,hash`; no header and no comments. `page` and
+  `cluster_id` are unsigned integers. Neutral and slip-opinion citations fit, since their
+  "page" is a number too (`2021 IL 125678`, `2021 NY Slip Op 01234`).
+- Lines are sorted by page. Clusters that start on the same page keep CourtListener's cluster-id
+  order, and the resolver shows the first and lists the others, the way CAP's `.multi`
+  handles several cases on one page.
+- Readers trim whitespace, skip blank lines, and skip a malformed line (reporting its number)
+  rather than rejecting the volume.
+
 The resolver reads `.bin`/`.multi` first. If CAP has no case at the page (or doesn't hold the
 volume), it reads `.cl` and fetches `data.stare.pub/cl/c/<cluster_id>/<hash>.json.gz`. The root
 manifest gains `cl: {export, reporters: {slug: [vols]}}` so `checkAvailability` knows which
-volumes have a sidecar, and a reader that doesn't know the key ignores it.
+volumes have a sidecar, and a reader that doesn't know the key ignores it. A volume CAP holds
+but left pages out of (the redacted reprints) is listed under both `reporters` and `cl`; CAP is
+tried first, so a CourtListener record only fills a page CAP has no case on.
+
+`cl/` sits at the data bucket's root, beside `cap/`. The CLI's data source points at the `cap/`
+prefix today, so the CLI derives the root by dropping a trailing `/cap`; a local mirror keeps the
+same two prefixes side by side.
 
 `<reporter>` is the CAP slug where CAP has the reporter. Reporters CAP never had (neutral
 citations such as `2021 IL 125678`, `S. Ct.` after CAP's last volume, `F.4th`, Westlaw numbers)
@@ -187,9 +207,13 @@ links to cluster ids directly, which nothing in stare does yet.
 
 ## Slices
 
-1. Fetch and read the export (`stare-cl fetch/verify/head`). In review.
+1. Fetch and read the export (`stare-cl fetch/verify/head`):
+   [#146](https://github.com/codexpublicus/stare/pull/146).
 2. The record type in `crates/stare` and the viewer path for a `.cl` hit, with a hand-made record
-   as the test fixture.
+   as the test fixture: [#148](https://github.com/codexpublicus/stare/pull/148).
 3. stage + text + records on a sample, then on the full export.
-4. `.cl` sidecars, the manifest's `cl` block, and citare slugs for non-Harvard reporters.
-5. Publish, and the delta against the next export (2026-12-31).
+4. `.cl` sidecars, the manifest's `cl` block, and citare slugs for non-Harvard reporters
+   ([citare#70](https://github.com/codexpublicus/citare/issues/70)).
+5. Publish, and the delta against the next export (2026-12-31). `stare download` learns to fetch
+   sidecars and records, so an offline mirror ([#23](https://github.com/codexpublicus/stare/issues/23))
+   holds CourtListener cases too.
