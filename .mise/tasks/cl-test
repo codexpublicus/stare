@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Lint, format-check and test the CourtListener bulk-export pipeline (pipelines/courtlistener)"
+set -euo pipefail
+
+dir="${MISE_PROJECT_ROOT}/pipelines/courtlistener"
+uv --directory "$dir" sync --locked
+uv --directory "$dir" run ruff check .
+uv --directory "$dir" run ruff format --check .
+uv --directory "$dir" run pytest
