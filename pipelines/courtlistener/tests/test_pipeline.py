@@ -117,23 +117,99 @@ def test_stage_by_volume(tmp_path: Path, index: Path) -> None:
 
 def test_stage_by_page(tmp_path: Path, index: Path) -> None:
     write_export(tmp_path, SEPT, _tables())
-    _run(
-        "stage",
-        "--date",
-        "2026-09-30",
-        "--dest",
-        str(tmp_path),
-        "--index-manifest",
-        str(index),
-        "--index-dir",
-        str(index.parent),
+    # the index dir's own manifest.json is enough, as in an index build directory
+    out = _run(
+        "stage", "--date", "2026-09-30", "--dest", str(tmp_path), "--index-dir", str(index.parent)
     )
+    assert json.loads(out.splitlines()[0])["level"] == "page"
     classes = _classes(tmp_path, SEPT)
     assert classes[3] == "cap_held" and classes[7] == "cap_held"
     assert classes[4] == "selected"
     report = json.loads((tmp_path / "2026-09-30" / "stage-report.json").read_text())
     assert report["level"] == "page"
     assert report["selected"]["in_a_cap_volume_but_not_on_a_cap_page"] == 1
+    assert (report["index_files_missing"], report["citations_judged_by_volume"]) == (0, 0)
+    assert report["crosswalk"] == {"clusters": 2, "locations": 2, "with_case_file": 2}
+
+
+def test_stage_by_page_with_a_volume_missing(tmp_path: Path, index: Path) -> None:
+    (index.parent / "us-ct-cl" / "10.bin").unlink()
+    write_export(tmp_path, SEPT, _tables())
+    _run("stage", "--date", "2026-09-30", "--dest", str(tmp_path), "--index-dir", str(index.parent))
+    assert _classes(tmp_path, SEPT)[7] == "cap_held"  # judged by its volume instead
+    report = json.loads((tmp_path / "2026-09-30" / "stage-report.json").read_text())
+    assert (report["index_files_missing"], report["citations_judged_by_volume"]) == (1, 1)
+    assert report["crosswalk"]["with_case_file"] == 1
+
+
+def test_stage_needs_an_index_manifest(tmp_path: Path) -> None:
+    write_export(tmp_path, SEPT, _tables())
+    code = cli.main(["stage", "--date", "2026-09-30", "--dest", str(tmp_path)], out=io.StringIO())
+    assert code == 2
+
+
+def _crosswalk(out: Path, export: date) -> dict[int, dict]:
+    path = out / "cl" / "exports" / export.isoformat() / "crosswalk.ndjson.gz"
+    with gzip.open(path, "rt") as fh:
+        return {(e := json.loads(line))["cluster"]: e for line in fh}
+
+
+def test_crosswalk_by_page(tmp_path: Path, index: Path) -> None:
+    out = tmp_path / "out"
+    write_export(tmp_path, SEPT, _tables())
+    _run("stage", "--date", "2026-09-30", "--dest", str(tmp_path), "--index-dir", str(index.parent))
+    _run("text", "--date", "2026-09-30", "--dest", str(tmp_path))
+    _run(
+        "records", "--date", "2026-09-30", "--dest", str(tmp_path), "--out", str(out), "--jobs", "1"
+    )
+    assert _crosswalk(out, SEPT) == {
+        3: {
+            "cluster": 3,
+            "docket": 103,
+            "opinions": [30],
+            "cap": [
+                {
+                    "slug": "a3d",
+                    "volume": "138",
+                    "folder": "138",
+                    "page": "8",
+                    "case_file": "0008-01",
+                }
+            ],
+        },
+        7: {
+            "cluster": 7,
+            "docket": 107,
+            "opinions": [],
+            "cap": [
+                {
+                    "slug": "us-ct-cl",
+                    "volume": "10",
+                    "folder": "10",
+                    "page": "3",
+                    "case_file": "0003-01",
+                }
+            ],
+        },
+    }
+    # cluster 6's docket is blocked: no record, no crosswalk line
+    assert 6 not in _manifest(out, SEPT)
+    report = json.loads((tmp_path / "2026-09-30" / "records-report.json").read_text())
+    assert report["crosswalk"] == 2
+
+
+def test_crosswalk_by_volume(tmp_path: Path, index: Path) -> None:
+    out = tmp_path / "out"
+    write_export(tmp_path, SEPT, _tables())
+    _run("stage", "--date", "2026-09-30", "--dest", str(tmp_path), "--index-manifest", str(index))
+    _run("text", "--date", "2026-09-30", "--dest", str(tmp_path))
+    _run(
+        "records", "--date", "2026-09-30", "--dest", str(tmp_path), "--out", str(out), "--jobs", "1"
+    )
+    crosswalk = _crosswalk(out, SEPT)
+    assert sorted(crosswalk) == [3, 4, 7]
+    assert crosswalk[4]["cap"] == [{"slug": "a3d", "volume": "138", "folder": "138", "page": "500"}]
+    assert crosswalk[4]["opinions"] == [40]
 
 
 def test_text_then_records_then_a_delta(tmp_path: Path, index: Path) -> None:

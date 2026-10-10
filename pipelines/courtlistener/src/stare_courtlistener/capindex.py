@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ENTRY_SIZE = 8
+LONG_NAME = "*"
 _ROMAN = re.compile(r"[ivxlcdm]+")
 
 
@@ -79,46 +80,76 @@ class CapIndex:
         return sum(len(v) for v in self.folders.values())
 
 
+@dataclass(frozen=True)
+class Match:
+    """A CAP case at a page: the volume folder (``138-2`` for a second part) and file name."""
+
+    folder: str
+    case_file: str
+
+
+@dataclass
+class _Volume:
+    bins: dict[str, bytes]
+    multi: dict[int | str, list[Match]]
+
+
 @dataclass
 class PageIndex:
     """Page lookups against a local copy of one index version (the directory holding
-    ``<slug>/<vol>.bin``), one volume's files in memory at a time."""
+    ``<slug>/<vol>.bin``), one volume's files in memory at a time.
+
+    A volume the manifest lists but whose ``.bin`` files are all absent from ``root`` can't
+    be checked; ``lookup`` returns None for it and it is recorded in ``missing``.
+    """
 
     root: Path
     index: CapIndex
     _key: tuple[str, str] | None = None
-    _pages: tuple[list[bytes], set[int | str]] = field(default_factory=lambda: ([], set()))
+    _volume: _Volume = field(default_factory=lambda: _Volume({}, {}))
     missing: set[tuple[str, str]] = field(default_factory=set)
-    """Volumes the manifest lists whose ``.bin`` isn't in ``root``."""
+    """``(slug, folder)`` of the ``.bin`` files the manifest lists that ``root`` lacks."""
 
-    def _load(self, slug: str, volume: str) -> tuple[list[bytes], set[int | str]]:
+    def _load(self, slug: str, volume: str) -> _Volume:
         if self._key == (slug, volume):
-            return self._pages
-        bins: list[bytes] = []
-        multi: set[int | str] = set()
+            return self._volume
+        loaded = _Volume({}, {})
         for folder in self.index.folders.get(slug, {}).get(volume, []):
             bin_path = self.root / slug / f"{folder}.bin"
             if not bin_path.exists():
                 self.missing.add((slug, folder))
                 continue
-            bins.append(bin_path.read_bytes())
+            loaded.bins[folder] = bin_path.read_bytes()
             multi_path = self.root / slug / f"{folder}.multi"
             if multi_path.exists():
                 for line in multi_path.read_text(encoding="utf-8").splitlines():
-                    page, _, _ = line.partition(",")
-                    multi.add(int(page) if page.isdigit() else page)
-        self._key, self._pages = (slug, volume), (bins, multi)
-        return self._pages
+                    page, _, case_file = line.partition(",")
+                    key = int(page) if page.isdigit() else page
+                    loaded.multi.setdefault(key, []).append(Match(folder, case_file))
+        self._key, self._volume = (slug, volume), loaded
+        return loaded
+
+    def lookup(self, slug: str, volume: str, page: str) -> list[Match] | None:
+        """The CAP cases the resolver finds at this page, in folder order: empty when there
+        are none, None when the volume's files aren't in ``root``."""
+        loaded = self._load(slug, volume_key(volume))
+        if not loaded.bins:
+            return None
+        key = page_key(page)
+        found: list[Match] = []
+        if isinstance(key, int):
+            start = key * ENTRY_SIZE
+            for folder, data in loaded.bins.items():
+                entry = data[start : start + ENTRY_SIZE]
+                if len(entry) == ENTRY_SIZE and any(entry):
+                    name = entry.split(b"\0", 1)[0].decode("utf-8", "replace")
+                    if name != LONG_NAME:
+                        found.append(Match(folder, name))
+        for match in loaded.multi.get(key, []):
+            if match not in found:
+                found.append(match)
+        return found
 
     def holds_page(self, slug: str, volume: str, page: str) -> bool:
         """Whether the resolver finds a CAP case at this page of this volume."""
-        bins, multi = self._load(slug, volume_key(volume))
-        key = page_key(page)
-        if key in multi:
-            return True
-        if isinstance(key, str):
-            return False
-        start = key * ENTRY_SIZE
-        return any(
-            start + ENTRY_SIZE <= len(b) and any(b[start : start + ENTRY_SIZE]) for b in bins
-        )
+        return bool(self.lookup(slug, volume, page))

@@ -219,15 +219,25 @@ def cmd_stage(args: argparse.Namespace, out: TextIO) -> int:
     from stare_courtlistener.stage import STAGE_REPORT, stage_export
 
     directory = export_dir(_dest(args.dest), args.date)
-    index = CapIndex.load(Path(args.index_manifest))
-    pages = None
-    if args.index_dir:
-        root = Path(args.index_dir)
-        if not root.is_dir():
-            raise UsageError(f"{root} isn't a directory")
-        pages = PageIndex(root, index)
+    root = Path(args.index_dir) if args.index_dir else None
+    if root is not None and not root.is_dir():
+        raise UsageError(f"{root} isn't a directory")
+    if args.index_manifest:
+        manifest = Path(args.index_manifest)
+    elif root is not None and (root / "manifest.json").exists():
+        manifest = root / "manifest.json"
+    else:
+        raise UsageError("give --index-manifest, or an --index-dir that has a manifest.json")
+    index = CapIndex.load(manifest)
+    pages = PageIndex(root, index) if root is not None else None
     result = stage_export(directory, args.date, index, page_index=pages)
-    print(json.dumps(result["classes"]), file=out)
+    print(json.dumps({"level": result["level"], **result["classes"]}), file=out)
+    if result.get("index_files_missing"):
+        print(
+            f"warning: {result['index_files_missing']} .bin files the manifest lists aren't in "
+            f"{root}; {result['citations_judged_by_volume']:,} citations were judged by volume",
+            file=sys.stderr,
+        )
     print(f"Staged {args.date}: {directory / STAGE_REPORT}", file=out)
     return EXIT_OK
 
@@ -314,10 +324,15 @@ def parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("stage", help="load an export into stage.sqlite and classify its clusters")
     sp.add_argument("--date", type=_date, required=True)
     dest_option(sp)
-    sp.add_argument("--index-manifest", required=True, help="the CAP index's root manifest.json")
     sp.add_argument(
         "--index-dir",
-        help="a local copy of that index version (<slug>/<vol>.bin); checks pages, not volumes",
+        help="an index build (<slug>/<vol>.bin, e.g. codexpublicus-index:/builds/<version>); "
+        "classifies by page",
+    )
+    sp.add_argument(
+        "--index-manifest",
+        help="the index's root manifest.json (default: <index-dir>/manifest.json); "
+        "alone, classifies by volume",
     )
     sp.set_defaults(func=cmd_stage)
 

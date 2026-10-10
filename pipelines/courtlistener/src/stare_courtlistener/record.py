@@ -4,6 +4,10 @@ The shape follows ``docs/plans/courtlistener-mirror.md`` ("The record"): the fie
 viewer reads from a CAP case (``crates/stare/src/case.rs``) filled from the cluster, its
 docket and court, its citations and its opinions, and a ``source`` block saying where it
 came from. ``record_hash`` is what the storage layout names the object by.
+
+``source.text_field`` names the CourtListener field the opinions' text came from (the first
+non-empty of ``spool.TEXT_FIELDS``). When a case's opinions came from different fields it
+is a list instead, one name per entry of ``casebody.opinions``, in the same order.
 """
 
 from __future__ import annotations

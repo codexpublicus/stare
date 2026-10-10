@@ -5,7 +5,8 @@ it's on PATH; decoding about 300 GB of CSV is the slow part) and writes the opin
 clusters ``stage`` selected to ``<dest>/<date>/text.sqlite``: the opinion's metadata, which
 text field won, and that field's raw value, zlib-compressed. Only the winning field is
 kept; the HTML-to-text conversion happens in ``records``, so it can change without another
-pass over the table.
+pass over the table. Every opinion's id and cluster id also go in ``opinion_ids``, for the
+crosswalk of the clusters CAP holds.
 
 The text field is the first non-empty one of ``TEXT_FIELDS``, the order the design gives.
 
@@ -59,6 +60,7 @@ CREATE TABLE IF NOT EXISTS opinions (
     raw BLOB, raw_bytes INTEGER
 );
 CREATE INDEX IF NOT EXISTS opinions_cluster ON opinions (cluster_id);
+CREATE TABLE IF NOT EXISTS opinion_ids (id INTEGER PRIMARY KEY, cluster_id INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS progress (key TEXT PRIMARY KEY, value TEXT);
 """
 
@@ -142,6 +144,16 @@ def spool_text(
 
     record = 0
     pending: list[tuple] = []
+    ids: list[tuple[int, int]] = []
+
+    def flush() -> None:
+        db.executemany(
+            "INSERT OR REPLACE INTO opinions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", pending
+        )
+        db.executemany("INSERT OR REPLACE INTO opinion_ids VALUES (?, ?)", ids)
+        pending.clear()
+        ids.clear()
+
     with open_table(path) as fh:
         for record, row in enumerate(read_table(fh, "opinions", OPINION_COLUMNS), start=1):
             if on_record is not None:
@@ -149,6 +161,7 @@ def spool_text(
             if record <= skip:
                 continue
             cluster_id = int(row["cluster_id"] or 0)
+            ids.append((int(row["id"] or 0), cluster_id))
             if cluster_id in wanted:
                 field, value = pick_text(row)
                 data = value.encode("utf-8")
@@ -169,23 +182,17 @@ def spool_text(
                     )
                 )
             if record % CHECKPOINT == 0:
-                db.executemany(
-                    "INSERT OR REPLACE INTO opinions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    pending,
-                )
-                pending.clear()
+                flush()
                 checkpoint(record)
                 if record % (CHECKPOINT * 50) == 0:
                     log(f"  {record:,} opinions read, {kept:,} kept")
             if stop_after is not None and record >= stop_after:
-                db.executemany(
-                    "INSERT OR REPLACE INTO opinions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    pending,
-                )
+                flush()
                 checkpoint(record)
                 db.close()
                 return {"records": record, "kept": kept, "raw_bytes": raw_bytes, "done": 0}
-    db.executemany("INSERT OR REPLACE INTO opinions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", pending)
+    flush()
+    db.execute("CREATE INDEX IF NOT EXISTS opinion_ids_cluster ON opinion_ids (cluster_id)")
     checkpoint(record, done=True)
     clusters = db.execute("SELECT count(DISTINCT cluster_id) FROM opinions").fetchone()[0]
     db.execute("INSERT OR REPLACE INTO progress VALUES ('clusters', ?)", (str(clusters),))

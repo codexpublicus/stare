@@ -5,7 +5,14 @@ from pathlib import Path
 import pytest
 from exportkit import write_index
 
-from stare_courtlistener.capindex import CapIndex, PageIndex, folder_volume, page_key, volume_key
+from stare_courtlistener.capindex import (
+    CapIndex,
+    Match,
+    PageIndex,
+    folder_volume,
+    page_key,
+    volume_key,
+)
 
 
 @pytest.mark.parametrize(
@@ -51,11 +58,22 @@ def test_holds_volume_and_page(tmp_path: Path) -> None:
     assert pages.holds_page("us", "1", "9")  # a long name: in the .multi
     assert not pages.holds_page("us", "1", "xxix")
     assert pages.missing == set()
+    assert pages.lookup("a3d", "138", "2") == [Match("138-2", "0002-01")]
+    assert pages.lookup("us", "1", "9") == [Match("1", "0009-0010-01")]
+    assert pages.lookup("a3d", "138", "9") == []
 
 
 def test_missing_bin_is_recorded(tmp_path: Path) -> None:
     manifest = write_index(tmp_path / "idx", {"a3d": {"138": {8: "0008-01"}}})
     (tmp_path / "idx" / "a3d" / "138.bin").unlink()
     pages = PageIndex(tmp_path / "idx", CapIndex.load(manifest))
+    assert pages.lookup("a3d", "138", "8") is None
     assert not pages.holds_page("a3d", "138", "8")
     assert pages.missing == {("a3d", "138")}
+
+
+def test_a_second_case_at_a_page(tmp_path: Path) -> None:
+    manifest = write_index(tmp_path / "idx", {"a3d": {"138": {8: "0008-01"}}})
+    (tmp_path / "idx" / "a3d" / "138.multi").write_text("8,0008-02\n")
+    pages = PageIndex(tmp_path / "idx", CapIndex.load(manifest))
+    assert pages.lookup("a3d", "138", "8") == [Match("138", "0008-01"), Match("138", "0008-02")]

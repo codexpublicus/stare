@@ -9,12 +9,19 @@ the clusters it selected. Each cluster gets one class:
 ``no_citation``
     No reporter citation at all, so the resolver can't reach it.
 ``cap_held``
-    A citation lands in a volume CAP's index holds (volume level), or, when a local copy of
-    the index is given, on a page it resolves (page level).
+    A citation lands on a page CAP's index resolves (page level, whenever a local copy of
+    the index is given), or, without one, in a volume it holds (volume level). A volume
+    whose index files are missing from the local copy falls back to volume level, and the
+    report counts those citations.
 ``selected``
     Everything else: the cases stare takes from CourtListener.
 ``docket_blocked``
     Selected, but its docket is blocked; held back like ``blocked``.
+
+Every CAP location a ``cap_held`` cluster matched goes in ``cap_matches``: the slug, the
+volume and its folder (``138-2`` for a second part; null at volume level when the volume
+has several), the citation's page, and, at page level, the CAP case file found there. The
+``records`` step writes them out as the crosswalk.
 
 SQLite rather than DuckDB: it is in the standard library, the work is a handful of indexed
 joins over about 30 million rows, and the later steps want keyed lookups by cluster id
@@ -94,6 +101,9 @@ CREATE TABLE citations (
 CREATE TABLE reporter_slugs (reporter TEXT, type INTEGER, year_volume INTEGER, slug TEXT);
 CREATE TABLE reporter_alnum (reporter TEXT PRIMARY KEY, slug TEXT);
 CREATE TABLE held_volumes (slug TEXT, volume TEXT, PRIMARY KEY (slug, volume)) WITHOUT ROWID;
+CREATE TABLE cap_matches (
+    cluster_id INTEGER, slug TEXT, volume TEXT, folder TEXT, page TEXT, case_file TEXT
+);
 CREATE TABLE dockets (
     id INTEGER PRIMARY KEY, court_id TEXT, docket_number TEXT, case_name_short TEXT,
     case_name TEXT, case_name_full TEXT, blocked INTEGER
@@ -181,8 +191,9 @@ def classify(
     reporters: ReporterMap,
     page_index: PageIndex | None,
     log: Log,
-) -> None:
-    """Fill ``clusters.class`` (and ``volume_held``) from the loaded clusters and citations."""
+) -> int:
+    """Fill ``clusters.class``, ``volume_held`` and ``cap_matches``; return how many
+    citations a page-level run had to judge by volume (their index files were missing)."""
     db.executemany(
         "INSERT INTO held_volumes VALUES (?, ?)",
         ((slug, vol) for slug, vols in index.folders.items() for vol in vols),
@@ -226,19 +237,16 @@ def classify(
     )
     log("  joined citations to CAP's volumes")
 
-    db.execute("CREATE TEMP TABLE held (cluster_id INTEGER PRIMARY KEY)")
-    if page_index is None:
-        db.execute("INSERT INTO held SELECT cluster_id FROM temp.volume_held")
-    else:
-        found: list[tuple[int]] = []
-        rows = db.execute(
-            "SELECT cluster_id, slug, volume_key, page FROM cites_in_held ORDER BY slug, volume_key"
-        )
-        for cluster_id, slug, volume, page in rows:
-            if page_index.holds_page(slug, volume, page):
-                found.append((cluster_id,))
-        db.executemany("INSERT OR IGNORE INTO held VALUES (?)", found)
-        log(f"  checked pages: {len(found):,} citations on a CAP page")
+    unchecked = _match_cites(db, index, page_index)
+    if page_index is not None:
+        log(f"  checked pages; {unchecked:,} citations in volumes missing from the index dir")
+    db.executescript(
+        """
+        CREATE INDEX cap_matches_cluster ON cap_matches (cluster_id);
+        CREATE TEMP TABLE held (cluster_id INTEGER PRIMARY KEY);
+        INSERT OR IGNORE INTO held SELECT cluster_id FROM cap_matches;
+        """
+    )
 
     db.executescript(
         """
@@ -254,6 +262,34 @@ def classify(
     )
     db.commit()
     log("  classified")
+    return unchecked
+
+
+def _match_cites(db: sqlite3.Connection, index: CapIndex, page_index: PageIndex | None) -> int:
+    """Fill ``cap_matches`` from the citations in CAP's volumes; return how many citations
+    fell back to volume level because their volume's index files were missing."""
+    unchecked = 0
+    batch: list[tuple] = []
+    rows = db.execute(
+        """SELECT cluster_id, slug, volume_key, page FROM temp.cites_in_held
+           ORDER BY slug, volume_key"""
+    )
+    for cluster_id, slug, volume, page in rows:
+        folders = index.folders[slug][volume]
+        whole = folders[0] if len(folders) == 1 else None
+        found = page_index.lookup(slug, volume, page) if page_index is not None else None
+        if page_index is not None and found is None:
+            unchecked += 1
+        if found is None:
+            batch.append((cluster_id, slug, volume, whole, page, None))
+        else:
+            batch.extend((cluster_id, slug, volume, m.folder, page, m.case_file) for m in found)
+        if len(batch) >= BATCH:
+            db.executemany("INSERT INTO cap_matches VALUES (?, ?, ?, ?, ?, ?)", batch)
+            batch.clear()
+    db.executemany("INSERT INTO cap_matches VALUES (?, ?, ?, ?, ?, ?)", batch)
+    db.commit()
+    return unchecked
 
 
 def _crosscheck(db: sqlite3.Connection) -> dict[str, Any]:
@@ -324,6 +360,17 @@ def report(db: sqlite3.Connection, export: date, index: CapIndex, page_level: bo
                     AND docket_id NOT IN (SELECT id FROM dockets)"""
             ),
             "top_reporters": [list(r) for r in top],
+        },
+        "crosswalk": {
+            "clusters": counts["cap_held"],
+            "locations": one(
+                """SELECT count(*) FROM cap_matches m JOIN clusters k ON k.id = m.cluster_id
+                   WHERE k.class = 'cap_held'"""
+            ),
+            "with_case_file": one(
+                """SELECT count(*) FROM cap_matches m JOIN clusters k ON k.id = m.cluster_id
+                   WHERE k.class = 'cap_held' AND m.case_file IS NOT NULL"""
+            ),
         },
         "crosscheck_alnum_rule": _crosscheck(db),
     }
@@ -408,7 +455,7 @@ def stage_export(
     db.commit()
 
     log("classifying")
-    classify(db, index, reporters, page_index, log)
+    unchecked = classify(db, index, reporters, page_index, log)
 
     log("dockets (of selected clusters only)")
     wanted = {
@@ -441,7 +488,9 @@ def stage_export(
 
     result = report(db, export, index, page_index is not None)
     if page_index is not None:
-        result["index_volumes_missing"] = len(page_index.missing)
+        result["index_dir"] = str(page_index.root)
+        result["index_files_missing"] = len(page_index.missing)
+        result["citations_judged_by_volume"] = unchecked
     db.executemany(
         "INSERT INTO meta VALUES (?, ?)",
         [

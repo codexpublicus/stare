@@ -11,6 +11,11 @@
 ``cl/exports/<date>/delta.json``
     ``added``, ``changed`` and ``removed`` cluster ids against ``--previous`` (a previous
     export's directory or its ``manifest.ndjson.gz``); without one, every id is added.
+``cl/exports/<date>/crosswalk.ndjson.gz``
+    One line per cluster CAP holds (``cap_held``), by cluster id: its ``cluster``,
+    ``docket`` and ``opinions`` ids, and ``cap``, every CAP location it matched (``slug``,
+    ``volume``, ``folder``, ``page``, and ``case_file`` when a page-level stage found the
+    case). No record objects are written for these.
 ``cl/exports/<date>/export.json``
     A copy of the fetch step's ``export.json``.
 
@@ -51,6 +56,7 @@ from stare_courtlistener.stage import STAGE_DB, _logger, connect
 
 RECORDS_REPORT = "records-report.json"
 MANIFEST = "manifest.ndjson.gz"
+CROSSWALK = "crosswalk.ndjson.gz"
 DELTA = "delta.json"
 CHUNK = 500
 
@@ -307,6 +313,8 @@ def build_records(
         **delta,
     }
     (target / DELTA).write_text(json.dumps(delta_doc) + "\n", encoding="utf-8")
+    crosswalk = write_crosswalk(export_dir, target / CROSSWALK)
+    log(f"  crosswalk: {crosswalk:,} CAP-held clusters")
     fetched = export_dir / "export.json"
     if fetched.exists():
         shutil.copyfile(fetched, target / "export.json")
@@ -331,10 +339,77 @@ def build_records(
         "unmapped_opinion_types": sorted(t for t in types if t not in OPINION_TYPES),
         "text_fields": dict(fields.most_common()),
         "delta": delta_doc["counts"],
+        "crosswalk": crosswalk,
     }
     (export_dir / RECORDS_REPORT).write_text(json.dumps(report, indent=2) + "\n", "utf-8")
     log(f"wrote {len(current):,} records; manifest and delta in {target}")
     return report
+
+
+def _opinion_ids(text_db: Path) -> Iterator[tuple[int, list[int]]]:
+    """``(cluster id, [opinion ids])`` in cluster-id order, from the spool's ``opinion_ids``."""
+    db = connect(text_db, readonly=True)
+    try:
+        has = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'opinion_ids'"
+        ).fetchone()
+        if not has:
+            return
+        current, ids = None, []
+        for cluster_id, opinion_id in db.execute(
+            "SELECT cluster_id, id FROM opinion_ids ORDER BY cluster_id, id"
+        ):
+            if cluster_id != current:
+                if current is not None:
+                    yield current, ids
+                current, ids = cluster_id, []
+            ids.append(opinion_id)
+        if current is not None:
+            yield current, ids
+    finally:
+        db.close()
+
+
+def write_crosswalk(export_dir: Path, path: Path) -> int:
+    """Write the crosswalk of the ``cap_held`` clusters to ``path``; return its line count."""
+    stage = connect(export_dir / STAGE_DB, readonly=True)
+    opinions = _opinion_ids(export_dir / TEXT_DB)
+    pending = next(opinions, None)
+    lines = 0
+    tmp = path.with_name(path.name + ".tmp")
+    rows = stage.execute(
+        """SELECT k.id, k.docket_id, m.slug, m.volume, m.folder, m.page, m.case_file
+           FROM clusters k JOIN cap_matches m ON m.cluster_id = k.id
+           WHERE k.class = 'cap_held' ORDER BY k.id, m.slug, m.volume, m.page, m.case_file"""
+    )
+    with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as fh:
+
+        def emit(entry: dict[str, Any]) -> None:
+            nonlocal pending
+            while pending is not None and pending[0] < entry["cluster"]:
+                pending = next(opinions, None)
+            if pending is not None and pending[0] == entry["cluster"]:
+                entry["opinions"] = pending[1]
+            fh.write(json.dumps(entry, separators=(",", ":")) + "\n")
+
+        entry: dict[str, Any] | None = None
+        for cluster_id, docket_id, slug, volume, folder, page, case_file in rows:
+            if entry is None or entry["cluster"] != cluster_id:
+                if entry is not None:
+                    emit(entry)
+                    lines += 1
+                entry = {"cluster": cluster_id, "docket": docket_id, "opinions": [], "cap": []}
+            location = {"slug": slug, "volume": volume, "folder": folder, "page": page}
+            if case_file is not None:
+                location["case_file"] = case_file
+            if location not in entry["cap"]:
+                entry["cap"].append(location)
+        if entry is not None:
+            emit(entry)
+            lines += 1
+    stage.close()
+    tmp.replace(path)
+    return lines
 
 
 def _previous_export(previous: Path | None) -> str | None:
