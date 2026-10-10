@@ -302,7 +302,10 @@ export's tables resumably into `$STARE_CL_DIR/<date>/` with an `export.json` of 
 ETags and SHA-256s, re-verifies them, and reads the PostgreSQL CSV dialect. `stare-cl stage`,
 `text` and `records` then classify each cluster against CAP's index (SQLite staging), keep
 the selected clusters' opinion text, and write one CAP-shaped record per case with a
-`source` block, an export manifest and a delta (local disk only; publishing is slice 5).
+`source` block, an export manifest, a delta and a crosswalk of the CAP-held clusters
+(local disk only; publishing is slice 5). `mise run cl-build <ref> --index <version>` builds
+the `stare-cl` image on the host and runs the whole pipeline against the
+`codexpublicus-courtlistener` volume.
 `mise run cl-fetch` runs the fetch (operator-run on ml-01, about 63 GB); `mise run cl-test` runs ruff
 and pytest, as CI (`.github/workflows/pipelines.yml`) does. See
 `pipelines/courtlistener/RUNBOOK.md`.
