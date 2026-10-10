@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from stare_courtlistener.htmltext import to_text
-from stare_courtlistener.reporters import LEXIS, NEUTRAL, WEST, jurisdiction_name
+from stare_courtlistener.reporters import LEXIS, NEUTRAL, WEST, jurisdiction_name, year_volume
 
 SOURCE_NAME = "courtlistener"
 SITE = "https://www.courtlistener.com"
@@ -61,7 +61,7 @@ CITE_FORMATS: dict[str, str] = {
     "NMCA": "{volume}-NMCA-{page}",
     "NMCERT": "{volume}-NMCERT-{page}",
 }
-"""Neutral citations written with hyphens, not spaces (only for CourtListener's neutral type)."""
+"""Neutral citations written with hyphens, not spaces, when the volume is a year."""
 
 
 @dataclass(frozen=True)
@@ -71,16 +71,22 @@ class Cite:
     page: str
     type: int | None
 
+    @property
+    def neutral(self) -> bool:
+        """Typed neutral, or a hyphenated neutral form CourtListener typed as a reporter."""
+        hyphenated = self.reporter in CITE_FORMATS and year_volume(self.volume)
+        return self.type == NEUTRAL or hyphenated
+
     def text(self) -> str:
-        fmt = CITE_FORMATS.get(self.reporter) if self.type == NEUTRAL else None
-        if fmt:
+        fmt = CITE_FORMATS.get(self.reporter)
+        if fmt and year_volume(self.volume):
             return fmt.format(volume=self.volume, page=self.page)
         return f"{self.volume} {self.reporter} {self.page}"
 
 
 def cap_cite_type(cite: Cite, official: Cite | None) -> str:
     """CAP's type for a citation, given which one of the cluster's is official."""
-    if cite.type == NEUTRAL:
+    if cite.neutral:
         return "neutral"
     if cite.type in (LEXIS, WEST):
         return "vendor"
@@ -92,7 +98,7 @@ def pick_official(cites: Sequence[Cite]) -> Cite | None:
     best: tuple[int, int, int] | None = None
     chosen = None
     for n, cite in enumerate(cites):
-        if cite.type not in OFFICIAL_PRIORITY:
+        if cite.type not in OFFICIAL_PRIORITY or cite.neutral:
             continue
         rank = (
             OFFICIAL_PRIORITY.index(cite.type),

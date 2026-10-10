@@ -89,9 +89,9 @@ CREATE TABLE clusters (
 );
 CREATE TABLE citations (
     id INTEGER PRIMARY KEY, cluster_id INTEGER, volume TEXT, reporter TEXT, page TEXT,
-    type INTEGER, volume_key TEXT, neutral_year INTEGER
+    type INTEGER, volume_key TEXT, year_volume INTEGER
 );
-CREATE TABLE reporter_slugs (reporter TEXT, type INTEGER, neutral_year INTEGER, slug TEXT);
+CREATE TABLE reporter_slugs (reporter TEXT, type INTEGER, year_volume INTEGER, slug TEXT);
 CREATE TABLE reporter_alnum (reporter TEXT PRIMARY KEY, slug TEXT);
 CREATE TABLE held_volumes (slug TEXT, volume TEXT, PRIMARY KEY (slug, volume)) WITHOUT ROWID;
 CREATE TABLE dockets (
@@ -187,8 +187,8 @@ def classify(
         "INSERT INTO held_volumes VALUES (?, ?)",
         ((slug, vol) for slug, vols in index.folders.items() for vol in vols),
     )
-    pairs = db.execute("SELECT DISTINCT reporter, type, neutral_year FROM citations").fetchall()
-    # a neutral citation stands for its kind by volume: a year (2021 ND 1) or not (310 Neb. 1)
+    pairs = db.execute("SELECT DISTINCT reporter, type, year_volume FROM citations").fetchall()
+    # the volume only matters as a year (2021 ND 1) or not (310 Neb. 1); see reporters.py
     db.executemany(
         "INSERT INTO reporter_slugs VALUES (?, ?, ?, ?)",
         (
@@ -211,7 +211,7 @@ def classify(
             SELECT c.cluster_id, s.slug, c.volume_key, c.page
             FROM citations c
             JOIN reporter_slugs s
-              ON s.reporter = c.reporter AND s.type IS c.type AND s.neutral_year = c.neutral_year
+              ON s.reporter = c.reporter AND s.type IS c.type AND s.year_volume = c.year_volume
             JOIN held_volumes h ON h.slug = s.slug AND h.volume = c.volume_key;
         CREATE TEMP TABLE volume_held (cluster_id INTEGER PRIMARY KEY);
         INSERT OR IGNORE INTO volume_held SELECT cluster_id FROM cites_in_held;
@@ -273,7 +273,7 @@ def _crosscheck(db: sqlite3.Connection) -> dict[str, Any]:
     held_new_only = reporters_of(
         """SELECT c.reporter, count(DISTINCT c.cluster_id) n FROM citations c
            JOIN reporter_slugs s
-              ON s.reporter = c.reporter AND s.type IS c.type AND s.neutral_year = c.neutral_year
+              ON s.reporter = c.reporter AND s.type IS c.type AND s.year_volume = c.year_volume
            JOIN held_volumes h ON h.slug = s.slug AND h.volume = c.volume_key
            JOIN clusters k ON k.id = c.cluster_id AND NOT k.blocked
            WHERE c.cluster_id NOT IN (SELECT cluster_id FROM temp.alnum_held)
@@ -397,7 +397,7 @@ def stage_export(
                 r["page"],
                 _int(r["type"]),
                 volume_key(r["volume"] or ""),
-                1 if r["type"] == "8" and year_volume(r["volume"]) else 0,
+                1 if year_volume(r["volume"]) else 0,
             )
             for r in _rows(export_dir, "citations", export, CITATION_COLUMNS)
         ),

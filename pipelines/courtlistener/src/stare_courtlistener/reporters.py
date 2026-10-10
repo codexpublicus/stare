@@ -7,11 +7,12 @@ the slug and the short name, after folding curly quotes. A short name CAP gives 
 reporters (``Ct. Cl.`` is both the U.S. Court of Claims and West Virginia's) maps to both
 slugs, and a citation in either counts as held.
 
-Citations CourtListener types as LEXIS (6) or Westlaw (7) never map to a CAP reporter, and
-neither does a neutral one (8) whose volume is a year, though some spell like one: ``2021
-ND 123`` folds to the same letters as ``N.D.``, and ``2021-Ohio-1234`` is typed ``Ohio``
-like the Ohio Reports. A "neutral" citation with an ordinary volume number is a mistyped
-reporter citation (``310 Neb. 1``, ``62 M.J. 4``) and maps as one.
+Citations CourtListener types as LEXIS (6) or Westlaw (7) never map to a CAP reporter.
+Otherwise the volume decides, not the type, since CourtListener's types are loose (``2004
+Ohio 3319`` is typed as a state reporter, ``310 Neb. 1`` as neutral): a volume that is a
+year maps only to the one CAP reporter numbered by year (``mass-app-div-annual``), and any
+other volume to the rest. So ``2021 ND 123``, which folds to the same letters as ``N.D.``,
+maps to nothing, and ``Mass. App. Div.`` picks its CAP series by volume.
 
 ``OVERRIDES`` maps a CourtListener reporter to slugs by hand where its spelling doesn't fold
 to CAP's (``Serg. & Rawle`` for CAP's ``Serg. & Rawl.``, ``Ohio St. (N.S.)`` for ``Ohio
@@ -51,6 +52,10 @@ OVERRIDES: dict[str, tuple[str, ...]] = {
     "Walk.": ("walker",),
 }
 """CourtListener reporter → CAP slugs, where the spellings don't fold to the same letters."""
+
+
+YEAR_VOLUME_SLUGS = frozenset({"mass-app-div-annual"})
+"""CAP reporters whose volumes are years; no other CAP volume number reaches 1900."""
 
 
 def year_volume(volume: str | None) -> bool:
@@ -96,15 +101,13 @@ class ReporterMap:
     ) -> tuple[str, ...]:
         """The CAP slugs a citation's reporter may be; empty when CAP never had it.
 
-        A neutral citation maps only when ``volume`` is given and isn't a year.
+        Without a ``volume``, a neutral citation is taken to have a year for one.
         """
         if cite_type in UNMAPPED_TYPES:
             return ()
-        if cite_type == NEUTRAL and (volume is None or year_volume(volume)):
-            return ()
-        if reporter in self.overrides:
-            return self.overrides[reporter]
-        return self.by_key.get(fold(reporter), ())
+        year = year_volume(volume) if volume is not None else cite_type == NEUTRAL
+        found = self.overrides.get(reporter) or self.by_key.get(fold(reporter), ())
+        return tuple(s for s in found if (s in YEAR_VOLUME_SLUGS) == year)
 
     def ambiguous(self) -> dict[str, tuple[str, ...]]:
         """Folded names that more than one CAP reporter shares."""

@@ -149,6 +149,17 @@ def test_us_reports_are_official_over_other_federal_reporters() -> None:
     assert typed_citations(cites)[0] == {"type": "official", "cite": "593 U.S. 1"}
 
 
+def test_hyphenated_neutral_typed_as_a_reporter() -> None:
+    cites = [Cite("2004", "Ohio", "3319", STATE), Cite("101", "Ohio St.3d", "5", STATE)]
+    assert typed_citations(cites) == [
+        {"type": "official", "cite": "101 Ohio St.3d 5"},
+        {"type": "neutral", "cite": "2004-Ohio-3319"},
+    ]
+    assert typed_citations([Cite("5", "Ohio", "12", STATE)]) == [
+        {"type": "official", "cite": "5 Ohio 12"}
+    ]
+
+
 def test_only_neutral_means_no_official() -> None:
     assert typed_citations([Cite("2021", "ND", "7", NEUTRAL)]) == [
         {"type": "neutral", "cite": "2021 ND 7"}

@@ -53,6 +53,10 @@ def test_only_known_ambiguities(reporters: ReporterMap) -> None:
         ("Neb.", NEUTRAL, "310", ("neb",)),  # a mistyped reporter citation
         ("M.J.", NEUTRAL, "62", ("mj",)),
         ("Neb.", STATE, "310", ("neb",)),
+        ("Ohio", STATE, "2004", ()),  # 2004-Ohio-3319, typed as a state reporter
+        ("Ohio", STATE, "5", ("ohio",)),
+        ("Mass. App. Div.", STATE, "2005", ("mass-app-div-annual",)),
+        ("Mass. App. Div.", STATE, "30", ("mass-app-div",)),
     ],
 )
 def test_neutral_by_volume(
