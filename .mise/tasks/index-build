@@ -3,6 +3,7 @@
 #USAGE arg "<tag>" help="The stare release tag to build stare-admin from, e.g. v2026.10.04.1"
 #USAGE arg "[version]" help="The index's data version, vYYYY.MM.DD[.N] (default: today's UTC date, vYYYY.MM.DD)"
 #USAGE flag "--allow <file>" help="JSON object of volumes (\"reporter/volume\") allowed to fail the index check, each with its reason"
+#USAGE flag "--cl <file>" help="A CourtListener export manifest (cl/exports/<date>/manifest.ndjson.gz from stare-cl records) whose citations go into the unified index"
 set -euo pipefail
 
 # Builds stare-admin from <tag> on this host, then runs batch-index and build-manifest in
@@ -10,7 +11,9 @@ set -euo pipefail
 # read-only, the output in a new codexpublicus-index:/builds/<version>/. A build is
 # never written over; a second build the same day is vYYYY.MM.DD.1 and so on.
 #
-# The build directory gets the .bin and .multi files, the build's manifest.json (with
+# The build directory gets the .bin and .multi files, the unified index
+# (<reporter>/<volume>.idx.gz, plus .<n>.idx.gz parts of a volume past 1,000 lines) with
+# CAP's cases and, given --cl, CourtListener's, the build's manifest.json (with
 # `version` and `generated_at`, no `base`), build.log, batch-index.json (what indexing
 # each volume found), report.json (schemas/index-report.v1.schema.json), and build.json
 # with the exit status of each step. `mise run index-publish <version>` checks those
@@ -26,6 +29,7 @@ root="${MISE_PROJECT_ROOT}"
 tag="${usage_tag:?}"
 version="${usage_version:-v$(date -u +%Y.%m.%d)}"
 allow="${usage_allow:-}"
+cl="${usage_cl:-}"
 
 image=debian:trixie-slim
 mirror_volume=codexpublicus-cap-mirror
@@ -44,6 +48,13 @@ allow_mount=()
 if [ -n "$allow" ]; then
   [ -f "$allow" ] || { echo "index-build: no allow file $allow" >&2; exit 2; }
   allow_mount=(-v "$(realpath "$allow"):/allow.json:ro" -e ALLOW=/allow.json)
+fi
+
+cl_mount=()
+if [ -n "$cl" ]; then
+  [ -f "$cl" ] || { echo "index-build: no CourtListener manifest $cl" >&2; exit 2; }
+  cl_mount=(-v "$(realpath "$cl"):/cl/$(basename "$(dirname "$(realpath "$cl")")")/manifest.ndjson.gz:ro" \
+    -e CL="/cl/$(basename "$(dirname "$(realpath "$cl")")")/manifest.ndjson.gz")
 fi
 
 if in_index test -e "/index/builds/$version"; then
@@ -68,6 +79,10 @@ if ! "$bin" build-manifest --help | grep -q -- '--version'; then
   echo "index-build: stare-admin at $tag has no build-manifest --version; use a later tag" >&2
   exit 1
 fi
+if ! "$bin" batch-index --help | grep -q -- '--volumes-metadata'; then
+  echo "index-build: stare-admin at $tag doesn't write the unified index; use a later tag" >&2
+  exit 1
+fi
 if ! "$bin" build-report --help >/dev/null 2>&1; then
   echo "index-build: stare-admin at $tag has no build-report; use a later tag" >&2
   exit 1
@@ -78,7 +93,7 @@ docker run --rm --network none --user 1000:1000 \
   -v "$mirror_volume:/mirror:ro" \
   -v "$index_volume:/index" \
   -v "$bin:/usr/local/bin/stare-admin:ro" \
-  "${allow_mount[@]}" \
+  "${allow_mount[@]}" "${cl_mount[@]}" \
   -e VERSION="$version" -e TAG="$tag" -e COMMIT="$commit" \
   "$image" bash -c '
     set -u -o pipefail
@@ -88,8 +103,11 @@ docker run --rm --network none --user 1000:1000 \
     started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     allow_args=()
     [ -n "${ALLOW:-}" ] && allow_args=(--allow "$ALLOW")
+    cl_args=()
+    [ -n "${CL:-}" ] && cl_args=(--cl "$CL")
     stare-admin batch-index /mirror/downloads -o "$out" \
-      --results "$out/batch-index.json" "${allow_args[@]}" 2>&1 | tee "$out/build.log"
+      --volumes-metadata /mirror/downloads/VolumesMetadata.json \
+      --results "$out/batch-index.json" "${allow_args[@]}" "${cl_args[@]}" 2>&1 | tee "$out/build.log"
     batch=${PIPESTATUS[0]}
     manifest=null
     if [ "$batch" -eq 0 ]; then

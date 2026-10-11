@@ -10,7 +10,8 @@ set -euo pipefail
 #      report.json has to agree: its version, volumes and entries match the
 #      manifest's, and it lists no failed volumes.
 #   2. Uploads the build to s3://stare-pub-idx/v/<version>/ with
-#      Cache-Control: public, max-age=31536000, immutable; report.json goes just
+#      Cache-Control: public, max-age=31536000, immutable (the unified index's .idx.gz
+#      files as application/gzip with no Content-Encoding); report.json goes just
 #      before the build's manifest.json, which goes last, so its presence means the
 #      upload is complete. batch-index.json, build.json and build.log stay on the
 #      volume. A version already in v/ is never uploaded again; its manifest has to
@@ -124,8 +125,12 @@ if ! $remote; then
   # 2. Upload it: the index files, then report.json, then the manifest last.
   s5 cp --cache-control "$immutable" \
     --exclude '*manifest.json' --exclude '*build.json' --exclude '*build.log' \
-    --exclude '*batch-index.json' --exclude '*report.json' \
+    --exclude '*batch-index.json' --exclude '*report.json' --exclude '*.idx.gz' \
     "$build/*" "$bucket/v/$version/"
+  # The unified index as stored, gzip with no Content-Encoding: readers gunzip it
+  # themselves, and Cloudflare caches .gz by extension.
+  s5 cp --cache-control "$immutable" --content-type application/gzip \
+    "$build/*.idx.gz" "$bucket/v/$version/"
   if [ -f "$work/report.json" ]; then
     s5 cp --cache-control "$immutable" --content-type application/json \
       /work/report.json "$bucket/v/$version/report.json"
