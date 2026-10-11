@@ -32,6 +32,9 @@ pub struct BatchResults {
     pub errors: BTreeMap<String, String>,
     /// The `--allow` file the batch ran with.
     pub allow: Allowlist,
+    /// What the CourtListener input to the unified index held, when there was one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cl: Option<crate::idx::ClInput>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -46,6 +49,10 @@ pub struct Report {
     pub failed: Vec<Failed>,
     pub volumes: BTreeMap<String, BTreeMap<String, VolumeCounts>>,
     pub diff: Option<Diff>,
+    /// What the build's unified index files (`.idx.gz`) hold; absent from builds
+    /// without them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idx: Option<crate::idx::Counts>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
@@ -380,6 +387,10 @@ pub fn build_report(
         failed,
         volumes,
         diff: None,
+        idx: crate::idx::count(build_dir)?.map(|mut c| {
+            c.cl_input = results.cl.clone();
+            c
+        }),
     };
     report.diff = previous.map(|p| diff(p, &report));
     Ok(report)
@@ -649,7 +660,57 @@ mod tests {
                 ),
                 ("us/1".into(), "kept from an earlier build".into()),
             ]),
+            cl: None,
         }
+    }
+
+    #[test]
+    fn report_counts_the_unified_index() {
+        let mut results = results();
+        let dir = build(&results);
+        let r = build_report(dir.path(), &results, None, &identity(), None, NOW).unwrap();
+        assert_eq!(r.idx, None);
+        let raw: Value = serde_json::from_str(&r.to_json().unwrap()).unwrap();
+        assert!(raw.get("idx").is_none());
+
+        let h = "0f3a9c2e7b1d4a65";
+        std::fs::create_dir_all(dir.path().join("ny-slip-op")).unwrap();
+        let gz = stare::idx::gzip;
+        std::fs::write(
+            dir.path().join("a2d/31.idx.gz"),
+            gz(&format!("1,cap,0001-01\n1,cl,5/{h}\n")),
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("a2d/31.1.idx.gz"), gz("9,cap,0009-01\n")).unwrap();
+        std::fs::write(
+            dir.path().join("ny-slip-op/2021.idx.gz"),
+            gz(&format!("12,cl,6/{h}\nbad\n")),
+        )
+        .unwrap();
+        results.cl = Some(crate::idx::ClInput {
+            export: Some("2026-09-30".into()),
+            records: 2,
+            lines: 2,
+            ..Default::default()
+        });
+        let r = build_report(dir.path(), &results, None, &identity(), None, NOW).unwrap();
+        assert_valid(&r);
+        let idx = r.idx.as_ref().unwrap();
+        assert_eq!(
+            (
+                idx.volumes,
+                idx.files,
+                idx.split_volumes,
+                idx.cl_only_volumes
+            ),
+            (2, 3, 1, 1)
+        );
+        assert_eq!(idx.lines["cap"], 2);
+        assert_eq!(idx.lines["cl"], 2);
+        assert_eq!(idx.malformed, 1);
+        assert_eq!(idx.cl_input.as_ref().unwrap().records, 2);
+        // A report with idx reads back.
+        assert_eq!(Report::parse(r.to_json().unwrap().as_bytes()).unwrap(), r);
     }
 
     fn identity() -> Identity {
