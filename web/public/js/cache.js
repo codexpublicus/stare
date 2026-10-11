@@ -1,7 +1,6 @@
 // The browser's cache of index and case files, in IndexedDB (an in-memory map where
-// IndexedDB isn't available): `bins` and `multi` hold idx.stare.pub's .bin and .multi
-// files (and the scans' tar.csv, and `multi` the CourtListener .cl sidecars), `zips` the
-// case zips and CourtListener records.
+// IndexedDB isn't available): `bins` and `multi` hold idx.stare.pub's .bin, .idx.gz and
+// .multi files (and the scans' tar.csv), `zips` the case zips and CourtListener records.
 //
 // Index files are keyed by their path on idx.stare.pub, which is under the build's
 // versioned prefix (`v/v2026.10.03/a3d/138.bin`) when the manifest has a `base`; see
@@ -12,7 +11,7 @@ const DB_NAME = 'stare-cache';
 const DB_VERSION = 2;
 const STORES = ['bins', 'multi', 'zips'];
 const INDEX_STORES = ['bins', 'multi'];
-const INDEX_FILE = /\.(?:bin|multi|cl)$/;
+const INDEX_FILE = /\.(?:bin|multi|idx\.gz)$/;
 
 let memoryCache = {};
 
@@ -47,7 +46,7 @@ export function isStaleIndexKey(key, base) {
   return base ? !key.startsWith(base) : key.startsWith('v/');
 }
 
-// Delete cached .bin, .multi and .cl files that aren't the build at `base`. Returns how many
+// Delete cached .bin, .multi and .idx.gz files that aren't the build at `base`. Returns how many
 // it deleted. Callers don't wait on it: a stale entry is never read, since its key is
 // not the current build's, so this only frees space.
 export async function pruneIndexCache(base) {

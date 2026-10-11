@@ -1,8 +1,9 @@
 import { fetchCached, fetchCachedText } from './cache.js';
 import { indexUrl, zipUrl } from './sources.js';
-import { ClRecordError, clEntries, fetchClRecord } from './cl.js';
+import { ClRecordError, fetchClRecord } from './cl.js';
+import { idxEntries } from './idx.js';
 import {
-  hasClVolume, holdsCapVolume, indexPath, isVolumeKey, loadManifest, volumeCandidates,
+  hasIdx, indexPath, isVolumeKey, loadManifest, volumeCandidates,
 } from './manifest.js';
 import { loadWasm } from './wasm.js';
 
@@ -105,33 +106,30 @@ async function locate(reporter, volume, page, onStatus) {
 // `volume` is as cited or a folder name; the result's `volume` is the folder the case
 // is in, which the zip, the scans and the page's URL all use.
 //
-// When CAP has no case at the page, or doesn't hold the volume, and the manifest's `cl`
-// block lists the volume, the case comes from its CourtListener sidecar instead
-// (resolveCl). A volume only CourtListener has never asks for a CAP .bin.
+// When the manifest has the unified index (`idx`), the volume's `.idx.gz` answers for
+// every source in one fetch (plus a later part of a split volume): CAP's case at the
+// page if there is one, else the first CourtListener record. A volume with no `.idx.gz`
+// (a CAP folder named directly, "a3d 138-2"), or a manifest without `idx`, reads the
+// .bin and .multi files as before. A miss in a volume the index holds is a miss; it
+// never becomes another source's case or a link out.
 export async function resolve(reporter, citedVolume, page, onStatus, seq = null) {
   onStatus('Loading...');
   await ensureWasm();
 
   const cited = String(citedVolume);
   const manifest = await loadManifest();
-  const cl = hasClVolume(manifest, reporter, cited);
-  let found = null;
-  let miss = null;
-  if (!cl || holdsCapVolume(manifest, reporter, cited)) {
+  if (hasIdx(manifest)) {
+    onStatus('Fetching index...');
+    let entries;
     try {
-      found = await locate(reporter, cited, page, onStatus);
+      entries = await idxEntries(reporter, cited, page);
     } catch (e) {
-      if (!cl) throw e;
-      miss = e;
+      throw new Error(`Couldn't reach the server. Check your connection and try again.`);
     }
+    if (entries) return resolveEntries(reporter, cited, page, entries, onStatus, seq);
   }
-  if (!found) {
-    const result = await resolveCl(reporter, cited, page, onStatus, seq);
-    if (result) return result;
-    throw miss || new Error(`No case starts at page ${page} in ${reporter} vol. ${cited}.`);
-  }
-  const { volume, binData, caseFile } = found;
 
+  const { volume, binData, caseFile } = await locate(reporter, cited, page, onStatus);
   const multiKey = await indexPath(`${reporter}/${volume}.multi`);
   const multiData = await fetchCachedText('multi', multiKey, indexUrl(multiKey));
 
@@ -146,7 +144,30 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
   if (allCases.length === 0) {
     throw new Error(`No case starts at page ${page} in ${reporter} vol. ${volume}.`);
   }
+  return resolveCap(reporter, volume, page, allCases, onStatus, seq);
+}
 
+// The case at a page from the unified index's entries there: the first entry's source
+// decides. CAP's cases at the page in the first entry's folder are its `allCases`;
+// CourtListener's records, when no CAP case starts there.
+async function resolveEntries(reporter, cited, page, entries, onStatus, seq) {
+  if (entries.length === 0) {
+    throw new Error(`No case starts at page ${page} in ${reporter} vol. ${cited}.`);
+  }
+  const first = entries[0];
+  if (first.source === 'cap') {
+    const folder = first.folder || null;
+    const allCases = entries
+      .filter((e) => e.source === 'cap' && (e.folder || null) === folder)
+      .map((e) => e.case_file);
+    return resolveCap(reporter, folder || cited, page, allCases, onStatus, seq);
+  }
+  return resolveCl(reporter, cited, page, entries.filter((e) => e.source === 'cl'), onStatus, seq);
+}
+
+// A CAP case from its folder's zip: the `seq`th of `allCases` (the page's case files),
+// or the first.
+async function resolveCap(reporter, volume, page, allCases, onStatus, seq) {
   const zipKey = `${reporter}/${volume}.zip`;
   onStatus('Fetching case data...');
   let zipData;
@@ -184,17 +205,9 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
 }
 
 // The CourtListener record at `page` of `volume` (the `seq`th when several start
-// there), or null when the sidecar has none. The result has the CAP result's fields,
-// with no zip: `caseFile` is `cl/<cluster_id>`, `allCases` every record at the page.
-async function resolveCl(reporter, volume, page, onStatus, seq) {
-  onStatus('Fetching CourtListener index...');
-  let entries;
-  try {
-    entries = await clEntries(reporter, volume, page);
-  } catch (e) {
-    throw new Error(`Couldn't reach the server. Check your connection and try again.`);
-  }
-  if (entries.length === 0) return null;
+// there). The result has the CAP result's fields, with no zip: `caseFile` is
+// `cl/<cluster_id>`, `allCases` every record at the page.
+async function resolveCl(reporter, volume, page, entries, onStatus, seq) {
   const n = seq !== null && seq > 0 && seq <= entries.length ? seq : 1;
   onStatus('Fetching case data...');
   let caseData;

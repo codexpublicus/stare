@@ -3,8 +3,8 @@
 // callers show an error, not empty or degraded results.
 
 import { fetchCached } from './cache.js';
-import { clEntries } from './cl.js';
-import { hasClVolume, holdsCapVolume, indexPath, loadManifest, volumeCandidates } from './manifest.js';
+import { idxEntries } from './idx.js';
+import { hasIdx, holdsVolume, indexPath, loadManifest, volumeCandidates } from './manifest.js';
 import { indexUrl } from './sources.js';
 import { pinSuffix } from './router.js';
 import { loadWasm } from './wasm.js';
@@ -107,13 +107,14 @@ export function guessSlug(reporter) {
 
 /**
  * Whether stare.pub holds `volume` (as cited) of `slug`: the manifest lists the
- * folder, or lists parts of it when CAP split the volume over several folders
- * (a3d 138 and 138-2), or its `cl` block lists a CourtListener sidecar for it.
+ * volume, or lists parts of it when CAP split the volume over several folders
+ * (a3d 138 and 138-2). With the unified index the manifest's `reporters` covers
+ * every source, so a volume only CourtListener has counts too.
  * `manifest` is injectable for tests.
  */
 export async function checkAvailability(slug, volume, manifest = null) {
   const m = manifest || await loadManifest();
-  return holdsCapVolume(m, slug, volume) || hasClVolume(m, slug, volume);
+  return holdsVolume(m, slug, volume);
 }
 
 // A volume folder's .bin, or null when it isn't indexed (a 404).
@@ -133,12 +134,13 @@ async function readBin(slug, volume) {
  * is tried first, then, as resolve.js does, the other parts of a split volume
  * whose page range holds the page (138 A.3d 1012 is in folder a3d/138-2), as
  * the format 2 manifest lists them.
- * Then, for a volume the manifest's `cl` block lists, its CourtListener sidecar;
- * a volume only CourtListener has is looked up there alone, with no CAP .bin.
- * Null when that can't be told (a .bin or the WASM didn't load); callers then
+ * With the unified index (the manifest's `idx`), the volume's `.idx.gz` answers
+ * instead, for every source, in one fetch per volume (cached); a volume with no
+ * `.idx.gz` falls back to the .bin files.
+ * Null when that can't be told (an index file or the WASM didn't load); callers then
  * treat the citation as resolvable, as they did before pages were checked.
  *
- * `deps` ({ manifest, readBin, lookup, clEntries }) are injectable for tests,
+ * `deps` ({ manifest, readBin, lookup, idxEntries }) are injectable for tests,
  * which can't load the WASM or reach idx.stare.pub.
  */
 export async function checkPage(slug, volume, page, deps = {}) {
@@ -146,12 +148,11 @@ export async function checkPage(slug, volume, page, deps = {}) {
     const p = parseInt(page, 10);
     const cited = String(volume);
     const m = deps.manifest || await loadManifest();
-    const cl = hasClVolume(m, slug, cited);
-    if (!cl || holdsCapVolume(m, slug, cited)) {
-      if (await capHasPage(slug, cited, p, m, deps)) return true;
+    if (hasIdx(m)) {
+      const entries = await (deps.idxEntries || idxEntries)(slug, cited, p);
+      if (entries) return entries.length > 0;
     }
-    if (cl) return (await (deps.clEntries || clEntries)(slug, cited, p)).length > 0;
-    return false;
+    return await capHasPage(slug, cited, p, m, deps);
   } catch {
     return null;
   }

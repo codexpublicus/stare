@@ -16,10 +16,11 @@
 // `base` (indexPath). A manifest without `base` has the files at the root, where the
 // index lived before.
 //
-// A manifest may also have a `cl` block, `{ export, reporters: { slug: [volume, ...] } }`:
-// the volumes with a CourtListener sidecar (`<base><reporter>/<volume>.cl`, see
-// sources.js) and the export they were built from. A volume can be in both, when CAP
-// holds the book but left pages out of it.
+// A manifest with `idx: 1` has the unified per-volume index (idx.js): one `.idx.gz`
+// per volume as cited, for every source, read instead of the .bin and .multi files.
+// Its `reporters` then covers every source, CourtListener-only reporters and volumes
+// included. An older manifest has no `idx`, and only the .bin and .multi files.
+// (#148's `cl` block, which nothing ever published, is ignored.)
 
 import { pruneIndexCache } from './cache.js';
 import { indexUrl } from './sources.js';
@@ -37,12 +38,11 @@ export function isVolumeKey(s) {
   return typeof s === 'string' && VOLUME_KEY.test(s);
 }
 
-// Either format, as { legacy, version, base, reporters: { slug: [folder, ...] }, parts, cl }.
+// Either format, as { legacy, version, base, idx, reporters: { slug: [folder, ...] }, parts }.
 // `version` is the data version, or null for a manifest without one; `base` is the
-// index files' prefix, or '' for the root; `cl` is `{ export, reporters }`, or null
-// for a manifest without CourtListener sidecars.
+// index files' prefix, or '' for the root; `idx` the unified index's format, or null.
 export function normalizeManifest(raw) {
-  const empty = { legacy: true, version: null, base: '', reporters: {}, parts: {}, cl: null };
+  const empty = { legacy: true, version: null, base: '', idx: null, reporters: {}, parts: {} };
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return empty;
   const v2 = 'format' in raw;
   const map = v2 ? raw.reporters : raw;
@@ -55,37 +55,26 @@ export function normalizeManifest(raw) {
   const parts = v2 && raw.parts && typeof raw.parts === 'object' ? raw.parts : {};
   const version = typeof raw.version === 'string' && raw.version.trim() ? raw.version.trim() : null;
   const base = v2 && isIndexBase(raw.base) ? raw.base : '';
-  const cl = v2 ? normalizeCl(raw.cl) : null;
-  return { legacy: !v2, version, base, reporters, parts, cl };
+  const idx = v2 && Number.isSafeInteger(raw.idx) ? raw.idx : null;
+  return { legacy: !v2, version, base, idx, reporters, parts };
 }
 
-const CL_REPORTER = /^[a-z0-9][a-z0-9-]*$/;
+// The unified index's format this reader knows.
+export const IDX_FORMAT = 1;
 
-function normalizeCl(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const reporters = {};
-  if (raw.reporters && typeof raw.reporters === 'object') {
-    for (const [slug, volumes] of Object.entries(raw.reporters)) {
-      if (!CL_REPORTER.test(slug) || !Array.isArray(volumes)) continue;
-      reporters[slug] = volumes.map(String).filter(isVolumeKey);
-    }
-  }
-  const exp = typeof raw.export === 'string' && raw.export.trim() ? raw.export.trim() : null;
-  return { export: exp, reporters };
+// Whether the build has the unified index in a format this reader knows.
+export function hasIdx(m) {
+  return m?.idx === IDX_FORMAT;
 }
 
 export function hasVolume(m, reporter, volume) {
   return (m.reporters[reporter] || []).includes(String(volume));
 }
 
-// Whether CAP holds `volume` as cited: the folder, or parts of a volume CAP split.
-export function holdsCapVolume(m, reporter, volume) {
+// Whether the index holds `volume` as cited: listed itself (from any source, with the
+// unified index), or the number of a volume CAP split over several folders.
+export function holdsVolume(m, reporter, volume) {
   return hasVolume(m, reporter, volume) || Array.isArray(m.parts[reporter]?.[String(volume)]);
-}
-
-// Whether the build has a CourtListener sidecar for `volume` of `reporter`.
-export function hasClVolume(m, reporter, volume) {
-  return !!m?.cl?.reporters?.[reporter]?.includes(String(volume));
 }
 
 // The folders to look `page` up in, in order, for a citation to `volume`: a volume CAP
@@ -129,7 +118,7 @@ let pruned = false;
 
 // The path of an index file ("a3d/138.bin") on idx.stare.pub, which is also its cache
 // key: under the manifest's `base`, or at the root without one. The sidebar, /check and
-// the case viewer all read .bin and .multi files through here. The first call on a
+// the case viewer all read index files through here. The first call on a
 // page with a readable manifest also drops other builds' files from the cache, in the
 // background.
 export async function indexPath(path, load = loadManifest) {
