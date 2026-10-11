@@ -1,0 +1,2 @@
+# byte-exact test fixtures: no line-ending conversion
+tests/fixtures/** -text
