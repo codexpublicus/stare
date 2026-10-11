@@ -336,6 +336,14 @@ impl Manifest {
         self.idx == Some(crate::idx::FORMAT)
     }
 
+    /// The volume as cited whose unified index file holds `folder`'s cases, when `folder`
+    /// is a split volume's folder not named for its number (`a3d/138-2` → `138`).
+    pub fn folded_into(&self, reporter: &str, folder: &str) -> Option<&str> {
+        self.parts.get(reporter)?.iter().find_map(|(number, list)| {
+            (number != folder && list.iter().any(|p| p.volume == folder)).then_some(number.as_str())
+        })
+    }
+
     /// The volumes of `reporter` that have a unified index file: every listed volume but
     /// the folders folded into a split volume's file (`a3d/138-2`, whose cases are in
     /// `a3d/138.idx.gz`), plus a split volume's number when no folder has its name.
@@ -644,6 +652,9 @@ mod tests {
         assert_eq!(m.idx_volumes("a3d"), ["9", "10", "138"]);
         assert_eq!(m.idx_volumes("tca"), ["1"]);
         assert!(m.idx_volumes("nope").is_empty());
+        assert_eq!(m.folded_into("a3d", "138-2"), Some("138"));
+        assert_eq!(m.folded_into("a3d", "138"), None);
+        assert_eq!(m.folded_into("a3d", "9"), None);
     }
 
     #[test]

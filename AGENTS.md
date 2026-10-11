@@ -77,8 +77,9 @@ One gzipped text file per volume as cited, for every source (`docs/plans/courtli
 The manifest's `idx: 1` says a build has them; `reporters` then lists every source's
 volumes, CourtListener-only ones included, while `volumes` and `entries` still count CAP's
 folders. The site (`web/public/js/resolve.js`) and the CLI read `.idx.gz` when `idx` is 1
-and fall back to `.bin`/`.multi` otherwise, or when a volume has no `.idx.gz` (a CAP folder
-named directly, `a3d 138-2`). A miss in a volume the index holds is a miss; it never
+and fall back to `.bin`/`.multi` otherwise, or when a volume has no `.idx.gz`. A split
+volume's other folder named directly (`a3d 138-2`) is read from its number's file, keeping
+the lines that name that folder. A miss in a volume the index holds is a miss; it never
 links out. The WASM exposes `parse_idx` and `lookup_idx`.
 
 Slugs for reporters CAP never had come from citare's edition `slug` (citare#71, not yet in

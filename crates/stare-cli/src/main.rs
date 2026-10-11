@@ -413,8 +413,9 @@ fn fetch_manifest(src: &Sources) -> Result<stare::manifest::Manifest> {
 ///
 /// When the manifest says the build has the unified index (`idx`), the volume's
 /// `.idx.gz` answers for every source in one read (plus a later part for a split
-/// volume). Otherwise, or when the volume has no `.idx.gz` (a CAP folder named
-/// directly, `a3d 138-2`), the `.bin`/`.multi` files do: the volume's own folder first,
+/// volume); a split volume's other folder named directly (`a3d 138-2`) reads its
+/// number's file. Otherwise, or when the volume has no `.idx.gz`, the `.bin`/`.multi`
+/// files do: the volume's own folder first,
 /// then the manifest's other parts of a volume CAP split over several folders.
 fn resolve_case(
     src: &Sources,
@@ -460,8 +461,19 @@ fn idx_entries(
     volume: &str,
     page: &stare::index::PageKey,
 ) -> Result<Option<Vec<stare::idx::Entry>>> {
-    if !src.manifest().is_some_and(|m| m.has_idx()) {
+    let Some(manifest) = src.manifest().filter(|m| m.has_idx()) else {
         return Ok(None);
+    };
+    // A split volume's other folder named directly (`a3d 138-2`) is in its number's
+    // file, as the lines that name the folder.
+    if let Some(number) = manifest.folded_into(reporter, volume) {
+        let number = number.to_string();
+        return Ok(idx_entries(src, reporter, &number, page)?.map(|entries| {
+            entries
+                .into_iter()
+                .filter(|e| e.cap_case().is_some_and(|(f, _)| f == Some(volume)))
+                .collect()
+        }));
     }
     let Some(head) = fetch_idx(src, reporter, volume, 0)? else {
         return Ok(None);
@@ -1222,6 +1234,41 @@ mod tests {
         assert_eq!(check_page(&src, "a3d", 250, 101), (true, false));
         assert_eq!(check_page(&src, "a2d", 31, 647), (true, true));
         assert_eq!(check_page(&src, "a2d", 99, 1), (false, false));
+    }
+
+    #[test]
+    fn a_folded_folder_named_directly_reads_its_volumes_file() {
+        let _env = CACHE_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let cache = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", cache.path());
+        let (idx, data, src) = idx_fixture(true);
+        // Say a2d 31 is split over 31 and 31-2, and 31-2 holds a copy of page 647.
+        std::fs::write(
+            idx.path().join("manifest.json"),
+            r#"{"format": 2, "idx": 1, "base": "v/v1/", "reporters": {"a2d": ["31", "31-2"]},
+                "parts": {"a2d": {"31": [{"volume": "31", "first_page": 1, "last_page": 900},
+                                         {"volume": "31-2", "first_page": 1, "last_page": 900}]}}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            idx.path().join("v/v1/a2d/31.idx.gz"),
+            stare::idx::gzip("1,cap,0001-01\n647,cap,31-2/0647-01\n"),
+        )
+        .unwrap();
+        std::fs::copy(
+            data.path().join("cap/a2d/31.zip"),
+            data.path().join("cap/a2d/31-2.zip"),
+        )
+        .unwrap();
+        let src = Sources {
+            manifest: std::cell::OnceCell::new(),
+            ..src
+        };
+        let result = resolve_case(&src, "a2d", "31-2", 647).unwrap();
+        assert_eq!(result.case_file, "0647-01");
+        // 31-2 has no case at page 1; 31 does.
+        assert!(resolve_case(&src, "a2d", "31-2", 1).is_err());
+        assert!(config::cache_get("bins", "v/v1/a2d/31-2.idx.gz").is_none());
     }
 
     #[test]
