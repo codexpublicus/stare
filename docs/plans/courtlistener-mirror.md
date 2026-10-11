@@ -38,7 +38,13 @@ date checked in each export's `export.json`.
 
 CourtListener re-imported most of CAP, so most of its clusters are cases stare already holds.
 CAP stays the text of record wherever it holds a case: it has the page scans, ALTO and page
-numbers the viewer is built on. CourtListener contributes:
+numbers the viewer is built on. Its page source becomes the archival per-volume PDFs
+([#51](https://github.com/codexpublicus/stare/issues/51), `codex-data/cap-pdf/<reporter>/<vol>.pdf`):
+linearized PDF/A with the ALTO words as a text layer and a bookmark per case, so the viewer
+range-reads one page instead of static.case.law's tars. The index is unaffected; it names the
+case, and the case's page orders locate its pages in the PDF. A CourtListener case that the
+crosswalk matches to a CAP case gets those pages too; a case only CourtListener holds has no
+scans. CourtListener contributes:
 
 - **Cases CAP doesn't hold**, reachable by a reporter citation: everything after 2018, plus
   reporters and pages CAP never scanned or released (for example the redacted regional reprints
@@ -150,6 +156,14 @@ session's decision queue; per-volume zips are the alternative, at the cost of re
 volume for one corrected case.
 
 ## Index
+
+Every index file is small and fetched whole; nothing seeks into a compressed file. A lookup
+downloads one file for one volume. [#110](https://github.com/codexpublicus/stare/issues/110)
+measured one gzipped index file per volume for both sources at about 1.4 KB for a CAP volume and
+a median of 4.5 KB for a CourtListener one. Slip-opinion and neutral "volumes" (`ny-slip-op/2019`
+has 8,979 cases) are split at a page boundary past about 1,000 lines, which caps a lookup near
+15 KB. The sum over all 47,489 volumes, about 42 MB, matters only to a mirror that downloads all
+of it. Whether that unified file replaces the sidecar below is D31.
 
 The CAP index (`v/<ver>/<reporter>/<vol>.bin` and `.multi`) maps a page to a CAP case file. A
 CourtListener volume gets a sidecar in the same version directory:
