@@ -14,6 +14,59 @@ pub struct CaseJson {
     pub court: Court,
     pub jurisdiction: Jurisdiction,
     pub casebody: CaseBody,
+    /// Where the record came from. CAP's case JSON has none, which reads as CAP; a
+    /// CourtListener record (`crate::cl`) has `{"name": "courtlistener", ...}`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<Source>,
+}
+
+impl CaseJson {
+    /// Parse one case record: a CAP case JSON or a CourtListener record, which has
+    /// the same shape plus `source`.
+    pub fn parse(bytes: &[u8]) -> Result<Self> {
+        serde_json::from_slice(bytes).context("failed to parse case JSON")
+    }
+
+    /// The record's source name: `source.name`, or `"cap"` when it has no `source`.
+    pub fn source_name(&self) -> &str {
+        self.source.as_ref().map_or("cap", |s| s.name.as_str())
+    }
+}
+
+/// A record's `source` block (docs/plans/courtlistener-mirror.md, "The record").
+/// Everything but `name` is optional, so a reader takes a record from any export.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Source {
+    pub name: String,
+    /// The export the record was built from (`2026-09-30`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export: Option<String>,
+    /// The first export the case appeared in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_seen: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ids: Option<SourceIds>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docket_number: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub precedential_status: Option<String>,
+    /// Which CourtListener opinion field the text came from (`html_with_citations`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_field: Option<String>,
+    /// The case's page on the source's own site.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+/// CourtListener's ids for a record: its cluster, docket and opinions.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SourceIds {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docket: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub opinions: Vec<u64>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -153,6 +206,50 @@ mod tests {
         assert_eq!(case.citations[0].cite, "31 A.2d 647");
         assert!(!case.casebody.opinions.is_empty());
         assert!(case.casebody.opinions[0].text.len() > 100);
+    }
+
+    #[test]
+    fn cap_case_json_parses_unchanged_and_reads_as_cap() {
+        let zip_bytes = std::fs::read("tests/fixtures/a2d-31.zip").unwrap();
+        let raw = extract_file_from_zip(&zip_bytes, "json/0647-01.json").unwrap();
+        let original: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert!(original.get("source").is_none());
+
+        let case = CaseJson::parse(raw.as_bytes()).unwrap();
+        assert_eq!(case.source, None);
+        assert_eq!(case.source_name(), "cap");
+        // Serialized again, a CAP case has no `source` key either.
+        let again = serde_json::to_value(&case).unwrap();
+        assert!(again.get("source").is_none());
+        assert_eq!(again["name_abbreviation"], original["name_abbreviation"]);
+    }
+
+    #[test]
+    fn courtlistener_record_parses_with_its_source() {
+        let case = CaseJson::parse(include_bytes!("../tests/fixtures/cl-record.json")).unwrap();
+        assert_eq!(case.source_name(), "courtlistener");
+        let source = case.source.as_ref().unwrap();
+        assert_eq!(source.export.as_deref(), Some("2026-09-30"));
+        assert_eq!(source.docket_number.as_deref(), Some("J-12-2021"));
+        let ids = source.ids.as_ref().unwrap();
+        assert_eq!(ids.cluster, Some(9876543));
+        assert_eq!(ids.opinions, [11111, 11112]);
+        assert_eq!(case.citations[0].cite, "250 A.3d 100");
+        assert_eq!(case.casebody.opinions.len(), 2);
+
+        // Only `name` is required in `source`.
+        let bare = br#"{"id": 1, "name": "A v. B", "name_abbreviation": "A v. B",
+            "decision_date": "2021-01-01", "citations": [], "court": {"name": "C"},
+            "jurisdiction": {"name_long": "J"}, "casebody": {"opinions": []},
+            "source": {"name": "courtlistener"}}"#;
+        let case = CaseJson::parse(bare).unwrap();
+        assert_eq!(
+            case.source.unwrap(),
+            Source {
+                name: "courtlistener".into(),
+                ..Default::default()
+            }
+        );
     }
 
     #[test]

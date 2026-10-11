@@ -40,18 +40,34 @@ Three interfaces to the same data, all static files:
 /index/manifest.json              — the live build's manifest plus `base` (`v/<version>/`), short max-age (crates/stare/src/manifest.rs)
 /index/v/{version}/{reporter}/{vol}.bin    — citation lookup (page offset → case file); immutable
 /index/v/{version}/{reporter}/{vol}.multi  — pages with several cases; immutable
+/index/v/{version}/{reporter}/{vol}.cl     — CourtListener sidecar, `page,cluster_id,hash` per line, for volumes the manifest's `cl` block lists; immutable
 /index/v/{version}/manifest.json  — the build's own manifest (no `base`)
 /index/v/{version}/report.json    — the build's report (schemas/index-report.v1.schema.json); immutable
 /index/reports/index.json         — every published build's report totals, oldest first (schemas/reports-index.v1.schema.json); charted at stare.pub/data
 /index/{reporter}/{vol}.bin       — the pre-versioning index, for clients that ignore `base`
 /index/reporters.json             — abbreviation → slug mapping
 /cap/{reporter}/{vol}.zip         — case text JSONs (codex-data bucket, served at data.stare.pub/cap)
+/cl/c/{cluster_id}/{hash}.json.gz — one CourtListener record, CAP's case JSON shape plus `source` (codex-data, data.stare.pub/cl); immutable
 /data/{reporter}/{vol}.tar        — page images + ALTO OCR (range requests via tar.csv)
 /data/{reporter}/{vol}.tar.csv    — tar byte offset manifest
 /data/{reporter}/{vol}.pdf        — volume PDF fallback
 /search/...                       — RoaringBuckets bitmap index
 /ducklake/...                     — DuckLake Parquet + catalog
 ```
+
+### CourtListener records (`crates/stare/src/cl.rs`, `web/public/js/cl.js`)
+
+Cases CAP doesn't hold come from CourtListener's bulk data
+(`docs/plans/courtlistener-mirror.md`). A record is CAP's case JSON with a `source` block
+(`name: "courtlistener"`, the export date, CourtListener's ids, docket number, status and
+URL); `<hash>` is the first 16 hex digits of its SHA-256. The root manifest's
+`cl: {export, reporters: {slug: [vols]}}` lists the volumes with a `.cl` sidecar. After
+a CAP miss (no case at the page, or a volume CAP doesn't hold), the site and the CLI read
+the sidecar, fetch the record and render it like a CAP case with a source line, and no
+page scans or PDF. Several records can start on one page. The layout is not settled
+(per-case objects or per-volume zips), so `cl.rs` and `sources.js` are the only places
+that build these paths. Nothing is published yet; the e2e tests serve a hand-made record
+(`crates/stare/tests/fixtures/cl-record.json`) through routes.
 
 ### Index builds and publishing
 

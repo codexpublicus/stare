@@ -3,7 +3,8 @@
 // callers show an error, not empty or degraded results.
 
 import { fetchCached } from './cache.js';
-import { hasVolume, indexPath, loadManifest, volumeCandidates } from './manifest.js';
+import { clEntries } from './cl.js';
+import { hasClVolume, holdsCapVolume, indexPath, loadManifest, volumeCandidates } from './manifest.js';
 import { indexUrl } from './sources.js';
 import { pinSuffix } from './router.js';
 import { loadWasm } from './wasm.js';
@@ -107,11 +108,12 @@ export function guessSlug(reporter) {
 /**
  * Whether stare.pub holds `volume` (as cited) of `slug`: the manifest lists the
  * folder, or lists parts of it when CAP split the volume over several folders
- * (a3d 138 and 138-2). `manifest` is injectable for tests.
+ * (a3d 138 and 138-2), or its `cl` block lists a CourtListener sidecar for it.
+ * `manifest` is injectable for tests.
  */
 export async function checkAvailability(slug, volume, manifest = null) {
   const m = manifest || await loadManifest();
-  return hasVolume(m, slug, volume) || Array.isArray(m.parts[slug]?.[String(volume)]);
+  return holdsCapVolume(m, slug, volume) || hasClVolume(m, slug, volume);
 }
 
 // A volume folder's .bin, or null when it isn't indexed (a 404).
@@ -131,42 +133,53 @@ async function readBin(slug, volume) {
  * is tried first, then, as resolve.js does, the other parts of a split volume
  * whose page range holds the page (138 A.3d 1012 is in folder a3d/138-2), as
  * the format 2 manifest lists them.
+ * Then, for a volume the manifest's `cl` block lists, its CourtListener sidecar;
+ * a volume only CourtListener has is looked up there alone, with no CAP .bin.
  * Null when that can't be told (a .bin or the WASM didn't load); callers then
  * treat the citation as resolvable, as they did before pages were checked.
  *
- * `deps` ({ manifest, readBin, lookup }) are injectable for tests, which can't
- * load the WASM or reach idx.stare.pub.
+ * `deps` ({ manifest, readBin, lookup, clEntries }) are injectable for tests,
+ * which can't load the WASM or reach idx.stare.pub.
  */
 export async function checkPage(slug, volume, page, deps = {}) {
   try {
     const p = parseInt(page, 10);
-    const read = deps.readBin || readBin;
-    let lookup = deps.lookup;
-    if (!lookup) {
-      const w = await loadWasm();
-      lookup = (bin, pg) => w.lookup_page(bin, pg);
-    }
     const cited = String(volume);
-    const tried = [cited];
-    let bin = await read(slug, cited);
-    if (bin && lookup(bin, p) != null) return true;
     const m = deps.manifest || await loadManifest();
-    // The legacy manifest can't name split volumes, and guessing "<n>-2" here,
-    // as resolve.js does for one citation the reader asked for, would cost a
-    // 404 for every page miss on the page. Until the format 2 manifest is up,
-    // a citation into a second part shows as a held-volume miss, as it did
-    // before #94.
-    if (m.legacy) return false;
-    for (const other of volumeCandidates(m, slug, cited, p)) {
-      if (tried.includes(other)) continue;
-      tried.push(other);
-      bin = await read(slug, other);
-      if (bin && lookup(bin, p) != null) return true;
+    const cl = hasClVolume(m, slug, cited);
+    if (!cl || holdsCapVolume(m, slug, cited)) {
+      if (await capHasPage(slug, cited, p, m, deps)) return true;
     }
+    if (cl) return (await (deps.clEntries || clEntries)(slug, cited, p)).length > 0;
     return false;
   } catch {
     return null;
   }
+}
+
+async function capHasPage(slug, cited, p, m, deps) {
+  const read = deps.readBin || readBin;
+  let lookup = deps.lookup;
+  if (!lookup) {
+    const w = await loadWasm();
+    lookup = (bin, pg) => w.lookup_page(bin, pg);
+  }
+  const tried = [cited];
+  let bin = await read(slug, cited);
+  if (bin && lookup(bin, p) != null) return true;
+  // The legacy manifest can't name split volumes, and guessing "<n>-2" here,
+  // as resolve.js does for one citation the reader asked for, would cost a
+  // 404 for every page miss on the page. Until the format 2 manifest is up,
+  // a citation into a second part shows as a held-volume miss, as it did
+  // before #94.
+  if (m.legacy) return false;
+  for (const other of volumeCandidates(m, slug, cited, p)) {
+    if (tried.includes(other)) continue;
+    tried.push(other);
+    bin = await read(slug, other);
+    if (bin && lookup(bin, p) != null) return true;
+  }
+  return false;
 }
 
 /**

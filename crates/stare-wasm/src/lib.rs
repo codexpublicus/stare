@@ -27,6 +27,30 @@ pub fn extract_case(zip_bytes: &[u8], case_file: &str) -> Result<String, JsError
     serde_json::to_string(&case).map_err(|e| JsError::new(&e.to_string()))
 }
 
+/// Parse one case record's JSON (a CAP case, or a CourtListener record with its
+/// `source` block) into the shape `extract_case` returns. Throws on a record that
+/// doesn't have it.
+#[wasm_bindgen]
+pub fn parse_case_json(json: &[u8]) -> Result<String, JsError> {
+    let case = stare::case::CaseJson::parse(json).map_err(|e| JsError::new(&format!("{e:#}")))?;
+    serde_json::to_string(&case).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Parse a CourtListener sidecar (`<reporter>/<volume>.cl`). Returns JSON:
+/// `{ entries: [{ page, cluster_id, hash }], malformed: [line numbers] }`.
+#[wasm_bindgen]
+pub fn parse_cl_sidecar(text: &str) -> String {
+    serde_json::to_string(&stare::cl::parse_sidecar(text)).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// The CourtListener records starting at `page` in a sidecar, in its order, as a JSON
+/// array of `{ page, cluster_id, hash }`; `[]` for none.
+#[wasm_bindgen]
+pub fn lookup_cl_page(text: &str, page: u32) -> String {
+    let sidecar = stare::cl::parse_sidecar(text);
+    serde_json::to_string(&sidecar.lookup(page)).unwrap_or_else(|_| "[]".to_string())
+}
+
 /// Extract a raw file from a zip by path. Returns the file contents as a string.
 #[wasm_bindgen]
 pub fn extract_file(zip_bytes: &[u8], path: &str) -> Result<String, JsError> {

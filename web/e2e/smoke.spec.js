@@ -3,7 +3,8 @@
 // docs/superpowers/plans/2026-09-27-stare-infra-and-workers.md (Task 6,
 // step 5), plus /check exercising citare through the WASM.
 import { createHash } from 'node:crypto';
-import { gunzipSync } from 'node:zlib';
+import { readFileSync } from 'node:fs';
+import { gunzipSync, gzipSync } from 'node:zlib';
 
 import { test as base, expect } from '@playwright/test';
 
@@ -493,6 +494,88 @@ test('138 A.3d 1012 resolves into a3d/138-2, the second folder CAP split the vol
   await expect(page.locator('#resolved')).toBeVisible();
   await expect(page.locator('#topbar-case')).toHaveText('Brooks v. Powers');
   await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
+});
+
+test.describe('a CourtListener record on a CAP miss', () => {
+  // CAP's A.3d stops at vol. 213, so 250 A.3d 100 is a volume it doesn't hold. Nothing
+  // from CourtListener is published yet: the routes add a `cl` block to the live
+  // manifest and serve a sidecar for a3d 250 and the hand-made record the Rust tests
+  // read (docs/plans/courtlistener-mirror.md).
+  const RECORD = readFileSync(new URL('../../crates/stare/tests/fixtures/cl-record.json', import.meta.url));
+  const HASH = '0f3a9c2e7b1d4a65';
+  const RECORD_URL = `https://data.stare.pub/cl/c/9876543/${HASH}.json.gz`;
+  const CORS = { 'access-control-allow-origin': '*' };
+
+  // Returns the requests made for a CAP .bin of a3d 250, which should be none.
+  async function routeCourtListener(page) {
+    await page.route('https://idx.stare.pub/manifest.json', async (route) => {
+      const manifest = await (await route.fetch()).json();
+      manifest.cl = { export: '2026-09-30', reporters: { a3d: ['250'] } };
+      await route.fulfill({
+        headers: { ...CORS, 'cache-control': 'no-cache' },
+        contentType: 'application/json',
+        body: JSON.stringify(manifest),
+      });
+    });
+    await page.route('https://idx.stare.pub/**/a3d/250.cl', (route) => route.fulfill({
+      headers: CORS, contentType: 'text/plain', body: `100,9876543,${HASH}\n`,
+    }));
+    await page.route(RECORD_URL, (route) => route.fulfill({
+      headers: CORS, contentType: 'application/gzip', body: gzipSync(RECORD),
+    }));
+    const bins = [];
+    page.on('request', (req) => { if (/\/a3d\/250\.(?:bin|multi)$/.test(req.url())) bins.push(req.url()); });
+    return bins;
+  }
+
+  test('250 A.3d 100 renders from its record, with the source line', async ({ page }) => {
+    const bins = await routeCourtListener(page);
+    await page.goto('/');
+    await page.fill('#landing-input', '250 A.3d 100');
+    await page.click('#landing-btn');
+
+    await expect(page).toHaveURL(/#a3d\/250\/100-01$/);
+    await expect(page.locator('#topbar-case')).toHaveText('Smith v. Jones');
+    await expect(page.locator('#reader .reader-meta')).toHaveText('250 A.3d 100 — Supreme Court of Pennsylvania — 2021-04-02');
+    const source = page.locator('#reader .reader-source');
+    await expect(source).toHaveText("From CourtListener's bulk data, export 2026-09-30 · Docket J-12-2021 · Published");
+    await expect(source.locator('a')).toHaveAttribute('href', 'https://www.courtlistener.com/opinion/9876543/smith-v-jones/');
+    await expect(source.locator('a')).toHaveAttribute('rel', 'noopener noreferrer');
+    await expect(page.locator('#reader .reader-author')).toHaveText(['Saylor', 'Wecht']);
+    // Its citations are found and linked like a CAP case's.
+    await expect(page.locator('#sidebar [role="status"]')).toHaveText('1 case citation found (1 resolvable)');
+    await expect(page.locator('#reader a.cite-link', { hasText: '31 A.2d 647' })).toHaveAttribute('href', '#a2d/31/647');
+    // No scans and no volume PDF for a record.
+    await expect(page.locator('#tab-pages')).toBeHidden();
+    await expect(page.locator('#sidebar', { hasText: 'View original PDF' })).toHaveCount(0);
+    await expect(page.locator('#sidebar .sidebar-meta').first()).toContainText('Docket: J-12-2021');
+    await expect(page.locator('#sidebar .sidebar-source')).toHaveText("From CourtListener's bulk data, export 2026-09-30 · Published");
+    expect(bins).toEqual([]);
+  });
+
+  test('a pin cite into a record opens the case at the top', async ({ page }) => {
+    await routeCourtListener(page);
+    await page.goto('/#a3d/250/100-01@103');
+    await expect(page.locator('#topbar-case')).toHaveText('Smith v. Jones');
+    await expect(page.locator('#reader .reader-title')).toBeInViewport();
+    await expect(page.locator('#reader .page-target')).toHaveCount(0);
+    await expect(page.locator('#status-bar')).toBeHidden();
+  });
+
+  test('/check resolves a sidecar hit here and links nothing out for a miss', async ({ page }) => {
+    await routeCourtListener(page);
+    await page.goto('/check');
+    await page.fill('#check-input', 'See Smith v. Jones, 250 A.3d 100 (Pa. 2021); Doe v. Roe, 250 A.3d 101 (Pa. 2021).');
+    await page.click('#check-btn');
+
+    await expect(page.locator('#check-summary')).toHaveText('2 case citations found (1 resolvable)');
+    await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
+      '✓ 250 A.3d 100',
+      '✗ 250 A.3d 101 No case found at this page in A.3d vol. 250',
+    ]);
+    await expect(page.locator('#check-cite-list a.cited-case-link')).toHaveAttribute('href', '/#a3d/250/100-01');
+    await expect(page.locator('#check-cite-list .cited-case', { hasText: '250 A.3d 101' }).locator('a')).toHaveCount(0);
+  });
 });
 
 test.describe('/data before the first index report', () => {

@@ -15,6 +15,11 @@
 // never changed, so every .bin and .multi is read, and cached, by its path under
 // `base` (indexPath). A manifest without `base` has the files at the root, where the
 // index lived before.
+//
+// A manifest may also have a `cl` block, `{ export, reporters: { slug: [volume, ...] } }`:
+// the volumes with a CourtListener sidecar (`<base><reporter>/<volume>.cl`, see
+// sources.js) and the export they were built from. A volume can be in both, when CAP
+// holds the book but left pages out of it.
 
 import { pruneIndexCache } from './cache.js';
 import { indexUrl } from './sources.js';
@@ -32,11 +37,12 @@ export function isVolumeKey(s) {
   return typeof s === 'string' && VOLUME_KEY.test(s);
 }
 
-// Either format, as { legacy, version, base, reporters: { slug: [folder, ...] }, parts }.
+// Either format, as { legacy, version, base, reporters: { slug: [folder, ...] }, parts, cl }.
 // `version` is the data version, or null for a manifest without one; `base` is the
-// index files' prefix, or '' for the root.
+// index files' prefix, or '' for the root; `cl` is `{ export, reporters }`, or null
+// for a manifest without CourtListener sidecars.
 export function normalizeManifest(raw) {
-  const empty = { legacy: true, version: null, base: '', reporters: {}, parts: {} };
+  const empty = { legacy: true, version: null, base: '', reporters: {}, parts: {}, cl: null };
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return empty;
   const v2 = 'format' in raw;
   const map = v2 ? raw.reporters : raw;
@@ -49,11 +55,37 @@ export function normalizeManifest(raw) {
   const parts = v2 && raw.parts && typeof raw.parts === 'object' ? raw.parts : {};
   const version = typeof raw.version === 'string' && raw.version.trim() ? raw.version.trim() : null;
   const base = v2 && isIndexBase(raw.base) ? raw.base : '';
-  return { legacy: !v2, version, base, reporters, parts };
+  const cl = v2 ? normalizeCl(raw.cl) : null;
+  return { legacy: !v2, version, base, reporters, parts, cl };
+}
+
+const CL_REPORTER = /^[a-z0-9][a-z0-9-]*$/;
+
+function normalizeCl(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const reporters = {};
+  if (raw.reporters && typeof raw.reporters === 'object') {
+    for (const [slug, volumes] of Object.entries(raw.reporters)) {
+      if (!CL_REPORTER.test(slug) || !Array.isArray(volumes)) continue;
+      reporters[slug] = volumes.map(String).filter(isVolumeKey);
+    }
+  }
+  const exp = typeof raw.export === 'string' && raw.export.trim() ? raw.export.trim() : null;
+  return { export: exp, reporters };
 }
 
 export function hasVolume(m, reporter, volume) {
   return (m.reporters[reporter] || []).includes(String(volume));
+}
+
+// Whether CAP holds `volume` as cited: the folder, or parts of a volume CAP split.
+export function holdsCapVolume(m, reporter, volume) {
+  return hasVolume(m, reporter, volume) || Array.isArray(m.parts[reporter]?.[String(volume)]);
+}
+
+// Whether the build has a CourtListener sidecar for `volume` of `reporter`.
+export function hasClVolume(m, reporter, volume) {
+  return !!m?.cl?.reporters?.[reporter]?.includes(String(volume));
 }
 
 // The folders to look `page` up in, in order, for a citation to `volume`: a volume CAP

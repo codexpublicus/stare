@@ -95,6 +95,10 @@ describe('isStaleIndexKey', () => {
     assert.equal(isStaleIndexKey(`${V2}a3d/138.multi`, V2), false);
     assert.equal(isStaleIndexKey(`${V1}a3d/138.bin`, V2), true);
     assert.equal(isStaleIndexKey('a3d/138.multi', V2), true);
+    // CourtListener sidecars belong to their build too; their records don't.
+    assert.equal(isStaleIndexKey(`${V2}a3d/250.cl`, V2), false);
+    assert.equal(isStaleIndexKey(`${V1}a3d/250.cl`, V2), true);
+    assert.equal(isStaleIndexKey('cl/c/9876543/0f3a9c2e7b1d4a65.json.gz', V2), false);
   });
 
   test('without a base, only versioned files are stale', () => {
