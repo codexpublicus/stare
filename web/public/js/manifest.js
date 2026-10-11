@@ -77,6 +77,17 @@ export function holdsVolume(m, reporter, volume) {
   return hasVolume(m, reporter, volume) || Array.isArray(m.parts[reporter]?.[String(volume)]);
 }
 
+// The volume number a CAP folder is folded into in the unified index ("138" for
+// a3d's "138-2", whose cases are in a3d/138.idx.gz with a "138-2/" ref), or null for a
+// folder that is its own volume.
+export function foldedInto(m, reporter, folder) {
+  const f = String(folder);
+  for (const [number, parts] of Object.entries(m.parts[reporter] || {})) {
+    if (number !== f && Array.isArray(parts) && parts.some((p) => String(p.volume) === f)) return number;
+  }
+  return null;
+}
+
 // The folders to look `page` up in, in order, for a citation to `volume`: a volume CAP
 // didn't split is itself; a split one, the parts whose page range holds the page; a
 // folder name ("138-2") is itself.

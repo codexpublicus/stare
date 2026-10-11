@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  hasVolume, isIndexBase, isVolumeKey, loadManifest, normalizeManifest, volumeCandidates,
+  foldedInto, hasVolume, isIndexBase, isVolumeKey, loadManifest, normalizeManifest, volumeCandidates,
 } from '../public/js/manifest.js';
 
 // a3d 138 as stare-admin build-manifest writes it: CAP split it over two folders whose
@@ -27,6 +27,18 @@ const FORMAT_2 = {
     },
   },
 };
+
+describe('foldedInto', () => {
+  test('a later folder of a split volume is in its number\'s index file', () => {
+    const m = normalizeManifest(FORMAT_2);
+    assert.equal(foldedInto(m, 'a3d', '138-2'), '138');
+    assert.equal(foldedInto(m, 'tca', '1-2'), '1');
+    assert.equal(foldedInto(m, 'a3d', '138'), null);
+    assert.equal(foldedInto(m, 'a3d', '9'), null);
+    assert.equal(foldedInto(m, 'ga', '33-suppl'), null);
+    assert.equal(foldedInto(normalizeManifest(null), 'a3d', '138-2'), null);
+  });
+});
 
 describe('isVolumeKey', () => {
   test('accepts CAP folder names and nothing that could leave a path', () => {

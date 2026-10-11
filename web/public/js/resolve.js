@@ -3,7 +3,7 @@ import { indexUrl, zipUrl } from './sources.js';
 import { ClRecordError, fetchClRecord } from './cl.js';
 import { idxEntries } from './idx.js';
 import {
-  hasIdx, indexPath, isVolumeKey, loadManifest, volumeCandidates,
+  foldedInto, hasIdx, indexPath, isVolumeKey, loadManifest, volumeCandidates,
 } from './manifest.js';
 import { loadWasm } from './wasm.js';
 
@@ -108,9 +108,10 @@ async function locate(reporter, volume, page, onStatus) {
 //
 // When the manifest has the unified index (`idx`), the volume's `.idx.gz` answers for
 // every source in one fetch (plus a later part of a split volume): CAP's case at the
-// page if there is one, else the first CourtListener record. A volume with no `.idx.gz`
-// (a CAP folder named directly, "a3d 138-2"), or a manifest without `idx`, reads the
-// .bin and .multi files as before. A miss in a volume the index holds is a miss; it
+// page if there is one, else the first CourtListener record. A CAP folder folded into
+// another volume's file ("a3d 138-2", in a3d/138.idx.gz) is looked up there, keeping
+// that folder's cases. A volume with no `.idx.gz`, or a manifest without `idx`, reads
+// the .bin and .multi files as before. A miss in a volume the index holds is a miss; it
 // never becomes another source's case or a link out.
 export async function resolve(reporter, citedVolume, page, onStatus, seq = null) {
   onStatus('Loading...');
@@ -120,11 +121,15 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
   const manifest = await loadManifest();
   if (hasIdx(manifest)) {
     onStatus('Fetching index...');
+    const number = foldedInto(manifest, reporter, cited);
     let entries;
     try {
-      entries = await idxEntries(reporter, cited, page);
+      entries = await idxEntries(reporter, number || cited, page);
     } catch (e) {
       throw new Error(`Couldn't reach the server. Check your connection and try again.`);
+    }
+    if (entries && number) {
+      entries = entries.filter((e) => e.source === 'cap' && e.folder === cited);
     }
     if (entries) return resolveEntries(reporter, cited, page, entries, onStatus, seq);
   }
