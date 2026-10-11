@@ -245,6 +245,69 @@ fn fetch_and_cache(
     }
 }
 
+/// Fetch a volume's unified index into the cache: part 0, then every later part its
+/// `#parts` header names. Returns part 0's key, the worst status among the parts, and
+/// the CAP folders its `cap` lines name (the volume itself, and any folded folder).
+fn fetch_idx_volume(
+    client: &reqwest::blocking::Client,
+    source: &str,
+    manifest: &stare::manifest::Manifest,
+    slug: &str,
+    volume: &str,
+    bins_dir: &Path,
+) -> (String, FileStatus, Vec<String>) {
+    let key_of =
+        |part: usize| stare::idx::path(slug, volume, part).map(|p| manifest.index_path(&p));
+    let head_key = match key_of(0) {
+        Ok(k) => k,
+        Err(e) => {
+            return (
+                format!("{}/{}", slug, volume),
+                FileStatus::Error(e.to_string()),
+                vec![],
+            )
+        }
+    };
+    let mut status = match fetch_and_cache(client, source, &head_key, bins_dir, None) {
+        Ok(s) => s,
+        Err(e) => return (head_key, FileStatus::Error(e.to_string()), vec![]),
+    };
+    let read = |key: &str| -> anyhow::Result<stare::idx::VolumeIndex> {
+        stare::idx::parse_bytes(&std::fs::read(bins_dir.join(key))?)
+    };
+    let mut parts = match read(&head_key) {
+        Ok(idx) => vec![idx],
+        Err(e) => return (head_key, FileStatus::Error(e.to_string()), vec![]),
+    };
+    for part in 1..=parts[0].parts.len() {
+        let fetched = key_of(part).and_then(|key| {
+            let s = fetch_and_cache(client, source, &key, bins_dir, None)?;
+            Ok((s, read(&key)?))
+        });
+        match fetched {
+            Ok((s, idx)) => {
+                if let (FileStatus::Downloaded(a), FileStatus::Downloaded(b)) = (&status, &s) {
+                    status = FileStatus::Downloaded(a + b);
+                } else if matches!(status, FileStatus::Cached) {
+                    status = s;
+                }
+                parts.push(idx);
+            }
+            Err(e) => status = FileStatus::Error(e.to_string()),
+        }
+    }
+    let mut folders: Vec<String> = Vec::new();
+    for entry in parts.iter().flat_map(|p| &p.entries) {
+        if let Some((folder, _)) = entry.cap_case() {
+            let folder = folder.unwrap_or(volume).to_string();
+            if !folders.contains(&folder) {
+                folders.push(folder);
+            }
+        }
+    }
+    (head_key, status, folders)
+}
+
 /// Run a download pass: for each requested reporter, look up its volumes in the
 /// manifest, then fetch the .bin (index) and .zip (data) for each, skipping files
 /// already cached at the correct size. Errors on individual files are recorded and
@@ -265,7 +328,13 @@ pub fn run(cfg: &DownloadConfig, mut on_event: impl FnMut(Event)) -> Result<Repo
 
     for reporter in cfg.reporters {
         let slug = reporter.to_lowercase();
-        let volumes = manifest.volumes(&slug).to_vec();
+        // With the unified index, a volume CAP split over several folders is one
+        // `.idx.gz` under the number as cited, and the folded folders have none.
+        let volumes = if manifest.has_idx() {
+            manifest.idx_volumes(&slug)
+        } else {
+            manifest.volumes(&slug).to_vec()
+        };
 
         if volumes.is_empty() {
             report.errors.push(format!(
@@ -286,24 +355,51 @@ pub fn run(cfg: &DownloadConfig, mut on_event: impl FnMut(Event)) -> Result<Repo
         let total = volumes.len();
         for (i, volume) in volumes.iter().enumerate() {
             report.volumes_seen += 1;
-            let bin_key = manifest.index_path(&format!("{}/{}.bin", slug, volume));
-            let zip_key = format!("{}/{}.zip", slug, volume);
-
-            let bin_status =
-                match fetch_and_cache(&client, cfg.index_source, &bin_key, &bins_dir, None) {
+            let (bin_key, bin_status, folders) = if manifest.has_idx() {
+                fetch_idx_volume(
+                    &client,
+                    cfg.index_source,
+                    &manifest,
+                    &slug,
+                    volume,
+                    &bins_dir,
+                )
+            } else {
+                let key = manifest.index_path(&format!("{}/{}.bin", slug, volume));
+                let status = match fetch_and_cache(&client, cfg.index_source, &key, &bins_dir, None)
+                {
                     Ok(status) => status,
                     Err(e) => FileStatus::Error(e.to_string()),
                 };
-            let zip_status = match fetch_and_cache(
-                &client,
-                cfg.data_source,
-                &zip_key,
-                &zips_dir,
-                Some(&mut data_limiter),
-            ) {
-                Ok(status) => status,
-                Err(e) => FileStatus::Error(e.to_string()),
+                (key, status, vec![volume.clone()])
             };
+            // The zips of the CAP folders the volume's index names; none for a volume
+            // only CourtListener has, whose records `stare resolve` fetches one by one.
+            let mut zip_status = FileStatus::Cached;
+            for folder in &folders {
+                let zip_key = format!("{}/{}.zip", slug, folder);
+                let status = match fetch_and_cache(
+                    &client,
+                    cfg.data_source,
+                    &zip_key,
+                    &zips_dir,
+                    Some(&mut data_limiter),
+                ) {
+                    Ok(status) => status,
+                    Err(e) => FileStatus::Error(e.to_string()),
+                };
+                match &status {
+                    FileStatus::Cached => report.zips_cached += 1,
+                    FileStatus::Downloaded(n) => {
+                        report.zips_downloaded += 1;
+                        report.bytes_downloaded += n;
+                    }
+                    FileStatus::Error(msg) => report.errors.push(format!("{}: {}", zip_key, msg)),
+                }
+                if !matches!(zip_status, FileStatus::Error(_)) {
+                    zip_status = status;
+                }
+            }
 
             match &bin_status {
                 FileStatus::Cached => report.bins_cached += 1,
@@ -312,14 +408,6 @@ pub fn run(cfg: &DownloadConfig, mut on_event: impl FnMut(Event)) -> Result<Repo
                     report.bytes_downloaded += n;
                 }
                 FileStatus::Error(msg) => report.errors.push(format!("{}: {}", bin_key, msg)),
-            }
-            match &zip_status {
-                FileStatus::Cached => report.zips_cached += 1,
-                FileStatus::Downloaded(n) => {
-                    report.zips_downloaded += 1;
-                    report.bytes_downloaded += n;
-                }
-                FileStatus::Error(msg) => report.errors.push(format!("{}: {}", zip_key, msg)),
             }
 
             on_event(Event::Volume {
