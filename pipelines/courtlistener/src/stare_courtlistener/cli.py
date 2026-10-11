@@ -3,7 +3,8 @@
 ``stare-cl dates`` lists the complete exports in the bucket, newest first. ``stare-cl fetch``
 downloads one export's tables into ``<dest>/<date>/`` (resuming any partial file) and
 writes ``export.json``; ``stare-cl verify`` re-hashes the files against it; ``stare-cl head``
-prints a table's first rows as JSON. ``--dest`` defaults to ``$STARE_CL_DIR``.
+prints a table's first rows as JSON. ``stare-cl stage``, ``text`` and ``records`` turn a
+fetched export into per-case records. ``--dest`` defaults to ``$STARE_CL_DIR``.
 
 Exit status: 0 on success, 1 when ``verify`` finds a mismatch, 2 when the command can't
 run (bad arguments, a missing table, a refused request).
@@ -37,6 +38,8 @@ from stare_courtlistener.listing import (
     table_file,
 )
 from stare_courtlistener.table import open_table, read_table
+
+# The record-building steps import lazily: ``fetch`` and friends don't need them.
 
 EXIT_OK, EXIT_FAIL, EXIT_ERROR = 0, 1, 2
 DEST_ENV = "STARE_CL_DIR"
@@ -211,6 +214,60 @@ def cmd_head(args: argparse.Namespace, out: TextIO) -> int:
     return EXIT_OK
 
 
+def cmd_stage(args: argparse.Namespace, out: TextIO) -> int:
+    from stare_courtlistener.capindex import CapIndex, PageIndex
+    from stare_courtlistener.stage import STAGE_REPORT, stage_export
+
+    directory = export_dir(_dest(args.dest), args.date)
+    root = Path(args.index_dir) if args.index_dir else None
+    if root is not None and not root.is_dir():
+        raise UsageError(f"{root} isn't a directory")
+    if args.index_manifest:
+        manifest = Path(args.index_manifest)
+    elif root is not None and (root / "manifest.json").exists():
+        manifest = root / "manifest.json"
+    else:
+        raise UsageError("give --index-manifest, or an --index-dir that has a manifest.json")
+    index = CapIndex.load(manifest)
+    pages = PageIndex(root, index) if root is not None else None
+    result = stage_export(directory, args.date, index, page_index=pages)
+    print(json.dumps({"level": result["level"], **result["classes"]}), file=out)
+    if result.get("index_files_missing"):
+        print(
+            f"warning: {result['index_files_missing']} .bin files the manifest lists aren't in "
+            f"{root}; {result['citations_judged_by_volume']:,} citations were judged by volume",
+            file=sys.stderr,
+        )
+    print(f"Staged {args.date}: {directory / STAGE_REPORT}", file=out)
+    return EXIT_OK
+
+
+def cmd_text(args: argparse.Namespace, out: TextIO) -> int:
+    from stare_courtlistener.spool import TEXT_DB, spool_text
+
+    directory = export_dir(_dest(args.dest), args.date)
+    result = spool_text(directory, args.date, restart=args.restart)
+    print(json.dumps(result), file=out)
+    print(f"Spooled {args.date}: {directory / TEXT_DB}", file=out)
+    return EXIT_OK
+
+
+def cmd_records(args: argparse.Namespace, out: TextIO) -> int:
+    from stare_courtlistener.records import RECORDS_REPORT, build_records, export_out
+
+    dest = _dest(args.dest)
+    directory = export_dir(dest, args.date)
+    target = Path(args.out) if args.out else dest / "out"
+    previous = Path(args.previous) if args.previous else None
+    if previous is not None and not previous.exists():
+        raise UsageError(f"{previous} doesn't exist")
+    result = build_records(directory, args.date, target, previous=previous, jobs=args.jobs)
+    print(json.dumps({k: result[k] for k in ("records", "no_text", "gz_bytes", "delta")}), file=out)
+    print(f"Records for {args.date}: {export_out(target, args.date)}", file=out)
+    print(f"Report: {directory / RECORDS_REPORT}", file=out)
+    return EXIT_OK
+
+
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="stare-cl", description=__doc__.split("\n\n")[1])
     p.add_argument("--version", action="version", version=f"stare-cl {__version__}")
@@ -263,6 +320,37 @@ def parser() -> argparse.ArgumentParser:
         help=f"truncate values to this many characters, 0 for none (default {DEFAULT_WIDTH})",
     )
     sp.set_defaults(func=cmd_head)
+
+    sp = sub.add_parser("stage", help="load an export into stage.sqlite and classify its clusters")
+    sp.add_argument("--date", type=_date, required=True)
+    dest_option(sp)
+    sp.add_argument(
+        "--index-dir",
+        help="an index build (<slug>/<vol>.bin, e.g. codexpublicus-index:/builds/<version>); "
+        "classifies by page",
+    )
+    sp.add_argument(
+        "--index-manifest",
+        help="the index's root manifest.json (default: <index-dir>/manifest.json); "
+        "alone, classifies by volume",
+    )
+    sp.set_defaults(func=cmd_stage)
+
+    sp = sub.add_parser("text", help="spool the selected clusters' opinions from opinions")
+    sp.add_argument("--date", type=_date, required=True)
+    dest_option(sp)
+    sp.add_argument("--restart", action="store_true", help="discard earlier progress")
+    sp.set_defaults(func=cmd_text)
+
+    sp = sub.add_parser("records", help="write records, the export manifest and the delta")
+    sp.add_argument("--date", type=_date, required=True)
+    dest_option(sp)
+    sp.add_argument("--out", help="the bucket layout's root (default <dest>/out)")
+    sp.add_argument(
+        "--previous", help="the previous export's directory under out/cl/exports, or its manifest"
+    )
+    sp.add_argument("--jobs", type=int, help="worker processes (default: one per CPU)")
+    sp.set_defaults(func=cmd_records)
     return p
 
 

@@ -21,7 +21,7 @@ docs/plans/extraction-plan.md       — Citation index + data pipeline: bin inde
 docs/plans/search-plan.md           — Search + data products: RoaringBuckets, DuckLake, comparisons
 mirror/                             — Docker compose + config for the aria2 mirror job
 pipelines/archival-pdf/             - archival per-volume PDF builder (#51): uv project, image, RUNBOOK.md
-pipelines/courtlistener/            - CourtListener bulk-export fetcher and reader (#83): uv project, RUNBOOK.md
+pipelines/courtlistener/            - CourtListener bulk export to per-case records (#83, #84): uv project, RUNBOOK.md
 ```
 
 ## Architecture
@@ -299,8 +299,14 @@ read-only Docker volume `codexpublicus-cap-mirror`, the output goes to
 
 `stare-cl` lists CourtListener's quarterly bulk export in its public S3 bucket, fetches one
 export's tables resumably into `$STARE_CL_DIR/<date>/` with an `export.json` of sizes,
-ETags and SHA-256s, re-verifies them, and reads the PostgreSQL CSV dialect. `mise run
-cl-fetch` runs the fetch (operator-run on ml-01, about 63 GB); `mise run cl-test` runs ruff
+ETags and SHA-256s, re-verifies them, and reads the PostgreSQL CSV dialect. `stare-cl stage`,
+`text` and `records` then classify each cluster against CAP's index (SQLite staging), keep
+the selected clusters' opinion text, and write one CAP-shaped record per case with a
+`source` block, an export manifest, a delta and a crosswalk of the CAP-held clusters
+(local disk only; publishing is slice 5). `mise run cl-build <ref> --index <version>` builds
+the `stare-cl` image on the host and runs the whole pipeline against the
+`codexpublicus-courtlistener` volume.
+`mise run cl-fetch` runs the fetch (operator-run on ml-01, about 63 GB); `mise run cl-test` runs ruff
 and pytest, as CI (`.github/workflows/pipelines.yml`) does. See
 `pipelines/courtlistener/RUNBOOK.md`.
 
