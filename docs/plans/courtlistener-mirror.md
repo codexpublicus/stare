@@ -151,56 +151,73 @@ no `source.export`/`first_seen`, so an unchanged case hashes the same in every e
 per case, rather than CAP-style volume zips, is what makes
 [#84](https://github.com/codexpublicus/stare/issues/84) fall out of the layout: a new export uploads
 only the cases whose hash changed, an offline mirror ([#23](https://github.com/codexpublicus/stare/issues/23))
-fetches only those, and the browser downloads one case instead of a volume. This is D29 in the
-session's decision queue; per-volume zips are the alternative, at the cost of rewriting a whole
-volume for one corrected case.
+fetches only those, and the browser downloads one case instead of a volume. Decided against two
+alternatives: a per-volume bundle read by range, where any corrected case rewrites its volume's
+bundle (thousands a quarter), and CAP-style zips, where a slip-opinion volume is about 27 MB per
+read. About 790,000 records, 1.5–2 GB. A changed case gets a new object; the old one stays while
+an index version still in `v/` references it, and a cleanup deletes the rest. A blocked case's
+object is deleted at once.
 
 ## Index
 
-Every index file is small and fetched whole; nothing seeks into a compressed file. A lookup
-downloads one file for one volume. [#110](https://github.com/codexpublicus/stare/issues/110)
-measured one gzipped index file per volume for both sources at about 1.4 KB for a CAP volume and
-a median of 4.5 KB for a CourtListener one. Slip-opinion and neutral "volumes" (`ny-slip-op/2019`
-has 8,979 cases) are split at a page boundary past about 1,000 lines, which caps a lookup near
-15 KB. The sum over all 47,489 volumes, about 42 MB, matters only to a mirror that downloads all
-of it. Whether that unified file replaces the sidecar below is D31.
-
-The CAP index (`v/<ver>/<reporter>/<vol>.bin` and `.multi`) maps a page to a CAP case file. A
-CourtListener volume gets a sidecar in the same version directory:
+Decided after [#110](https://github.com/codexpublicus/stare/issues/110) measured it against
+RoaringBuckets and range-readable files, on isolated lookups and on real brief-checker and
+reading sessions: one small gzip file per volume, for every source.
 
 ```
-v/<ver>/<reporter>/<vol>.cl     text lines: page,cluster_id,hash
+v/<ver>/<slug>/<vol>.idx.gz      text lines: page,source,ref
+v/<ver>/<slug>/<vol>.<n>.idx.gz  later parts of a split volume
 ```
 
-The sidecar format:
-- One record per line, `page,cluster_id,hash`; no header and no comments. `page` and
-  `cluster_id` are unsigned integers. Neutral and slip-opinion citations fit, since their
-  "page" is a number too (`2021 IL 125678`, `2021 NY Slip Op 01234`).
-- Lines are sorted by page. Clusters that start on the same page keep CourtListener's cluster-id
-  order, and the resolver shows the first and lists the others, the way CAP's `.multi`
-  handles several cases on one page.
-- Readers trim whitespace, skip blank lines, and skip a malformed line (reporting its number)
-  rather than rejecting the volume.
+- **Keys.** `page` is the cited page: an integer, a neutral or slip-opinion sequence number
+  (`2021 IL 125678`), or a CAP page label (`xxix`, lowercased).
+- **Sources and refs.**
+  - `source` is `cap`, with `ref` CAP's case file name inside the volume zip (`0647-01`).
+  - Or `source` is `cl`, with `ref` `<cluster_id>/<hash>`, the record object below.
+  - Later sources add a tag, not a file type.
+- **Shared pages.** Several lines can share a page, CAP's first; the resolver shows the first and
+  lists the others. A CourtListener line on a page CAP has a case on is an alias for the same
+  decision, not a second case.
+- **Split volumes.** A part ends after it passes 1,000 lines, at the next page boundary, so a
+  page never straddles two parts. Part 0 starts with `#parts,<first page of part 1>,…`, and a
+  reader fetches the later part a page falls in. That caps a lookup near 17 KB gzipped; most
+  CAP volumes are about 1.4 KB.
+- **CAP's split folders fold in.** `a3d/138` holds `138-2`'s cases, so the resolver stops
+  probing parts.
+- **Parse rules.** Readers trim whitespace, skip blank lines, and skip a malformed line
+  (reporting its number) rather than rejecting the volume.
 
-The resolver reads `.bin`/`.multi` first. If CAP has no case at the page (or doesn't hold the
-volume), it reads `.cl` and fetches `data.stare.pub/cl/c/<cluster_id>/<hash>.json.gz`. The root
-manifest gains `cl: {export, reporters: {slug: [vols]}}` so `checkAvailability` knows which
-volumes have a sidecar, and a reader that doesn't know the key ignores it. A volume CAP holds
-but left pages out of (the redacted reprints) is listed under both `reporters` and `cl`; CAP is
-tried first, so a CourtListener record only fills a page CAP has no case on.
+**Slugs** come from citare's `slug` ([citare#71](https://github.com/codexpublicus/citare/pull/71)),
+one namespace for every source:
+- CAP's slug where CAP has the reporter.
+- Otherwise the edition name, slugged with no prefix (`ny-slip-op`, `f-4th`).
+- Reporters that share a name share a directory and are told apart by volume: `ohio/20` is the
+  Ohio Reports, `ohio/2019` the neutral citation. citare's build fails if two reporters sharing a
+  slug could share a volume.
+- The federal and West Virginia `Ct. Cl.` overlap, so they stay `us-ct-cl` and `wv-ct-cl`, picked
+  by court.
 
-`cl/` sits at the data bucket's root, beside `cap/`. The CLI's data source points at the `cap/`
-prefix today, so the CLI derives the root by dropping a trailing `/cap`; a local mirror keeps the
-same two prefixes side by side.
+**Serving.**
+- Files are immutable under `v/<ver>/`, and `index-publish` keeps the rule that nothing in `v/`
+  is overwritten.
+- Each lookup fetches one file whole; nothing range-reads a compressed file.
+- `idx.stare.pub` needs the `.idx.gz` files cacheable at Cloudflare (`gz` is on its default
+  extension list) and Smart Tiered Cache. `manifest.json` is uncached today (`DYNAMIC`) and gets
+  a cache rule with its short max-age.
+- Mirrors get one tarball per index version. The sum of all files is about 42 MB.
 
-`<reporter>` is the CAP slug where CAP has the reporter. Reporters CAP never had (neutral
-citations such as `2021 IL 125678`, `S. Ct.` after CAP's last volume, `F.4th`, Westlaw numbers)
-take citare's reporter key, slugged the same way; citare's resolvable citations then need a slug
-for every reporter, not only Harvard's, which is a citare change.
+**Transition.** The first unified build publishes `.idx.gz` beside `.bin`/`.multi` for one release;
+the site and CLI read `.idx.gz` when the manifest says it's there. The next build drops `.bin`/`.multi`.
+[#148](https://github.com/codexpublicus/stare/pull/148)'s `.cl` reader becomes the `cl` source in
+the unified reader; nothing ever published a `.cl` file.
 
-Rebuilding a volume's `.cl` only when one of its clusters changed is the index half of #84. The
-`.cl` files are small enough (one line per case) that the first version regenerates all of them
-each export and uploads only those whose bytes changed.
+The root manifest records the index format and, per reporter, which volumes exist. It keeps the
+`reporters` map, now covering every source, so `checkAvailability` needs no `cl` block.
+`cl/` sits at the data bucket's root beside `cap/`; the CLI derives the root from its `cap/` data
+source by dropping the trailing `/cap`.
+
+Each export changes only the volumes whose lines changed. The #110 simulation of a quarter (3% new
+cases, 1% corrected) touched 3,633 index files, 13.5 MB.
 
 ## Pipeline
 
@@ -217,7 +234,8 @@ on TrueNAS):
    300 GB uncompressed), keeping only opinions of selected clusters, spooled by cluster id.
 4. **records**: emit one record per selected cluster, hash it, and compare against the previous
    export's manifest to produce `manifest.ndjson.gz` and `delta.json`.
-5. **index**: write the `.cl` sidecars and the manifest's `cl` block into the next index version.
+5. **index**: write CourtListener's lines into the unified per-volume index files of the next index
+   version, through `stare-admin`'s index build.
 6. **publish**: operator-run, like `index-publish`: upload new objects, then the export manifests,
    then the index version. Removed or blocked clusters are deleted from the bucket, not only
    dropped from the index.
@@ -228,18 +246,22 @@ what changed; `date_modified` is kept only as a diagnostic.
 
 A cluster merged into another on CourtListener's side disappears from the export and its
 citations move to the surviving cluster. The delta records it as removed, and the citation
-resolves to the survivor through the rebuilt `.cl`. An alias record is only needed if something
+resolves to the survivor through the rebuilt index. An alias record is only needed if something
 links to cluster ids directly, which nothing in stare does yet.
 
 ## Slices
 
 1. Fetch and read the export (`stare-cl fetch/verify/head`):
    [#146](https://github.com/codexpublicus/stare/pull/146).
-2. The record type in `crates/stare` and the viewer path for a `.cl` hit, with a hand-made record
-   as the test fixture: [#148](https://github.com/codexpublicus/stare/pull/148).
-3. stage + text + records on a sample, then on the full export.
-4. `.cl` sidecars, the manifest's `cl` block, and citare slugs for non-Harvard reporters
-   ([citare#70](https://github.com/codexpublicus/citare/issues/70)).
-5. Publish, and the delta against the next export (2026-12-31). `stare download` learns to fetch
-   sidecars and records, so an offline mirror ([#23](https://github.com/codexpublicus/stare/issues/23))
-   holds CourtListener cases too.
+2. The record type in `crates/stare` and the viewer path for a CourtListener record:
+   [#148](https://github.com/codexpublicus/stare/pull/148).
+3. stage, text and records, page-level selection, the crosswalk and `cl-build`:
+   [#149](https://github.com/codexpublicus/stare/pull/149).
+4. The unified per-volume index: `stare-admin` writes `.idx.gz` from CAP and CourtListener lines,
+   the site and CLI read it, and the transition release keeps `.bin`/`.multi` beside it. Slugs from
+   [citare#71](https://github.com/codexpublicus/citare/pull/71).
+5. CourtListener parallel citations as aliases to CAP cases
+   ([#151](https://github.com/codexpublicus/stare/issues/151)), as `cl` lines on CAP pages.
+6. The full run on ml-01 (needs the `codexpublicus-courtlistener` volume), publish, the cache rules
+   on idx.stare.pub, and `stare download` fetching the index tarball and records
+   ([#23](https://github.com/codexpublicus/stare/issues/23)). Then the delta against the next export.
