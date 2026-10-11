@@ -36,19 +36,38 @@ pub fn parse_case_json(json: &[u8]) -> Result<String, JsError> {
     serde_json::to_string(&case).map_err(|e| JsError::new(&e.to_string()))
 }
 
-/// Parse a CourtListener sidecar (`<reporter>/<volume>.cl`). Returns JSON:
-/// `{ entries: [{ page, cluster_id, hash }], malformed: [line numbers] }`.
+/// Parse one part of a volume's unified index (`<reporter>/<volume>.idx.gz`), gzipped or
+/// plain. Returns JSON: `{ parts: ["1012", ...], entries: [entry], malformed: [line
+/// numbers] }`, each entry `{ page, source, ref }` plus `folder` and `case_file` for a
+/// `cap` line or `cluster_id` and `hash` for a `cl` line. Throws on bytes that aren't
+/// gzip or UTF-8 text.
 #[wasm_bindgen]
-pub fn parse_cl_sidecar(text: &str) -> String {
-    serde_json::to_string(&stare::cl::parse_sidecar(text)).unwrap_or_else(|_| "{}".to_string())
+pub fn parse_idx(bytes: &[u8]) -> Result<String, JsError> {
+    let idx = stare::idx::parse_bytes(bytes).map_err(|e| JsError::new(&format!("{e:#}")))?;
+    let json = serde_json::json!({
+        "parts": idx.parts.iter().map(stare::idx::page_text).collect::<Vec<_>>(),
+        "entries": idx.entries.iter().map(|e| e.view()).collect::<Vec<_>>(),
+        "malformed": idx.malformed,
+    });
+    Ok(json.to_string())
 }
 
-/// The CourtListener records starting at `page` in a sidecar, in its order, as a JSON
-/// array of `{ page, cluster_id, hash }`; `[]` for none.
+/// Look `page` (as cited: digits, or a label like `xxix`) up in one part of a volume's
+/// unified index, gzipped or plain. Returns JSON: `{ part, entries }`. `entries` are the
+/// lines at the page, CAP's first, shaped as in `parse_idx`. `part` is the part the page
+/// falls in, from part 0's `#parts` header: when it isn't 0 and this was part 0, fetch
+/// `<volume>.<part>.idx.gz` and look again there. Throws on unreadable bytes or a page
+/// that can't be one.
 #[wasm_bindgen]
-pub fn lookup_cl_page(text: &str, page: u32) -> String {
-    let sidecar = stare::cl::parse_sidecar(text);
-    serde_json::to_string(&sidecar.lookup(page)).unwrap_or_else(|_| "[]".to_string())
+pub fn lookup_idx(bytes: &[u8], page: &str) -> Result<String, JsError> {
+    let key = stare::idx::parse_page(page)
+        .ok_or_else(|| JsError::new(&format!("bad page {:?}", page)))?;
+    let idx = stare::idx::parse_bytes(bytes).map_err(|e| JsError::new(&format!("{e:#}")))?;
+    let json = serde_json::json!({
+        "part": idx.part_for(&key),
+        "entries": idx.lookup(&key).iter().map(|e| e.view()).collect::<Vec<_>>(),
+    });
+    Ok(json.to_string())
 }
 
 /// Extract a raw file from a zip by path. Returns the file contents as a string.

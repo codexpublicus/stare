@@ -4,6 +4,7 @@ pub mod cite;
 pub mod cl;
 pub mod config;
 pub mod data;
+pub mod idx;
 pub mod index;
 pub mod manifest;
 

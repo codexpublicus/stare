@@ -46,11 +46,13 @@
 //! second source for the same book, not its second half), so a range only rules a part
 //! out; the part's index decides.
 //!
-//! `cl`, when present, lists the volumes with a CourtListener sidecar
-//! (`<base><reporter>/<volume>.cl`, see [`crate::cl`]) and the export they were built
-//! from: `"cl": {"export": "2026-09-30", "reporters": {"a3d": ["250"]}}`. A reporter
-//! here may be one CAP never had. Readers that predate it ignore the key, and a
-//! manifest without it has no CourtListener records.
+//! `idx`, when present, is the unified per-volume index's format ([`crate::idx`]): the
+//! build has `<base><reporter>/<volume>.idx.gz` for every volume, from every source, and
+//! readers that know the format read it instead of the `.bin`/`.multi` files. Then
+//! `reporters` covers every source: a reporter or volume only CourtListener has is listed
+//! too, under the volume as cited. `volumes` and `entries` still count CAP's folders and
+//! their cases, which batch-index checks them against. A manifest without `idx` has only
+//! the `.bin`/`.multi` files.
 //!
 //! The legacy format (format 1, everything before it) is the bare reporter map with
 //! integer volumes, `{"a2d": [1, 2, 31]}`. It can't name split volumes, so reading it,
@@ -88,29 +90,11 @@ pub struct Manifest {
     /// Where the index files are, relative to the manifest (`v/v2026.10.03/`); see
     /// [`Manifest::index_path`].
     pub base: Option<String>,
-    /// The volumes with a CourtListener sidecar, and their export (format 2 only).
-    pub cl: Option<ClVolumes>,
+    /// The unified index's format ([`crate::idx::FORMAT`]) when the build has `.idx.gz`
+    /// files (format 2 only).
+    pub idx: Option<u32>,
     /// Read from the legacy format, which can't describe split volumes.
     pub legacy: bool,
-}
-
-/// The manifest's `cl` block: which volumes have a `.cl` sidecar in this build.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ClVolumes {
-    /// The CourtListener bulk export the sidecars were built from (`2026-09-30`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub export: Option<String>,
-    /// Reporter slug → volumes with a sidecar, in [`compare_volumes`] order.
-    #[serde(default)]
-    pub reporters: BTreeMap<String, Vec<String>>,
-}
-
-impl ClVolumes {
-    pub fn has_volume(&self, reporter: &str, volume: &str) -> bool {
-        self.reporters
-            .get(reporter)
-            .is_some_and(|v| v.iter().any(|x| x == volume))
-    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -130,7 +114,7 @@ struct Format2 {
     #[serde(default)]
     parts: BTreeMap<String, BTreeMap<String, Vec<Part>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    cl: Option<ClVolumes>,
+    idx: Option<u32>,
 }
 
 /// Whether `s` can name a volume folder: an ASCII digit first, then digits, lowercase
@@ -254,7 +238,7 @@ impl Manifest {
                 version: f.version,
                 generated_at: f.generated_at,
                 base: f.base,
-                cl: f.cl,
+                idx: f.idx,
                 legacy: false,
             };
             m.normalize()?;
@@ -295,18 +279,6 @@ impl Manifest {
             volumes.sort_by(|a, b| compare_volumes(a, b));
             volumes.dedup();
         }
-        if let Some(cl) = &mut self.cl {
-            for (reporter, volumes) in &mut cl.reporters {
-                if !crate::cl::is_reporter_slug(reporter) {
-                    bail!("manifest: bad cl reporter {:?}", reporter);
-                }
-                if let Some(bad) = volumes.iter().find(|v| !is_volume_key(v)) {
-                    bail!("manifest: bad cl volume {:?} under {}", bad, reporter);
-                }
-                volumes.sort_by(|a, b| compare_volumes(a, b));
-                volumes.dedup();
-            }
-        }
         for (reporter, numbers) in &self.parts {
             for parts in numbers.values() {
                 if let Some(bad) = parts.iter().find(|p| !is_volume_key(&p.volume)) {
@@ -327,7 +299,7 @@ impl Manifest {
             entries: self.entries,
             reporters: self.reporters.clone(),
             parts: self.parts.clone(),
-            cl: self.cl.clone(),
+            idx: self.idx,
         };
         Ok(serde_json::to_string_pretty(&f)?)
     }
@@ -359,11 +331,41 @@ impl Manifest {
                 .is_some_and(|p| p.contains_key(volume))
     }
 
-    /// Whether the build has a CourtListener sidecar for `volume` of `reporter`.
-    pub fn has_cl_volume(&self, reporter: &str, volume: &str) -> bool {
-        self.cl
-            .as_ref()
-            .is_some_and(|cl| cl.has_volume(reporter, volume))
+    /// Whether the build has the unified index in a format this reader knows.
+    pub fn has_idx(&self) -> bool {
+        self.idx == Some(crate::idx::FORMAT)
+    }
+
+    /// The volumes of `reporter` that have a unified index file: every listed volume but
+    /// the folders folded into a split volume's file (`a3d/138-2`, whose cases are in
+    /// `a3d/138.idx.gz`), plus a split volume's number when no folder has its name.
+    pub fn idx_volumes(&self, reporter: &str) -> Vec<String> {
+        let parts = self.parts.get(reporter);
+        let folded = |v: &str| {
+            parts.is_some_and(|p| {
+                p.iter()
+                    .any(|(number, list)| number != v && list.iter().any(|x| x.volume == v))
+            })
+        };
+        let mut out: Vec<String> = self
+            .volumes(reporter)
+            .iter()
+            .filter(|v| !folded(v))
+            .cloned()
+            .collect();
+        for number in parts.into_iter().flat_map(|p| p.keys()) {
+            if !out.contains(number) {
+                out.push(number.clone());
+            }
+        }
+        out.sort_by(|a, b| compare_volumes(a, b));
+        out
+    }
+
+    /// Whether the index holds `volume` as cited, from any source: listed itself, or the
+    /// number of a volume CAP split over several folders.
+    pub fn holds_volume(&self, reporter: &str, volume: &str) -> bool {
+        self.holds_cap_volume(reporter, volume)
     }
 
     /// The folders to look `page` up in, in order, for a citation to `volume` (as cited,
@@ -623,52 +625,43 @@ mod tests {
     }
 
     #[test]
-    fn reads_and_round_trips_the_cl_block() {
+    fn reads_and_round_trips_idx() {
         let m = Manifest::parse(
-            br#"{"format": 2, "reporters": {"a3d": ["213"]},
-                 "cl": {"export": "2026-09-30", "reporters": {"a3d": ["251", "250", "250"], "ohio": ["2021"]}}}"#,
+            br#"{"format": 2, "idx": 1, "reporters": {"a3d": ["213"], "ny-slip-op": ["2019"]}}"#,
         )
         .unwrap();
-        let cl = m.cl.as_ref().unwrap();
-        assert_eq!(cl.export.as_deref(), Some("2026-09-30"));
-        assert_eq!(cl.reporters["a3d"], ["250", "251"]);
-        assert!(m.has_cl_volume("a3d", "250"));
-        assert!(m.has_cl_volume("ohio", "2021"));
-        assert!(!m.has_cl_volume("a3d", "213"));
-        // CourtListener volumes aren't CAP's.
-        assert!(!m.holds_cap_volume("a3d", "250"));
-        assert!(m.holds_cap_volume("a3d", "213"));
+        assert_eq!(m.idx, Some(1));
+        assert!(m.has_idx());
+        assert!(m.holds_volume("ny-slip-op", "2019"));
         assert_eq!(Manifest::parse(m.to_json().unwrap().as_bytes()).unwrap(), m);
+        let future = Manifest::parse(br#"{"format": 2, "idx": 2, "reporters": {}}"#).unwrap();
+        assert!(!future.has_idx());
     }
 
     #[test]
-    fn manifests_without_cl_parse_unchanged() {
-        // The live manifest's shape before the cl block.
+    fn idx_volumes_fold_split_folders() {
+        let m = a3d();
+        assert_eq!(m.idx_volumes("a3d"), ["9", "10", "138"]);
+        assert_eq!(m.idx_volumes("tca"), ["1"]);
+        assert!(m.idx_volumes("nope").is_empty());
+    }
+
+    #[test]
+    fn manifests_without_idx_parse_unchanged() {
+        // The live manifest's shape before the unified index, and #148's `cl` block,
+        // which nothing published and readers now ignore.
         let m = Manifest::parse(
             br#"{"format": 2, "version": "v2026.10.05", "generated_at": "2026-10-05T07:11:49Z",
-                 "base": "v/v2026.10.05/", "volumes": 1, "entries": 2, "reporters": {"a2d": ["31"]}}"#,
+                 "base": "v/v2026.10.05/", "volumes": 1, "entries": 2, "reporters": {"a2d": ["31"]},
+                 "cl": {"export": "2026-09-30", "reporters": {"a3d": ["250"]}}}"#,
         )
         .unwrap();
-        assert_eq!(m.cl, None);
-        assert!(!m.has_cl_volume("a2d", "31"));
+        assert_eq!(m.idx, None);
+        assert!(!m.has_idx());
         let raw: serde_json::Value = serde_json::from_str(&m.to_json().unwrap()).unwrap();
+        assert!(raw.get("idx").is_none());
         assert!(raw.get("cl").is_none());
-        let legacy = Manifest::parse(br#"{"a2d": [31]}"#).unwrap();
-        assert_eq!(legacy.cl, None);
-        // An empty block is a block with nothing in it.
-        let empty = Manifest::parse(br#"{"format": 2, "reporters": {}, "cl": {}}"#).unwrap();
-        assert_eq!(empty.cl, Some(ClVolumes::default()));
-    }
-
-    #[test]
-    fn rejects_unsafe_cl_names() {
-        for bad in [
-            r#"{"format": 2, "reporters": {}, "cl": {"reporters": {"a3d": ["../1"]}}}"#,
-            r#"{"format": 2, "reporters": {}, "cl": {"reporters": {"../a3d": ["1"]}}}"#,
-            r#"{"format": 2, "reporters": {}, "cl": {"reporters": {"A.3d": ["1"]}}}"#,
-        ] {
-            assert!(Manifest::parse(bad.as_bytes()).is_err(), "{bad}");
-        }
+        assert!(!Manifest::parse(br#"{"a2d": [31]}"#).unwrap().has_idx());
     }
 
     #[test]
