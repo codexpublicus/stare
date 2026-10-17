@@ -555,6 +555,7 @@ test.describe('the unified per-volume index', () => {
       const manifest = await (await route.fetch()).json();
       manifest.idx = 1;
       manifest.reporters.a3d = [...manifest.reporters.a3d, '250'];
+      manifest.reporters['ny-slip-op'] = ['2021'];
       parts = manifest.parts || {};
       await route.fulfill({
         headers: { ...CORS, 'cache-control': 'no-cache' },
@@ -573,6 +574,8 @@ test.describe('the unified per-volume index', () => {
       let lines = [];
       if (slug === 'a3d' && volume === '250') {
         lines = [['100', `cl,9876543/${HASH}`]];
+      } else if (slug === 'ny-slip-op' && volume === '2021') {
+        lines = [['1234', `cl,9876543/${HASH}`]];
       } else {
         const folders = parts[slug]?.[volume]?.map((p) => p.volume) || [volume];
         for (const folder of folders) {
@@ -634,6 +637,20 @@ test.describe('the unified per-volume index', () => {
     await expect(page.locator('#sidebar', { hasText: 'View original PDF' })).toHaveCount(0);
     await expect(page.locator('#sidebar .sidebar-meta').first()).toContainText('Docket: J-12-2021');
     await expect(page.locator('#sidebar .sidebar-source')).toHaveText("From CourtListener's bulk data, export 2026-09-30 · Published");
+    expect(seen.bins).toEqual([]);
+  });
+
+  // A reporter CAP never had, under citare's slug for it (#153).
+  test('2021 NY Slip Op 01234 resolves by citare\'s slug to its CourtListener record', async ({ page }) => {
+    const seen = await routeIdx(page);
+    await page.goto('/');
+    await page.fill('#landing-input', '2021 NY Slip Op 01234');
+    await page.click('#landing-btn');
+
+    await expect(page).toHaveURL(/#ny-slip-op\/2021\/1234-01$/);
+    await expect(page.locator('#topbar-case')).toHaveText('Smith v. Jones');
+    await expect(page.locator('#reader .reader-source')).toHaveText("From CourtListener's bulk data, export 2026-09-30 · Docket J-12-2021 · Published");
+    expect(seen.idx.some((u) => u.endsWith('/ny-slip-op/2021.idx.gz'))).toBe(true);
     expect(seen.bins).toEqual([]);
   });
 
