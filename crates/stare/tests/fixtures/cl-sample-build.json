@@ -1,0 +1,174 @@
+{
+  "_comment": [
+    "A sample CourtListener build: one record per reporter CAP never had (and the neutral",
+    "citations that share a CAP slug by volume), each with the citation as the export manifest",
+    "has it (`cite`), as a reader writes it (`text`), what the WASM detects in `text`",
+    "(`detected`), and the unified index the build writes (`idx`). stare-admin's tests check",
+    "all of it against citare; web/tests/cl-slugs.test.js resolves each `text` through it."
+  ],
+  "hash": "5d41402abc4b2a76",
+  "citations": [
+    {
+      "cluster_id": 900001,
+      "cite": "2021 NY Slip Op 01234",
+      "text": "2021 NY Slip Op 01234",
+      "volume": "2021",
+      "reporter": "NY Slip Op",
+      "page": "01234",
+      "type": 2,
+      "detected": {
+        "slug": "ny-slip-op",
+        "harvard_slug": null,
+        "volume": "2021",
+        "page": "01234"
+      }
+    },
+    {
+      "cluster_id": 900002,
+      "cite": "10 F.4th 100",
+      "text": "10 F.4th 100",
+      "volume": "10",
+      "reporter": "F.4th",
+      "page": "100",
+      "type": 1,
+      "detected": {
+        "slug": "f-4th",
+        "harvard_slug": null,
+        "volume": "10",
+        "page": "100"
+      }
+    },
+    {
+      "cluster_id": 900003,
+      "cite": "100 N.Y.S.3d 200",
+      "text": "100 N.Y.S.3d 200",
+      "volume": "100",
+      "reporter": "N.Y.S.3d",
+      "page": "200",
+      "type": 2,
+      "detected": {
+        "slug": "n-y-s-3d",
+        "harvard_slug": null,
+        "volume": "100",
+        "page": "200"
+      }
+    },
+    {
+      "cluster_id": 900004,
+      "cite": "2019 T.C. Memo. 123",
+      "text": "T.C. Memo. 2019-123",
+      "volume": "2019",
+      "reporter": "T.C. Memo.",
+      "page": "123",
+      "type": 4,
+      "detected": {
+        "slug": "t-c-memo",
+        "harvard_slug": null,
+        "volume": "2019",
+        "page": "123"
+      }
+    },
+    {
+      "cluster_id": 900005,
+      "cite": "2021 IL App (1st) 200123",
+      "text": "2021 IL App (1st) 200123",
+      "volume": "2021",
+      "reporter": "IL App (1st)",
+      "page": "200123",
+      "type": 8,
+      "detected": {
+        "slug": "il-app-1st",
+        "harvard_slug": null,
+        "volume": "2021",
+        "page": "200123"
+      }
+    },
+    {
+      "cluster_id": 900006,
+      "cite": "2020 IL 124000",
+      "text": "2020 IL 124000",
+      "volume": "2020",
+      "reporter": "IL",
+      "page": "124000",
+      "type": 8,
+      "detected": {
+        "slug": "il",
+        "harvard_slug": null,
+        "volume": "2020",
+        "page": "124000"
+      }
+    },
+    {
+      "cluster_id": 900007,
+      "cite": "2021-NMSC-001",
+      "text": "2021-NMSC-001",
+      "volume": "2021",
+      "reporter": "NMSC",
+      "page": "001",
+      "type": 8,
+      "detected": {
+        "slug": "nmsc",
+        "harvard_slug": null,
+        "volume": "2021",
+        "page": "001"
+      }
+    },
+    {
+      "cluster_id": 900008,
+      "cite": "2019-Ohio-1234",
+      "text": "2019-Ohio-1234",
+      "volume": "2019",
+      "reporter": "Ohio",
+      "page": "1234",
+      "type": 8,
+      "detected": {
+        "slug": "ohio",
+        "harvard_slug": "ohio",
+        "volume": "2019",
+        "page": "1234"
+      }
+    },
+    {
+      "cluster_id": 900009,
+      "cite": "2021 ND 123",
+      "text": "2021 ND 123",
+      "volume": "2021",
+      "reporter": "ND",
+      "page": "123",
+      "type": 8,
+      "detected": {
+        "slug": "nd",
+        "harvard_slug": null,
+        "volume": "2021",
+        "page": "123"
+      }
+    },
+    {
+      "cluster_id": 900010,
+      "cite": "2019 Pa. Super. 12",
+      "text": "2019 Pa. Super. 12",
+      "volume": "2019",
+      "reporter": "Pa. Super.",
+      "page": "12",
+      "type": 8,
+      "detected": {
+        "slug": "pa-super",
+        "harvard_slug": "pa-super",
+        "volume": "2019",
+        "page": "12"
+      }
+    }
+  ],
+  "idx": {
+    "ny-slip-op/2021": "1234,cl,900001/5d41402abc4b2a76\n",
+    "f-4th/10": "100,cl,900002/5d41402abc4b2a76\n",
+    "n-y-s-3d/100": "200,cl,900003/5d41402abc4b2a76\n",
+    "t-c-memo/2019": "123,cl,900004/5d41402abc4b2a76\n",
+    "il-app-1st/2021": "200123,cl,900005/5d41402abc4b2a76\n",
+    "il/2020": "124000,cl,900006/5d41402abc4b2a76\n",
+    "nmsc/2021": "1,cl,900007/5d41402abc4b2a76\n",
+    "ohio/2019": "1234,cl,900008/5d41402abc4b2a76\n",
+    "nd/2021": "123,cl,900009/5d41402abc4b2a76\n",
+    "pa-super/2019": "12,cl,900010/5d41402abc4b2a76\n"
+  }
+}

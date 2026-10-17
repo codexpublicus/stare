@@ -1467,25 +1467,29 @@ mod tests {
     fn batch_writes_the_unified_index_and_the_manifest_announces_it() {
         let dir = tempfile::tempdir().unwrap();
         let zips = dir.path().join("zips");
-        std::fs::create_dir_all(zips.join("x")).unwrap();
-        // x 5 is split over two folders; x 6 is a plain volume.
+        std::fs::create_dir_all(zips.join("a3d")).unwrap();
+        // a3d 5 is split over two folders; a3d 6 is a plain volume.
         std::fs::write(
-            zips.join("x/5.zip"),
+            zips.join("a3d/5.zip"),
             volume_zip(&[("0001-01", Some("1")), ("0003-01", Some("3"))]),
         )
         .unwrap();
         std::fs::write(
-            zips.join("x/5-2.zip"),
+            zips.join("a3d/5-2.zip"),
             volume_zip(&[("0003-01", Some("3")), ("xxix-01", Some("xxix"))]),
         )
         .unwrap();
-        std::fs::write(zips.join("x/6.zip"), volume_zip(&[("0002-01", Some("2"))])).unwrap();
+        std::fs::write(
+            zips.join("a3d/6.zip"),
+            volume_zip(&[("0002-01", Some("2"))]),
+        )
+        .unwrap();
         let meta = dir.path().join("VolumesMetadata.json");
         std::fs::write(
             &meta,
-            r#"[{"reporter_slug": "x", "volume_folder": "5", "volume_number": "5"},
-                {"reporter_slug": "x", "volume_folder": "5-2", "volume_number": "5"},
-                {"reporter_slug": "x", "volume_folder": "6", "volume_number": "6"}]"#,
+            r#"[{"reporter_slug": "a3d", "volume_folder": "5", "volume_number": "5"},
+                {"reporter_slug": "a3d", "volume_folder": "5-2", "volume_number": "5"},
+                {"reporter_slug": "a3d", "volume_folder": "6", "volume_number": "6"}]"#,
         )
         .unwrap();
         let cl = dir.path().join("2026-09-30");
@@ -1495,8 +1499,8 @@ mod tests {
             cl.join("manifest.ndjson"),
             format!(
                 "{{\"id\": 7, \"hash\": \"{h}\", \"citations\": [\
-                 {{\"volume\": \"5\", \"reporter\": \"X\", \"page\": \"1\", \"type\": 1, \"cap_slugs\": [\"x\"]}},\
-                 {{\"volume\": \"2021\", \"reporter\": \"NY Slip Op\", \"page\": \"50123\", \"type\": 2, \"cap_slugs\": []}}]}}\n"
+                 {{\"volume\": \"5\", \"reporter\": \"A.3d\", \"page\": \"1\", \"type\": 3}},\
+                 {{\"volume\": \"2021\", \"reporter\": \"NY Slip Op\", \"page\": \"50123\", \"type\": 2}}]}}\n"
             ),
         )
         .unwrap();
@@ -1517,25 +1521,25 @@ mod tests {
         .unwrap();
         let read = |p: &str| stare::idx::decode(&std::fs::read(out.join(p)).unwrap()).unwrap();
         assert_eq!(
-            read("x/5.idx.gz"),
+            read("a3d/5.idx.gz"),
             format!("1,cap,0001-01\n1,cl,7/{h}\n3,cap,0003-01\n3,cap,5-2/0003-01\nxxix,cap,5-2/xxix-01\n")
         );
-        assert_eq!(read("x/6.idx.gz"), "2,cap,0002-01\n");
+        assert_eq!(read("a3d/6.idx.gz"), "2,cap,0002-01\n");
         assert_eq!(read("ny-slip-op/2021.idx.gz"), format!("50123,cl,7/{h}\n"));
-        assert!(!out.join("x/5-2.idx.gz").exists());
+        assert!(!out.join("a3d/5-2.idx.gz").exists());
         // The .bin and .multi files are still there for the transition release.
-        assert!(out.join("x/5-2.bin").exists());
+        assert!(out.join("a3d/5-2.bin").exists());
 
         build_manifest(&out, None, Some(&meta), Some("v2026.10.11")).unwrap();
         let m =
             stare::manifest::Manifest::parse(&std::fs::read(out.join("manifest.json")).unwrap())
                 .unwrap();
         assert_eq!(m.idx, Some(1));
-        assert_eq!(m.volumes("x"), ["5", "5-2", "6"]);
+        assert_eq!(m.volumes("a3d"), ["5", "5-2", "6"]);
         assert_eq!(m.volumes("ny-slip-op"), ["2021"]);
         // CAP's counts are what batch-index checked.
         assert_eq!(m.volumes, Some(3));
-        assert_eq!(m.idx_volumes("x"), ["5", "6"]);
+        assert_eq!(m.idx_volumes("a3d"), ["5", "6"]);
 
         let identity = report::Identity {
             version: "v2026.10.11".into(),
@@ -1552,7 +1556,7 @@ mod tests {
         let again = dir.path().join("again");
         std::fs::create_dir_all(&again).unwrap();
         build_idx(&out, Some(&again), &opts).unwrap();
-        for f in ["x/5.idx.gz", "x/6.idx.gz", "ny-slip-op/2021.idx.gz"] {
+        for f in ["a3d/5.idx.gz", "a3d/6.idx.gz", "ny-slip-op/2021.idx.gz"] {
             assert_eq!(
                 std::fs::read(out.join(f)).unwrap(),
                 std::fs::read(again.join(f)).unwrap(),

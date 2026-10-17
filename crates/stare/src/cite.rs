@@ -953,6 +953,63 @@ pub fn spans_to_char_offsets(
     Ok(())
 }
 
+/// A full case citation as the index build files it: the slugs of every
+/// edition citare says it may be in, the one it guesses first, with the volume
+/// and page as citare read them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditionSlugs {
+    /// One, unless reporters that share an edition name were given slugs of
+    /// their own (`Hill`: `hill` and `hill-sc`). A reader may land on any.
+    pub slugs: Vec<String>,
+    pub volume: String,
+    pub page: String,
+}
+
+/// The full case citations citare finds in `text`, with their editions'
+/// slugs. [`detect_citations`] looks a citation up under the first of them.
+pub fn edition_slugs(text: &str) -> Vec<EditionSlugs> {
+    citare_core::get_citations(text, false, "", &[])
+        .iter()
+        .filter(|c| c.type_name() == "FullCaseCitation")
+        .filter_map(|c| {
+            let r = c.resource_common()?;
+            let groups = &c.common().groups;
+            let mut slugs: Vec<String> = Vec::new();
+            for e in r.edition_guess.iter().chain(&r.all_editions) {
+                if let Some(s) = &e.slug {
+                    if !slugs.contains(s) {
+                        slugs.push(s.clone());
+                    }
+                }
+            }
+            Some(EditionSlugs {
+                slugs,
+                volume: groups.get("volume").cloned().flatten()?,
+                page: groups.get("page").cloned().flatten()?,
+            })
+        })
+        .filter(|e| !e.slugs.is_empty())
+        .collect()
+}
+
+/// Every case-reporter edition name citare knows, with its slugs, sorted: the
+/// contents of citare's `data/edition-slugs.json`.
+pub fn edition_slug_table() -> std::collections::BTreeMap<String, Vec<String>> {
+    let mut table: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    for e in &citare_core::data::get().editions {
+        if let Some(slug) = &e.slug {
+            let slugs = table.entry(e.short_name.clone()).or_default();
+            if !slugs.contains(slug) {
+                slugs.push(slug.clone());
+            }
+        }
+    }
+    for slugs in table.values_mut() {
+        slugs.sort();
+    }
+    table
+}
+
 /// Whether the loaded citare data names editions' slugs. A bundle older than
 /// citare v0.6.0 has none, and then citations are looked up by `harvard_slug`.
 fn data_has_slugs() -> bool {
