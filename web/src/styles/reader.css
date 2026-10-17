@@ -47,6 +47,7 @@
 .cited-status.ext { color: var(--link); font-size: 13px; }
 .cited-status.no { color: var(--status-no); }
 .cited-status.none { color: var(--text-tertiary); }
+.cited-status.unknown { color: var(--text-tertiary); }
 .cited-status.lookup { color: var(--unresolved); font-size: 13px; }
 .cited-status.statute { color: var(--text-tertiary); font-size: 12px; }
 .cited-case-lookup { flex-wrap: wrap; }

@@ -51,9 +51,11 @@ describe('checkCitation', () => {
     assert.equal(c.slug, 'a2d');
   });
 
-  test('an unchecked page (null) still resolves, as before pages were checked', async () => {
+  test('an unchecked page (null) is not resolvable, and not a miss (#144)', async () => {
     const c = await checkCitation(cite, async () => true, async () => null);
-    assert.equal(c.resolvable, true);
+    assert.equal(c.resolvable, false);
+    assert.equal(c.pageUnknown, true);
+    assert.equal(heldVolumeMiss(c), null);
   });
 
   test('a volume not held never checks the page', async () => {
