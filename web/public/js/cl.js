@@ -1,16 +1,14 @@
 // CourtListener records: cases CAP doesn't hold, from CourtListener's bulk data
-// (docs/plans/courtlistener-mirror.md). A volume the manifest's `cl` block lists has a
-// `.cl` sidecar of `page,cluster_id,hash` lines; each names one gzipped record in the
-// same shape as CAP's case JSON plus a `source` block. The paths are in sources.js; the
-// parsing is the WASM's (crates/stare/src/cl.rs).
+// (docs/plans/courtlistener-mirror.md). The unified index's `cl` lines (idx.js) each name
+// one gzipped record in the same shape as CAP's case JSON plus a `source` block. The
+// paths are in sources.js.
 //
 // A record has no page scans, ALTO or page numbers, so the case viewer shows its text
 // with a source line and no Original Pages tab.
 
-import { fetchCached, fetchCachedText } from './cache.js';
+import { fetchCached } from './cache.js';
 import { escapeHtml, safeExternalUrl } from './citations.js';
-import { indexPath } from './manifest.js';
-import { clRecordPath, clRecordUrl, clSidecarPath, indexUrl } from './sources.js';
+import { clRecordPath, clRecordUrl } from './sources.js';
 import { loadWasm } from './wasm.js';
 
 export const COURTLISTENER = 'courtlistener';
@@ -18,29 +16,6 @@ export const COURTLISTENER = 'courtlistener';
 // Whether a case record came from CourtListener (CAP's have no `source`).
 export function isClRecord(caseData) {
   return caseData?.source?.name === COURTLISTENER;
-}
-
-// A volume's sidecar text, or null when it has none (a 404).
-async function readSidecar(reporter, volume) {
-  const key = await indexPath(clSidecarPath(reporter, volume));
-  return fetchCachedText('multi', key, indexUrl(key));
-}
-
-async function wasmLookup(text, page) {
-  const w = await loadWasm();
-  return JSON.parse(w.lookup_cl_page(text, page));
-}
-
-/**
- * The records that start at `page` of `volume`, in the sidecar's order, as
- * `[{ page, cluster_id, hash }]`; empty when the volume has no sidecar or nothing
- * starts there. Only call it for a volume the manifest's `cl` block lists (hasClVolume).
- * `deps` ({ readSidecar, lookup }) are injectable for tests.
- */
-export async function clEntries(reporter, volume, page, deps = {}) {
-  const text = await (deps.readSidecar || readSidecar)(reporter, String(volume));
-  if (!text) return [];
-  return (deps.lookup || wasmLookup)(text, parseInt(page, 10));
 }
 
 // Whether `bytes` start with gzip's magic number. A server that sets

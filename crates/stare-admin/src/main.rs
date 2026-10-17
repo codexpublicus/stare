@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+mod idx;
 mod report;
 
 #[derive(Parser)]
@@ -50,6 +51,30 @@ enum Commands {
         /// even when volumes fail.
         #[arg(long)]
         results: Option<PathBuf>,
+        /// CAP's VolumesMetadata.json, which says which folders are parts of one volume;
+        /// their cases go into one `.idx.gz` under the number as cited
+        #[arg(long)]
+        volumes_metadata: Option<PathBuf>,
+        /// A CourtListener export manifest (`cl/exports/<date>/manifest.ndjson.gz` from
+        /// `stare-cl records`) whose citations go into the `.idx.gz` files as `cl` lines
+        #[arg(long)]
+        cl: Option<PathBuf>,
+    },
+    /// Write the unified per-volume index (`<reporter>/<volume>.idx.gz`) from an index
+    /// directory's .bin and .multi files, plus CourtListener lines (batch-index writes
+    /// it from the zips; this rebuilds it from a finished build)
+    BuildIdx {
+        /// Directory containing reporter/volume.bin (and .multi) files
+        index_dir: PathBuf,
+        /// Output directory (default: index_dir)
+        #[arg(short, long)]
+        output_dir: Option<PathBuf>,
+        /// CAP's VolumesMetadata.json, which says which folders are parts of one volume
+        #[arg(long)]
+        volumes_metadata: Option<PathBuf>,
+        /// A CourtListener export manifest (`manifest.ndjson.gz`)
+        #[arg(long)]
+        cl: Option<PathBuf>,
     },
     /// Build manifest.json: indexed volumes, split volumes' parts and page ranges, counts
     BuildManifest {
@@ -121,7 +146,7 @@ fn main() -> anyhow::Result<()> {
         } => {
             let allow = load_allowlist(allow.as_deref())?;
             let key = volume_key(&zip_path, zip_path.parent().and_then(|p| p.parent()));
-            let report = build_index(&zip_path, output.as_deref(), cli.verbose)?;
+            let (report, _) = build_index(&zip_path, output.as_deref(), cli.verbose)?;
             if let Some(reason) = check_failure(&key, &report, &allow) {
                 anyhow::bail!("{}", reason);
             }
@@ -131,15 +156,34 @@ fn main() -> anyhow::Result<()> {
             output_dir,
             allow,
             results,
+            volumes_metadata,
+            cl,
         } => {
             let allow = load_allowlist(allow.as_deref())?;
+            let idx = IdxOptions {
+                volumes_metadata,
+                cl,
+            };
             batch_index(
                 &dir,
                 output_dir.as_deref(),
                 &allow,
                 results.as_deref(),
+                &idx,
                 cli.verbose,
             )?;
+        }
+        Commands::BuildIdx {
+            index_dir,
+            output_dir,
+            volumes_metadata,
+            cl,
+        } => {
+            let idx = IdxOptions {
+                volumes_metadata,
+                cl,
+            };
+            build_idx(&index_dir, output_dir.as_deref(), &idx)?;
         }
         Commands::BuildManifest {
             index_dir,
@@ -376,7 +420,7 @@ fn build_index(
     zip_path: &std::path::Path,
     output: Option<&std::path::Path>,
     verbose: bool,
-) -> anyhow::Result<VolumeReport> {
+) -> anyhow::Result<Indexed> {
     let zip_bytes = std::fs::read(zip_path)
         .with_context(|| format!("failed to read {}", zip_path.display()))?;
     let (result, report) = index_volume(&zip_bytes)
@@ -411,7 +455,96 @@ fn build_index(
         );
     }
 
-    Ok(report)
+    let entries = idx::build_entries(&result)
+        .with_context(|| format!("failed to index {}", zip_path.display()))?;
+    Ok((report, entries))
+}
+
+/// One volume's index check and its unified index lines.
+type Indexed = (VolumeReport, Vec<stare::idx::Entry>);
+
+/// What goes into a build's unified index besides CAP's folders.
+#[derive(Debug, Default, Clone)]
+struct IdxOptions {
+    /// CAP's VolumesMetadata.json, to fold split volumes' folders into one file.
+    volumes_metadata: Option<PathBuf>,
+    /// A CourtListener export manifest.
+    cl: Option<PathBuf>,
+}
+
+/// Write the unified index into `out` from CAP's folders' lines and the options' inputs;
+/// returns what the CourtListener input held, when there was one.
+fn write_idx(
+    out: &std::path::Path,
+    cap: BTreeMap<idx::VolumeKey, Vec<stare::idx::Entry>>,
+    opts: &IdxOptions,
+) -> anyhow::Result<Option<idx::ClInput>> {
+    let meta = match &opts.volumes_metadata {
+        Some(path) => idx::read_volumes_metadata(path)?,
+        None => Vec::new(),
+    };
+    let (cl, input) = match &opts.cl {
+        Some(path) => {
+            let (lines, input) = idx::read_cl_manifest(path)?;
+            (lines, Some(input))
+        }
+        None => (BTreeMap::new(), None),
+    };
+    let written = idx::write(out, cap, &meta, cl)?;
+    println!(
+        "Unified index: {} volumes in {} files{}",
+        written.volumes.len(),
+        written.files,
+        match &input {
+            Some(i) => format!(
+                "; CourtListener {}: {} records, {} lines ({} vendor, {} volume, {} page and {} slug citations skipped)",
+                i.export.as_deref().unwrap_or("export"),
+                i.records,
+                i.lines,
+                i.skipped_vendor,
+                i.skipped_volume,
+                i.skipped_page,
+                i.skipped_slug
+            ),
+            None => String::new(),
+        }
+    );
+    Ok(input)
+}
+
+/// Rebuild the unified index from a finished build's .bin and .multi files.
+fn build_idx(
+    index_dir: &std::path::Path,
+    output_dir: Option<&std::path::Path>,
+    opts: &IdxOptions,
+) -> anyhow::Result<()> {
+    let mut folders: Vec<idx::VolumeKey> = Vec::new();
+    for path in walkdir(index_dir)? {
+        if path.extension().is_none_or(|e| e != "bin") {
+            continue;
+        }
+        let Some(parent) = path.parent().filter(|p| *p != index_dir) else {
+            continue;
+        };
+        let (Some(slug), Some(folder)) = (
+            parent.file_name().and_then(|s| s.to_str()),
+            path.file_stem().and_then(|s| s.to_str()),
+        ) else {
+            continue;
+        };
+        if stare::cl::is_reporter_slug(slug) && stare::manifest::is_volume_key(folder) {
+            folders.push((slug.to_string(), folder.to_string()));
+        }
+    }
+    let cap: BTreeMap<idx::VolumeKey, Vec<stare::idx::Entry>> = folders
+        .par_iter()
+        .map(|(slug, folder)| {
+            idx::folder_entries(index_dir, slug, folder)
+                .map(|e| ((slug.clone(), folder.clone()), e))
+        })
+        .collect::<anyhow::Result<_>>()?;
+    write_idx(output_dir.unwrap_or(index_dir), cap, opts)?;
+    Ok(())
 }
 
 fn batch_index(
@@ -419,6 +552,7 @@ fn batch_index(
     output_dir: Option<&std::path::Path>,
     allow: &Allowlist,
     results_path: Option<&std::path::Path>,
+    idx_opts: &IdxOptions,
     verbose: bool,
 ) -> anyhow::Result<()> {
     let zips: Vec<PathBuf> = walkdir(dir)?
@@ -442,7 +576,7 @@ fn batch_index(
 
     let total = zips.len();
 
-    let results: Vec<(String, anyhow::Result<VolumeReport>)> = zips
+    let results: Vec<(String, anyhow::Result<Indexed>)> = zips
         .par_iter()
         .map(|zip_path| {
             let out_path = match output_dir {
@@ -470,9 +604,12 @@ fn batch_index(
         allow: allow.clone(),
         ..Default::default()
     };
-    for (key, result) in &results {
+    let mut cap_lines: BTreeMap<idx::VolumeKey, Vec<stare::idx::Entry>> = BTreeMap::new();
+    for (key, result) in results.iter() {
         match result {
-            Ok(report) => {
+            Ok((report, entries)) => {
+                let (slug, folder) = key.split_once('/').unwrap_or(("", key));
+                cap_lines.insert((slug.to_string(), folder.to_string()), entries.clone());
                 batch.volumes.insert(key.clone(), report.clone());
                 totals.cases += report.cases;
                 totals.entries += report.entries;
@@ -491,9 +628,21 @@ fn batch_index(
             }
         }
     }
+    // The unified index, once every volume indexed and passed: from the same zips,
+    // beside the .bin and .multi files.
+    let mut idx_error = None;
+    if errors.is_empty() && failures.is_empty() {
+        match write_idx(output_dir.unwrap_or(dir), cap_lines, idx_opts) {
+            Ok(input) => batch.cl = input,
+            Err(e) => idx_error = Some(e),
+        }
+    }
     if let Some(path) = results_path {
         std::fs::write(path, serde_json::to_string(&batch)? + "\n")
             .with_context(|| format!("failed to write {}", path.display()))?;
+    }
+    if let Some(e) = idx_error {
+        return Err(e.context("failed to write the unified index"));
     }
 
     println!(
@@ -648,6 +797,22 @@ fn build_manifest(
     manifest.entries = Some(stats.values().map(|s| s.entries).sum());
     manifest.version = Some(version);
     manifest.generated_at = Some(stare::manifest::rfc3339_utc(now));
+
+    // The unified index, when the build has one: every volume it has, from any source,
+    // is in `reporters` too.
+    let idx_volumes = idx::scan_volumes(index_dir)?;
+    if !idx_volumes.is_empty() {
+        manifest.idx = Some(stare::idx::FORMAT);
+        for (slug, volume) in &idx_volumes {
+            let list = manifest.reporters.entry(slug.clone()).or_default();
+            if !list.contains(volume) {
+                list.push(volume.clone());
+            }
+        }
+        for volumes in manifest.reporters.values_mut() {
+            volumes.sort_by(|a, b| stare::manifest::compare_volumes(a, b));
+        }
+    }
 
     let split = stats
         .keys()
@@ -1137,7 +1302,15 @@ mod tests {
         .unwrap();
         let out = dir.path().join("idx");
 
-        let err = batch_index(&zips, Some(&out), &Allowlist::new(), None, false).unwrap_err();
+        let err = batch_index(
+            &zips,
+            Some(&out),
+            &Allowlist::new(),
+            None,
+            &IdxOptions::default(),
+            false,
+        )
+        .unwrap_err();
         assert!(
             err.to_string().contains("1 failed the index check"),
             "{err}"
@@ -1145,7 +1318,15 @@ mod tests {
         assert!(out.join("x/1.bin").exists() && out.join("x/2.bin").exists());
 
         let allow = Allowlist::from([("x/2".to_string(), "known".to_string())]);
-        batch_index(&zips, Some(&out), &allow, None, false).unwrap();
+        batch_index(
+            &zips,
+            Some(&out),
+            &allow,
+            None,
+            &IdxOptions::default(),
+            false,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1170,6 +1351,7 @@ mod tests {
             Some(&first),
             &Allowlist::new(),
             Some(&results),
+            &IdxOptions::default(),
             false
         )
         .is_err());
@@ -1207,6 +1389,7 @@ mod tests {
             Some(&second),
             &allow,
             Some(&second.join("batch-index.json")),
+            &IdxOptions::default(),
             false,
         )
         .unwrap();
@@ -1277,6 +1460,104 @@ mod tests {
                 assert_eq!(stare_tag.as_deref(), Some("v2026.10.04.1"));
             }
             _ => panic!("not build-report"),
+        }
+    }
+
+    #[test]
+    fn batch_writes_the_unified_index_and_the_manifest_announces_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let zips = dir.path().join("zips");
+        std::fs::create_dir_all(zips.join("x")).unwrap();
+        // x 5 is split over two folders; x 6 is a plain volume.
+        std::fs::write(
+            zips.join("x/5.zip"),
+            volume_zip(&[("0001-01", Some("1")), ("0003-01", Some("3"))]),
+        )
+        .unwrap();
+        std::fs::write(
+            zips.join("x/5-2.zip"),
+            volume_zip(&[("0003-01", Some("3")), ("xxix-01", Some("xxix"))]),
+        )
+        .unwrap();
+        std::fs::write(zips.join("x/6.zip"), volume_zip(&[("0002-01", Some("2"))])).unwrap();
+        let meta = dir.path().join("VolumesMetadata.json");
+        std::fs::write(
+            &meta,
+            r#"[{"reporter_slug": "x", "volume_folder": "5", "volume_number": "5"},
+                {"reporter_slug": "x", "volume_folder": "5-2", "volume_number": "5"},
+                {"reporter_slug": "x", "volume_folder": "6", "volume_number": "6"}]"#,
+        )
+        .unwrap();
+        let cl = dir.path().join("2026-09-30");
+        std::fs::create_dir_all(&cl).unwrap();
+        let h = "0f3a9c2e7b1d4a65";
+        std::fs::write(
+            cl.join("manifest.ndjson"),
+            format!(
+                "{{\"id\": 7, \"hash\": \"{h}\", \"citations\": [\
+                 {{\"volume\": \"5\", \"reporter\": \"X\", \"page\": \"1\", \"type\": 1, \"cap_slugs\": [\"x\"]}},\
+                 {{\"volume\": \"2021\", \"reporter\": \"NY Slip Op\", \"page\": \"50123\", \"type\": 2, \"cap_slugs\": []}}]}}\n"
+            ),
+        )
+        .unwrap();
+
+        let out = dir.path().join("v1");
+        let opts = IdxOptions {
+            volumes_metadata: Some(meta.clone()),
+            cl: Some(cl.join("manifest.ndjson")),
+        };
+        batch_index(
+            &zips,
+            Some(&out),
+            &Allowlist::new(),
+            Some(&out.join("batch-index.json")),
+            &opts,
+            false,
+        )
+        .unwrap();
+        let read = |p: &str| stare::idx::decode(&std::fs::read(out.join(p)).unwrap()).unwrap();
+        assert_eq!(
+            read("x/5.idx.gz"),
+            format!("1,cap,0001-01\n1,cl,7/{h}\n3,cap,0003-01\n3,cap,5-2/0003-01\nxxix,cap,5-2/xxix-01\n")
+        );
+        assert_eq!(read("x/6.idx.gz"), "2,cap,0002-01\n");
+        assert_eq!(read("ny-slip-op/2021.idx.gz"), format!("50123,cl,7/{h}\n"));
+        assert!(!out.join("x/5-2.idx.gz").exists());
+        // The .bin and .multi files are still there for the transition release.
+        assert!(out.join("x/5-2.bin").exists());
+
+        build_manifest(&out, None, Some(&meta), Some("v2026.10.11")).unwrap();
+        let m =
+            stare::manifest::Manifest::parse(&std::fs::read(out.join("manifest.json")).unwrap())
+                .unwrap();
+        assert_eq!(m.idx, Some(1));
+        assert_eq!(m.volumes("x"), ["5", "5-2", "6"]);
+        assert_eq!(m.volumes("ny-slip-op"), ["2021"]);
+        // CAP's counts are what batch-index checked.
+        assert_eq!(m.volumes, Some(3));
+        assert_eq!(m.idx_volumes("x"), ["5", "6"]);
+
+        let identity = report::Identity {
+            version: "v2026.10.11".into(),
+            ..Default::default()
+        };
+        let r = build_report(&out, None, None, &identity, None).unwrap();
+        let idx = r.idx.unwrap();
+        assert_eq!((idx.volumes, idx.files, idx.cl_only_volumes), (3, 3, 1));
+        assert_eq!(idx.lines["cap"], 5);
+        assert_eq!(idx.lines["cl"], 2);
+        assert_eq!(idx.cl_input.unwrap().export.as_deref(), Some("2026-09-30"));
+
+        // build-idx rebuilds the same files from the .bin and .multi files.
+        let again = dir.path().join("again");
+        std::fs::create_dir_all(&again).unwrap();
+        build_idx(&out, Some(&again), &opts).unwrap();
+        for f in ["x/5.idx.gz", "x/6.idx.gz", "ny-slip-op/2021.idx.gz"] {
+            assert_eq!(
+                std::fs::read(out.join(f)).unwrap(),
+                std::fs::read(again.join(f)).unwrap(),
+                "{f}"
+            );
         }
     }
 

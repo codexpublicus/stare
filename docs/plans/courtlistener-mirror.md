@@ -172,7 +172,9 @@ v/<ver>/<slug>/<vol>.<n>.idx.gz  later parts of a split volume
 - **Keys.** `page` is the cited page: an integer, a neutral or slip-opinion sequence number
   (`2021 IL 125678`), or a CAP page label (`xxix`, lowercased).
 - **Sources and refs.**
-  - `source` is `cap`, with `ref` CAP's case file name inside the volume zip (`0647-01`).
+  - `source` is `cap`, with `ref` CAP's case file name inside the volume zip (`0647-01`). A
+    case from a split volume's other folder names the folder: `138-2/1012-01` is in
+    `a3d/138-2.zip`.
   - Or `source` is `cl`, with `ref` `<cluster_id>/<hash>`, the record object below.
   - Later sources add a tag, not a file type.
 - **Shared pages.** Several lines can share a page, CAP's first; the resolver shows the first and
@@ -183,9 +185,12 @@ v/<ver>/<slug>/<vol>.<n>.idx.gz  later parts of a split volume
   reader fetches the later part a page falls in. That caps a lookup near 17 KB gzipped; most
   CAP volumes are about 1.4 KB.
 - **CAP's split folders fold in.** `a3d/138` holds `138-2`'s cases, so the resolver stops
-  probing parts.
+  probing parts. The folder comes from CAP's VolumesMetadata.json, the same grouping as the
+  manifest's `parts`.
 - **Parse rules.** Readers trim whitespace, skip blank lines, and skip a malformed line
-  (reporting its number) rather than rejecting the volume.
+  (reporting its number) rather than rejecting the volume. A page with a comma can't be a
+  key; CourtListener has 242 such citations, all CCH paragraph numbers (`37,448`), and the
+  build skips them.
 
 **Slugs** come from citare's `slug` ([citare#71](https://github.com/codexpublicus/citare/pull/71)),
 one namespace for every source:
@@ -204,10 +209,13 @@ one namespace for every source:
 - `idx.stare.pub` needs the `.idx.gz` files cacheable at Cloudflare (`gz` is on its default
   extension list) and Smart Tiered Cache. `manifest.json` is uncached today (`DYNAMIC`) and gets
   a cache rule with its short max-age.
-- Mirrors get one tarball per index version. The sum of all files is about 42 MB.
+- Mirrors get one tarball per index version. The sum of all files is about 44 MB (42.3 MB
+  in #110's prototype, which wrote one-letter source tags).
 
 **Transition.** The first unified build publishes `.idx.gz` beside `.bin`/`.multi` for one release;
 the site and CLI read `.idx.gz` when the manifest says it's there. The next build drops `.bin`/`.multi`.
+The readers ship before any build whose `reporters` lists CourtListener-only volumes, since
+older readers count a listed volume as held and would stop linking it out.
 [#148](https://github.com/codexpublicus/stare/pull/148)'s `.cl` reader becomes the `cl` source in
 the unified reader; nothing ever published a `.cl` file.
 

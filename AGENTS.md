@@ -30,7 +30,7 @@ Three interfaces to the same data, all static files:
 
 | Interface | Purpose | Size | Consumer |
 |-----------|---------|------|----------|
-| **Citation index** (.bin files) | Citation → text + PDF | ~40 MB | MCP server, CLI, website |
+| **Citation index** (`.idx.gz` per volume) | Citation → text + PDF | ~44 MB | MCP server, CLI, website |
 | **RoaringBuckets search** (bitmaps) | Full-text + structured search | ~3-7 GB | Serverless website |
 | **DuckLake** (Parquet + DuckDB catalog) | SQL queries, bulk analysis | ~25-35 GB | Researchers, data science |
 
@@ -38,9 +38,10 @@ Three interfaces to the same data, all static files:
 
 ```
 /index/manifest.json              — the live build's manifest plus `base` (`v/<version>/`), short max-age (crates/stare/src/manifest.rs)
-/index/v/{version}/{reporter}/{vol}.bin    — citation lookup (page offset → case file); immutable
-/index/v/{version}/{reporter}/{vol}.multi  — pages with several cases; immutable
-/index/v/{version}/{reporter}/{vol}.cl     — CourtListener sidecar, `page,cluster_id,hash` per line, for volumes the manifest's `cl` block lists; immutable
+/index/v/{version}/{reporter}/{vol}.idx.gz   — the unified index: `page,source,ref` lines for every source, gzip (application/gzip, no Content-Encoding); immutable
+/index/v/{version}/{reporter}/{vol}.{n}.idx.gz — later parts of a volume split past 1,000 lines; immutable
+/index/v/{version}/{reporter}/{vol}.bin    — CAP-only citation lookup (page offset → case file), kept for one release beside .idx.gz; immutable
+/index/v/{version}/{reporter}/{vol}.multi  — pages with several cases, likewise; immutable
 /index/v/{version}/manifest.json  — the build's own manifest (no `base`)
 /index/v/{version}/report.json    — the build's report (schemas/index-report.v1.schema.json); immutable
 /index/reports/index.json         — every published build's report totals, oldest first (schemas/reports-index.v1.schema.json); charted at stare.pub/data
@@ -55,18 +56,46 @@ Three interfaces to the same data, all static files:
 /ducklake/...                     — DuckLake Parquet + catalog
 ```
 
+### The unified index (`crates/stare/src/idx.rs`)
+
+One gzipped text file per volume as cited, for every source (`docs/plans/courtlistener-mirror.md`,
+"Index"; measured in #110). Each line is `page,source,ref`:
+
+- `page`: a number, or a CAP page label lowercased (`xxix`, `supp. 1`).
+- `cap` lines: `ref` is the case file in the volume's zip (`0647-01`). A volume CAP split
+  over several folders is one file under the number as cited, and a case from another
+  folder names it: `138-2/1012-01` is in `a3d/138-2.zip`.
+- `cl` lines: `ref` is `<cluster_id>/<hash>`, the record below.
+- Lines sharing a page keep CAP's first; readers show the first. A `cl` line on a page CAP
+  has a case on is an alias for that case.
+- A part ends at the first page boundary after 1,000 lines; part 0 then starts with
+  `#parts,<first page of part 1>,...`, and readers fetch the part a page falls in.
+- Readers trim, skip blank and `#` lines, skip (and report) malformed lines, and skip a
+  source tag they don't know. Files are gzipped with mtime 0, so an unchanged volume is
+  byte-identical across builds.
+
+The manifest's `idx: 1` says a build has them; `reporters` then lists every source's
+volumes, CourtListener-only ones included, while `volumes` and `entries` still count CAP's
+folders. The site (`web/public/js/resolve.js`) and the CLI read `.idx.gz` when `idx` is 1
+and fall back to `.bin`/`.multi` otherwise, or when a volume has no `.idx.gz`. A split
+volume's other folder named directly (`a3d 138-2`) is read from its number's file, keeping
+the lines that name that folder. A miss in a volume the index holds is a miss; it never
+links out. The WASM exposes `parse_idx` and `lookup_idx`.
+
+Slugs for reporters CAP never had come from citare's edition `slug` (citare#71, not yet in
+a citare release). Until stare takes it, the build slugs them the same way
+(`NY Slip Op` → `ny-slip-op`), and the resolvers, which look up by `harvard_slug`, reach
+CourtListener cases only in reporters CAP has.
+
 ### CourtListener records (`crates/stare/src/cl.rs`, `web/public/js/cl.js`)
 
 Cases CAP doesn't hold come from CourtListener's bulk data
 (`docs/plans/courtlistener-mirror.md`). A record is CAP's case JSON with a `source` block
 (`name: "courtlistener"`, the export date, CourtListener's ids, docket number, status and
-URL); `<hash>` is the first 16 hex digits of its SHA-256. The root manifest's
-`cl: {export, reporters: {slug: [vols]}}` lists the volumes with a `.cl` sidecar. After
-a CAP miss (no case at the page, or a volume CAP doesn't hold), the site and the CLI read
-the sidecar, fetch the record and render it like a CAP case with a source line, and no
-page scans or PDF. Several records can start on one page. The layout is not settled
-(per-case objects or per-volume zips), so `cl.rs` and `sources.js` are the only places
-that build these paths. Nothing is published yet; the e2e tests serve a hand-made record
+URL); `<hash>` is the first 16 hex digits of its SHA-256. The unified index's `cl` lines
+point at them; the site and the CLI fetch the record and render it like a CAP case with a
+source line, and no page scans or PDF. `cl.rs` and `sources.js` are the only places that
+build record paths. Nothing is published yet; the e2e tests serve a hand-made record
 (`crates/stare/tests/fixtures/cl-record.json`) through routes.
 
 ### Index builds and publishing
@@ -74,16 +103,24 @@ that build these paths. Nothing is published yet; the e2e tests serve a hand-mad
 Each index build is immutable and versioned with a CalVer data version (`vYYYY.MM.DD`, `.N`
 for a later one the same day). Both steps are operator-run on ml-01 and never automatic:
 
-- `mise run index-build <stare tag> [version] [--allow <file>]` builds `stare-admin` from the
-  tag and runs `batch-index`, `build-manifest` and `build-report` in a throwaway container
-  (no network, the mirror read-only) into `codexpublicus-index:/builds/<version>/`, with
-  `build.log`, `build.json`, `batch-index.json` and `report.json`. The report
+- `mise run index-build <stare tag> [version] [--allow <file>] [--cl <manifest>]` builds
+  `stare-admin` from the tag and runs `batch-index`, `build-manifest` and `build-report` in
+  a throwaway container (no network, the mirror read-only) into
+  `codexpublicus-index:/builds/<version>/`, with `build.log`, `build.json`,
+  `batch-index.json` and `report.json`. `batch-index` writes the `.bin`/`.multi` files and
+  the unified index from the same zips, folding split volumes by CAP's
+  VolumesMetadata.json, plus `cl` lines from a CourtListener export manifest
+  (`cl/exports/<date>/manifest.ndjson.gz`) given with `--cl`; `stare-admin build-idx`
+  rebuilds the unified index from a finished build's `.bin`/`.multi`. The report
   (`schemas/index-report.v1.schema.json`) has the build's identity, totals, per-reporter
-  counts, every allow-listed and failed volume, and a diff against
-  `/index/current/report.json` when the published build has one.
+  counts, every allow-listed and failed volume, a diff against
+  `/index/current/report.json` when the published build has one, and `idx`: the unified
+  index's volumes, files, split and CourtListener-only volumes, lines per source, sizes and
+  what the CourtListener input held.
 - `mise run index-publish <version>` checks the build's exit status and counts and its
   report, uploads it to `stare-pub-idx/v/<version>/` (`Cache-Control: public,
-  max-age=31536000, immutable`, `report.json` next to last, its manifest last), adds the
+  max-age=31536000, immutable`, `.idx.gz` as `application/gzip` with no Content-Encoding,
+  `report.json` next to last, its manifest last), adds the
   build to `reports/index.json` (`max-age=60`), saves the old root `manifest.json` and
   `reports/index.json` to `codexpublicus-index:/published/`, writes the root
   `manifest.json` (the build's plus `base`, `max-age=60`), and points
@@ -93,6 +130,11 @@ for a later one the same day). Both steps are operator-run on ml-01 and never au
   pre-versioning root, upload the saved copy from `published/` as `manifest.json`.
 
 Nothing in `v/` is ever overwritten or deleted by these tasks.
+
+The first build with the unified index keeps `.bin`/`.multi` beside it for one release, and
+the next drops them. Release the site and CLI that read `.idx.gz` before publishing a
+build whose `reporters` lists CourtListener-only volumes: older readers would count those
+as held and report "not indexed yet" instead of linking out.
 
 ### Storage Split
 

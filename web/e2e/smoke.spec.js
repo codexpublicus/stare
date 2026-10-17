@@ -375,6 +375,14 @@ test('/check survives a multibyte character at the case-name scan boundary', asy
 });
 
 test('/#a2d/31/647-01 resolves through idx.stare.pub and renders the case', async ({ page }) => {
+  // The live manifest has no `idx` yet: the case comes from the .bin, and nothing asks
+  // for a unified index file.
+  const idx = [];
+  const bins = [];
+  page.on('request', (req) => {
+    if (req.url().endsWith('.idx.gz')) idx.push(req.url());
+    if (req.url().endsWith('/a2d/31.bin')) bins.push(req.url());
+  });
   const wasm = page.waitForResponse(isWasm);
   await page.goto('/#a2d/31/647-01');
   await expectWasmResponse(await wasm);
@@ -385,6 +393,11 @@ test('/#a2d/31/647-01 resolves through idx.stare.pub and renders the case', asyn
   await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
   // The sidebar's citation pass finished without its error state.
   await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?$/);
+  const manifest = await (await page.request.get('https://idx.stare.pub/manifest.json')).json();
+  if (manifest.idx !== 1) {
+    expect(bins.length).toBeGreaterThan(0);
+    expect(idx).toEqual([]);
+  }
 });
 
 test('short cites and Id.s in a case link to their antecedent\'s case (#120)', async ({ page }) => {
@@ -496,40 +509,111 @@ test('138 A.3d 1012 resolves into a3d/138-2, the second folder CAP split the vol
   await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
 });
 
-test.describe('a CourtListener record on a CAP miss', () => {
-  // CAP's A.3d stops at vol. 213, so 250 A.3d 100 is a volume it doesn't hold. Nothing
-  // from CourtListener is published yet: the routes add a `cl` block to the live
-  // manifest and serve a sidecar for a3d 250 and the hand-made record the Rust tests
-  // read (docs/plans/courtlistener-mirror.md).
+test.describe('the unified per-volume index', () => {
+  // Nothing in the unified index is published yet. The routes add `idx: 1` (and a3d
+  // 250, a volume only CourtListener has) to the live manifest, and answer every
+  // `.idx.gz` from the live build's .bin and .multi files, converted the way
+  // stare-admin writes them: a split volume's later folders folded into its number's
+  // file with a `<folder>/` ref, and a3d 138 split into two parts at page 1000.
+  // a2d 31 page 647 gets a CourtListener alias line after CAP's, and a3d 250 one
+  // record, the hand-made one the Rust tests read (docs/plans/courtlistener-mirror.md).
   const RECORD = readFileSync(new URL('../../crates/stare/tests/fixtures/cl-record.json', import.meta.url));
   const HASH = '0f3a9c2e7b1d4a65';
   const RECORD_URL = `https://data.stare.pub/cl/c/9876543/${HASH}.json.gz`;
   const CORS = { 'access-control-allow-origin': '*' };
 
-  // Returns the requests made for a CAP .bin of a3d 250, which should be none.
-  async function routeCourtListener(page) {
+  const pageKey = (p) => (/^\d+$/.test(p) ? [0, Number(p), ''] : [1, 0, p]);
+  const byPage = (a, b) => {
+    const [x, y] = [pageKey(a[0]), pageKey(b[0])];
+    return x[0] - y[0] || x[1] - y[1] || (x[2] < y[2] ? -1 : x[2] > y[2] ? 1 : 0);
+  };
+
+  // A CAP folder's lines from its .bin and .multi: [page, ref].
+  async function folderLines(route, url, prefix) {
+    const bin = await route.fetch({ url: `${url}.bin` });
+    if (!bin.ok()) return null;
+    const body = await bin.body();
+    const lines = [];
+    for (let page = 0; page * 8 < body.length; page += 1) {
+      const name = body.subarray(page * 8, page * 8 + 8).toString('utf8').replace(/\0+$/, '');
+      if (name && name !== '*' && !name.includes('\0')) lines.push([String(page), prefix + name]);
+    }
+    const multi = await route.fetch({ url: `${url}.multi` });
+    if (multi.ok()) {
+      for (const line of (await multi.text()).split('\n')) {
+        const i = line.indexOf(',');
+        if (i > 0) lines.push([line.slice(0, i), prefix + line.slice(i + 1)]);
+      }
+    }
+    return lines;
+  }
+
+  // Returns the CAP .bin/.multi requests the page made itself, and its .idx.gz ones.
+  async function routeIdx(page) {
+    let parts = {};
     await page.route('https://idx.stare.pub/manifest.json', async (route) => {
       const manifest = await (await route.fetch()).json();
-      manifest.cl = { export: '2026-09-30', reporters: { a3d: ['250'] } };
+      manifest.idx = 1;
+      manifest.reporters.a3d = [...manifest.reporters.a3d, '250'];
+      parts = manifest.parts || {};
       await route.fulfill({
         headers: { ...CORS, 'cache-control': 'no-cache' },
         contentType: 'application/json',
         body: JSON.stringify(manifest),
       });
     });
-    await page.route('https://idx.stare.pub/**/a3d/250.cl', (route) => route.fulfill({
-      headers: CORS, contentType: 'text/plain', body: `100,9876543,${HASH}\n`,
-    }));
+    // A handler still converting when the test ends (the sidebar checks citations in
+    // the background) has its fetch cut off; that's not a failure.
+    await page.route(/^https:\/\/idx\.stare\.pub\/.*\.idx\.gz$/, (route) => serveIdx(route).catch(() => {}));
+    async function serveIdx(route) {
+      const url = route.request().url();
+      const m = url.match(/^(.*\/)([a-z0-9-]+)\/([0-9a-z-]+?)(?:\.(\d+))?\.idx\.gz$/);
+      const [, base, slug, volume, partStr] = m;
+      const part = Number(partStr || 0);
+      let lines = [];
+      if (slug === 'a3d' && volume === '250') {
+        lines = [['100', `cl,9876543/${HASH}`]];
+      } else {
+        const folders = parts[slug]?.[volume]?.map((p) => p.volume) || [volume];
+        for (const folder of folders) {
+          const got = await folderLines(route, `${base}${slug}/${folder}`, folder === volume ? '' : `${folder}/`);
+          if (got) lines.push(...got.map(([p, ref]) => [p, `cap,${ref}`]));
+        }
+        if (slug === 'a2d' && volume === '31') lines.push(['647', `cl,1/${HASH}`]);
+      }
+      lines.sort(byPage);
+      let text = lines.map(([p, rest]) => `${p},${rest}\n`).join('');
+      if (slug === 'a3d' && volume === '138') {
+        const head = lines.filter(([p]) => pageKey(p)[0] === 0 && Number(p) < 1000);
+        const tail = lines.filter((l) => !head.includes(l));
+        const body = (ls) => ls.map(([p, rest]) => `${p},${rest}\n`).join('');
+        text = part === 0 ? `#parts,1000\n${body(head)}` : body(tail);
+      }
+      await route.fulfill({ headers: CORS, contentType: 'application/gzip', body: gzipSync(text) });
+    }
     await page.route(RECORD_URL, (route) => route.fulfill({
       headers: CORS, contentType: 'application/gzip', body: gzipSync(RECORD),
     }));
-    const bins = [];
-    page.on('request', (req) => { if (/\/a3d\/250\.(?:bin|multi)$/.test(req.url())) bins.push(req.url()); });
-    return bins;
+    const seen = { bins: [], idx: [] };
+    page.on('request', (req) => {
+      if (/\.(?:bin|multi)$/.test(req.url()) && req.url().startsWith('https://idx.stare.pub/')) seen.bins.push(req.url());
+      if (/\.idx\.gz$/.test(req.url())) seen.idx.push(req.url());
+    });
+    return seen;
   }
 
-  test('250 A.3d 100 renders from its record, with the source line', async ({ page }) => {
-    const bins = await routeCourtListener(page);
+  test('a CAP page with a CourtListener alias line shows the CAP case, from one .idx.gz', async ({ page }) => {
+    const seen = await routeIdx(page);
+    await page.goto('/#a2d/31/647-01');
+    await expect(page.locator('#topbar-case')).toHaveText("D'Elia & Marks Co. v. Lyon");
+    await expect(page.locator('#reader .reader-source')).toHaveCount(0);
+    await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)/);
+    expect(seen.idx.some((u) => u.endsWith('/a2d/31.idx.gz'))).toBe(true);
+    expect(seen.bins).toEqual([]);
+  });
+
+  test('250 A.3d 100 renders from its CourtListener record, with the source line', async ({ page }) => {
+    const seen = await routeIdx(page);
     await page.goto('/');
     await page.fill('#landing-input', '250 A.3d 100');
     await page.click('#landing-btn');
@@ -550,11 +634,11 @@ test.describe('a CourtListener record on a CAP miss', () => {
     await expect(page.locator('#sidebar', { hasText: 'View original PDF' })).toHaveCount(0);
     await expect(page.locator('#sidebar .sidebar-meta').first()).toContainText('Docket: J-12-2021');
     await expect(page.locator('#sidebar .sidebar-source')).toHaveText("From CourtListener's bulk data, export 2026-09-30 · Published");
-    expect(bins).toEqual([]);
+    expect(seen.bins).toEqual([]);
   });
 
   test('a pin cite into a record opens the case at the top', async ({ page }) => {
-    await routeCourtListener(page);
+    await routeIdx(page);
     await page.goto('/#a3d/250/100-01@103');
     await expect(page.locator('#topbar-case')).toHaveText('Smith v. Jones');
     await expect(page.locator('#reader .reader-title')).toBeInViewport();
@@ -562,8 +646,22 @@ test.describe('a CourtListener record on a CAP miss', () => {
     await expect(page.locator('#status-bar')).toBeHidden();
   });
 
-  test('/check resolves a sidecar hit here and links nothing out for a miss', async ({ page }) => {
-    await routeCourtListener(page);
+  test('138 A.3d 1012 comes from the later part of a split volume, in folder 138-2', async ({ page }) => {
+    const seen = await routeIdx(page);
+    await page.goto('/');
+    await page.fill('#landing-input', '138 A.3d 1012');
+    await page.click('#landing-btn');
+
+    await expect(page).toHaveURL(/#a3d\/138-2\/1012-01$/);
+    await expect(page.locator('#topbar-case')).toHaveText('Brooks v. Powers');
+    await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
+    expect(seen.idx.some((u) => u.endsWith('/a3d/138.1.idx.gz'))).toBe(true);
+    expect(seen.idx.some((u) => u.endsWith('/a3d/138-2.idx.gz'))).toBe(false);
+    expect(seen.bins).toEqual([]);
+  });
+
+  test('/check resolves a CourtListener hit here and links nothing out for a miss', async ({ page }) => {
+    await routeIdx(page);
     await page.goto('/check');
     await page.fill('#check-input', 'See Smith v. Jones, 250 A.3d 100 (Pa. 2021); Doe v. Roe, 250 A.3d 101 (Pa. 2021).');
     await page.click('#check-btn');
