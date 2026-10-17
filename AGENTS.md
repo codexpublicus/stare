@@ -264,13 +264,18 @@ be in the image. pip, uv and npm go through the homelab's Nexus proxy, set by th
 environment. A job on these runners can get root on ml-01 through the sidecar, so no workflow
 may run code from a fork or check out PR code under `pull_request_target`.
 
+- **Rust toolchain and cache** (#79): `rust-toolchain.toml` pins the Rust version, which CI
+  reads; bump it on purpose, since a new rustc changes the cache key and the next `main` run
+  starts cold. `Swatinem/rust-cache` uses one key (`shared-key: site`) for every job, and
+  only pushes to `main` save it; PRs restore `main`'s and save nothing.
 - **Pull requests** (`site.yml`, job "Preview PR") run `cargo fmt --check`, clippy with
   `-D warnings`, `cargo test --workspace`, the JS tests, the WASM build and the Astro build,
   then upload a Worker version and keep one updating comment with its preview URL
   (`https://<version>-stare-pub.nick-441.workers.dev`), then run the Playwright smoke suite
   (`web/e2e/`, `.github/actions/smoke-test`) against that URL.
 - **Pushes to `main`** (`site.yml`, job "Preview main (not production)") run the same checks
-  and upload a version to the `main` preview alias,
+  and upload a version to the `main` preview alias (and the `site-wasm` artifact `release.yml`
+  deploys),
   `https://main-stare-pub.nick-441.workers.dev`, and smoke test the uploaded version's own URL.
   A green check on `main` is not a deploy, but a failed smoke test blocks the release, since
   `release.yml` refuses a merge commit whose checks failed.
@@ -278,14 +283,19 @@ may run code from a fork or check out PR code under `pull_request_target`.
   Conventional Commits since the last release tag and keeps one open PR from `release/next`,
   "chore(release): next site release", that updates `CHANGELOG.md`. Only `feat`, `fix` and
   `perf` commits touching the site (`web/`, `crates/stare`, `crates/stare-wasm`, `wrangler.jsonc`,
-  `site.yml` and `.github/actions/build-site/`) after the commit in `scripts/release-baseline` are releasable; docs, chore, ci, test, build, style and refactor are
+  `site.yml`, `.github/actions/build-site/` and `.github/actions/build-web/`) after the commit in `scripts/release-baseline` are releasable; docs, chore, ci, test, build, style and refactor are
   hidden, and with nothing releasable there's no PR. The version in the PR is a preview.
 - **Releasing** (`release.yml`, when the bot's release PR from `release/next` merges into
   `main`): a read-only build job waits for the merge commit's push checks and refuses if any
   failed, then computes the tag from the tags as they stand after the wait, `vYYYY.MM.DD.N` in
-  UTC with N one more than the day's highest existing release (`scripts/calver.mjs`), and
-  rebuilds with the same checks (the composite action `.github/actions/build-site`), with no
-  git credentials on disk while cargo and npm run. A second job, which runs no build code,
+  UTC with N one more than the day's highest existing release (`scripts/calver.mjs`). It
+  doesn't rebuild the Rust side: it downloads the `site-wasm` artifact (the stare-wasm module
+  and citare's data bundle) from the merge commit's successful `site` run on `main`, which
+  ran cargo fmt, clippy, the tests and the smoke suite on that exact commit, and reruns only
+  the Astro build (`.github/actions/build-web`), since the footer's tag and the changelog
+  regenerated for it differ from the main preview's. It has no git credentials on disk while
+  npm runs, and no citare deploy key at all. The artifact is kept 30 days, so re-running a
+  release older than that fails at the download. A second job, which runs no build code,
   creates the tag on the merge commit through the API (refusing if it exists elsewhere),
   refuses if a newer release tag exists, creates the GitHub Release with the git-cliff notes,
   runs `wrangler deploy` on the built `web/dist`, and dispatches `release-prepare.yml`. The

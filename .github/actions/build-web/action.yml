@@ -1,0 +1,37 @@
+name: Build the web site
+description: >
+  Installs the web dependencies and runs the Astro build into web/dist. Expects
+  Node to be set up and web/public/wasm and web/public/data/citare to hold the
+  stare-wasm build and citare's data bundle: build-site makes them, and
+  release.yml downloads the ones the merge commit's main build made.
+
+inputs:
+  release:
+    description: >
+      The build's label, shown in the footer: the release tag, main-<sha>, or
+      pr-<number>. Empty shows "dev".
+    required: false
+    default: ""
+  commit:
+    description: The commit SHA to show in the footer
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install web dependencies
+      shell: bash
+      run: npm --prefix web ci
+
+    - name: Build web
+      shell: bash
+      env:
+        PUBLIC_RELEASE: ${{ inputs.release }}
+        PUBLIC_COMMIT: ${{ inputs.commit }}
+      run: |
+        set -euo pipefail
+        PUBLIC_BUILD_DATE=$(git log -1 --format=%cs HEAD)
+        export PUBLIC_BUILD_DATE
+        echo "Building ${PUBLIC_RELEASE:-dev} at ${PUBLIC_COMMIT:-unknown commit}, ${PUBLIC_BUILD_DATE}"
+        npm --prefix web run build

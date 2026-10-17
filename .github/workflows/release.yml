@@ -8,8 +8,11 @@ name: release
 #   1. wait for the merge commit's push checks (site.yml) and refuse if any failed;
 #   2. compute vYYYY.MM.DD.N from the tags as they are after the wait
 #      (scripts/calver.mjs; N is one more than the day's highest release);
-#   3. build and check the merge commit, with a changelog regenerated for the tag,
-#      and hand web/dist and the notes to the next job as an artifact.
+#   3. download the stare-wasm build and citare data bundle that site.yml's
+#      main build of the merge commit made, checked and smoke tested, rerun
+#      only the Astro build, with the release tag and a changelog regenerated
+#      for it, and hand web/dist and the notes to the next job as an artifact.
+#      Nothing in Rust is rebuilt: step 1 already required that run to pass.
 # release (contents: write, runs no build code):
 #   4. refuse if a newer release tag exists, so a re-run can't roll production back;
 #   5. create the tag on the merge commit through the API, refusing if it exists
@@ -70,6 +73,7 @@ jobs:
           persist-credentials: false
 
       - name: Wait for the merge commit's checks
+        id: checks
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -104,11 +108,26 @@ jobs:
             echo "$failed"
             exit 1
           fi
+          # The site run whose build step 3 deploys: site.yml itself, pushed to
+          # main in this repo at the merge commit, and successful.
+          site_run=$(gh api "repos/$GH_REPO/actions/runs?head_sha=$SHA&event=push&per_page=100" \
+            --jq '.workflow_runs[] | [.id, .name, .path, .head_branch, .head_sha, .head_repository.full_name, .conclusion] | @tsv' \
+            | awk -F'\t' -v sha="$SHA" -v repo="$GH_REPO" \
+              '$2 == "site" && $3 == ".github/workflows/site.yml" && $4 == "main" && $5 == sha && $6 == repo && $7 == "success" { print $1 }' \
+            | sort -n | tail -n1)
+          if [ -z "$site_run" ]; then
+            echo "::error::No successful site run on main for $SHA"
+            exit 1
+          fi
+          echo "site-run=$site_run" >> "$GITHUB_OUTPUT"
+          echo "Deploying the build from site run $site_run"
 
-      # scripts/calver.mjs; the homelab runner image has no Node
+      # scripts/calver.mjs and the Astro build; the homelab runner image has no Node
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
       - name: Compute the release tag
         id: version
@@ -181,9 +200,28 @@ jobs:
           fi
           cat "$RUNNER_TEMP/release/notes.md"
 
-      - uses: ./.github/actions/build-site
+      # The stare-wasm module and citare data bundle that site run built from
+      # this commit, after its cargo fmt, clippy, tests and JS tests passed.
+      # Kept 30 days, so a release re-run after that fails here.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          ssh-private-key: ${{ secrets.CITARE_DEPLOY_KEY }}
+          name: site-wasm
+          path: web/public
+          run-id: ${{ steps.checks.outputs.site-run }}
+          github-token: ${{ github.token }}
+
+      - name: Check the downloaded build
+        run: |
+          set -euo pipefail
+          test -s web/public/wasm/stare_wasm_bg.wasm
+          test -s web/public/wasm/stare_wasm.js
+          # The Astro build checks the bundle's name against its SHA-256.
+          ls -l web/public/wasm web/public/data/citare/v1
+
+      # The same Astro build as the previews, with the release tag in the footer
+      # and the changelog regenerated above
+      - uses: ./.github/actions/build-web
+        with:
           release: ${{ steps.version.outputs.version }}
           commit: ${{ github.event.pull_request.merge_commit_sha }}
 
