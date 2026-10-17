@@ -55,6 +55,14 @@ runs:
         targets: wasm32-unknown-unknown
         components: clippy, rustfmt
 
+    # Line tables only in the dev and test builds: panics and backtraces keep
+    # their file and line, and the target directory the cache saves and every
+    # job unpacks is smaller. Set before rust-cache, whose key includes CARGO_*
+    # variables.
+    - name: Trim debug info
+      shell: bash
+      run: echo "CARGO_PROFILE_DEV_DEBUG=line-tables-only" >> "$GITHUB_ENV"
+
     # One cache for every job (the default key includes the job's name, so PR
     # jobs never restored main's), written only by pushes to main. PRs restore
     # it and save nothing, instead of each saving a ~575 MB cache of its own
