@@ -89,8 +89,11 @@ function fromRust(c) {
  */
 export async function detectCitations(text) {
   const w = await loadWasm();
-  const raw = JSON.parse(w.detect_citations(text));
+  return citationsFromRust(JSON.parse(w.detect_citations(text)));
+}
 
+/** The WASM's `detect_citations` output, parsed, as detectCitations returns it. */
+export function citationsFromRust(raw) {
   return raw.map(c => ({
     ...fromRust(c),
     pin: c.pin || null,

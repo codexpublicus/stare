@@ -31,25 +31,28 @@ export async function parseInput(raw) {
   // the caller reports it instead of calling the input unparseable.
   await ensureWasm();
   try {
-    const json = wasm.detect_citations(trimmed);
-    const cites = JSON.parse(json);
-    if (cites.length > 0) {
-      const c = cites[0];
-      const slug = citedSlug(c);
-      if (slug && c.volume && c.page) {
-        return {
-          reporter: slug,
-          volume: String(parseInt(c.volume, 10)),
-          page: parseInt(c.page, 10),
-          seq: null,
-        };
-      }
-    }
+    return inputFromCitations(JSON.parse(wasm.detect_citations(trimmed)));
   } catch (e) {
     // citare found nothing usable, fall through
   }
 
   return null;
+}
+
+/**
+ * What the WASM's `detect_citations` output (parsed) says to look up: the first
+ * citation's slug (citedSlug), volume and page, or null when it can't be looked up.
+ */
+export function inputFromCitations(cites) {
+  const c = cites[0];
+  const slug = citedSlug(c);
+  if (!slug || !c.volume || !c.page) return null;
+  return {
+    reporter: slug,
+    volume: String(parseInt(c.volume, 10)),
+    page: parseInt(c.page, 10),
+    seq: null,
+  };
 }
 
 function parseSlugFormat(raw) {
