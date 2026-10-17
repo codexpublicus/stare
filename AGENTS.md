@@ -319,7 +319,10 @@ codexpublicus/infra), so CI runs on them without an approval, and `release.yml` 
 release PR only from `codexpublicus-yeet[bot]`. Without those values `release-prepare.yml`
 fails; there is no `GITHUB_TOKEN` fallback, and the repo setting "Allow GitHub Actions to
 create and approve pull requests" is off. Wrangler is
-pinned to 4.141.0, git-cliff to 2.14.2, and Actions by commit SHA. Locally, `mise run check`,
+pinned to 4.141.0, git-cliff to 2.14.2, and Actions by commit SHA. `.mise/config.toml` pins
+wasm-bindgen to the version in `Cargo.lock`: wasm-pack runs whatever `wasm-bindgen` is on PATH
+to check its version, and a global mise shim with no version set fails that check (#156).
+Bump the pin with the lockfile. Locally, `mise run check`,
 `mise run build-wasm` and `mise run build-web` run the same steps, `mise run e2e [url]` runs
 the smoke suite against a deployed site (the main preview by default), and
 `scripts/cliff --unreleased --tag "$(node scripts/calver.mjs)"` previews the next release's notes (`scripts/cliff` is git-cliff with the baseline range; the first release's hand-written summary is in `cliff.toml`).
