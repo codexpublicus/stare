@@ -4,7 +4,7 @@
 
 import { fetchCached } from './cache.js';
 import { idxEntries } from './idx.js';
-import { hasIdx, holdsVolume, indexPath, loadManifest, volumeCandidates } from './manifest.js';
+import { citedSlug, hasIdx, holdsVolume, indexPath, loadManifest, volumeCandidates } from './manifest.js';
 import { indexUrl } from './sources.js';
 import { pinSuffix } from './router.js';
 import { loadWasm } from './wasm.js';
@@ -50,6 +50,7 @@ function fromRust(c) {
     raw: c.matched_text,
     type: c.citation_type,
     harvard_slug: c.harvard_slug || null,
+    slug: citedSlug(c),
     volume: c.volume ? parseInt(c.volume, 10) : null,
     page: c.page || null,
     reporter: c.reporter || null,
@@ -64,7 +65,7 @@ function fromRust(c) {
 
 /**
  * Detect citations using citare WASM.
- * Returns array of { raw, type, harvard_slug, volume, page, reporter, year, start, end, externalUrl, law, caseLinks, pin, antecedent }
+ * Returns array of { raw, type, harvard_slug, slug, volume, page, reporter, year, start, end, externalUrl, law, caseLinks, pin, antecedent }
  *
  * `law` is the Rust `LawRef` of a statute or regulation (`{ jurisdiction,
  * code, subject, title, chapter, section }`, the shape of citare's own `law`
@@ -207,12 +208,13 @@ export async function checkCitation(c, check = checkAvailability, pageCheck = ch
   // A blank page (`1 U.S. ___`) arrives as page: null and can't be looked
   // up, so it doesn't fall through to the slug guess below either.
   if (!c.page || !c.volume) return none;
-  const slug = c.harvard_slug || (c.reporter ? guessSlug(c.reporter) : null);
+  const cited = citedSlug(c);
+  const slug = cited || (c.reporter ? guessSlug(c.reporter) : null);
   if (!slug) return none;
   const held = await check(slug, c.volume);
   if (!held) {
     // A guessed slug that isn't indexed is no slug at all.
-    return { ...none, slug: c.harvard_slug ? slug : null };
+    return { ...none, slug: cited ? slug : null };
   }
   const found = await pageCheck(slug, c.volume, c.page);
   return { ...c, key: citationKey(c), slug, volumeHeld: true, resolvable: found !== false };

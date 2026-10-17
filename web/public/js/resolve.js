@@ -3,7 +3,7 @@ import { indexUrl, zipUrl } from './sources.js';
 import { ClRecordError, fetchClRecord } from './cl.js';
 import { idxEntries } from './idx.js';
 import {
-  foldedInto, hasIdx, indexPath, isVolumeKey, loadManifest, volumeCandidates,
+  citedSlug, foldedInto, hasIdx, indexPath, isVolumeKey, loadManifest, volumeCandidates,
 } from './manifest.js';
 import { loadWasm } from './wasm.js';
 
@@ -11,7 +11,7 @@ let wasm = null;
 
 /**
  * Parse citation input. Tries multiple formats:
- *   "31 A.2d 647"       → citare parses, gets harvard_slug
+ *   "31 A.2d 647"       → citare parses, gets the edition's slug (citedSlug)
  *   "a2d 31 647"        → slug format (legacy/direct)
  *   "a2d/31/647"        → URL format
  *   "a2d 31 647-02"     → with sequence
@@ -35,9 +35,10 @@ export async function parseInput(raw) {
     const cites = JSON.parse(json);
     if (cites.length > 0) {
       const c = cites[0];
-      if (c.harvard_slug && c.volume && c.page) {
+      const slug = citedSlug(c);
+      if (slug && c.volume && c.page) {
         return {
-          reporter: c.harvard_slug,
+          reporter: slug,
           volume: String(parseInt(c.volume, 10)),
           page: parseInt(c.page, 10),
           seq: null,
