@@ -231,7 +231,7 @@ def test_text_then_records_then_a_delta(tmp_path: Path, index: Path) -> None:
         "reporter": "A.3d",
         "page": "1012",
         "type": 3,
-        "cap_slugs": ["a3d"],
+        "slugs": ["a3d"],
     }
     record_file = out / "cl" / "c" / "5" / f"{sept[5]['hash']}.json.gz"
     record = json.loads(gzip.decompress(record_file.read_bytes()))

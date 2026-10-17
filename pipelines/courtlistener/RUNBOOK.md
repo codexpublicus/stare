@@ -185,7 +185,10 @@ Writes, under `--out` (default `<dest>/out`, laid out as the bucket is):
   SHA-256 of the canonical JSON without `source.export` and `source.first_seen`, so an
   unchanged case keeps its object across exports. Existing objects are not rewritten.
 - `cl/exports/<date>/manifest.ndjson.gz`, one line per record: `id`, `hash`, `first_seen`,
-  and the citations with the CAP slugs each may be in.
+  and the citations, each with citare's slugs for its reporter (from the copy of citare's
+  `data/edition-slugs.json` in `src/stare_courtlistener/data/`), the slugs the unified index
+  files it under. After a citare bump, refresh the copy with
+  `uv run python scripts/edition_slugs.py <citare checkout>`; stare's Rust tests fail until then.
 - `cl/exports/<date>/delta.json`, `added`, `changed` and `removed` ids against
   `--previous` (an earlier export's directory or manifest); without it, all are added.
 - `cl/exports/<date>/crosswalk.ndjson.gz`, one line per `cap_held` cluster: `cluster`,

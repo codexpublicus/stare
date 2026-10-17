@@ -7,7 +7,8 @@
     One record (``record.py``). Immutable: an existing file is left alone.
 ``cl/exports/<date>/manifest.ndjson.gz``
     One line per record, by cluster id: ``id``, ``hash``, ``first_seen``, and the
-    citations with the CAP slugs each may be in (what slice 4's ``.cl`` sidecars need).
+    citations, each with citare's ``slugs`` for its reporter (``reporters.edition_slugs``),
+    which the unified index files it under.
 ``cl/exports/<date>/delta.json``
     ``added``, ``changed`` and ``removed`` cluster ids against ``--previous`` (a previous
     export's directory or its ``manifest.ndjson.gz``); without one, every id is added.
@@ -50,7 +51,7 @@ from stare_courtlistener.record import (
     record_bytes,
     record_hash,
 )
-from stare_courtlistener.reporters import ReporterMap
+from stare_courtlistener.reporters import edition_slugs
 from stare_courtlistener.spool import TEXT_DB
 from stare_courtlistener.stage import STAGE_DB, _logger, connect
 
@@ -121,7 +122,6 @@ def _init_worker(export_dir: str, out: str, export: str, seen: dict[int, str] | 
         out=Path(out),
         export=export,
         seen=seen,
-        reporters=ReporterMap(),
     )
 
 
@@ -131,7 +131,7 @@ def _dict_row(cursor: Any, row: tuple) -> dict[str, Any]:
 
 def _build_chunk(cluster_ids: list[int]) -> list[dict[str, Any]]:
     stage, text, out = _WORKER["stage"], _WORKER["text"], _WORKER["out"]
-    export, seen, reporters = _WORKER["export"], _WORKER["seen"], _WORKER["reporters"]
+    export, seen = _WORKER["export"], _WORKER["seen"]
     results = []
     for cluster_id in cluster_ids:
         cluster = stage.execute("SELECT * FROM clusters WHERE id = ?", (cluster_id,)).fetchone()
@@ -203,7 +203,7 @@ def _build_chunk(cluster_ids: list[int]) -> list[dict[str, Any]]:
                     "reporter": c.reporter,
                     "page": c.page,
                     "type": c.type,
-                    "cap_slugs": list(reporters.slugs(c.reporter, c.type, c.volume)),
+                    "slugs": list(edition_slugs(c.reporter, c.type)),
                 }
                 for c in cites
             ],

@@ -1,4 +1,5 @@
-"""Which CAP reporter a CourtListener citation is in, and CAP's names for courts' places.
+"""Which CAP reporter a CourtListener citation is in, citare's slugs for its reporter, and
+CAP's names for courts' places.
 
 CourtListener spells a reporter the way its citation reads (``So. 2d``, ``F. App’x``,
 ``Ohio C.C. (n.s.)``); CAP names each reporter it scanned by a slug (``so2d``) and a short
@@ -20,6 +21,18 @@ St.``); it wins over the folded match. Each entry was checked against the CAP re
 years and volume range.
 
 The CAP table is packaged as ``data/cap_reporters.json`` (see ``scripts/cap_reporters.py``).
+
+That match decides only whether CAP holds a case. The index files a citation under citare's
+slug for its edition (citare#71): CAP's slug where CAP has the reporter, else one citare
+derives from the edition name (``NY Slip Op`` → ``ny-slip-op``). A CourtListener reporter is
+a reporters-db edition name, so ``edition_slugs`` looks it up in citare's own
+``data/edition-slugs.json``, copied into ``data/`` from the citare tag stare builds with
+(``scripts/edition_slugs.py``; stare's ``crates/stare/tests/edition_slugs.rs`` checks the
+copy). A year-volume neutral citation shares its CAP reporter's slug (``2019-Ohio-1234`` and
+``2021 ND 123`` are ``ohio`` and ``nd``, at volumes 2019 and 2021), so it needs no rule of its
+own there. A name citare splits between reporters has several slugs (``Hill``: ``hill``,
+``hill-sc``). The manifest records these; stare-admin checks them against citare when it
+builds the index.
 """
 
 from __future__ import annotations
@@ -56,6 +69,24 @@ OVERRIDES: dict[str, tuple[str, ...]] = {
 
 YEAR_VOLUME_SLUGS = frozenset({"mass-app-div-annual"})
 """CAP reporters whose volumes are years; no other CAP volume number reaches 1900."""
+
+
+@cache
+def _edition_slugs() -> dict[str, tuple[str, ...]]:
+    text = files("stare_courtlistener").joinpath("data/edition-slugs.json").read_text("utf-8")
+    return {name: tuple(slugs) for name, slugs in json.loads(text).items()}
+
+
+def edition_slugs(reporter: str, cite_type: int | None = None) -> tuple[str, ...]:
+    """citare's slugs for a CourtListener reporter; empty when citare has no such edition.
+
+    The name is matched as written, then with curly quotes read as straight ones (``F.
+    App’x``). LEXIS and Westlaw citations have none.
+    """
+    if cite_type in UNMAPPED_TYPES:
+        return ()
+    table = _edition_slugs()
+    return table.get(reporter) or table.get(reporter.translate(_QUOTES), ())
 
 
 def year_volume(volume: str | None) -> bool:

@@ -2,7 +2,13 @@
 
 import pytest
 
-from stare_courtlistener.reporters import ReporterMap, alnum_slug, fold, jurisdiction_name
+from stare_courtlistener.reporters import (
+    ReporterMap,
+    alnum_slug,
+    edition_slugs,
+    fold,
+    jurisdiction_name,
+)
 
 STATE, REGIONAL, SPECIALTY, WEST, NEUTRAL = 2, 3, 4, 7, 8
 
@@ -107,3 +113,27 @@ def test_alnum_rule_crosscheck() -> None:
 )
 def test_jurisdiction_name(code: str, name: str, expected: str) -> None:
     assert jurisdiction_name(code, name) == expected
+
+
+@pytest.mark.parametrize(
+    ("reporter", "type_", "slugs"),
+    [
+        ("NY Slip Op", STATE, ("ny-slip-op",)),
+        ("F.4th", 1, ("f-4th",)),
+        ("N.Y.S.3d", STATE, ("n-y-s-3d",)),
+        ("T.C. Memo.", SPECIALTY, ("t-c-memo",)),
+        ("IL App (1st)", NEUTRAL, ("il-app-1st",)),
+        ("A.3d", REGIONAL, ("a3d",)),  # CAP's slug where CAP has the reporter
+        # Year-volume neutral citations share their CAP reporter's slug.
+        ("Ohio", NEUTRAL, ("ohio",)),
+        ("ND", NEUTRAL, ("nd",)),
+        ("N.D.", STATE, ("nd",)),
+        ("F. App’x", 1, ("f-appx",)),  # curly quote
+        ("Hill", STATE, ("hill", "hill-sc")),  # one name, two reporters
+        ("Ct. Cl.", SPECIALTY, ("us-ct-cl", "wv-ct-cl")),
+        ("WL", WEST, ()),
+        ("Foo.", STATE, ()),
+    ],
+)
+def test_edition_slugs(reporter: str, type_: int, slugs: tuple) -> None:
+    assert edition_slugs(reporter, type_) == slugs
