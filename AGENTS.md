@@ -86,6 +86,18 @@ One gzipped text file per volume as cited, for every source (`docs/plans/courtli
 - `cl` lines: `ref` is `<cluster_id>/<hash>`, the record below.
 - Lines sharing a page keep CAP's first; readers show the first. A `cl` line on a page CAP
   has a case on is an alias for that case.
+- Aliases (#151): a `cap` ref can name a case in another volume, `<slug>/<folder>/<file>`,
+  with trailing `key=value` fields; `via=cl:<cluster>` says it came from CourtListener's
+  `citations` table (publisher, scraper and import metadata, never eyecite, never
+  `html_with_citations` or the citation-map): `287,cap,neb/128/0783-01,via=cl:8077312`
+  in `n-w/260.idx.gz`. A page's own CAP cases sort before its aliases, and aliases before
+  `cl` lines, so CAP's case wins (#160). Readers label a link that came through one
+  "Resolved through CourtListener's citation metadata" and never call it verified. CAP
+  case files can hold a comma (`11, 12-01`) or `=` (`1265=1275-01`), so fields are parsed
+  only from the end of a line. The manifest's `aliases` lists volumes whose file has only
+  aliases; they aren't in `reporters`, and a miss in one links out like any volume
+  stare.pub doesn't hold. Readers from before aliases skip the lines as malformed and
+  ignore `aliases`, so the format stays `idx: 1`.
 - A part ends at the first page boundary after 1,000 lines; part 0 then starts with
   `#parts,<first page of part 1>,...`, and readers fetch the part a page falls in.
 - Readers trim, skip blank and `#` lines, skip (and report) malformed lines, and skip a

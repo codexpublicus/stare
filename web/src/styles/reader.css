@@ -4,6 +4,7 @@
 .reader-title { font-family: var(--font-text); font-size: 22px; font-weight: 600; line-height: 1.3; color: var(--text); }
 .reader-meta { margin-top: 6px; font-size: 14px; color: var(--text-secondary); }
 .reader-source { margin-top: 4px; font-size: 13px; color: var(--text-secondary); }
+.reader-alias { max-width: 632px; margin: 24px auto 0; padding: 8px 12px; font-size: 13px; color: var(--text-secondary); border-left: 3px solid var(--border-light); }
 .reader-source a, .sidebar-source a { color: var(--link); text-decoration: none; }
 .reader-source a:hover, .sidebar-source a:hover { color: var(--link-hover); text-decoration: underline; }
 .sidebar-source { margin-top: 6px; font-size: 12px; }
@@ -55,7 +56,7 @@
 .cited-case-lookup { flex-wrap: wrap; }
 .cited-lookup { flex-basis: 100%; padding-left: 20px; font-size: 12px; }
 .cited-lookup-link { color: var(--text-secondary); }
-.cited-miss { color: var(--text-secondary); }
+.cited-miss, .cited-via { color: var(--text-secondary); }
 .cited-lookup-link:hover { color: var(--text); }
 
 .citation-status-text { padding: 4px 0; font-size: 13px; color: var(--text-secondary); min-height: 1.2em; }

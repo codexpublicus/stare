@@ -31,6 +31,27 @@
 //! - Several lines can share a page. CAP's come first; a resolver shows the first and
 //!   lists the others.
 //!
+//! **Aliases** (#151). A `cap` ref can name a case in another volume, as
+//! `<slug>/<folder>/<file>`: the case `<file>` in `cap/<slug>/<folder>.zip`. That's a
+//! parallel citation: the line says a case printed in another volume is also cited at
+//! this page. After the ref a line can carry `key=value` fields; `via` records where an
+//! alias came from:
+//!
+//! ```text
+//! 287,cap,neb/128/0783-01,via=cl:8077312
+//! ```
+//!
+//! `via=cl:<cluster>` is CourtListener's `citations` table, the cluster's own reporter
+//! citations from publisher, scraper and import data. It's a third party's metadata, not
+//! an eyecite detection and not a human check, so a reader labels the link with its
+//! source ([`via_label`]) and never calls it verified. A page's own CAP cases come
+//! before its aliases, and both before CourtListener's records, so an alias never
+//! hides a case CAP printed at the page (the R-rules in #160). A reader skips a field it
+//! doesn't know. A volume whose file has only aliases isn't held: the manifest lists it
+//! under `aliases`, not `reporters` ([`crate::manifest`]), and a miss in it links out.
+//! Readers from before aliases skip these lines as malformed, which leaves them
+//! resolving what they did before.
+//!
 //! A volume past [`SPLIT_LINES`] lines is split: a part ends once it passes that many
 //! lines, at the next page boundary, so a page never straddles two parts. Part 0 then
 //! starts with `#parts,<first page of part 1>,<first page of part 2>,…`, and a reader
@@ -89,6 +110,53 @@ pub struct Entry {
     pub page: PageKey,
     pub source: Source,
     pub reference: String,
+    /// Where the line came from (`cl:8077312`), for an alias; see [`via_label`].
+    pub via: Option<String>,
+}
+
+/// The field a line's provenance is in.
+pub const VIA: &str = "via";
+
+/// Where a `cap` ref's case is: `file` in the volume's own zip, `folder/file` in another
+/// folder of a volume CAP split, or `slug/folder/file` in another reporter or volume
+/// (an alias).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapRef<'a> {
+    /// The reporter slug of an alias's case; None for a case in this volume.
+    pub reporter: Option<&'a str>,
+    pub folder: Option<&'a str>,
+    pub case_file: &'a str,
+}
+
+/// Whether `s` can be a `via` value: `<source>:<id>`, a lowercase tag and an id of ASCII
+/// letters, digits, `.`, `_` and `-`.
+pub fn is_via(s: &str) -> bool {
+    let Some((tag, id)) = s.split_once(':') else {
+        return false;
+    };
+    is_tag(tag)
+        && !id.is_empty()
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+/// The CourtListener cluster a `via` names (`cl:8077312` → 8077312).
+pub fn via_cluster(via: &str) -> Option<u64> {
+    let id = via.strip_prefix("cl:")?;
+    (!id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))
+        .then(|| id.parse().ok())
+        .flatten()
+}
+
+/// How a reader labels a link that came through an alias: "Resolved through
+/// CourtListener's citation metadata (cluster 8077312)". Never "verified": only a human
+/// check is that.
+pub fn via_label(via: &str) -> String {
+    match via_cluster(via) {
+        Some(id) => format!("Resolved through CourtListener's citation metadata (cluster {id})"),
+        None => format!("Resolved through {via}"),
+    }
 }
 
 /// Whether a tag could be a source: lowercase ASCII letters.
@@ -97,19 +165,74 @@ fn is_tag(s: &str) -> bool {
 }
 
 /// Whether `s` can be a CAP case file name in a ref: not empty, no `/`, no control
-/// characters, and no surrounding whitespace.
+/// characters, and no surrounding whitespace. CAP has names with a comma (ohio/10's
+/// `11, 12-01`) and with `=` (a3d/48's `1265=1275-01`); see [`split_fields`].
 fn is_case_file(s: &str) -> bool {
     !s.is_empty() && s.trim() == s && !s.contains('/') && !s.chars().any(char::is_control)
 }
 
-/// `(folder, case_file)` of a CAP ref: `0647-01` → `(None, "0647-01")`,
-/// `138-2/1012-01` → `(Some("138-2"), "1012-01")`.
-pub fn parse_cap_ref(reference: &str) -> Option<(Option<&str>, &str)> {
-    match reference.split_once('/') {
-        Some((folder, file)) => (crate::manifest::is_volume_key(folder) && is_case_file(file))
-            .then_some((Some(folder), file)),
-        None => is_case_file(reference).then_some((None, reference)),
+/// Whether a comma-separated piece at the end of a line is a field: `key=value`, the key
+/// lowercase ASCII letters and the value without whitespace.
+fn is_field(s: &str) -> bool {
+    s.split_once('=')
+        .is_some_and(|(k, v)| is_tag(k) && !v.is_empty() && !v.chars().any(char::is_whitespace))
+}
+
+/// A line's ref and its trailing `key=value` fields. The ref is everything after the
+/// tag up to the fields, so a CAP case file with a comma in its name stays whole: a
+/// piece is a field only from the end of the line and only in that shape, and the ref
+/// keeps at least one piece.
+fn split_fields(rest: &str) -> (&str, Vec<&str>) {
+    let mut reference = rest;
+    let mut fields = Vec::new();
+    while let Some((head, tail)) = reference.rsplit_once(',') {
+        if !is_field(tail.trim()) || head.trim().is_empty() {
+            break;
+        }
+        fields.push(tail.trim());
+        reference = head;
     }
+    fields.reverse();
+    (reference.trim(), fields)
+}
+
+/// `(folder, case_file)` of a CAP ref to a case in this volume: `0647-01` →
+/// `(None, "0647-01")`, `138-2/1012-01` → `(Some("138-2"), "1012-01")`. None for an
+/// alias (`neb/128/0783-01`; see [`parse_cap_target`]).
+pub fn parse_cap_ref(reference: &str) -> Option<(Option<&str>, &str)> {
+    match parse_cap_target(reference)? {
+        CapRef {
+            reporter: None,
+            folder,
+            case_file,
+        } => Some((folder, case_file)),
+        _ => None,
+    }
+}
+
+/// Any CAP ref taken apart: the volume's own case, another folder's, or an alias's
+/// (`neb/128/0783-01` → reporter `neb`, folder `128`, file `0783-01`).
+pub fn parse_cap_target(reference: &str) -> Option<CapRef<'_>> {
+    let segs: Vec<&str> = reference.split('/').collect();
+    let (reporter, folder, case_file) = match segs[..] {
+        [file] => (None, None, file),
+        [folder, file] => (None, Some(folder), file),
+        [slug, folder, file] => {
+            if !crate::cl::is_reporter_slug(slug) {
+                return None;
+            }
+            (Some(slug), Some(folder), file)
+        }
+        _ => return None,
+    };
+    if folder.is_some_and(|f| !crate::manifest::is_volume_key(f)) || !is_case_file(case_file) {
+        return None;
+    }
+    Some(CapRef {
+        reporter,
+        folder,
+        case_file,
+    })
 }
 
 /// `(cluster_id, hash)` of a CourtListener ref: `9876543/0f3a9c2e7b1d4a65`.
@@ -180,6 +303,31 @@ impl Entry {
         Entry::checked(page, Source::Cl, format!("{}/{}", cluster_id, hash))
     }
 
+    /// An alias at `page`: the CAP case `case_file` in `cap/<reporter>/<folder>.zip`,
+    /// from CourtListener cluster `cluster_id`'s citations (`via=cl:<cluster_id>`).
+    pub fn alias(
+        page: PageKey,
+        reporter: &str,
+        folder: &str,
+        case_file: &str,
+        cluster_id: u64,
+    ) -> Result<Entry> {
+        let reference = format!("{}/{}/{}", reporter, folder, case_file);
+        if parse_cap_target(&reference).is_none_or(|r| r.reporter.is_none()) {
+            bail!("bad alias ref {:?}", reference);
+        }
+        Entry::checked(page, Source::Cap, reference)?.with_via(&format!("cl:{}", cluster_id))
+    }
+
+    /// This entry with its provenance set (`cl:8077312`).
+    pub fn with_via(mut self, via: &str) -> Result<Entry> {
+        if !is_via(via) {
+            bail!("bad via {:?}", via);
+        }
+        self.via = Some(via.to_string());
+        Ok(self)
+    }
+
     fn checked(page: PageKey, source: Source, reference: String) -> Result<Entry> {
         if let PageKey::Label(l) = &page {
             if !is_label(l) {
@@ -190,24 +338,60 @@ impl Entry {
             page,
             source,
             reference,
+            via: None,
         })
     }
 
     /// The line for this entry, without a newline.
     pub fn line(&self) -> String {
-        format!(
+        let mut line = format!(
             "{},{},{}",
             page_text(&self.page),
             self.source.tag(),
             self.reference
-        )
+        );
+        if let Some(via) = &self.via {
+            line.push_str(&format!(",{}={}", VIA, via));
+        }
+        line
     }
 
-    /// `(folder, case_file)` for a CAP entry.
+    /// `(folder, case_file)` for a CAP entry whose case is in this volume; None for an
+    /// alias ([`Entry::alias_target`]).
     pub fn cap_case(&self) -> Option<(Option<&str>, &str)> {
         (self.source == Source::Cap)
             .then(|| parse_cap_ref(&self.reference))
             .flatten()
+    }
+
+    /// `(reporter, folder, case_file)` of an alias's case, in another volume.
+    pub fn alias_target(&self) -> Option<(&str, &str, &str)> {
+        if self.source != Source::Cap {
+            return None;
+        }
+        match parse_cap_target(&self.reference)? {
+            CapRef {
+                reporter: Some(r),
+                folder: Some(f),
+                case_file,
+            } => Some((r, f, case_file)),
+            _ => None,
+        }
+    }
+
+    /// Whether this line is an alias: a case printed in another volume.
+    pub fn is_alias(&self) -> bool {
+        self.alias_target().is_some()
+    }
+
+    /// Where a page's entries go in a lookup: its own CAP cases, then aliases, then
+    /// CourtListener's records.
+    fn rank(&self) -> u8 {
+        match self.source {
+            Source::Cap if self.is_alias() => 1,
+            Source::Cap => 0,
+            Source::Cl => 2,
+        }
     }
 
     /// `(cluster_id, hash)` for a CourtListener entry.
@@ -219,27 +403,36 @@ impl Entry {
 
     /// The entry as the WASM and JSON callers see it.
     pub fn view(&self) -> EntryView<'_> {
-        let cap = self.cap_case();
+        let cap = (self.source == Source::Cap)
+            .then(|| parse_cap_target(&self.reference))
+            .flatten();
         let cl = self.cl_record();
         EntryView {
             page: page_text(&self.page),
             source: self.source.tag(),
             reference: &self.reference,
-            folder: cap.and_then(|(f, _)| f),
-            case_file: cap.map(|(_, c)| c),
+            reporter: cap.and_then(|c| c.reporter),
+            folder: cap.and_then(|c| c.folder),
+            case_file: cap.map(|c| c.case_file),
             cluster_id: cl.map(|(id, _)| id),
             hash: cl.map(|(_, h)| h),
+            via: self.via.as_deref(),
         }
     }
 }
 
-/// An entry with its ref taken apart, for JSON.
+/// An entry with its ref taken apart, for JSON. An alias has `reporter` (the slug its
+/// case is under), `folder`, `case_file` and `via`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EntryView<'a> {
     pub page: String,
     pub source: &'static str,
     #[serde(rename = "ref")]
     pub reference: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reporter: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub via: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub folder: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -262,22 +455,31 @@ pub struct VolumeIndex {
 }
 
 fn parse_line(line: &str) -> Result<Option<Entry>, ()> {
-    let mut fields = line.splitn(3, ',');
-    let (Some(page), Some(tag), Some(reference)) = (fields.next(), fields.next(), fields.next())
-    else {
+    let mut pieces = line.splitn(3, ',');
+    let (Some(page), Some(tag), Some(rest)) = (pieces.next(), pieces.next(), pieces.next()) else {
         return Err(());
     };
     let page = parse_page(page).ok_or(())?;
     let tag = tag.trim();
-    let reference = reference.trim();
     if !is_tag(tag) {
         return Err(());
     }
     let Some(source) = Source::from_tag(tag) else {
         return Ok(None); // a source this reader doesn't know
     };
+    let (reference, fields) = split_fields(rest);
+    let mut via = None;
+    for field in fields {
+        let (key, value) = field.split_once('=').ok_or(())?;
+        if key == VIA {
+            if via.is_some() || !is_via(value) {
+                return Err(());
+            }
+            via = Some(value.to_string());
+        } // a field this reader doesn't know is skipped
+    }
     let ok = match source {
-        Source::Cap => parse_cap_ref(reference).is_some(),
+        Source::Cap => parse_cap_target(reference).is_some(),
         Source::Cl => parse_cl_ref(reference).is_some(),
     };
     if !ok {
@@ -287,6 +489,7 @@ fn parse_line(line: &str) -> Result<Option<Entry>, ()> {
         page,
         source,
         reference: reference.to_string(),
+        via,
     }))
 }
 
@@ -354,11 +557,18 @@ pub fn part_for(parts: &[PageKey], page: &PageKey) -> usize {
 }
 
 impl VolumeIndex {
-    /// Every entry at `page`, CAP's first, otherwise in file order.
+    /// Every entry at `page`: the volume's own CAP cases first, then aliases, then
+    /// CourtListener's records, each in file order.
     pub fn lookup(&self, page: &PageKey) -> Vec<&Entry> {
         let mut found: Vec<&Entry> = self.entries.iter().filter(|e| e.page == *page).collect();
-        found.sort_by_key(|e| e.source);
+        found.sort_by_key(|e| e.rank());
         found
+    }
+
+    /// Whether any line is a case of this volume's own (a CAP case in its zip, or a
+    /// CourtListener record), not only aliases into other volumes.
+    pub fn holds_own_cases(&self) -> bool {
+        self.entries.iter().any(|e| !e.is_alias())
     }
 
     /// Which part `page` is in, when this is part 0.
@@ -400,14 +610,16 @@ fn compare_refs(source: Source, a: &str, b: &str) -> Ordering {
     a.cmp(b)
 }
 
-/// Sort a volume's entries into file order (page, then CAP before CourtListener, then
-/// ref) and drop exact duplicates.
+/// Sort a volume's entries into file order (page, then the volume's own CAP cases,
+/// aliases and CourtListener's records, then ref, then `via`) and drop exact
+/// duplicates.
 pub fn sort_entries(entries: &mut Vec<Entry>) {
     entries.sort_by(|a, b| {
         a.page
             .cmp(&b.page)
-            .then(a.source.cmp(&b.source))
+            .then(a.rank().cmp(&b.rank()))
             .then_with(|| compare_refs(a.source, &a.reference, &b.reference))
+            .then_with(|| a.via.cmp(&b.via))
     });
     entries.dedup();
 }
@@ -527,6 +739,123 @@ mod tests {
         let rec = idx.lookup(&Number(647))[2];
         assert_eq!(rec.cl_record(), Some((9876543, H1)));
         assert_eq!(rec.cap_case(), None);
+    }
+
+    #[test]
+    fn parses_aliases_with_their_source() {
+        // Pettegrew: 260 N.W. 287 is neb/128/0783-01 (stare#160).
+        let text = format!(
+            "287,cap,neb/128/0783-01,via=cl:8077312\n\
+             287,cl,8077312/{H1}\n\
+             290,cap,0290-01\n\
+             290,cap,neb/128/0790-01,via=cl:5\n\
+             291,cap,a3d/138-2/1012-01 , via=cl:6 ,later=x\n"
+        );
+        let idx = parse(&text);
+        assert!(idx.malformed.is_empty(), "{:?}", idx.malformed);
+        let at = idx.lookup(&Number(287));
+        assert_eq!(at.len(), 2);
+        let alias = at[0];
+        assert!(alias.is_alias());
+        assert_eq!(alias.alias_target(), Some(("neb", "128", "0783-01")));
+        assert_eq!(alias.cap_case(), None);
+        assert_eq!(alias.via.as_deref(), Some("cl:8077312"));
+        assert_eq!(alias.line(), "287,cap,neb/128/0783-01,via=cl:8077312");
+        // The alias comes before CourtListener's record at the page...
+        assert_eq!(at[1].source, Source::Cl);
+        // ...and after the volume's own case.
+        let at = idx.lookup(&Number(290));
+        assert_eq!(at[0].reference, "0290-01");
+        assert!(at[1].is_alias());
+        // Whitespace around fields, and a field this reader doesn't know.
+        let at = idx.lookup(&Number(291));
+        assert_eq!(at[0].alias_target(), Some(("a3d", "138-2", "1012-01")));
+        assert_eq!(at[0].via.as_deref(), Some("cl:6"));
+        assert!(idx.holds_own_cases());
+        assert!(!parse("1,cap,neb/1/0001-01,via=cl:1\n").holds_own_cases());
+
+        let json = serde_json::to_value(alias.view()).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"page": "287", "source": "cap", "ref": "neb/128/0783-01",
+                               "reporter": "neb", "folder": "128", "case_file": "0783-01",
+                               "via": "cl:8077312"})
+        );
+    }
+
+    #[test]
+    fn case_files_with_commas_and_equals_signs_stay_whole() {
+        // ohio/10 has `11, 12-01`; a3d/48 has `1265=1275-01`.
+        let idx =
+            parse("11,cap,11, 12-01\n1265,cap,1265=1275-01\n12,cap,neb/1/11, 12-01,via=cl:9\n");
+        assert!(idx.malformed.is_empty());
+        assert_eq!(
+            idx.lookup(&Number(11))[0].cap_case(),
+            Some((None, "11, 12-01"))
+        );
+        assert_eq!(
+            idx.lookup(&Number(1265))[0].cap_case(),
+            Some((None, "1265=1275-01"))
+        );
+        let e = idx.lookup(&Number(12))[0];
+        assert_eq!(e.alias_target(), Some(("neb", "1", "11, 12-01")));
+        assert_eq!(e.via.as_deref(), Some("cl:9"));
+        // Round trip through the writer.
+        assert_eq!(parse(&e.line()).entries[0], *e);
+    }
+
+    #[test]
+    fn rejects_bad_aliases() {
+        let text = [
+            "1,cap,neb/128/0783-01,via=bogus", // 1: via without a source
+            "2,cap,Neb/128/0783-01",           // 2: slug not lowercase
+            "3,cap,neb/x128/0783-01",          // 3: folder isn't a volume
+            "4,cap,a/b/c/d",                   // 4: four segments
+            "5,cap,neb/128/0783-01,via=cl:1,via=cl:2", // 5: two sources
+            "6,cap,neb/128/0783-01,via=cl:1",  // fine
+        ]
+        .join("\n");
+        let idx = parse(&text);
+        assert_eq!(idx.malformed, [1, 2, 3, 4, 5]);
+        assert_eq!(idx.entries.len(), 1);
+        assert!(Entry::alias(Number(1), "Neb", "128", "0783-01", 1).is_err());
+        assert!(Entry::alias(Number(1), "neb", "../x", "0783-01", 1).is_err());
+        assert!(Entry::cap(Number(1), None, "0001-01")
+            .unwrap()
+            .with_via("nope")
+            .is_err());
+    }
+
+    #[test]
+    fn writer_orders_own_cases_aliases_then_records() {
+        let entries = vec![
+            cl(Number(5), 1, H1),
+            Entry::alias(Number(5), "neb", "128", "0783-01", 9).unwrap(),
+            cap(Number(5), "0005-01"),
+            Entry::alias(Number(5), "a2d", "31", "0647-01", 8).unwrap(),
+            Entry::alias(Number(5), "a2d", "31", "0647-01", 8).unwrap(),
+        ];
+        assert_eq!(
+            write_parts(entries, SPLIT_LINES),
+            [format!(
+                "5,cap,0005-01\n5,cap,a2d/31/0647-01,via=cl:8\n\
+                 5,cap,neb/128/0783-01,via=cl:9\n5,cl,1/{H1}\n"
+            )]
+        );
+    }
+
+    #[test]
+    fn via_labels_name_the_source_and_never_say_verified() {
+        assert_eq!(via_cluster("cl:8077312"), Some(8077312));
+        assert_eq!(via_cluster("cl:x"), None);
+        assert_eq!(via_cluster("other:1"), None);
+        let label = via_label("cl:8077312");
+        assert_eq!(
+            label,
+            "Resolved through CourtListener's citation metadata (cluster 8077312)"
+        );
+        assert!(!label.to_lowercase().contains("verif"));
+        assert_eq!(via_label("human:7"), "Resolved through human:7");
     }
 
     #[test]
@@ -744,8 +1073,16 @@ mod tests {
                     Number(rng.below(120) as usize)
                 };
                 let p = page_text(&page);
-                match rng.below(3) {
+                match rng.below(4) {
                     0 => cl(page, rng.below(1_000_000), H1),
+                    3 => Entry::alias(
+                        page,
+                        "neb",
+                        &rng.below(200).to_string(),
+                        &format!("{:04}-01", rng.below(900)),
+                        rng.below(10),
+                    )
+                    .unwrap(),
                     1 => {
                         Entry::cap(page, Some("9-2"), &format!("{p}-{:02}", rng.below(4))).unwrap()
                     }
@@ -792,8 +1129,8 @@ mod tests {
                 assert!(found.contains(&e));
                 let want: Vec<&Entry> = expected.iter().filter(|x| x.page == e.page).collect();
                 assert_eq!(found, want);
-                let sources: Vec<Source> = found.iter().map(|x| x.source).collect();
-                assert!(sources.windows(2).all(|w| w[0] <= w[1]));
+                let ranks: Vec<u8> = found.iter().map(|x| x.rank()).collect();
+                assert!(ranks.windows(2).all(|w| w[0] <= w[1]));
             }
 
             // Gzip is a pure function of the text.

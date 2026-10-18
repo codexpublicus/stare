@@ -133,7 +133,7 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
       throw new Error(`Couldn't reach the server. Check your connection and try again.`);
     }
     if (entries && number) {
-      entries = entries.filter((e) => e.source === 'cap' && e.folder === cited);
+      entries = entries.filter((e) => e.source === 'cap' && !e.reporter && e.folder === cited);
     }
     if (entries) return resolveEntries(reporter, cited, page, entries, onStatus, seq);
   }
@@ -156,14 +156,25 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
   return resolveCap(reporter, volume, page, allCases, onStatus, seq);
 }
 
-// The case at a page from the unified index's entries there: the first entry's source
-// decides. CAP's cases at the page in the first entry's folder are its `allCases`;
-// CourtListener's records, when no CAP case starts there.
+// The case at a page from the unified index's entries there (the volume's own CAP
+// cases, then aliases, then CourtListener's records): the first entry decides. CAP's
+// cases at the page in the first entry's folder are its `allCases`; an alias (#151)
+// resolves to the case it names, in its own reporter and folder, with `alias` on the
+// result saying what was cited and where the alias came from; CourtListener's records,
+// when neither is there.
 async function resolveEntries(reporter, cited, page, entries, onStatus, seq) {
   if (entries.length === 0) {
     throw new Error(`No case starts at page ${page} in ${reporter} vol. ${cited}.`);
   }
   const first = entries[0];
+  if (first.source === 'cap' && first.reporter) {
+    const targetPage = parseInt(first.case_file.replace(/^\[/, ''), 10);
+    const result = await resolveCap(
+      first.reporter, first.folder, Number.isNaN(targetPage) ? page : targetPage,
+      [first.case_file], onStatus, null,
+    );
+    return { ...result, alias: { via: first.via || null, reporter, volume: cited, page } };
+  }
   if (first.source === 'cap') {
     const folder = first.folder || null;
     const allCases = entries

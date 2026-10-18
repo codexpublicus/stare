@@ -4,7 +4,9 @@
 
 import { fetchCached } from './cache.js';
 import { idxEntries } from './idx.js';
-import { citedSlug, hasIdx, holdsVolume, indexPath, loadManifest, volumeCandidates } from './manifest.js';
+import {
+  citedSlug, hasAliasVolume, hasIdx, holdsVolume, indexPath, loadManifest, volumeCandidates,
+} from './manifest.js';
 import { indexUrl } from './sources.js';
 import { pinSuffix } from './router.js';
 import { loadWasm } from './wasm.js';
@@ -109,16 +111,61 @@ export function guessSlug(reporter) {
   return reporter.toLowerCase().replace(/\./g, '').replace(/\s+/g, '');
 }
 
+/** checkAvailability's answer for a volume whose index has only aliases. */
+export const ALIASES_ONLY = 'aliases';
+
 /**
- * Whether stare.pub holds `volume` (as cited) of `slug`: the manifest lists the
- * volume, or lists parts of it when CAP split the volume over several folders
- * (a3d 138 and 138-2). With the unified index the manifest's `reporters` covers
- * every source, so a volume only CourtListener has counts too.
- * `manifest` is injectable for tests.
+ * Whether stare.pub holds `volume` (as cited) of `slug`: true when the manifest
+ * lists the volume, or lists parts of it when CAP split the volume over several
+ * folders (a3d 138 and 138-2). With the unified index the manifest's `reporters`
+ * covers every source, so a volume only CourtListener has counts too.
+ * ALIASES_ONLY for a volume whose index has only aliases (#151): stare.pub holds
+ * none of its cases, but a page there may be a parallel citation of one it does.
+ * False otherwise. `manifest` is injectable for tests.
  */
 export async function checkAvailability(slug, volume, manifest = null) {
   const m = manifest || await loadManifest();
-  return holdsVolume(m, slug, volume);
+  if (holdsVolume(m, slug, volume)) return true;
+  return hasAliasVolume(m, slug, volume) ? ALIASES_ONLY : false;
+}
+
+/**
+ * The label for a link that came through an alias, from its `via`: "Resolved
+ * through CourtListener's citation metadata" for `cl:<cluster>`. The aliases come
+ * from CourtListener's `citations` table (publisher, scraper and import data), a
+ * third party's metadata; nothing here calls such a link verified.
+ */
+export function viaLabel(via) {
+  if (!via) return '';
+  return /^cl:\d+$/.test(via) ? "Resolved through CourtListener's citation metadata" : `Resolved through ${via}`;
+}
+
+/**
+ * The note above a case reached through an alias (#151): "Cited as nw 260 287.
+ * Resolved through CourtListener's citation metadata (cluster 8077312)." `alias` is
+ * resolve()'s `{ via, reporter, volume, page }`, the citation as looked up.
+ */
+export function aliasNoteHtml(alias) {
+  if (!alias) return '';
+  const m = /^cl:(\d+)$/.exec(alias.via || '');
+  const via = viaLabel(alias.via) + (m ? ` (cluster ${m[1]})` : '');
+  const cited = `Cited as ${alias.reporter} ${alias.volume} ${alias.page}.`;
+  return `<div class="reader-alias" role="note">${escapeHtml(cited)}${via ? ` ${escapeHtml(via)}.` : ''}</div>`;
+}
+
+/**
+ * What a page's index entries (CAP's own first, then aliases, then CourtListener's
+ * records) say: false for none; true when the first is a case of the volume's own;
+ * for an alias, `{ via, target: { slug, folder, caseFile } }`, the case it names.
+ */
+export function pageResult(entries) {
+  if (!entries.length) return false;
+  const first = entries[0];
+  if (first.source !== 'cap' || !first.reporter) return true;
+  return {
+    via: first.via || null,
+    target: { slug: first.reporter, folder: first.folder, caseFile: first.case_file },
+  };
 }
 
 // A volume folder's .bin, or null when it isn't indexed (a 404).
@@ -167,7 +214,7 @@ async function pageFound(slug, volume, page, deps) {
   const m = deps.manifest || await loadManifest();
   if (hasIdx(m)) {
     const entries = await (deps.idxEntries || idxEntries)(slug, cited, p);
-    if (entries) return entries.length > 0;
+    if (entries) return pageResult(entries);
   }
   return capHasPage(slug, cited, p, m, deps);
 }
@@ -201,9 +248,15 @@ async function capHasPage(slug, cited, p, m, deps) {
  * Availability for one detected citation, as the fields the renderers read:
  * - `slug`: the index slug when the volume is indexed, else null
  * - `volumeHeld`: the manifest lists the cited reporter and volume
- * - `resolvable`: held, and a case starts at the cited page
+ * - `resolvable`: a case starts at the cited page, or an alias there names one
  * - `pageUnknown`: held, but the page check failed (checkPage's null); not
  *   resolvable, and not a miss either (lookupFailed)
+ * - `via`, `aliasOf`: for a citation that resolves through an alias (#151),
+ *   where the alias came from (`cl:8077312`) and the case it names
+ *   (`{ slug, folder, caseFile }`); null otherwise
+ *
+ * A volume whose index has only aliases (ALIASES_ONLY) isn't held: a hit
+ * resolves, and a miss or a failed check is a volume stare.pub doesn't hold.
  *
  * A held volume with no case at the page is not linked out: it may be an
  * index gap or a bad citation, and nothing here can tell which. Only a
@@ -215,7 +268,7 @@ export async function checkCitation(c, check = checkAvailability, pageCheck = ch
     const a = c.antecedent ? await checkCitation(c.antecedent, check, pageCheck) : null;
     return inheritStatus(c, a);
   }
-  const none = { ...c, key: citationKey(c), slug: null, volumeHeld: false, resolvable: false };
+  const none = { ...c, key: citationKey(c), slug: null, volumeHeld: false, resolvable: false, via: null, aliasOf: null };
   // A statute is never looked up in the case index, so it never links
   // into stare.pub or picks up a page pin there.
   if (c.externalUrl || isStatute(c)) return none;
@@ -231,7 +284,16 @@ export async function checkCitation(c, check = checkAvailability, pageCheck = ch
     return { ...none, slug: cited ? slug : null };
   }
   const found = await pageCheck(slug, c.volume, c.page);
-  return { ...c, key: citationKey(c), slug, volumeHeld: true, resolvable: found === true, pageUnknown: found == null };
+  const alias = found && typeof found === 'object' ? found : null;
+  const aliasFields = { via: alias?.via || null, aliasOf: alias?.target || null };
+  if (held === ALIASES_ONLY) {
+    if (!found) return { ...none, slug: cited ? slug : null };
+    return { ...c, key: citationKey(c), slug, volumeHeld: false, resolvable: true, ...aliasFields };
+  }
+  return {
+    ...c, key: citationKey(c), slug, volumeHeld: true, resolvable: !!found, pageUnknown: found == null,
+    ...aliasFields,
+  };
 }
 
 /**
@@ -256,7 +318,7 @@ export function citationKey(c) {
  * text only without a pin: `Id. § 1985` is a different section.
  */
 export function inheritStatus(c, a) {
-  const own = { ...c, key: citationKey(c), page: null, slug: null, volumeHeld: false, resolvable: false, externalUrl: null, law: a?.law || null, caseLinks: [] };
+  const own = { ...c, key: citationKey(c), page: null, slug: null, volumeHeld: false, resolvable: false, externalUrl: null, law: a?.law || null, caseLinks: [], via: null, aliasOf: null };
   if (!a) return { ...own, noAntecedent: true };
   if (safeExternalUrl(a.externalUrl) && c.pin) return own;
   return {
@@ -271,6 +333,8 @@ export function inheritStatus(c, a) {
     pageUnknown: a.pageUnknown,
     externalUrl: a.externalUrl,
     caseLinks: a.caseLinks,
+    via: a.via || null,
+    aliasOf: a.aliasOf || null,
   };
 }
 
@@ -483,7 +547,10 @@ function citationHtml(raw, inner, info, pin = info.pin) {
     const page = escapeHtml(String(info.page));
     const pinAttr = pin ? ` data-pin="${escapeHtml(pin)}"` : '';
     const at = escapeHtml(pinSuffix(pin, info.page));
-    return `<a class="cite-link" href="#${slug}/${volume}/${page}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr} title="${escapeHtml(refers || raw)}">${inner}</a>`;
+    const via = viaLabel(info.via);
+    const title = via ? `${refers || raw}. ${via}` : refers || raw;
+    const viaAttr = info.via ? ` data-via="${escapeHtml(info.via)}"` : '';
+    return `<a class="cite-link" href="#${slug}/${volume}/${page}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr}${viaAttr} title="${escapeHtml(title)}">${inner}</a>`;
   }
   if (isStatute(info)) {
     return `<span class="cite-statute" title="${titled(STATUTE_NOTE)}">${inner}</span>`;
@@ -551,9 +618,12 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
   }
   if (c.resolvable) {
     const rel = caseRel ? ` rel="${escapeHtml(caseRel)}"` : '';
-    return `<div class="cited-case${wrap}">
+    // A case reached through an alias says where the link came from (#151).
+    const via = viaLabel(c.via);
+    const viaHtml = via ? `\n          <span class="cited-lookup cited-via">${escapeHtml(via)}</span>` : '';
+    return `<div class="cited-case${via ? ' cited-case-lookup' : wrap}">
           <span class="cited-status ok">&#10003;</span>
-          <a class="cited-case-link" href="${escapeHtml(caseHref(c))}" target="_blank"${rel}>${raw}</a>${refersHtml}
+          <a class="cited-case-link" href="${escapeHtml(caseHref(c))}" target="_blank"${rel}>${raw}</a>${refersHtml}${viaHtml}
         </div>`;
   }
   const externalUrl = safeExternalUrl(c.externalUrl);

@@ -448,7 +448,11 @@ fn resolve_case(
     }
     let zip_data = fetch_zip(src, reporter, &located.volume)?;
     let case = stare::case::extract_from_zip(&zip_data, &case_file)?;
-    Ok(stare::resolve::CaseResult { case_file, case })
+    Ok(stare::resolve::CaseResult {
+        case_file,
+        case,
+        via: None,
+    })
 }
 
 /// The unified index's entries at `page` of `volume`, CAP's first: following part 0's
@@ -493,7 +497,8 @@ fn idx_entries(
 }
 
 /// The first of a page's entries, read from its source: a CAP case from its folder's
-/// zip, or a CourtListener record from the data bucket's `cl/`.
+/// zip, an alias's case from its own reporter and folder's zip (with the alias's `via`
+/// on the result), or a CourtListener record from the data bucket's `cl/`.
 fn resolve_entries(
     src: &Sources,
     reporter: &str,
@@ -510,6 +515,17 @@ fn resolve_entries(
         return Ok(stare::resolve::CaseResult {
             case_file: case_file.to_string(),
             case,
+            via: entry.via.clone(),
+        });
+    }
+    if let Some((target, folder, case_file)) = entry.alias_target() {
+        let zip_data = fetch_zip(src, target, folder)?;
+        let case = stare::case::extract_from_zip(&zip_data, case_file)
+            .with_context(|| format!("alias {}", entry.line()))?;
+        return Ok(stare::resolve::CaseResult {
+            case_file: format!("{}/{}/{}", target, folder, case_file),
+            case,
+            via: entry.via.clone(),
         });
     }
     let (cluster_id, hash) = entry
@@ -525,6 +541,7 @@ fn resolve_entries(
     Ok(stare::resolve::CaseResult {
         case_file: format!("cl/{}", cluster_id),
         case,
+        via: entry.via.clone(),
     })
 }
 
@@ -576,7 +593,11 @@ fn resolve_label(
         .to_string();
     let zip_data = fetch_zip(src, reporter, volume)?;
     let case = stare::case::extract_from_zip(&zip_data, &case_file)?;
-    Ok(stare::resolve::CaseResult { case_file, case })
+    Ok(stare::resolve::CaseResult {
+        case_file,
+        case,
+        via: None,
+    })
 }
 
 fn print_case(result: &stare::resolve::CaseResult) {
@@ -593,6 +614,9 @@ fn print_case(result: &stare::resolve::CaseResult) {
     );
     if let Some(line) = source_line(&result.case) {
         println!("{}", line);
+    }
+    if let Some(via) = &result.via {
+        println!("{}", stare::idx::via_label(via));
     }
     if let Some(blocked) = result
         .case
@@ -657,6 +681,9 @@ fn list_cases(src: &Sources, reporter: &str, volume: &str, json: bool) -> Result
 enum CheckStatus {
     /// A case starts at the page: stare.pub has it.
     Found,
+    /// The page is a parallel citation of a case stare.pub has, through an alias from
+    /// CourtListener's citation metadata (#151): found, labelled with its source.
+    FoundAlias,
     /// A statute or regulation, linked to its text.
     External,
     /// A statute or regulation with no link to its text yet.
@@ -675,6 +702,7 @@ impl CheckStatus {
     fn as_str(self) -> &'static str {
         match self {
             CheckStatus::Found => "found",
+            CheckStatus::FoundAlias => "found_alias",
             CheckStatus::External => "external",
             CheckStatus::Statute => "statute",
             CheckStatus::HeldMiss => "held_miss",
@@ -730,15 +758,22 @@ fn check_target(c: &stare::cite::DetectedCitation) -> Option<CheckTarget<'_>> {
     })
 }
 
-/// Whether stare.pub holds `volume` of `slug`, and whether a case starts at `page` in
-/// it: from the unified index when the build has one, else from the `.bin` files (and
-/// the other parts of a volume CAP split).
-fn check_page(src: &Sources, slug: &str, volume: u32, page: u32) -> (bool, bool) {
+/// Whether stare.pub holds `volume` of `slug`, whether a case starts at `page` in it,
+/// and the `via` of the alias it resolved through, if it did: from the unified index
+/// when the build has one, else from the `.bin` files (and the other parts of a volume
+/// CAP split). A volume whose index has only aliases (the manifest's `aliases`) isn't
+/// held: a hit there resolves, and a miss is like any volume stare.pub doesn't hold.
+fn check_page(src: &Sources, slug: &str, volume: u32, page: u32) -> (bool, bool, Option<String>) {
     let cited = volume.to_string();
     let held_by_manifest = src.manifest().is_some_and(|m| m.holds_volume(slug, &cited));
     let key = stare::index::PageKey::Number(page as usize);
     if let Ok(Some(entries)) = idx_entries(src, slug, &cited, &key) {
-        return (true, !entries.is_empty());
+        let alias_only = src
+            .manifest()
+            .is_some_and(|m| m.has_alias_volume(slug, &cited));
+        let found = !entries.is_empty();
+        let via = entries.first().and_then(|e| e.via.clone());
+        return ((held_by_manifest || !alias_only) || found, found, via);
     }
     let mut candidates = vec![cited.clone()];
     if let Some(m) = src.manifest() {
@@ -750,7 +785,7 @@ fn check_page(src: &Sources, slug: &str, volume: u32, page: u32) -> (bool, bool)
     }
     let found = stare::manifest::locate(&candidates, page, |v| fetch_bin(src, slug, v)).is_ok();
     let held = found || held_by_manifest || fetch_bin(src, slug, &cited).is_ok();
-    (held, found)
+    (held, found, None)
 }
 
 fn check_status(src: &Sources, c: &stare::cite::DetectedCitation) -> CheckStatus {
@@ -778,11 +813,21 @@ fn check_status(src: &Sources, c: &stare::cite::DetectedCitation) -> CheckStatus
         return CheckStatus::Unchecked;
     };
     match check_page(src, slug, volume, page) {
-        (_, true) => CheckStatus::Found,
-        (true, false) => CheckStatus::HeldMiss,
-        (false, false) if !t.case_links.is_empty() => CheckStatus::NotHeld,
+        (_, true, Some(_)) => CheckStatus::FoundAlias,
+        (_, true, None) => CheckStatus::Found,
+        (true, false, _) => CheckStatus::HeldMiss,
+        (false, false, _) if !t.case_links.is_empty() => CheckStatus::NotHeld,
         _ => CheckStatus::Unchecked,
     }
+}
+
+/// The `via` of the alias a citation resolved through (`cl:8077312`), for a citation
+/// whose status is [`CheckStatus::FoundAlias`]. The index files it reads are cached by
+/// then.
+fn check_via(src: &Sources, c: &stare::cite::DetectedCitation) -> Option<String> {
+    let t = check_target(c)?;
+    let page = t.page?.parse::<u32>().ok()?;
+    check_page(src, t.slug.as_deref()?, t.volume?, page).2
 }
 
 fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
@@ -813,6 +858,9 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             continue;
         }
         let status = check_status(src, c);
+        let via = (status == CheckStatus::FoundAlias)
+            .then(|| check_via(src, c))
+            .flatten();
         let target = check_target(c);
         citations.push(serde_json::json!({
             "raw": c.matched_text, "type": c.citation_type,
@@ -823,7 +871,8 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             "pin": c.pin,
             "antecedent": antecedent,
             "status": status.as_str(),
-            "resolvable": status == CheckStatus::Found,
+            "resolvable": matches!(status, CheckStatus::Found | CheckStatus::FoundAlias),
+            "via": via,
             "external_url": target.as_ref().and_then(|t| t.external_url)
                 .filter(|_| status == CheckStatus::External),
             "case_links": target.as_ref().map(|t| t.case_links).unwrap_or(&[]),
@@ -850,7 +899,7 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
         for c in &citations {
             let status = c["status"].as_str().unwrap_or("");
             let mark = match status {
-                "found" => "✓",
+                "found" | "found_alias" => "✓",
                 "external" | "not_held" => "↗",
                 "no_antecedent" => "·",
                 _ => "✗",
@@ -870,6 +919,11 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
                     c["reporter"].as_str().or(c["slug"].as_str()).unwrap_or(""),
                     c["volume"]
                 ),
+                "found_alias" => {
+                    if let Some(via) = c["via"].as_str() {
+                        print!("  ({})", stare::idx::via_label(via));
+                    }
+                }
                 "statute" => print!("  (statute; no free source linked yet)"),
                 // Nothing checks that the case is there (citare#39).
                 "not_held" => {
@@ -1238,10 +1292,66 @@ mod tests {
         );
 
         // `stare check` counts both as held, and only the hit as found.
-        assert_eq!(check_page(&src, "a3d", 250, 100), (true, true));
-        assert_eq!(check_page(&src, "a3d", 250, 101), (true, false));
-        assert_eq!(check_page(&src, "a2d", 31, 647), (true, true));
-        assert_eq!(check_page(&src, "a2d", 99, 1), (false, false));
+        assert_eq!(check_page(&src, "a3d", 250, 100), (true, true, None));
+        assert_eq!(check_page(&src, "a3d", 250, 101), (true, false, None));
+        assert_eq!(check_page(&src, "a2d", 31, 647), (true, true, None));
+        assert_eq!(check_page(&src, "a2d", 99, 1), (false, false, None));
+    }
+
+    #[test]
+    fn an_alias_resolves_to_its_case_in_another_volume() {
+        let _env = CACHE_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let cache = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", cache.path());
+        let (idx, _data, src) = idx_fixture(true);
+        // nw 260 has only aliases: page 287 is a2d/31's 0647-01 by CourtListener's
+        // citations. a3d 250 page 100 has CourtListener's record and an alias: the
+        // alias, a CAP case, comes first. a2d 31 page 647 has CAP's own case and an
+        // alias to another: CAP's own comes first.
+        std::fs::write(
+            idx.path().join("manifest.json"),
+            r#"{"format": 2, "idx": 1, "base": "v/v1/",
+                "reporters": {"a2d": ["31"], "a3d": ["250"]}, "aliases": {"nw": ["260"]}}"#,
+        )
+        .unwrap();
+        let v = idx.path().join("v/v1");
+        std::fs::create_dir_all(v.join("nw")).unwrap();
+        std::fs::write(
+            v.join("nw/260.idx.gz"),
+            stare::idx::gzip("287,cap,a2d/31/0647-01,via=cl:8077312\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            v.join("a3d/250.idx.gz"),
+            stare::idx::gzip(&format!(
+                "100,cl,9876543/{H1}\n100,cap,a2d/31/0647-01,via=cl:9876543\n"
+            )),
+        )
+        .unwrap();
+        let src = Sources {
+            manifest: std::cell::OnceCell::new(),
+            ..src
+        };
+
+        let r = resolve_case(&src, "nw", "260", 287).unwrap();
+        assert_eq!(r.case.name_abbreviation, "D'Elia & Marks Co. v. Lyon");
+        assert_eq!(r.case_file, "a2d/31/0647-01");
+        assert_eq!(r.via.as_deref(), Some("cl:8077312"));
+        let r = resolve_case(&src, "a3d", "250", 100).unwrap();
+        assert_eq!(r.case_file, "a2d/31/0647-01");
+        assert_eq!(r.via.as_deref(), Some("cl:9876543"));
+        let r = resolve_case(&src, "a2d", "31", 647).unwrap();
+        assert_eq!(r.case_file, "0647-01");
+        assert_eq!(r.via, None);
+
+        // `stare check`: the alias resolves, with its source; a miss in a volume of
+        // aliases only is a volume stare.pub doesn't hold.
+        assert_eq!(
+            check_page(&src, "nw", 260, 287),
+            (true, true, Some("cl:8077312".to_string()))
+        );
+        assert_eq!(check_page(&src, "nw", 260, 288), (false, false, None));
+        assert_eq!(check_page(&src, "a2d", 31, 647), (true, true, None));
     }
 
     #[test]
