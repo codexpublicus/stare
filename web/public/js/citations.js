@@ -137,25 +137,35 @@ async function readBin(slug, volume) {
  * With the unified index (the manifest's `idx`), the volume's `.idx.gz` answers
  * instead, for every source, in one fetch per volume (cached); a volume with no
  * `.idx.gz` falls back to the .bin files.
- * Null when that can't be told (an index file or the WASM didn't load); callers then
- * treat the citation as resolvable, as they did before pages were checked.
+ * A read that fails (a network error, a timeout, a 5xx, or the WASM didn't load) is
+ * tried once more after `retryDelay` ms; null when it fails again, which callers show
+ * as "couldn't check" (lookupFailed), never as a link or a miss (#144). What did load
+ * stays cached, so the retry and later checks don't fetch it again.
  *
- * `deps` ({ manifest, readBin, lookup, idxEntries }) are injectable for tests,
- * which can't load the WASM or reach idx.stare.pub.
+ * `deps` ({ manifest, readBin, lookup, idxEntries, retryDelay }) are injectable for
+ * tests, which can't load the WASM or reach idx.stare.pub.
  */
 export async function checkPage(slug, volume, page, deps = {}) {
-  try {
-    const p = parseInt(page, 10);
-    const cited = String(volume);
-    const m = deps.manifest || await loadManifest();
-    if (hasIdx(m)) {
-      const entries = await (deps.idxEntries || idxEntries)(slug, cited, p);
-      if (entries) return entries.length > 0;
+  const retryDelay = deps.retryDelay ?? 500;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await pageFound(slug, volume, page, deps);
+    } catch {
+      if (attempt > 0) return null;
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
     }
-    return await capHasPage(slug, cited, p, m, deps);
-  } catch {
-    return null;
   }
+}
+
+async function pageFound(slug, volume, page, deps) {
+  const p = parseInt(page, 10);
+  const cited = String(volume);
+  const m = deps.manifest || await loadManifest();
+  if (hasIdx(m)) {
+    const entries = await (deps.idxEntries || idxEntries)(slug, cited, p);
+    if (entries) return entries.length > 0;
+  }
+  return capHasPage(slug, cited, p, m, deps);
 }
 
 async function capHasPage(slug, cited, p, m, deps) {
@@ -187,8 +197,9 @@ async function capHasPage(slug, cited, p, m, deps) {
  * Availability for one detected citation, as the fields the renderers read:
  * - `slug`: the index slug when the volume is indexed, else null
  * - `volumeHeld`: the manifest lists the cited reporter and volume
- * - `resolvable`: held, and a case starts at the cited page (or that
- *   couldn't be checked)
+ * - `resolvable`: held, and a case starts at the cited page
+ * - `pageUnknown`: held, but the page check failed (checkPage's null); not
+ *   resolvable, and not a miss either (lookupFailed)
  *
  * A held volume with no case at the page is not linked out: it may be an
  * index gap or a bad citation, and nothing here can tell which. Only a
@@ -215,7 +226,7 @@ export async function checkCitation(c, check = checkAvailability, pageCheck = ch
     return { ...none, slug: c.harvard_slug ? slug : null };
   }
   const found = await pageCheck(slug, c.volume, c.page);
-  return { ...c, key: citationKey(c), slug, volumeHeld: true, resolvable: found !== false };
+  return { ...c, key: citationKey(c), slug, volumeHeld: true, resolvable: found === true, pageUnknown: found == null };
 }
 
 /**
@@ -252,6 +263,7 @@ export function inheritStatus(c, a) {
     page: a.page,
     volumeHeld: a.volumeHeld,
     resolvable: a.resolvable,
+    pageUnknown: a.pageUnknown,
     externalUrl: a.externalUrl,
     caseLinks: a.caseLinks,
   };
@@ -400,8 +412,18 @@ export const SECTION_NOTE = 'Section reference';
  * whether the case exists: an index gap and a bad citation look the same.
  */
 export function heldVolumeMiss(info) {
-  if (!info || info.resolvable || !info.volumeHeld || safeExternalUrl(info.externalUrl)) return null;
+  if (!info || info.resolvable || info.pageUnknown || !info.volumeHeld || safeExternalUrl(info.externalUrl)) return null;
   return `No case found at this page in ${info.reporter || info.slug} vol. ${info.volume}`;
+}
+
+/**
+ * For a citation to a held volume whose index couldn't be read (checkPage's
+ * null, after its retry), the note to show; else null. It is neither a link
+ * nor a miss: the case may well be there (#144).
+ */
+export function lookupFailed(info) {
+  if (!info?.pageUnknown || info.resolvable || !info.volumeHeld) return null;
+  return `Couldn't reach the index for ${info.reporter || info.slug} vol. ${info.volume}; reload to try again`;
 }
 
 /** The note for a short form citare couldn't tie to an earlier citation. */
@@ -460,6 +482,10 @@ function citationHtml(raw, inner, info, pin = info.pin) {
   }
   if (isStatute(info)) {
     return `<span class="cite-statute" title="${titled(STATUTE_NOTE)}">${inner}</span>`;
+  }
+  const unknown = lookupFailed(info);
+  if (unknown) {
+    return `<span class="cite-unresolved cite-unknown" title="${titled(unknown)}">${inner}</span>`;
   }
   const miss = heldVolumeMiss(info);
   if (miss) {
@@ -537,6 +563,14 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
           <span class="cited-status statute">&#167;</span>
           <span class="cited-case-unresolved">${raw}</span>${refersHtml}
           <span class="cited-lookup cited-miss">${escapeHtml(STATUTE_NOTE)}</span>
+        </div>`;
+  }
+  const unknown = lookupFailed(c);
+  if (unknown) {
+    return `<div class="cited-case cited-case-lookup">
+          <span class="cited-status unknown">?</span>
+          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
+          <span class="cited-lookup cited-miss">${escapeHtml(unknown)}</span>
         </div>`;
   }
   const miss = heldVolumeMiss(c);

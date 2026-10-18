@@ -17,16 +17,21 @@ const BUNDLE_DIR = '/data/citare/v1/';
 // Every test fails on a console error or warning, or an uncaught exception.
 // `expectedMissing` lists URLs a test expects to 404: Chromium logs every failed
 // fetch as a console error, and only that exact message for that exact URL is let
-// through.
+// through. `expectedFailing` lists URL endings a test makes fail on purpose (a 5xx
+// from a route), whose failed-load message is let through the same way.
 const test = base.extend({
   expectedMissing: [[], { option: true }],
-  page: async ({ page, expectedMissing }, use) => {
+  expectedFailing: [[], { option: true }],
+  page: async ({ page, expectedMissing, expectedFailing }, use) => {
     const problems = [];
     page.on('console', (msg) => {
       if (msg.type() === 'error' || msg.type() === 'warning') {
-        const missing = expectedMissing.includes(msg.location().url)
+        const url = msg.location().url;
+        const missing = expectedMissing.includes(url)
           && /^Failed to load resource: the server responded with a status of 404\b/.test(msg.text());
-        if (!missing) problems.push(`console.${msg.type()}: ${msg.text()}`);
+        const failing = expectedFailing.some((end) => url?.endsWith(end))
+          && /^Failed to load resource: the server responded with a status of 5\d\d\b/.test(msg.text());
+        if (!missing && !failing) problems.push(`console.${msg.type()}: ${msg.text()}`);
       }
     });
     page.on('pageerror', (err) => problems.push(`uncaught: ${err.message}`));
@@ -509,6 +514,71 @@ test('138 A.3d 1012 resolves into a3d/138-2, the second folder CAP split the vol
   await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
 });
 
+test.describe('an index file that fails to load (#144)', () => {
+  // The live manifest without `idx`, so the page checks read the .bin files whatever
+  // the published build is; the route answers one volume's .bin with a 503, twice, so
+  // the retry fails too.
+  test.use({ expectedFailing: ['/a3d/101.bin', '/a2d/31.bin'] });
+  const UNKNOWN = (r, v) => `Couldn't reach the index for ${r} vol. ${v}; reload to try again`;
+
+  async function failBin(page, path) {
+    await page.route('https://idx.stare.pub/manifest.json', async (route) => {
+      const manifest = await (await route.fetch()).json();
+      delete manifest.idx;
+      await route.fulfill({
+        headers: { 'access-control-allow-origin': '*', 'cache-control': 'no-cache' },
+        contentType: 'application/json',
+        body: JSON.stringify(manifest),
+      });
+    });
+    const tries = [];
+    await page.route(`https://idx.stare.pub/**${path}`, (route) => {
+      tries.push(route.request().url());
+      return route.fulfill({ status: 503, headers: { 'access-control-allow-origin': '*' }, body: '' });
+    });
+    return tries;
+  }
+
+  test('the reader and sidebar show a citation into it as unchecked, with no link', async ({ page }) => {
+    // Brooks v. Powers cites 101 A.3d 249 throughout; with a3d/101.bin failing, none
+    // of them may link.
+    const tries = await failBin(page, '/a3d/101.bin');
+    await page.goto('/#a3d/138-2/1012-01');
+    await expect(page.locator('#topbar-case')).toHaveText('Brooks v. Powers');
+    await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found/);
+
+    // Its three Id.s refer to it, and are unchecked with it.
+    const entries = page.locator('#sidebar .cited-case', { hasText: '101 A.3d 249' });
+    await expect(entries).toHaveCount(4);
+    await expect(entries.first()).toHaveText(`? 101 A.3d 249 ${UNKNOWN('A.3d', 101)}`);
+    expect(await entries.locator('.cited-status').allTextContents()).toEqual(
+      Array(await entries.count()).fill('?'));
+    await expect(entries.locator('a')).toHaveCount(0);
+    await expect(page.locator('#reader .cite-unknown', { hasText: '101 A.3d 249' }).first())
+      .toHaveAttribute('title', UNKNOWN('A.3d', 101));
+    await expect(page.locator('#reader a', { hasText: '101 A.3d 249' })).toHaveCount(0);
+    expect(tries.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('/check shows it as unchecked, not as a hit or a miss, and links nothing out', async ({ page }) => {
+    await failBin(page, '/a2d/31.bin');
+    const outside = [];
+    page.on('request', (req) => {
+      if (/courtlistener|google/.test(new URL(req.url()).hostname)) outside.push(req.url());
+    });
+    await page.goto('/check');
+    await page.fill('#check-input', "See D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (1943).");
+    await page.click('#check-btn');
+
+    await expect(page.locator('#check-summary')).toHaveText('1 case citation found (0 resolvable)');
+    await expect(page.locator('#check-cite-list .cited-case')).toHaveText([`? 31 A.2d 647 ${UNKNOWN('A.2d', 31)}`]);
+    await expect(page.locator('#check-cite-list a')).toHaveCount(0);
+    await expect(page.locator('#check-rendered .cite-unknown')).toHaveAttribute('title', UNKNOWN('A.2d', 31));
+    await expect(page.locator('#check-rendered a')).toHaveCount(0);
+    expect(outside).toEqual([]);
+  });
+});
+
 test.describe('the unified per-volume index', () => {
   // Nothing in the unified index is published yet. The routes add `idx: 1` (and a3d
   // 250, a volume only CourtListener has) to the live manifest, and answer every
@@ -658,6 +728,40 @@ test.describe('the unified per-volume index', () => {
     expect(seen.idx.some((u) => u.endsWith('/a3d/138.1.idx.gz'))).toBe(true);
     expect(seen.idx.some((u) => u.endsWith('/a3d/138-2.idx.gz'))).toBe(false);
     expect(seen.bins).toEqual([]);
+  });
+
+  test.describe('with one volume\'s .idx.gz failing (#144)', () => {
+    test.use({ expectedFailing: ['/a2d/31.idx.gz', '/a3d/250.idx.gz'] });
+    const fail = (page, path) => page.route(`https://idx.stare.pub/**${path}`, (route) =>
+      route.fulfill({ status: 503, headers: CORS, body: '' }));
+
+    test('the reader and sidebar show a citation into it as unchecked, with no link', async ({ page }) => {
+      await routeIdx(page);
+      await fail(page, '/a2d/31.idx.gz');
+      await page.goto('/#a3d/250/100-01');
+      await expect(page.locator('#topbar-case')).toHaveText('Smith v. Jones');
+      await expect(page.locator('#sidebar [role="status"]')).toHaveText('1 case citation found (0 resolvable)');
+      await expect(page.locator('#sidebar .cited-case')).toHaveText(
+        ["? 31 A.2d 647 Couldn't reach the index for A.2d vol. 31; reload to try again"]);
+      await expect(page.locator('#sidebar .cited-case a')).toHaveCount(0);
+      await expect(page.locator('#reader .cite-unknown', { hasText: '31 A.2d 647' }))
+        .toHaveAttribute('title', "Couldn't reach the index for A.2d vol. 31; reload to try again");
+      await expect(page.locator('#reader a', { hasText: '31 A.2d 647' })).toHaveCount(0);
+    });
+
+    test('/check shows a citation into it as unchecked, and links nothing out', async ({ page }) => {
+      await routeIdx(page);
+      await fail(page, '/a3d/250.idx.gz');
+      await page.goto('/check');
+      await page.fill('#check-input', 'See Smith v. Jones, 250 A.3d 100 (Pa. 2021).');
+      await page.click('#check-btn');
+
+      await expect(page.locator('#check-summary')).toHaveText('1 case citation found (0 resolvable)');
+      await expect(page.locator('#check-cite-list .cited-case')).toHaveText(
+        ["? 250 A.3d 100 Couldn't reach the index for A.3d vol. 250; reload to try again"]);
+      await expect(page.locator('#check-cite-list a')).toHaveCount(0);
+      await expect(page.locator('#check-rendered a')).toHaveCount(0);
+    });
   });
 
   test('/check resolves a CourtListener hit here and links nothing out for a miss', async ({ page }) => {
