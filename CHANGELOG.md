@@ -2,6 +2,12 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
+## v2026.10.18.2 - 2026-10-18
+
+### Features
+
+- resolve a parallel citation through its partner
+
 ## v2026.10.18.1 - 2026-10-18
 
 ### Features
