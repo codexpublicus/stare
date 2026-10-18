@@ -367,6 +367,28 @@ its declaration.
 Infrastructure changes go through PRs to codexpublicus/infra, not this repo. See that
 repo's `AGENTS.md` for the Pulumi, Wrangler and LFS rules that apply across the org.
 
+### Crawlers and agents (`web/public/robots.txt`, `llms.txt`, `src/lib/sitemap.js`; #171, #161)
+
+The crawl design is D41 on #171: one canonical URL per case, a sitemap of the site pages plus a
+curated set of case pages, and the rest of the corpus under a prefix `robots.txt` disallows.
+Curated case pages go under `/case/` (crawlable) and every other case page under `/c/`
+(disallowed); `CURATED_PREFIX` and `FULL_PREFIX` in `src/lib/sitemap.js` name them, and no case
+pages exist yet. `robots.txt` states the content signals `search=yes, ai-input=yes` (D40) with
+Cloudflare's Content Signals Policy text, and `ai-train` stays unstated until decided. Cloudflare's
+managed robots.txt is off on the zone: before this file existed, stare.pub served the free-plan
+default, the policy text with no signals and no rules, which a robots.txt from the Worker replaces.
+Turning managed robots.txt on would prepend Cloudflare's own block, AI-crawler disallows included.
+
+The build writes `sitemap.xml` (`stare-crawl-files` in `astro.config.mjs`). Each page's
+`<lastmod>` is the last commit touching the page or a file it imports (components, `src/lib`,
+`src/data`, `CHANGELOG.md`), not its stylesheets; in a shallow clone, which is every
+`site.yml` build, lastmod is left out, and the release build (full history) dates every page.
+The same hook fails the build if `robots.txt`, `llms.txt` or the sitemap is missing or wouldn't
+parse, or if the sitemap lists a page `robots.txt` disallows. `llms.txt` is the citation recipe
+in plain GETs (manifest, per-volume `.idx.gz` or the volume zip's `CasesMetadata.json`, the case);
+update it with any change to the published formats. `idx.stare.pub` and `data.stare.pub` get
+their own `Disallow: /` robots.txt from stare-builder's publish tasks.
+
 ### Archival PDFs and CourtListener records
 
 The archival per-volume PDF pipeline (#51) and the CourtListener bulk-export pipeline (#83)

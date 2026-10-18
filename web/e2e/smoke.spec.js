@@ -9,6 +9,8 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 import { test as base, expect } from '@playwright/test';
 
 import { casesLabel, yearRange } from '../src/lib/collection.js';
+import { isAllowed, parseLlmsTxt, parseRobots } from '../src/lib/crawlfiles.js';
+import { parseSitemap } from '../src/lib/sitemap.js';
 
 const WASM_PATH = '/wasm/stare_wasm_bg.wasm';
 const WASM_SIZE_PATH = '/wasm/stare_wasm_bg.json';
@@ -1087,4 +1089,35 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await expect(alias).toHaveText('260 N.W. 287');
     await expect(alias).toHaveAttribute('title', `260 N.W. 287. ${VIA}`);
   });
+});
+
+// The crawler files (#171, #161): served as text and XML, and parsing as they do
+// in the build.
+test('/robots.txt is served as text, disallows /c/ and names the sitemap', async ({ request }) => {
+  const response = await request.get('/robots.txt');
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-type']).toBe('text/plain; charset=utf-8');
+  const { groups, sitemaps } = parseRobots(await response.text());
+  const all = groups.find((g) => g.agents.includes('*'));
+  expect(all.signals).toEqual({ search: 'yes', 'ai-input': 'yes' });
+  expect(isAllowed(all, '/c/a2d/31/647')).toBe(false);
+  expect(isAllowed(all, '/about/')).toBe(true);
+  expect(sitemaps).toEqual(['https://stare.pub/sitemap.xml']);
+});
+
+test('/sitemap.xml is served as XML and lists the site pages', async ({ request }) => {
+  const response = await request.get('/sitemap.xml');
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-type']).toBe('application/xml; charset=utf-8');
+  const locs = parseSitemap(await response.text()).map((u) => u.loc);
+  expect(locs).toEqual(expect.arrayContaining(['https://stare.pub/', 'https://stare.pub/about/', 'https://stare.pub/check/']));
+});
+
+test('/llms.txt is served as UTF-8 text in llmstxt.org\'s shape', async ({ request }) => {
+  const response = await request.get('/llms.txt');
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-type']).toBe('text/plain; charset=utf-8');
+  const { title, sections } = parseLlmsTxt(await response.text());
+  expect(title).toBe('stare.pub');
+  expect(sections.map((s) => s.name)).toContain('Resolving a citation');
 });
