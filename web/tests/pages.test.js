@@ -8,14 +8,14 @@ import { locatePageBreaks, normalizeText, pageBreaks, paragraphPosition } from '
 describe('parseHash', () => {
   test('reads a pin page after the case', () => {
     assert.deepEqual(parseHash('#p2d/997/1021-01@1023'),
-      { reporter: 'p2d', volume: '997', page: 1021, seq: 1, pin: 1023 });
+      { reporter: 'p2d', volume: '997', page: 1021, seq: 1, pin: 1023, cite: null });
     assert.deepEqual(parseHash('#p2d/997/1021@1023'),
-      { reporter: 'p2d', volume: '997', page: 1021, seq: null, pin: 1023 });
+      { reporter: 'p2d', volume: '997', page: 1021, seq: null, pin: 1023, cite: null });
   });
 
   test('has no pin without one', () => {
     assert.deepEqual(parseHash('#a3d/138-2/1012-01'),
-      { reporter: 'a3d', volume: '138-2', page: 1012, seq: 1, pin: null });
+      { reporter: 'a3d', volume: '138-2', page: 1012, seq: 1, pin: null, cite: null });
   });
 
   test('rejects a malformed pin', () => {

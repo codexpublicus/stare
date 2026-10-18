@@ -1,4 +1,4 @@
-import { citationSummary, citedCaseHtml, orderCitedCases, renderTextHtml } from './citations.js';
+import { citationSummary, citedListHtml, groupCitations, renderTextHtml } from './citations.js';
 import { blockedLineHtml, isClRecord, sourceLineHtml } from './cl.js';
 import { insertPageMarkers } from './pages.js';
 import { pdfUrl as volumePdfUrl } from './sources.js';
@@ -13,8 +13,11 @@ import { pdfUrl as volumePdfUrl } from './sources.js';
  *   for this same caseData. Null renders without highlighting.
  * @param {Array|null} pages - page breaks for each opinion, from pageBreaks()
  *   in pages.js; shown as `[*1023]` markers with the id `page-1023`.
+ * @param {Array|null} footnotes - each opinion's footnote paragraphs, from
+ *   footnoteParagraphs() in pages.js: `[{ paragraph, label }]`. Each is
+ *   rendered as `<p class="reader-footnote" data-footnote="3">`.
  */
-export function renderReader(el, caseData, citations, pages = null) {
+export function renderReader(el, caseData, citations, pages = null, footnotes = null) {
   const cite = caseData.citations?.[0]?.cite || '';
   const court = caseData.court?.name || '';
 
@@ -32,8 +35,11 @@ export function renderReader(el, caseData, citations, pages = null) {
       ? `<div class="reader-author">${esc(op.author)}</div>`
       : '';
     const occurrences = citations?.occurrencesByOpinion?.[i] || [];
+    const notes = new Map((footnotes?.[i] || []).map(f => [f.paragraph, f.label]));
     const paragraphs = renderTextHtml(op.text, occurrences, citations?.citationMap || null)
-      .map(p => `<p>${p}</p>`)
+      .map((p, j) => (notes.has(j)
+        ? `<p class="reader-footnote" data-footnote="${esc(notes.get(j))}">${p}</p>`
+        : `<p>${p}</p>`))
       .join('\n');
     html += `${authorLine}<div class="reader-text">${paragraphs}</div>`;
   });
@@ -55,8 +61,10 @@ export function renderReader(el, caseData, citations, pages = null) {
  * @param {Object} caseData - parsed case JSON
  * @param {Array|null} detectedCitations - citation objects from processCitations()
  * @param {'loading'|'error'|'done'|undefined} citationStatus
+ * @param {Array|null} groups - processCitations()' `groups` for them; without
+ *   it they are grouped here, with no counts and no parallels
  */
-function citationStatusParts(caseData, detectedCitations, citationStatus) {
+function citationStatusParts(caseData, detectedCitations, citationStatus, groups = null) {
   const isLoading = citationStatus === 'loading';
   const isError = citationStatus === 'error';
 
@@ -72,10 +80,12 @@ function citationStatusParts(caseData, detectedCitations, citationStatus) {
     // Held here, then statutes linked to their text, then cases to look
     // for elsewhere, then the rest; bare section references aren't
     // listed or counted. Only http(s) URLs are ever linked.
+    // One entry per cited case (#159), with its full citations, short forms
+    // and parallel citations together.
     const caseHref = (c) => `${window.location.pathname}#${c.slug}/${c.volume}/${c.page}`;
-    const listed = orderCitedCases(detectedCitations);
-    listHtml = listed.map(c => citedCaseHtml(c, caseHref)).join('');
-    totalCites = listed.length;
+    const cases = groups || groupCitations(null, detectedCitations);
+    listHtml = citedListHtml(cases, caseHref);
+    totalCites = cases.length;
     statusText = citationSummary(detectedCitations);
   } else {
     listHtml = (caseData.cites_to || [])
@@ -117,8 +127,8 @@ function citationStatusParts(caseData, detectedCitations, citationStatus) {
  * only their contents.
  * @param {CitationStatusHandle} handle
  */
-function fillCitationStatus(handle, caseData, detectedCitations, citationStatus) {
-  const { label, statusText, listHtml } = citationStatusParts(caseData, detectedCitations, citationStatus);
+function fillCitationStatus(handle, caseData, detectedCitations, citationStatus, groups = null) {
+  const { label, statusText, listHtml } = citationStatusParts(caseData, detectedCitations, citationStatus, groups);
   handle.labelEl.textContent = label;
   handle.statusEl.textContent = statusText;
   handle.statusEl.className = citationStatus === 'error'
@@ -141,6 +151,8 @@ function fillCitationStatus(handle, caseData, detectedCitations, citationStatus)
  *   detection or availability checks threw. 'done' (or omitted, for callers
  *   that never run async detection) renders detectedCitations, falling back
  *   to caseData.cites_to when there are none.
+ * @param {Array|null} groups - processCitations()' `groups` for
+ *   detectedCitations (one list entry per cited case, with counts)
  * @returns {CitationStatusHandle} pass this to updateCitationStatus once
  *   detection finishes or fails, instead of calling renderSidebar again,
  *   so the same role="status" aria-live="polite" node is updated in place
@@ -148,7 +160,7 @@ function fillCitationStatus(handle, caseData, detectedCitations, citationStatus)
  *   from ever announcing the change), and so the list itself, which is not
  *   a live region, doesn't get read aloud wholesale.
  */
-export function renderSidebar(el, caseData, reporter, volume, allCases, detectedCitations, citationStatus) {
+export function renderSidebar(el, caseData, reporter, volume, allCases, detectedCitations, citationStatus, groups = null) {
   const citeBadges = (caseData.citations || [])
     .map((c, i) => `<span class="cite-badge${i === 0 ? ' primary' : ''}">${esc(c.cite)}</span>`)
     .join(' ');
@@ -213,7 +225,7 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
   listEl.className = 'citation-status-list';
 
   const handle = { labelEl, statusEl, listEl };
-  fillCitationStatus(handle, caseData, detectedCitations, citationStatus);
+  fillCitationStatus(handle, caseData, detectedCitations, citationStatus, groups);
 
   const region = document.createElement('div');
   region.className = 'sidebar-section citation-status';
@@ -243,10 +255,11 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
  * @param {Object} caseData - parsed case JSON
  * @param {Array|null} detectedCitations - citation objects from processCitations()
  * @param {'error'|'done'} citationStatus
+ * @param {Array|null} groups - processCitations()' `groups`, as for renderSidebar
  */
-export function updateCitationStatus(handle, caseData, detectedCitations, citationStatus) {
+export function updateCitationStatus(handle, caseData, detectedCitations, citationStatus, groups = null) {
   if (!handle) return;
-  fillCitationStatus(handle, caseData, detectedCitations, citationStatus);
+  fillCitationStatus(handle, caseData, detectedCitations, citationStatus, groups);
 }
 
 export function renderMultiNotice(el, allCases, currentFile, onSwitch) {

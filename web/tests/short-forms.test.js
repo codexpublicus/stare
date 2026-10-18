@@ -13,6 +13,10 @@ import {
   renderTextHtml,
 } from '../public/js/citations.js';
 
+// The place-in-the-text attributes (#159) are tested in cite-nav.test.js;
+// these tests read the rest of the markup.
+const withoutPlaces = (html) => html.replace(/ data-cite-(?:group|form)="[^"]*"/g, '');
+
 // A detected citation in the shape detectCitations returns, located in
 // `text` by its raw string (the nth occurrence).
 function cite(text, raw, fields = {}, nth = 0) {
@@ -48,6 +52,7 @@ async function render(text, detected, { held = () => true, cases = {} } = {}) {
 
 // The opening tag of the element wrapping `raw` in `html`, the nth one.
 function tagFor(html, raw, nth = 0) {
+  html = withoutPlaces(html);
   const re = new RegExp(`<(a|span) [^>]*>${raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</\\1>`, 'g');
   const all = [...html.matchAll(re)];
   assert.ok(all[nth], `no element for ${raw} in ${html}`);
