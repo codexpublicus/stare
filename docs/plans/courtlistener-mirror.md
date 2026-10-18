@@ -180,6 +180,17 @@ v/<ver>/<slug>/<vol>.<n>.idx.gz  later parts of a split volume
 - **Shared pages.** Several lines can share a page, CAP's first; the resolver shows the first and
   lists the others. A CourtListener line on a page CAP has a case on is an alias for the same
   decision, not a second case.
+- **Parallel-citation aliases** ([#151](https://github.com/codexpublicus/stare/issues/151),
+  [#160](https://github.com/codexpublicus/stare/issues/160)). A `cap` ref can name a case in
+  another volume as `<slug>/<folder>/<file>`, and a line can end in `key=value` fields; `via`
+  records where the line came from: `287,cap,neb/128/0783-01,via=cl:8077312` in
+  `n-w/260.idx.gz`. `cl:<cluster>` is CourtListener's `citations` table, a cluster's own
+  reporter citations from publisher, scraper and import data, not eyecite's detections; it's a
+  third party's metadata, so the site labels the link "Resolved through CourtListener's citation
+  metadata" and never calls it verified. A page's own CAP cases come before aliases, and aliases
+  before `cl` lines. Volumes whose file has only aliases are listed under the manifest's
+  `aliases`, not `reporters`: a hit there resolves, and a miss links out. Older readers skip
+  alias lines as malformed and don't know `aliases`, so the format stays `idx: 1`.
 - **Split volumes.** A part ends after it passes 1,000 lines, at the next page boundary, so a
   page never straddles two parts. Part 0 starts with `#parts,<first page of part 1>,…`, and a
   reader fetches the later part a page falls in. That caps a lookup near 17 KB gzipped; most
@@ -270,7 +281,9 @@ links to cluster ids directly, which nothing in stare does yet.
    the site and CLI read it, and the transition release keeps `.bin`/`.multi` beside it. Slugs from
    [citare#71](https://github.com/codexpublicus/citare/pull/71).
 5. CourtListener parallel citations as aliases to CAP cases
-   ([#151](https://github.com/codexpublicus/stare/issues/151)), as `cl` lines on CAP pages.
+   ([#151](https://github.com/codexpublicus/stare/issues/151)): the reader side here
+   (cross-volume `cap` refs, `via`, the manifest's `aliases`), the build in
+   [stare-builder#10](https://github.com/codexpublicus/stare-builder/issues/10).
 6. The full run on ml-01 (needs the `codexpublicus-courtlistener` volume), publish, the cache rules
    on idx.stare.pub, and `stare download` fetching the index tarball and records
    ([#23](https://github.com/codexpublicus/stare/issues/23)). Then the delta against the next export.

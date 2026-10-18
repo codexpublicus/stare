@@ -7,9 +7,15 @@ import { isVolumeKey } from './manifest.js';
  *   #a2d/31/647-02    → { reporter, volume: '31', page: 647, seq: 2 }
  *   #a3d/138-2/1012   → { reporter, volume: '138-2', page: 1012, seq: null }
  *   #p2d/997/1021-01@1023 → { reporter, volume: '997', page: 1021, seq: 1, pin: 1023 }
+ *   #a2d/31/647-01~c=3    → { ..., cite: 3 }
  *
  * `volume` is a string: a cited number or a CAP volume folder (see manifest.js).
  * `pin` is the page of the case to scroll to (`@1023`), or null.
+ * `cite` (#159) is a place in the case's text where it cites another case:
+ * `~c=3` is the third citation in the text, counting every citation the
+ * reader marks, in order, footnotes included (citenav.js numbers them). The
+ * reader goes there and highlights the cited case's other places. Null
+ * without one.
  */
 export function getHashParams() {
   return parseHash(window.location.hash);
@@ -24,13 +30,14 @@ export function parseHash(hashWithMark) {
   const [reporter, volume, pageStr] = parts;
   if (!isVolumeKey(volume)) return null;
 
-  const pageMatch = pageStr.match(/^(\d+)(?:-(\d+))?(?:@(\d+))?$/);
+  const pageMatch = pageStr.match(/^(\d+)(?:-(\d+))?(?:@(\d+))?(?:~c=([1-9]\d*))?$/);
   if (!pageMatch) return null;
   const page = parseInt(pageMatch[1], 10);
   const seq = pageMatch[2] ? parseInt(pageMatch[2], 10) : null;
   const pin = pageMatch[3] ? parseInt(pageMatch[3], 10) : null;
+  const cite = pageMatch[4] ? parseInt(pageMatch[4], 10) : null;
 
-  return { reporter: reporter.toLowerCase(), volume, page, seq, pin };
+  return { reporter: reporter.toLowerCase(), volume, page, seq, pin, cite };
 }
 
 /**
@@ -52,12 +59,21 @@ export function pinSuffix(pin, firstPage = null) {
 }
 
 /**
- * Set hash with optional case sequence suffix and pin page.
+ * The hash for a case, with its sequence suffix always (#a2d/31/647-01), and
+ * a pin page (`@1023`) or a place in its text (`~c=3`) when given.
+ */
+export function caseHash(reporter, volume, page, seq, pin = null, cite = null) {
+  const suffix = `-${String(seq || 1).padStart(2, '0')}`;
+  const at = cite ? `~c=${cite}` : '';
+  return `#${reporter}/${volume}/${page}${suffix}${pinSuffix(pin, page)}${at}`;
+}
+
+/**
+ * Set hash with optional case sequence suffix, pin page and cited place.
  * Always includes the suffix for explicitness: #a2d/31/647-01, #p2d/997/1021-01@1023
  */
-export function setHash(reporter, volume, page, seq, pin = null) {
-  const suffix = `-${String(seq || 1).padStart(2, '0')}`;
-  const newHash = `#${reporter}/${volume}/${page}${suffix}${pinSuffix(pin, page)}`;
+export function setHash(reporter, volume, page, seq, pin = null, cite = null) {
+  const newHash = caseHash(reporter, volume, page, seq, pin, cite);
   if (window.location.hash !== newHash) {
     window.location.hash = newHash;
   }

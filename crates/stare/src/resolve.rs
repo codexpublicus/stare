@@ -15,6 +15,9 @@ pub const DEFAULT_BASE_URL: &str = "https://data.stare.pub/cap";
 pub struct CaseResult {
     pub case_file: String,
     pub case: CaseJson,
+    /// Set when the citation resolved through an alias (#151): where the alias came
+    /// from (`cl:8077312`), for [`crate::idx::via_label`].
+    pub via: Option<String>,
 }
 
 /// Resolve a citation from local files.
@@ -38,6 +41,7 @@ pub fn resolve_local(
     Ok(CaseResult {
         case_file: case_file.to_string(),
         case,
+        via: None,
     })
 }
 
@@ -63,6 +67,7 @@ pub fn resolve_remote(
     Ok(CaseResult {
         case_file: case_file.to_string(),
         case,
+        via: None,
     })
 }
 

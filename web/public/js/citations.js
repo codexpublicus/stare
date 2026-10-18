@@ -4,7 +4,9 @@
 
 import { fetchCached } from './cache.js';
 import { idxEntries } from './idx.js';
-import { citedSlug, hasIdx, holdsVolume, indexPath, loadManifest, volumeCandidates } from './manifest.js';
+import {
+  citedSlug, hasAliasVolume, hasIdx, holdsVolume, indexPath, loadManifest, volumeCandidates,
+} from './manifest.js';
 import { indexUrl } from './sources.js';
 import { pinSuffix } from './router.js';
 import { loadWasm } from './wasm.js';
@@ -60,6 +62,7 @@ function fromRust(c) {
     externalUrl: c.external_url || null,
     law: c.law || null,
     caseLinks: Array.isArray(c.case_links) ? c.case_links : [],
+    caseName: c.case_name || null,
   };
 }
 
@@ -98,6 +101,9 @@ export function citationsFromRust(raw) {
     ...fromRust(c),
     pin: c.pin || null,
     antecedent: c.antecedent ? fromRust(c.antecedent) : null,
+    // A parallel citation of the full citation it follows (`123 Ill. 2d 45,
+    // 524 N.E.2d 1`): that first citation's raw string, else null.
+    parallelTo: Number.isInteger(c.parallel_of) ? raw[c.parallel_of]?.matched_text || null : null,
   }));
 }
 
@@ -109,16 +115,61 @@ export function guessSlug(reporter) {
   return reporter.toLowerCase().replace(/\./g, '').replace(/\s+/g, '');
 }
 
+/** checkAvailability's answer for a volume whose index has only aliases. */
+export const ALIASES_ONLY = 'aliases';
+
 /**
- * Whether stare.pub holds `volume` (as cited) of `slug`: the manifest lists the
- * volume, or lists parts of it when CAP split the volume over several folders
- * (a3d 138 and 138-2). With the unified index the manifest's `reporters` covers
- * every source, so a volume only CourtListener has counts too.
- * `manifest` is injectable for tests.
+ * Whether stare.pub holds `volume` (as cited) of `slug`: true when the manifest
+ * lists the volume, or lists parts of it when CAP split the volume over several
+ * folders (a3d 138 and 138-2). With the unified index the manifest's `reporters`
+ * covers every source, so a volume only CourtListener has counts too.
+ * ALIASES_ONLY for a volume whose index has only aliases (#151): stare.pub holds
+ * none of its cases, but a page there may be a parallel citation of one it does.
+ * False otherwise. `manifest` is injectable for tests.
  */
 export async function checkAvailability(slug, volume, manifest = null) {
   const m = manifest || await loadManifest();
-  return holdsVolume(m, slug, volume);
+  if (holdsVolume(m, slug, volume)) return true;
+  return hasAliasVolume(m, slug, volume) ? ALIASES_ONLY : false;
+}
+
+/**
+ * The label for a link that came through an alias, from its `via`: "Resolved
+ * through CourtListener's citation metadata" for `cl:<cluster>`. The aliases come
+ * from CourtListener's `citations` table (publisher, scraper and import data), a
+ * third party's metadata; nothing here calls such a link verified.
+ */
+export function viaLabel(via) {
+  if (!via) return '';
+  return /^cl:\d+$/.test(via) ? "Resolved through CourtListener's citation metadata" : `Resolved through ${via}`;
+}
+
+/**
+ * The note above a case reached through an alias (#151): "Cited as nw 260 287.
+ * Resolved through CourtListener's citation metadata (cluster 8077312)." `alias` is
+ * resolve()'s `{ via, reporter, volume, page }`, the citation as looked up.
+ */
+export function aliasNoteHtml(alias) {
+  if (!alias) return '';
+  const m = /^cl:(\d+)$/.exec(alias.via || '');
+  const via = viaLabel(alias.via) + (m ? ` (cluster ${m[1]})` : '');
+  const cited = `Cited as ${alias.reporter} ${alias.volume} ${alias.page}.`;
+  return `<div class="reader-alias" role="note">${escapeHtml(cited)}${via ? ` ${escapeHtml(via)}.` : ''}</div>`;
+}
+
+/**
+ * What a page's index entries (CAP's own first, then aliases, then CourtListener's
+ * records) say: false for none; true when the first is a case of the volume's own;
+ * for an alias, `{ via, target: { slug, folder, caseFile } }`, the case it names.
+ */
+export function pageResult(entries) {
+  if (!entries.length) return false;
+  const first = entries[0];
+  if (first.source !== 'cap' || !first.reporter) return true;
+  return {
+    via: first.via || null,
+    target: { slug: first.reporter, folder: first.folder, caseFile: first.case_file },
+  };
 }
 
 // A volume folder's .bin, or null when it isn't indexed (a 404).
@@ -167,7 +218,7 @@ async function pageFound(slug, volume, page, deps) {
   const m = deps.manifest || await loadManifest();
   if (hasIdx(m)) {
     const entries = await (deps.idxEntries || idxEntries)(slug, cited, p);
-    if (entries) return entries.length > 0;
+    if (entries) return pageResult(entries);
   }
   return capHasPage(slug, cited, p, m, deps);
 }
@@ -201,9 +252,15 @@ async function capHasPage(slug, cited, p, m, deps) {
  * Availability for one detected citation, as the fields the renderers read:
  * - `slug`: the index slug when the volume is indexed, else null
  * - `volumeHeld`: the manifest lists the cited reporter and volume
- * - `resolvable`: held, and a case starts at the cited page
+ * - `resolvable`: a case starts at the cited page, or an alias there names one
  * - `pageUnknown`: held, but the page check failed (checkPage's null); not
  *   resolvable, and not a miss either (lookupFailed)
+ * - `via`, `aliasOf`: for a citation that resolves through an alias (#151),
+ *   where the alias came from (`cl:8077312`) and the case it names
+ *   (`{ slug, folder, caseFile }`); null otherwise
+ *
+ * A volume whose index has only aliases (ALIASES_ONLY) isn't held: a hit
+ * resolves, and a miss or a failed check is a volume stare.pub doesn't hold.
  *
  * A held volume with no case at the page is not linked out: it may be an
  * index gap or a bad citation, and nothing here can tell which. Only a
@@ -215,7 +272,7 @@ export async function checkCitation(c, check = checkAvailability, pageCheck = ch
     const a = c.antecedent ? await checkCitation(c.antecedent, check, pageCheck) : null;
     return inheritStatus(c, a);
   }
-  const none = { ...c, key: citationKey(c), slug: null, volumeHeld: false, resolvable: false };
+  const none = { ...c, key: citationKey(c), slug: null, volumeHeld: false, resolvable: false, via: null, aliasOf: null };
   // A statute is never looked up in the case index, so it never links
   // into stare.pub or picks up a page pin there.
   if (c.externalUrl || isStatute(c)) return none;
@@ -231,7 +288,16 @@ export async function checkCitation(c, check = checkAvailability, pageCheck = ch
     return { ...none, slug: cited ? slug : null };
   }
   const found = await pageCheck(slug, c.volume, c.page);
-  return { ...c, key: citationKey(c), slug, volumeHeld: true, resolvable: found === true, pageUnknown: found == null };
+  const alias = found && typeof found === 'object' ? found : null;
+  const aliasFields = { via: alias?.via || null, aliasOf: alias?.target || null };
+  if (held === ALIASES_ONLY) {
+    if (!found) return { ...none, slug: cited ? slug : null };
+    return { ...c, key: citationKey(c), slug, volumeHeld: false, resolvable: true, ...aliasFields };
+  }
+  return {
+    ...c, key: citationKey(c), slug, volumeHeld: true, resolvable: !!found, pageUnknown: found == null,
+    ...aliasFields,
+  };
 }
 
 /**
@@ -256,7 +322,7 @@ export function citationKey(c) {
  * text only without a pin: `Id. § 1985` is a different section.
  */
 export function inheritStatus(c, a) {
-  const own = { ...c, key: citationKey(c), page: null, slug: null, volumeHeld: false, resolvable: false, externalUrl: null, law: a?.law || null, caseLinks: [] };
+  const own = { ...c, key: citationKey(c), page: null, slug: null, volumeHeld: false, resolvable: false, externalUrl: null, law: a?.law || null, caseLinks: [], via: null, aliasOf: null };
   if (!a) return { ...own, noAntecedent: true };
   if (safeExternalUrl(a.externalUrl) && c.pin) return own;
   return {
@@ -271,6 +337,8 @@ export function inheritStatus(c, a) {
     pageUnknown: a.pageUnknown,
     externalUrl: a.externalUrl,
     caseLinks: a.caseLinks,
+    via: a.via || null,
+    aliasOf: a.aliasOf || null,
   };
 }
 
@@ -305,7 +373,7 @@ export async function checkCitations(citations, check = checkAvailability, pageC
  * Process all citations in a case's opinions.
  * Uses citare for detection, checks availability for each.
  *
- * Returns `{ unique, occurrencesByOpinion }`:
+ * Returns `{ unique, occurrencesByOpinion, groups }`:
  * - `unique`: one entry per `citationKey` (a full citation's raw string; a
  *   short form's raw string and antecedent), with availability (`slug`,
  *   `resolvable`) resolved; the sidebar's list.
@@ -313,6 +381,7 @@ export async function checkCitations(citations, check = checkAvailability, pageC
  *   order, every detected occurrence as `{ raw, key, pin, start, end }`,
  *   where `start`/`end` are code point offsets into that opinion's `text`.
  *   The reader highlights from these, looking each `key` up in `unique`.
+ * - `groups`: groupCitations' cited cases, one per case, for the lists.
  *
  * `check`, `detect` and `pageCheck` are injectable replacements for
  * `checkAvailability`, `detectCitations` and `checkPage`, used by tests to
@@ -329,7 +398,8 @@ export async function processCitations(caseData, check = checkAvailability, dete
     occurrencesByOpinion.push(detected.map(c => occurrence(c)));
   }
 
-  return { unique: await checkCitations(allCites, check, pageCheck), occurrencesByOpinion };
+  const unique = await checkCitations(allCites, check, pageCheck);
+  return { unique, occurrencesByOpinion, groups: groupCitations(allCites, unique) };
 }
 
 /** One detected citation as the renderers place it: `{ raw, key, pin, start, end }`. */
@@ -465,6 +535,16 @@ export function refersTo(info, pin = info?.pin) {
  * linked as `@1023` after the case, which the case view scrolls to.
  */
 function citationHtml(raw, inner, info, pin = info.pin) {
+  const html = citationElementHtml(raw, inner, info, pin);
+  // Its place among the cited case's appearances (#159): the group it is
+  // listed under, and whether it is a short form, which the highlight marks
+  // apart from a full citation.
+  if (!info.group || isSectionReference(info)) return html;
+  const form = isShortForm(info) ? ' data-cite-form="short"' : '';
+  return html.replace(/^<(a|span) /, `<$1 data-cite-group="${escapeHtml(info.group)}"${form} `);
+}
+
+function citationElementHtml(raw, inner, info, pin) {
   if (isSectionReference(info)) {
     return `<span class="cite-section" title="${escapeHtml(SECTION_NOTE)}">${inner}</span>`;
   }
@@ -483,7 +563,10 @@ function citationHtml(raw, inner, info, pin = info.pin) {
     const page = escapeHtml(String(info.page));
     const pinAttr = pin ? ` data-pin="${escapeHtml(pin)}"` : '';
     const at = escapeHtml(pinSuffix(pin, info.page));
-    return `<a class="cite-link" href="#${slug}/${volume}/${page}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr} title="${escapeHtml(refers || raw)}">${inner}</a>`;
+    const via = viaLabel(info.via);
+    const title = via ? `${refers || raw}. ${via}` : refers || raw;
+    const viaAttr = info.via ? ` data-via="${escapeHtml(info.via)}"` : '';
+    return `<a class="cite-link" href="#${slug}/${volume}/${page}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr}${viaAttr} title="${escapeHtml(title)}">${inner}</a>`;
   }
   if (isStatute(info)) {
     return `<span class="cite-statute" title="${titled(STATUTE_NOTE)}">${inner}</span>`;
@@ -551,9 +634,12 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
   }
   if (c.resolvable) {
     const rel = caseRel ? ` rel="${escapeHtml(caseRel)}"` : '';
-    return `<div class="cited-case${wrap}">
+    // A case reached through an alias says where the link came from (#151).
+    const via = viaLabel(c.via);
+    const viaHtml = via ? `\n          <span class="cited-lookup cited-via">${escapeHtml(via)}</span>` : '';
+    return `<div class="cited-case${via ? ' cited-case-lookup' : wrap}">
           <span class="cited-status ok">&#10003;</span>
-          <a class="cited-case-link" href="${escapeHtml(caseHref(c))}" target="_blank"${rel}>${raw}</a>${refersHtml}
+          <a class="cited-case-link" href="${escapeHtml(caseHref(c))}" target="_blank"${rel}>${raw}</a>${refersHtml}${viaHtml}
         </div>`;
   }
   const externalUrl = safeExternalUrl(c.externalUrl);
@@ -601,6 +687,241 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
           <span class="cited-status no">&#10007;</span>
           <span class="cited-case-unresolved">${raw}</span>${refersHtml}
         </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Cited cases: one list entry per case, with its places in the text (#159)
+// ---------------------------------------------------------------------------
+
+/**
+ * For a citation stare.pub resolves, the case it opens, as a string two
+ * citations of the same case share: `slug/volume/page`, with the volume as
+ * cited (a split volume's `138-2` folder is volume 138) and `-<seq>` for a
+ * case after the first on its page. Null for anything else. A citation
+ * resolved through an alias (#151) names the case it reaches, so `260 N.W.
+ * 287` and `128 Neb. 783` meet here when the text cites both.
+ */
+export function caseIdentity(c) {
+  if (!c?.resolvable || isShortForm(c)) return null;
+  if (c.aliasOf) {
+    const file = String(c.aliasOf.caseFile || '');
+    const page = parseInt(file.replace(/^\[/, ''), 10);
+    if (!c.aliasOf.slug || Number.isNaN(page)) return null;
+    const seq = parseInt(file.slice(file.lastIndexOf('-') + 1), 10) || 1;
+    const volume = String(c.aliasOf.folder || '').replace(/-\d+$/, '');
+    return `${c.aliasOf.slug}/${volume}/${page}${seq > 1 ? `-${seq}` : ''}`;
+  }
+  if (!c.slug || c.volume == null || c.page == null) return null;
+  return `${c.slug}/${String(c.volume).replace(/-\d+$/, '')}/${parseInt(c.page, 10)}`;
+}
+
+/**
+ * Which category a list entry's status chips filter it under: `held` (a
+ * case stare.pub opens), `statute` (a statute or regulation, linked or
+ * not), `elsewhere` (a case in a volume stare.pub doesn't hold yet) or
+ * `unresolved` (a miss in a held volume, an index that couldn't be read, a
+ * short form with no antecedent).
+ */
+export function citeCategory(c) {
+  if (c.resolvable) return 'held';
+  if (isStatute(c) || safeExternalUrl(c.externalUrl)) return 'statute';
+  if (c.noAntecedent || heldVolumeMiss(c) || lookupFailed(c)) return 'unresolved';
+  return 'elsewhere';
+}
+
+/** The status chips' labels, by citeCategory, in the order they're shown. */
+export const CITE_CATEGORIES = [
+  ['held', 'In stare.pub'],
+  ['elsewhere', 'Not yet indexed'],
+  ['statute', 'Statutes'],
+  ['unresolved', 'Unresolved'],
+];
+
+/**
+ * Text for the list filter to match: lowercased, with punctuation dropped,
+ * so `a.2d` and `A.2d` meet. Letters and digits of any script stay; runs of
+ * anything else become one space.
+ */
+export function searchText(str) {
+  return String(str || '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+/** A filter query's words, as searchText makes them. */
+export function filterTokens(query) {
+  const t = searchText(String(query || '').replace(/[.'’]/g, ''));
+  return t ? t.split(' ') : [];
+}
+
+/**
+ * Whether an entry's search text (groupCitations' `search`) has every word
+ * of a query (filterTokens), each anywhere in it; spaces in the entry are
+ * ignored too, so `a2d` finds `A. 2d`.
+ */
+export function matchesFilter(search, tokens) {
+  if (!tokens.length) return true;
+  const spaced = String(search || '');
+  const joined = spaced.replace(/ /g, '');
+  return tokens.every(t => spaced.includes(t) || joined.includes(t));
+}
+
+/**
+ * The cited cases in a text: checkCitations' entries (`checked`) gathered
+ * one group per case, in order of first appearance. A group holds every
+ * full citation of the case, a parallel citation of it among them (citare's
+ * reading of `123 Ill. 2d 45, 524 N.E.2d 1`, the detected citation's
+ * `parallelTo`), any other citation that opens the same case
+ * (caseIdentity), and the short forms whose antecedent is one of those
+ * (`Id.`, `supra`, short cites). A short form to a statute with a pin of its
+ * own (`Id. § 1985`) is a different section and stays apart, as does one
+ * with no antecedent. Bare section references aren't grouped.
+ *
+ * `detected` is every detected citation (detectCitations' output, across
+ * opinions), for the parallels and the count; null leaves both out.
+ * `sameCase` is more `[a, b]` pairs of entry keys (a full citation's key is
+ * its raw string) to put in one group; parallel-citation reconciliation
+ * (#160) adds its pairs here, and the groups merge with no other change.
+ *
+ * Each group is `{ id, members, primary, count, search, category }`: `id`
+ * is `g0`, `g1`, ...; `members` its entries in order; `primary` the one
+ * the list shows (the first that stare.pub holds, else the first full
+ * citation, else the first entry); `count` how many places in the text cite
+ * it (null without `detected`); `search` the filter's text for it (every
+ * citation form, the reporters, and the case names the text gives); and
+ * `category` citeCategory of the primary. Every entry also gets `group`,
+ * its group's id, which the text's citations carry as `data-cite-group`.
+ */
+export function groupCitations(detected, checked, sameCase = []) {
+  const parent = new Map();
+  const add = (x) => { if (!parent.has(x)) parent.set(x, x); return x; };
+  const find = (x) => {
+    add(x);
+    while (parent.get(x) !== x) {
+      parent.set(x, parent.get(parent.get(x)));
+      x = parent.get(x);
+    }
+    return x;
+  };
+  const union = (a, b) => {
+    const [ra, rb] = [find(a), find(b)];
+    if (ra !== rb) parent.set(rb, ra);
+  };
+  const keyOf = (c) => c.key ?? c.raw;
+  const entries = (checked || []).filter(c => !isSectionReference(c));
+  const fullKeys = new Set(entries.filter(c => !isShortForm(c)).map(keyOf));
+
+  for (const c of entries) {
+    const key = keyOf(c);
+    add(`k:${key}`);
+    if (isShortForm(c)) {
+      // A short form joins its antecedent's case unless its status is its
+      // own (inheritStatus: a pinned short form of a linked statute).
+      const own = safeExternalUrl(c.antecedent?.externalUrl) && c.pin;
+      if (c.antecedent && !own && fullKeys.has(c.antecedent.raw)) union(`k:${c.antecedent.raw}`, `k:${key}`);
+      continue;
+    }
+    const id = caseIdentity(c);
+    if (id) union(`case:${id}`, `k:${key}`);
+  }
+  for (const c of detected || []) {
+    if (c.parallelTo && fullKeys.has(c.raw) && fullKeys.has(c.parallelTo)) union(`k:${c.parallelTo}`, `k:${c.raw}`);
+  }
+  for (const [a, b] of sameCase || []) {
+    if (parent.has(`k:${a}`) && parent.has(`k:${b}`)) union(`k:${a}`, `k:${b}`);
+  }
+
+  const byRoot = new Map();
+  const groups = [];
+  for (const c of entries) {
+    const root = find(`k:${keyOf(c)}`);
+    if (!byRoot.has(root)) {
+      const g = { id: `g${groups.length}`, members: [] };
+      byRoot.set(root, g);
+      groups.push(g);
+    }
+    const g = byRoot.get(root);
+    g.members.push(c);
+    c.group = g.id;
+  }
+
+  const groupOfKey = new Map(entries.map(c => [keyOf(c), c.group]));
+  const counts = new Map();
+  if (detected) {
+    for (const c of detected) {
+      const g = groupOfKey.get(citationKey(c));
+      if (g) counts.set(g, (counts.get(g) || 0) + 1);
+    }
+  }
+  const names = new Map();
+  for (const c of detected || []) {
+    if (c.caseName && fullKeys.has(c.raw)) {
+      const g = groupOfKey.get(c.raw);
+      if (!names.has(g)) names.set(g, new Set());
+      names.get(g).add(c.caseName);
+    }
+  }
+
+  for (const g of groups) {
+    const full = g.members.filter(m => !isShortForm(m));
+    g.primary = full.find(m => m.resolvable) || full[0] || g.members[0];
+    g.count = detected ? counts.get(g.id) || 0 : null;
+    g.category = citeCategory(g.primary);
+    const words = [];
+    for (const m of g.members) {
+      words.push(m.raw, m.reporter, m.caseName, m.antecedent?.raw);
+    }
+    words.push(...(names.get(g.id) || []));
+    g.search = searchText([...new Set(words.filter(Boolean))].join(' '));
+  }
+  return groups;
+}
+
+/**
+ * One cited case's list entry: the primary citation's entry (citedCaseHtml,
+ * with its status, link and labels unchanged), the case's other full
+ * citations, and, when the text cites it, a control that shows where, with
+ * the count and the previous and next controls citenav.js drives. '' for a
+ * group with no entry (citedCaseHtml's '').
+ */
+export function citedGroupHtml(g, caseHref, caseRel = 'noopener') {
+  const inner = citedCaseHtml(g.primary, caseHref, caseRel);
+  if (!inner) return '';
+  // The case's other full citations (a parallel citation, another reporter
+  // that opens the same case), each with the label or note its own entry
+  // would have: where an alias came from, a miss in a held volume, an index
+  // that couldn't be read.
+  const seen = new Set([g.primary.raw]);
+  const also = g.members
+    .filter(m => !isShortForm(m) && !seen.has(m.raw) && seen.add(m.raw))
+    .map((m) => {
+      const note = (m.resolvable && viaLabel(m.via)) || lookupFailed(m) || heldVolumeMiss(m) || '';
+      return `\n        <div class="cited-also">Also cited as ${escapeHtml(m.raw)}${note ? ` <span class="cited-also-note">${escapeHtml(note)}</span>` : ''}</div>`;
+    })
+    .join('');
+  const raw = escapeHtml(g.primary.raw);
+  const nav = g.count ? `
+        <div class="cited-nav">
+          <button type="button" class="cited-show" aria-label="Show where the text cites ${raw}: ${g.count} ${g.count === 1 ? 'place' : 'places'}"><span class="cited-count">${g.count}×</span> in text</button>
+          <span class="cited-step" hidden>
+            <button type="button" class="cited-prev" aria-label="Previous place ${raw} is cited" title="Previous ([)">&#8249;</button>
+            <span class="cited-pos"></span>
+            <button type="button" class="cited-next" aria-label="Next place ${raw} is cited" title="Next (])">&#8250;</button>
+          </span>
+        </div>` : '';
+  return `<div class="cited-entry" data-cite-group="${escapeHtml(g.id)}" data-cite-category="${escapeHtml(g.category)}" data-cite-search="${escapeHtml(g.search)}">
+        ${inner}${also}${nav}
+      </div>`;
+}
+
+/**
+ * The cited-cases list (the case viewer's sidebar and /check): one entry
+ * per group, ordered as orderCitedCases orders their primary citations.
+ */
+export function citedListHtml(groups, caseHref, caseRel = 'noopener') {
+  const byPrimary = new Map(groups.map(g => [g.primary, g]));
+  return orderCitedCases(groups.map(g => g.primary))
+    .map(p => citedGroupHtml(byPrimary.get(p), caseHref, caseRel))
+    .join('');
 }
 
 /**

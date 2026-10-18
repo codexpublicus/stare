@@ -44,7 +44,7 @@ function append(stream, text) {
   }
 }
 
-function walk(node, stream) {
+function walk(node, stream, skip = null) {
   for (const child of node.childNodes) {
     if (child.nodeType === 3) {
       append(stream, child.nodeValue);
@@ -54,7 +54,8 @@ function walk(node, stream) {
         if (page) stream.labels.push({ page, at: stream.text.length });
         continue;
       }
-      walk(child, stream);
+      if (skip?.(child)) continue;
+      walk(child, stream, skip);
       if (BLOCKS.has(child.tagName)) append(stream, ' ');
     }
   }
@@ -217,4 +218,56 @@ export function insertPageMarkers(container, breaks) {
 export function pageMarker(container, page) {
   if (page == null) return null;
   return container.querySelector(`[id="page-${String(page).replace(/["\\]/g, '')}"]`);
+}
+
+// The text of a footnote paragraph, as normalizeText makes it, without the
+// page labels in it or the footnote's own number (a link back to its mark).
+function footnoteText(el) {
+  const s = { text: '', labels: [] };
+  walk(el, s, (child) => child.tagName === 'A' && (child.getAttribute('href') || '').startsWith('#ref_'));
+  return s.text.trim();
+}
+
+/**
+ * The footnote paragraphs in each opinion of a case (#159). CAP's case JSON
+ * puts an opinion's footnotes at the end of its text, as plain paragraphs;
+ * its HTML has them as `<aside class="footnote" data-label="3">` at the end
+ * of the opinion's `article`. Each paragraph of an aside is found in the
+ * opinion's text by its words: `[{ paragraph, label }]` per opinion, with
+ * `paragraph` an index into the paragraphs renderTextHtml makes. `parse` is
+ * as for pageBreaks. Empty lists when the HTML has none.
+ */
+export function footnoteParagraphs(html, opinions, parse = (h) => new DOMParser().parseFromString(h, 'text/html')) {
+  const articles = [...parse(html).querySelectorAll('article.opinion')];
+  return opinions.map((op, i) => {
+    const article = articles[i];
+    if (!article) return [];
+    const labels = new Map();
+    for (const aside of article.querySelectorAll('aside.footnote')) {
+      const label = aside.getAttribute('data-label') || '';
+      const paras = aside.querySelectorAll('p');
+      for (const p of paras.length ? paras : [aside]) {
+        const text = footnoteText(p);
+        if (text && !labels.has(text)) labels.set(text, label);
+      }
+    }
+    if (!labels.size) return [];
+    const found = [];
+    const text = op.text || '';
+    const breaks = /\n+/g;
+    let from = 0;
+    let index = 0;
+    for (;;) {
+      const m = breaks.exec(text);
+      const p = text.slice(from, m ? m.index : text.length);
+      if (p.trim()) {
+        const label = labels.get(normalizeText(p).text.trim());
+        if (label !== undefined) found.push({ paragraph: index, label });
+        index++;
+      }
+      if (!m) break;
+      from = breaks.lastIndex;
+    }
+    return found;
+  });
 }

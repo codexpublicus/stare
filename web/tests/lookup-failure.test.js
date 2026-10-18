@@ -19,6 +19,10 @@ import {
 import { idxEntries } from '../public/js/idx.js';
 import { normalizeManifest } from '../public/js/manifest.js';
 
+// The place-in-the-text attributes (#159) are tested in cite-nav.test.js;
+// these tests read the rest of the markup.
+const withoutPlaces = (html) => html.replace(/ data-cite-(?:group|form)="[^"]*"/g, '');
+
 const FIXTURES = new URL('../../crates/stare/tests/fixtures/', import.meta.url);
 const BIN_138 = readFileSync(new URL('a3d-138.bin', FIXTURES));
 
@@ -157,7 +161,7 @@ describe('the reader, with a page check that fails', () => {
       (slug, volume, page) => checkPage(slug, volume, page, deps),
     );
     const map = new Map(unique.map((c) => [c.key, c]));
-    return renderTextHtml(text, occurrencesByOpinion[0], map).join('\n');
+    return withoutPlaces(renderTextHtml(text, occurrencesByOpinion[0], map).join('\n'));
   }
 
   for (const [name, deps] of [

@@ -20,6 +20,12 @@
 // per volume as cited, for every source, read instead of the .bin and .multi files.
 // Its `reporters` then covers every source, CourtListener-only reporters and volumes
 // included. An older manifest has no `idx`, and only the .bin and .multi files.
+//
+// `aliases` (#151) lists the volumes whose `.idx.gz` has only aliases: parallel
+// citations into cases other volumes hold (first-series N.W., N.Y.S.2d). stare.pub holds
+// none of their own cases, so they aren't in `reporters`; a page is looked up there, a
+// hit resolves to the alias's case, and a miss links out like any volume stare.pub
+// doesn't hold.
 // (#148's `cl` block, which nothing ever published, is ignored.)
 
 import { pruneIndexCache } from './cache.js';
@@ -50,11 +56,12 @@ export function isVolumeKey(s) {
   return typeof s === 'string' && VOLUME_KEY.test(s);
 }
 
-// Either format, as { legacy, version, base, idx, reporters: { slug: [folder, ...] }, parts }.
+// Either format, as { legacy, version, base, idx, reporters: { slug: [folder, ...] }, parts,
+// aliases: { slug: [volume, ...] } }.
 // `version` is the data version, or null for a manifest without one; `base` is the
 // index files' prefix, or '' for the root; `idx` the unified index's format, or null.
 export function normalizeManifest(raw) {
-  const empty = { legacy: true, version: null, base: '', idx: null, reporters: {}, parts: {} };
+  const empty = { legacy: true, version: null, base: '', idx: null, reporters: {}, parts: {}, aliases: {} };
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return empty;
   const v2 = 'format' in raw;
   const map = v2 ? raw.reporters : raw;
@@ -68,7 +75,16 @@ export function normalizeManifest(raw) {
   const version = typeof raw.version === 'string' && raw.version.trim() ? raw.version.trim() : null;
   const base = v2 && isIndexBase(raw.base) ? raw.base : '';
   const idx = v2 && Number.isSafeInteger(raw.idx) ? raw.idx : null;
-  return { legacy: !v2, version, base, idx, reporters, parts };
+  const aliases = {};
+  if (v2 && raw.aliases && typeof raw.aliases === 'object') {
+    for (const [slug, volumes] of Object.entries(raw.aliases)) {
+      if (!Array.isArray(volumes)) continue;
+      const held = reporters[slug] || [];
+      const list = volumes.map(String).filter((v) => isVolumeKey(v) && !held.includes(v));
+      if (list.length) aliases[slug] = list;
+    }
+  }
+  return { legacy: !v2, version, base, idx, reporters, parts, aliases };
 }
 
 // The unified index's format this reader knows.
@@ -87,6 +103,13 @@ export function hasVolume(m, reporter, volume) {
 // unified index), or the number of a volume CAP split over several folders.
 export function holdsVolume(m, reporter, volume) {
   return hasVolume(m, reporter, volume) || Array.isArray(m.parts[reporter]?.[String(volume)]);
+}
+
+// Whether `volume` (as cited) has an index file of aliases only (the manifest's
+// `aliases`), with the unified index: look the page up, and treat a miss as a volume
+// stare.pub doesn't hold.
+export function hasAliasVolume(m, reporter, volume) {
+  return hasIdx(m) && (m.aliases?.[reporter] || []).includes(String(volume));
 }
 
 // The volume number a CAP folder is folded into in the unified index ("138" for

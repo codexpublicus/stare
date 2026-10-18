@@ -39,8 +39,10 @@ pub fn parse_case_json(json: &[u8]) -> Result<String, JsError> {
 /// Parse one part of a volume's unified index (`<reporter>/<volume>.idx.gz`), gzipped or
 /// plain. Returns JSON: `{ parts: ["1012", ...], entries: [entry], malformed: [line
 /// numbers] }`, each entry `{ page, source, ref }` plus `folder` and `case_file` for a
-/// `cap` line or `cluster_id` and `hash` for a `cl` line. Throws on bytes that aren't
-/// gzip or UTF-8 text.
+/// `cap` line or `cluster_id` and `hash` for a `cl` line. An alias (#151), a `cap` line
+/// naming a case in another volume, also has `reporter` (that case's slug, with `folder`
+/// its folder) and `via` (where the alias came from, `cl:8077312`). Throws on bytes
+/// that aren't gzip or UTF-8 text.
 #[wasm_bindgen]
 pub fn parse_idx(bytes: &[u8]) -> Result<String, JsError> {
     let idx = stare::idx::parse_bytes(bytes).map_err(|e| JsError::new(&format!("{e:#}")))?;
@@ -54,7 +56,8 @@ pub fn parse_idx(bytes: &[u8]) -> Result<String, JsError> {
 
 /// Look `page` (as cited: digits, or a label like `xxix`) up in one part of a volume's
 /// unified index, gzipped or plain. Returns JSON: `{ part, entries }`. `entries` are the
-/// lines at the page, CAP's first, shaped as in `parse_idx`. `part` is the part the page
+/// lines at the page, the volume's own CAP cases first, then aliases, then
+/// CourtListener's records, shaped as in `parse_idx`. `part` is the part the page
 /// falls in, from part 0's `#parts` header: when it isn't 0 and this was part 0, fetch
 /// `<volume>.<part>.idx.gz` and look again there. Throws on unreadable bytes or a page
 /// that can't be one.

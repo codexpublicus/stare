@@ -4,9 +4,12 @@
 .reader-title { font-family: var(--font-text); font-size: 22px; font-weight: 600; line-height: 1.3; color: var(--text); }
 .reader-meta { margin-top: 6px; font-size: 14px; color: var(--text-secondary); }
 .reader-source { margin-top: 4px; font-size: 13px; color: var(--text-secondary); }
+.reader-alias { max-width: 632px; margin: 24px auto 0; padding: 8px 12px; font-size: 13px; color: var(--text-secondary); border-left: 3px solid var(--border-light); }
 .reader-source a, .sidebar-source a { color: var(--link); text-decoration: none; }
 .reader-source a:hover, .sidebar-source a:hover { color: var(--link-hover); text-decoration: underline; }
 .sidebar-source { margin-top: 6px; font-size: 12px; }
+.reader-blocked { margin-top: 2px; font-size: 13px; color: var(--text-secondary); }
+.sidebar-blocked { margin-top: 4px; font-size: 12px; }
 .reader-author { font-family: var(--font-text); font-style: italic; color: var(--text-secondary); margin-bottom: 16px; font-size: 15px; }
 .reader-text { font-family: var(--font-text); font-size: 16px; line-height: 1.8; color: var(--text-body); }
 .reader-text p { margin-bottom: 16px; }
@@ -38,7 +41,7 @@
 .cite-badge.primary { background: var(--cite-badge-primary-bg); color: var(--cite-badge-primary-text); font-weight: 500; }
 
 .cited-case { padding: 6px 0; display: flex; align-items: center; gap: 6px; }
-.cited-case + .cited-case { border-top: 1px solid var(--border-light); }
+.cited-case + .cited-case, .cited-entry + .cited-entry { border-top: 1px solid var(--border-light); }
 .cited-case-link { color: var(--link); text-decoration: none; font-size: 13px; flex: 1; }
 .cited-case-link:hover { text-decoration: underline; }
 .cited-case-unresolved { color: var(--unresolved); font-size: 13px; flex: 1; }
@@ -53,7 +56,7 @@
 .cited-case-lookup { flex-wrap: wrap; }
 .cited-lookup { flex-basis: 100%; padding-left: 20px; font-size: 12px; }
 .cited-lookup-link { color: var(--text-secondary); }
-.cited-miss { color: var(--text-secondary); }
+.cited-miss, .cited-via { color: var(--text-secondary); }
 .cited-lookup-link:hover { color: var(--text); }
 
 .citation-status-text { padding: 4px 0; font-size: 13px; color: var(--text-secondary); min-height: 1.2em; }
@@ -110,3 +113,44 @@
   flex-shrink: 0;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* A footnote, which CAP's case text puts after the opinion as plain
+   paragraphs (#159), with its number. */
+.reader-text p.reader-footnote { font-size: 14px; color: var(--footnote-text); }
+.reader-text p.reader-footnote::before { content: attr(data-footnote); font-family: var(--font-ui); font-size: 11px; vertical-align: super; margin-right: 4px; }
+.reader-text p:not(.reader-footnote) + p.reader-footnote { border-top: 1px solid var(--border-light); padding-top: 16px; }
+
+/* A cited case's places in the text (#159): every place once its list entry
+   is used, the current one stronger. A short form (Id., supra, a short cite)
+   is outlined, so "cited in full here" and "Id. here" look different. */
+.cite-place { background: var(--status-bg); border-radius: 2px; box-shadow: 0 0 0 2px var(--status-bg); scroll-margin: 96px; }
+.cite-place[data-cite-form="short"] { background: transparent; box-shadow: none; outline: 1px dashed var(--status-text); outline-offset: 1px; }
+.cite-place.cite-place-current { background: var(--status-text); color: var(--bg); box-shadow: 0 0 0 2px var(--status-text); }
+.cite-place[data-cite-form="short"].cite-place-current { background: transparent; color: var(--status-text); outline: 2px solid var(--status-text); box-shadow: none; }
+
+/* One cited case in a list: its citation's entry, its other citations, and
+   the controls that go to where the text cites it. */
+.cited-entry { padding: 2px 4px; margin: 0 -4px; border-radius: 4px; }
+.cited-entry > .cited-case { border-top: 0; }
+.cited-entry.cited-entry-hover, .cited-entry.cited-entry-active { background: var(--status-bg); }
+.cited-also { padding: 0 0 4px 20px; font-size: 12px; color: var(--text-secondary); }
+.cited-also-note::before { content: "· "; }
+.cited-nav { display: flex; align-items: center; gap: 6px; padding: 0 0 6px 20px; font-size: 12px; color: var(--text-secondary); }
+.cited-nav button { font: inherit; color: var(--link); background: none; border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; cursor: pointer; }
+.cited-nav button:hover { border-color: var(--link); }
+.cited-nav button:focus-visible, .cited-chip:focus-visible, .cited-filter-input:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+.cited-count { font-variant-numeric: lining-nums tabular-nums; font-weight: 600; }
+.cited-step { display: inline-flex; align-items: center; gap: 4px; }
+.cited-step[hidden] { display: none; }
+.cited-pos { min-width: 4.5em; text-align: center; font-variant-numeric: lining-nums tabular-nums; }
+
+.cited-filter { margin: 4px 0 8px; }
+.cited-filter-input { width: 100%; padding: 5px 8px; font-size: 13px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; }
+.cited-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.cited-chip { font: inherit; font-size: 11px; padding: 1px 8px; color: var(--text-secondary); background: none; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.cited-chip[aria-pressed="true"] { color: var(--status-text); background: var(--status-bg); border-color: var(--status-text); }
+.cited-filter-count { margin-top: 4px; font-size: 12px; color: var(--text-secondary); font-variant-numeric: lining-nums tabular-nums; }
+.cited-filter-count:empty { display: none; }
+.cited-entry[hidden] { display: none; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

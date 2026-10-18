@@ -1,0 +1,62 @@
+{
+  "id": 9876543,
+  "name": "Ellen Smith, Appellant v. Robert Jones and Jones Hauling, LLC",
+  "name_abbreviation": "Smith v. Jones",
+  "decision_date": "2021-04-02",
+  "citations": [
+    {
+      "type": "official",
+      "cite": "250 A.3d 100"
+    }
+  ],
+  "court": {
+    "name": "Supreme Court of Pennsylvania"
+  },
+  "jurisdiction": {
+    "name_long": "Pennsylvania"
+  },
+  "casebody": {
+    "opinions": [
+      {
+        "type": "majority",
+        "author": "Saylor",
+        "text": "This hand-made record stands in for a CourtListener case in stare's tests. Its text, names and docket are invented, and so is its blocked flag. The appellant's number, XXX-XX-XXXX, was redacted.\n\nThe question is whether a hauler's written estimate is an offer. We have held that a residence, not a mailing address, is the test of domicile. D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App. 1943).\n\nThe order of the Superior Court is affirmed."
+      },
+      {
+        "type": "dissent",
+        "author": "Wecht",
+        "text": "I respectfully dissent. An estimate invites an offer; it does not make one."
+      }
+    ]
+  },
+  "source": {
+    "name": "courtlistener",
+    "export": "2026-09-30",
+    "first_seen": "2026-09-30",
+    "ids": {
+      "cluster": 9876543,
+      "docket": 6543210,
+      "opinions": [
+        11111,
+        11112
+      ]
+    },
+    "docket_number": "J-12-2021",
+    "precedential_status": "Unpublished",
+    "text_field": [
+      "html_with_citations",
+      "plain_text"
+    ],
+    "url": "https://www.courtlistener.com/opinion/9876543/smith-v-jones/",
+    "cl_blocked": {
+      "blocked": true,
+      "date_blocked": "2021-04-23",
+      "docket_blocked": false,
+      "reasons": [
+        "id-number",
+        "unpublished-30y"
+      ],
+      "reason_basis": "inferred from CourtListener's published blocking rules"
+    }
+  }
+}

@@ -75,3 +75,41 @@ export function sourceLineHtml(caseData, className = 'reader-source', { docket =
   ].filter(Boolean).map((t) => ` &middot; <span>${t}</span>`).join('');
   return `<div class="${escapeHtml(className)}">${from}${extra}</div>`;
 }
+
+// The provenance line's wording. Placeholder; the owner chooses the final text.
+export const CL_BLOCKED_NOTICE = 'CourtListener excludes this case from search engines.';
+
+const REASON_PHRASES = {
+  'id-number': 'a redacted ID number in the text',
+  'unpublished-30y': 'unpublished within 30 years',
+  'court-category': 'a military, tax or similar court within 30 years',
+  'bankruptcy-docket': 'a bankruptcy docket',
+  'keyword:minor+child': 'mentions "minor" and "child" within 30 years',
+};
+
+// A short readable phrase for one `source.cl_blocked` reason code; an unrecognized code as is.
+export function reasonPhrase(code) {
+  if (Object.hasOwn(REASON_PHRASES, code)) return REASON_PHRASES[code];
+  if (code.startsWith('keyword:')) return `mentions "${code.slice(8)}" within 30 years`;
+  return code;
+}
+
+/**
+ * The provenance line for a case CourtListener blocks from search engines (its record's
+ * `source.cl_blocked`, from stare-builder's blocking.py): the notice, then the reasons
+ * as inferred, "(inferred: unpublished within 30 years)", in a div of `className`. The
+ * reasons are stare-builder's inference, never CourtListener's statement. Nothing else
+ * about the case changes. '' for a case that isn't blocked. Mirrors `ClBlocked::notice`
+ * in crates/stare/src/case.rs.
+ */
+export function blockedLineHtml(caseData, className = 'reader-blocked') {
+  const b = isClRecord(caseData) ? caseData.source.cl_blocked : null;
+  if (!b || typeof b !== 'object') return '';
+  const unverifiable = b.unverifiable && typeof b.unverifiable === 'object' ? b.unverifiable : {};
+  const known = (Array.isArray(b.reasons) ? b.reasons : [])
+    .filter((r) => typeof r === 'string' && r !== 'unknown')
+    .map((r) => (Object.hasOwn(unverifiable, r) ? `${reasonPhrase(r)}, unverified` : reasonPhrase(r)));
+  const why = known.length ? `(inferred: ${known.join('; ')})` : '(reason unknown)';
+  const title = typeof b.reason_basis === 'string' ? ` title="${escapeHtml(b.reason_basis)}"` : '';
+  return `<div class="${escapeHtml(className)}"${title}>${escapeHtml(`${CL_BLOCKED_NOTICE} ${why}`)}</div>`;
+}

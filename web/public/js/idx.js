@@ -6,7 +6,10 @@
 // An entry is `{ page, source, ref }` plus, for `source: 'cap'`, `case_file` and
 // `folder` (set when the case is in another CAP folder of a volume CAP split, whose zip
 // is `<folder>.zip`), or, for `source: 'cl'`, `cluster_id` and `hash` (the
-// CourtListener record). CAP's entries come first.
+// CourtListener record). An alias (#151) is a `cap` entry with `reporter` set: the case
+// is `case_file` in `<reporter>/<folder>.zip`, another volume's, and `via` says where
+// the alias came from (`cl:8077312`, CourtListener's citation metadata). The volume's
+// own CAP cases come first, then aliases, then CourtListener's records.
 
 import { fetchCached } from './cache.js';
 import { indexPath } from './manifest.js';
