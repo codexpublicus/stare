@@ -1,0 +1,51 @@
+# stare.pub
+
+> stare.pub resolves U.S. case law citations to the full text of the case. It holds the Harvard Caselaw Access Project (CAP) corpus, 6.9 million cases from 1658 to 2020, and is adding CourtListener's records for cases CAP doesn't have. Everything is static files: the site, the citation index and the case text. There is no API, no key and no server to call; resolving a citation is two or three plain HTTPS GETs.
+
+## Resolving a citation
+
+1. Split the citation into volume, reporter and first page: `31 A.2d 647` is volume `31`, reporter `A.2d`, page `647`.
+2. Turn the reporter into its slug, the directory name the files use: CAP's slug for the reporter where CAP has it, otherwise one made from the reporter's name. `A.2d` is `a2d`, `F. Supp. 2d` is `f-supp-2d`, `Cal. App. 4th` is `cal-app-4th`, `U.S.` is `us`, `NY Slip Op` is `ny-slip-op`. The keys of the manifest's `reporters` object are every slug there is.
+3. GET `https://idx.stare.pub/manifest.json`. It's JSON, cached for 60 seconds, and names the live index build:
+   - `reporters`: slug → the volume folders held. A volume missing here isn't in the corpus.
+   - `parts`: slug → volume → `[{volume, first_page, last_page}]`, for the volumes CAP split over two or three folders (`a3d` volume `138` is folders `138` and `138-2`). Use the folder whose page range holds the page; the ranges can overlap, so try each.
+   - `base`: where this build's index files are, relative to the manifest (`v/v2026.10.18/`). Without it they're at the root.
+   - `idx`: `1` when the build has the unified text index below. Without it, skip to step 5.
+4. With `idx` 1, GET `https://idx.stare.pub/<base><slug>/<volume>.idx.gz`. It's served as `application/gzip` with no `Content-Encoding`, so gunzip it yourself. Each line is `page,source,ref`:
+   - `page` is a case's first page, lowercased for page labels (`xxix`).
+   - `source` `cap`: `ref` is the case file in the volume zip (`0647-01`). A ref with a folder (`138-2/1012-01`) is in that folder's zip. Fetch `https://data.stare.pub/cap/<slug>/<folder>.zip` and read `json/<ref>.json` from it.
+   - `source` `cl`: `ref` is `<cluster_id>/<hash>`. GET `https://data.stare.pub/cl/c/<cluster_id>/<hash>.json.gz`, served gzipped like the index.
+   - Several lines can share a page; the first is the case cited, and a `cl` line on a page that has a `cap` line is the same decision from another source.
+   - A large volume is split into parts: part 0 then starts with `#parts,<first page of part 1>,<first page of part 2>,...`, and part n is `<slug>/<volume>.<n>.idx.gz`. Skip blank lines and other `#` lines.
+5. Without `idx`, GET the volume zip, `https://data.stare.pub/cap/<slug>/<folder>.zip`, and read `metadata/CasesMetadata.json`: an array with one object per case, each with `first_page`, `last_page` and `file_name`. The case is `json/<file_name>.json` in the same zip.
+
+The index keys cases by first page. For a pin cite (`31 A.2d 647, 648`), look up the first page.
+
+A case's JSON has `name`, `name_abbreviation`, `decision_date`, `citations`, `court`, `jurisdiction` and `casebody`, whose `opinions` each have `type`, `author` and `text`. A CourtListener record has the same shape plus a `source` block naming CourtListener, its ids and the case's URL there. CAP's own ids and CourtListener's overlap, so key a case on its source and id, never the id alone.
+
+Index files under `v/<version>/` and the case files never change once published; cache them as long as you like. Only `manifest.json` changes, when a new build goes live.
+
+## Pages
+
+- [stare.pub](https://stare.pub/): look up a citation; the case viewer opens a case at `https://stare.pub/#<slug>/<volume>/<page>`, such as `https://stare.pub/#a2d/31/647`
+- [Brief checker](https://stare.pub/check/): paste a brief and check every citation in it
+- [About](https://stare.pub/about/): what stare is, where the data comes from and what's new
+- [Data](https://stare.pub/data/): the index builds and their counts
+- [Updates](https://stare.pub/updates/): every site release ([Atom feed](https://stare.pub/updates.xml))
+
+## Files
+
+- [Index manifest](https://idx.stare.pub/manifest.json): the live build, its reporters and volumes
+- [Index build reports](https://idx.stare.pub/reports/index.json): every published build's totals
+- [Example case zip](https://data.stare.pub/cap/a2d/31.zip): volume 31 of the Atlantic Reporter, Second Series
+
+## Local tools
+
+The `stare` command-line tool resolves citations and prints case text from the same static files, and a local MCP server in it, `stare mcp`, is planned, so an agent can resolve citations through tools running on its own machine. Neither is published as a package yet. stare.pub hosts no MCP server; anything that runs, runs on your side.
+
+## Crawling and use
+
+- The site's pages, and the curated case pages under `/case/` as they're added, may be crawled; [sitemap.xml](https://stare.pub/sitemap.xml) lists them with the date each last changed. Case pages under `/c/` are not to be crawled. To work through many cases, fetch the static files above instead of crawling pages; that's what they're for.
+- `idx.stare.pub` and `data.stare.pub` are data hosts, and their `robots.txt` disallows crawling them. Fetching the files the recipe names is fine.
+- Content signals, on every host: `search=yes, ai-input=yes`. `ai-train` is not stated. The definitions are Cloudflare's Content Signals Policy, quoted in [robots.txt](https://stare.pub/robots.txt).
+- Contact: info@codexpublicus.org
