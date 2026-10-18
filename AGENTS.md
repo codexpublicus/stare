@@ -35,7 +35,8 @@ runbooks and the homelab notes. Its AGENTS.md covers them.
 This repo is the reader: the site, the CLI, stare-wasm, `crates/stare` with the readers
 and writers for every published format (the per-volume index, the manifest, records), and
 the format specs, including `schemas/` for the build report and `reports/index.json` that
-`/data` reads. stare-builder's report test validates against `schemas/` at its pinned rev. A
+`/data` reads. `stare::schemas` compiles them in, and stare-builder's report test validates
+against that at its pinned rev. A
 change to a published format lands here first, in the format's reader, writer and the docs
 below; stare-builder pins `crates/stare` by commit and picks it up when it bumps the pin.
 stare-builder depends on stare, never the other way round, and nothing here may depend on
