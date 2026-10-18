@@ -68,6 +68,12 @@ pub struct DetectedCitation {
     /// spacing of it (`U. S.`), and for laws and journals.
     #[serde(default)]
     pub corrected_reporter: Option<String>,
+    /// Whether the citation is to an official reporter: a state's
+    /// (reporters-db's `state` reporters, `Neb.`, `Pa. Super.`) or the U.S.
+    /// Reports. Of a parallel run's printings stare.pub holds, the official
+    /// one shows by default (#160).
+    #[serde(default)]
+    pub official: bool,
     /// Year if detected
     pub year: Option<i32>,
     /// External URL for statutes/regulations (Cornell, govinfo, eCFR and
@@ -131,6 +137,8 @@ pub struct Antecedent {
     pub reporter: Option<String>,
     #[serde(default)]
     pub corrected_reporter: Option<String>,
+    #[serde(default)]
+    pub official: bool,
     pub year: Option<i32>,
     pub external_url: Option<String>,
     #[serde(default)]
@@ -176,6 +184,7 @@ impl DetectedCitation {
             page: self.page.clone(),
             reporter: self.reporter.clone(),
             corrected_reporter: self.corrected_reporter.clone(),
+            official: self.official,
             year: self.year,
             external_url: self.external_url.clone(),
             law: self.law.clone(),
@@ -203,6 +212,18 @@ fn case_name(c: &Citation) -> Option<String> {
     // which citare v0.7.0 resolves to the citation after it (citare#84) and
     // reports as that citation's case name. It names no case.
     (!regex!(r"(?i)^(?:id|ibid)\.").is_match(&name)).then_some(name)
+}
+
+/// Whether a case citation is to an official reporter (see
+/// `DetectedCitation::official`), by the edition citare reads it as.
+fn official(c: &Citation) -> bool {
+    let Some(r) = c.resource_common() else {
+        return false;
+    };
+    r.edition_guess
+        .as_ref()
+        .or_else(|| r.all_editions.first())
+        .is_some_and(|e| e.reporter.cite_type == "state" || e.slug.as_deref() == Some("us"))
 }
 
 /// The edition a case citation's reporter was read as when it matched only
@@ -291,6 +312,7 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
                 page: groups.get("page").cloned().flatten(),
                 reporter: groups.get("reporter").cloned().flatten(),
                 corrected_reporter: corrected_reporter(c),
+                official: official(c),
                 year: c.resource_common().and_then(|r| r.year),
                 external_url: None,
                 law: None,
@@ -1964,6 +1986,34 @@ mod tests {
                 .corrected_reporter
                 .as_deref(),
             Some("Ohio St.")
+        );
+    }
+
+    /// A state's official reporter and the U.S. Reports are official; a
+    /// regional reprint, the Supreme Court Reporter and a federal reporter
+    /// aren't (#160).
+    #[test]
+    fn official_reporters() {
+        let cites = detect_citations(
+            "Pettegrew v. Pettegrew, 128 Neb. 783, 260 N.W. 287 (1935). \
+             Roe v. Wade, 410 U.S. 113, 93 S. Ct. 705 (1973). \
+             Smith v. Jones, 31 A.2d 650, 150 Pa. Super. 1 (1943). 10 F.4th 100.",
+        );
+        let official: Vec<(&str, bool)> = cites
+            .iter()
+            .map(|c| (c.matched_text.as_str(), c.official))
+            .collect();
+        assert_eq!(
+            official,
+            [
+                ("128 Neb. 783", true),
+                ("260 N.W. 287", false),
+                ("410 U.S. 113", true),
+                ("93 S. Ct. 705", false),
+                ("31 A.2d 650", false),
+                ("150 Pa. Super. 1", true),
+                ("10 F.4th 100", false),
+            ]
         );
     }
 
