@@ -724,6 +724,23 @@ test.describe('the unified per-volume index', () => {
     expect(seen.bins).toEqual([]);
   });
 
+  // A blocked case (stare-builder#17) renders in full, with a quiet provenance line.
+  test('a case CourtListener blocks renders in full, with the blocked line', async ({ page }) => {
+    await routeIdx(page);
+    const blocked = readFileSync(new URL('../../crates/stare/tests/fixtures/cl-record-blocked.json', import.meta.url));
+    await page.route(RECORD_URL, (route) => route.fulfill({
+      headers: CORS, contentType: 'application/gzip', body: gzipSync(blocked),
+    }));
+    await page.goto('/#a3d/250/100-01');
+    await expect(page.locator('#topbar-case')).toHaveText('Smith v. Jones');
+    const line = 'CourtListener excludes this case from search engines. '
+      + '(inferred: a redacted ID number in the text; unpublished within 30 years)';
+    await expect(page.locator('#reader .reader-blocked')).toHaveText(line);
+    await expect(page.locator('#sidebar .sidebar-blocked')).toHaveText(line);
+    await expect(page.locator('#reader .reader-author')).toHaveText(['Saylor', 'Wecht']);
+    await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
+  });
+
   test('a pin cite into a record opens the case at the top', async ({ page }) => {
     await routeIdx(page);
     await page.goto('/#a3d/250/100-01@103');

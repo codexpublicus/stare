@@ -594,6 +594,14 @@ fn print_case(result: &stare::resolve::CaseResult) {
     if let Some(line) = source_line(&result.case) {
         println!("{}", line);
     }
+    if let Some(blocked) = result
+        .case
+        .source
+        .as_ref()
+        .and_then(|s| s.cl_blocked.as_ref())
+    {
+        println!("{}", blocked.notice());
+    }
     println!();
     for opinion in &result.case.casebody.opinions {
         if let Some(author) = &opinion.author {
