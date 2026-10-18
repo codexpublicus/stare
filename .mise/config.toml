@@ -3,6 +3,10 @@ claude = "latest"
 s5cmd = "latest"
 node = "22"
 "ubi:rustwasm/wasm-pack" = "0.13.1"
+# wasm-pack runs the wasm-bindgen on PATH when its version matches Cargo.lock's
+# wasm-bindgen; keep this pin equal to it. Without it, a global mise shim for
+# another wasm-bindgen version breaks wasm-pack (#156).
+"github:wasm-bindgen/wasm-bindgen" = "0.2.114"
 wrangler = "4.141.0"
 uv = "latest"
 "aqua:orhun/git-cliff" = "2.14.2"
