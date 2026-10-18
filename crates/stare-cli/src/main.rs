@@ -717,6 +717,9 @@ enum CheckStatus {
     /// The page is a parallel citation of a case stare.pub has, through an alias from
     /// CourtListener's citation metadata (#151): found, labelled with its source.
     FoundAlias,
+    /// Not found on its own, but citare reads it as a parallel citation of one that is
+    /// (#160): found through that partner, labelled as inferred from the citing text.
+    FoundPartner,
     /// A statute or regulation, linked to its text.
     External,
     /// A statute or regulation with no link to its text yet.
@@ -736,6 +739,7 @@ impl CheckStatus {
         match self {
             CheckStatus::Found => "found",
             CheckStatus::FoundAlias => "found_alias",
+            CheckStatus::FoundPartner => "found_partner",
             CheckStatus::External => "external",
             CheckStatus::Statute => "statute",
             CheckStatus::HeldMiss => "held_miss",
@@ -880,6 +884,99 @@ fn check_status(src: &Sources, c: &stare::cite::DetectedCitation) -> CheckStatus
     }
 }
 
+/// The case a citation that is found opens, as [`stare::parallel::case_at`] and
+/// [`stare::parallel::alias_case`] name it, so a parallel citation through an alias and
+/// the citation it is an alias of meet. The index files it reads are cached by then.
+fn check_case(src: &Sources, c: &stare::cite::DetectedCitation) -> Option<String> {
+    let t = check_target(c)?;
+    let page = cited_page(t.page?)?;
+    let (slug, volume) = (t.slug?, t.volume?.to_string());
+    if let Ok(Some(entries)) = idx_entries(src, &slug, &volume, &page) {
+        if let Some((reporter, folder, file)) = entries.first().and_then(|e| e.alias_target()) {
+            return Some(stare::parallel::alias_case(reporter, folder, file));
+        }
+    }
+    Some(stare::parallel::case_at(&slug, &volume, &page))
+}
+
+/// What reconciling the text's parallel runs (#160) says of a citation, by its raw string.
+#[derive(Default)]
+struct ParallelVerdict {
+    /// The raw string of the citation it is found through.
+    partner: Option<String>,
+    /// The raw strings of its parallel citations that open a different case.
+    conflicts: Vec<String>,
+    /// The raw string of the first citation of its run, when it has conflicts.
+    run: Option<String>,
+}
+
+/// [`stare::parallel::reconcile`] over the full case citations in `detected`, with
+/// `status` and `case` looking each up, gathered by raw string.
+fn reconcile_parallels(
+    detected: &[stare::cite::DetectedCitation],
+    mut status: impl FnMut(&stare::cite::DetectedCitation) -> CheckStatus,
+    mut case: impl FnMut(&stare::cite::DetectedCitation) -> Option<String>,
+) -> std::collections::HashMap<String, ParallelVerdict> {
+    use stare::parallel::{Lookup, Printing};
+    let mut out: std::collections::HashMap<String, ParallelVerdict> = Default::default();
+    // Index in `detected` → index among the printings.
+    let mut printing_of: std::collections::HashMap<usize, usize> = Default::default();
+    let mut members = Vec::new();
+    let mut printings: Vec<Printing> = Vec::new();
+    for (i, c) in detected.iter().enumerate() {
+        if c.citation_type != "FullCaseCitation" {
+            continue;
+        }
+        let at = printings.len();
+        let run = c
+            .parallel_of
+            .and_then(|r| printing_of.get(&r).copied())
+            .map(|r| printings[r].run)
+            .unwrap_or(at);
+        printing_of.insert(i, at);
+        members.push(c);
+        printings.push(Printing {
+            run,
+            official: c.official,
+            lookup: Lookup::Unknown,
+        });
+    }
+    if printings.iter().enumerate().all(|(i, p)| p.run == i) {
+        return out;
+    }
+    for (p, c) in printings.iter_mut().zip(&members) {
+        p.lookup = match status(c) {
+            CheckStatus::Found | CheckStatus::FoundAlias => match case(c) {
+                Some(case) => Lookup::Found { case },
+                None => Lookup::Unknown,
+            },
+            CheckStatus::HeldMiss => Lookup::HeldMiss,
+            CheckStatus::NotHeld => Lookup::NotHeld,
+            _ => Lookup::Unknown,
+        };
+    }
+    let verdicts = stare::parallel::reconcile(&printings);
+    for (i, v) in verdicts.iter().enumerate() {
+        let raw = &members[i].matched_text;
+        let entry = out.entry(raw.clone()).or_default();
+        if let Some(p) = v.partner {
+            entry
+                .partner
+                .get_or_insert_with(|| members[p].matched_text.clone());
+        }
+        for &j in &v.conflicts {
+            let other = &members[j].matched_text;
+            if other != raw && !entry.conflicts.contains(other) {
+                entry.conflicts.push(other.clone());
+            }
+        }
+        if !v.conflicts.is_empty() {
+            entry.run = Some(members[printings[i].run].matched_text.clone());
+        }
+    }
+    out
+}
+
 /// The `via` of the alias a citation resolved through (`cl:8077312`), for a citation
 /// whose status is [`CheckStatus::FoundAlias`]. The index files it reads are cached by
 /// then.
@@ -900,6 +997,16 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
     };
 
     let detected = stare::cite::detect_citations(&text);
+    let mut statuses = std::collections::HashMap::new();
+    let parallels = reconcile_parallels(
+        &detected,
+        |c| {
+            *statuses
+                .entry(c.matched_text.clone())
+                .or_insert_with(|| check_status(src, c))
+        },
+        |c| check_case(src, c),
+    );
 
     // One entry per citation and antecedent: every `Id.` that refers to
     // the same case shares one, and `Id.`s that refer to different cases
@@ -916,10 +1023,22 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
         if !seen.insert((c.matched_text.clone(), antecedent.clone())) {
             continue;
         }
-        let status = check_status(src, c);
+        let mut status = check_status(src, c);
         let via = (status == CheckStatus::FoundAlias)
             .then(|| check_via(src, c))
             .flatten();
+        // A full citation's own verdict, or a short form's antecedent's partner.
+        let own = parallels
+            .get(&c.matched_text)
+            .filter(|_| !c.is_short_form());
+        let partner = parallels
+            .get(antecedent.as_ref().unwrap_or(&c.matched_text))
+            .and_then(|v| v.partner.clone());
+        if partner.is_some() && matches!(status, CheckStatus::HeldMiss | CheckStatus::NotHeld) {
+            status = CheckStatus::FoundPartner;
+        }
+        let partner = partner.filter(|_| status == CheckStatus::FoundPartner);
+        let conflicts = own.map(|v| v.conflicts.clone()).unwrap_or_default();
         let target = check_target(c);
         citations.push(serde_json::json!({
             "raw": c.matched_text, "type": c.citation_type,
@@ -930,8 +1049,14 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             "pin": c.pin,
             "antecedent": antecedent,
             "status": status.as_str(),
-            "resolvable": matches!(status, CheckStatus::Found | CheckStatus::FoundAlias),
+            "resolvable": matches!(
+                status,
+                CheckStatus::Found | CheckStatus::FoundAlias | CheckStatus::FoundPartner
+            ),
             "via": via,
+            "partner": partner,
+            "conflicts": conflicts,
+            "needs_review": !conflicts.is_empty(),
             "external_url": target.as_ref().and_then(|t| t.external_url)
                 .filter(|_| status == CheckStatus::External),
             "case_links": target.as_ref().map(|t| t.case_links).unwrap_or(&[]),
@@ -945,20 +1070,32 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
         .iter()
         .filter(|c| matches!(c["status"].as_str(), Some("statute" | "external")))
         .count();
+    // Each parallel run whose citations open different cases, once.
+    let review_count = parallels
+        .values()
+        .filter_map(|v| v.run.as_deref())
+        .collect::<std::collections::HashSet<_>>()
+        .len();
 
     if json {
         println!("{}", serde_json::to_string_pretty(&citations)?);
     } else {
+        let review = match review_count {
+            0 => String::new(),
+            1 => ", 1 needs review".to_string(),
+            n => format!(", {n} need review"),
+        };
         println!(
-            "Found {} case citations ({} resolvable), {} statutes\n",
+            "Found {} case citations ({} resolvable), {} statutes{}\n",
             citations.len() - statute_count,
             resolvable_count,
-            statute_count
+            statute_count,
+            review
         );
         for c in &citations {
             let status = c["status"].as_str().unwrap_or("");
             let mark = match status {
-                "found" | "found_alias" => "✓",
+                "found" | "found_alias" | "found_partner" => "✓",
                 "external" | "not_held" => "↗",
                 "no_antecedent" => "·",
                 _ => "✗",
@@ -983,6 +1120,11 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
                         print!("  ({})", stare::idx::via_label(via));
                     }
                 }
+                "found_partner" => {
+                    if let Some(partner) = c["partner"].as_str() {
+                        print!("  (reported at {partner}, inferred from the citing text)");
+                    }
+                }
                 "statute" => print!("  (statute; no free source linked yet)"),
                 // Nothing checks that the case is there (citare#39).
                 "not_held" => {
@@ -994,6 +1136,14 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
                     print!("  (refers to an earlier citation that couldn't be identified)")
                 }
                 _ => {}
+            }
+            if let Some(others) = c["conflicts"].as_array().filter(|o| !o.is_empty()) {
+                let others: Vec<&str> = others.iter().filter_map(|o| o.as_str()).collect();
+                print!(
+                    "  (cited in parallel with {}, which {} a different case; needs review)",
+                    others.join(" and "),
+                    if others.len() > 1 { "open" } else { "opens" }
+                );
             }
             println!();
         }
@@ -1521,6 +1671,33 @@ mod tests {
             let cites = stare::cite::detect_citations("See 31 A.2d xxix.");
             assert_eq!(check_status(&src, &cites[0]), CheckStatus::Found);
         }
+    }
+
+    /// #160 in `stare check`: a parallel citation stare.pub doesn't hold is found
+    /// through its partner, and parallel citations that open different cases are
+    /// flagged with each other.
+    #[test]
+    fn check_reconciles_parallel_citations() {
+        let detected = stare::cite::detect_citations(
+            "Pettegrew v. Pettegrew, 128 Neb. 783, 260 N.W. 287 (1935). \
+             Smith v. Jones, 345 Pa. 1, 31 A.2d 650 (1943). See 99 N.W. 1.",
+        );
+        let found = |c: &stare::cite::DetectedCitation| match c.matched_text.as_str() {
+            "128 Neb. 783" | "345 Pa. 1" | "31 A.2d 650" => CheckStatus::Found,
+            _ => CheckStatus::NotHeld,
+        };
+        let case = |c: &stare::cite::DetectedCitation| Some(c.matched_text.clone());
+        let v = reconcile_parallels(&detected, found, case);
+        assert_eq!(v["260 N.W. 287"].partner.as_deref(), Some("128 Neb. 783"));
+        assert!(v["128 Neb. 783"].partner.is_none());
+        assert_eq!(v["345 Pa. 1"].conflicts, ["31 A.2d 650"]);
+        assert_eq!(v["31 A.2d 650"].conflicts, ["345 Pa. 1"]);
+        assert_eq!(v["31 A.2d 650"].run.as_deref(), Some("345 Pa. 1"));
+        assert!(v.get("99 N.W. 1").is_none_or(|v| v.partner.is_none()));
+        // Without a parallel run there is nothing to look up.
+        let alone = stare::cite::detect_citations("See 128 Neb. 783. See 260 N.W. 287.");
+        let v = reconcile_parallels(&alone, |_| unreachable!(), |_| unreachable!());
+        assert!(v.is_empty());
     }
 
     #[test]

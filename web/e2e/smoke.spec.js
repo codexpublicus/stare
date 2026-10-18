@@ -399,7 +399,7 @@ test('/#a2d/31/647-01 resolves through idx.stare.pub and renders the case', asyn
   await expect(page.locator('#reader .reader-title')).toHaveText("D'Elia & Marks Co. v. Lyon");
   await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
   // The sidebar's citation pass finished without its error state.
-  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?$/);
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?(, \d+ needs? review)?$/);
   const manifest = await (await page.request.get('https://idx.stare.pub/manifest.json')).json();
   if (manifest.idx !== 1) {
     expect(bins.length).toBeGreaterThan(0);
@@ -434,7 +434,7 @@ test('short cites and Id.s in a case link to their antecedent\'s case (#120)', a
   // State starts at page 1023, where the short cite used to link.
   await page.goto('/#p3d/440/1078-01');
   await expect(page.locator('#reader .reader-title')).toContainText('McCallister');
-  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?$/);
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?(, \d+ needs? review)?$/);
 
   const roe = page.locator('#reader a.cite-link', { hasText: '997 P.2d at 1023' });
   await expect(roe).toHaveAttribute('href', '#p2d/997/1021@1023');
@@ -461,7 +461,7 @@ test('a pin cite opens the cited case at the pin page (#124)', async ({ page }) 
   // In McCallister v. State, "997 P.2d at 1023" refers to Roe v. Board of
   // County Commissioners, 997 P.2d 1021; the link opens Roe at page 1023.
   await page.goto('/#p3d/440/1078-01');
-  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?$/);
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?(, \d+ needs? review)?$/);
   const roe = page.locator('#reader a.cite-link', { hasText: '997 P.2d at 1023' });
   const [popup] = await Promise.all([page.waitForEvent('popup'), roe.click()]);
 
@@ -891,6 +891,79 @@ test.describe('the unified per-volume index', () => {
     ]);
     await expect(page.locator('#check-cite-list a.cited-case-link')).toHaveAttribute('href', '/#a3d/250/100-01');
     await expect(page.locator('#check-cite-list .cited-case', { hasText: '250 A.3d 101' }).locator('a')).toHaveCount(0);
+  });
+
+  test('a parallel run whose printings are both held lists the official one, the alias labelled (#160)', async ({ page }) => {
+    await routeIdx(page);
+    await page.goto('/check');
+    await page.fill('#check-input', 'Pettegrew v. Pettegrew, 260 N.W. 287, 128 Neb. 783 (1935).');
+    await page.click('#check-btn');
+
+    await expect(page.locator('#check-summary')).toHaveText('2 case citations found (2 resolvable)');
+    await expect(page.locator('#check-cite-list .cited-entry')).toHaveCount(1);
+    await expect(page.locator('#check-cite-list .cited-case')).toHaveText('✓ 128 Neb. 783');
+    await expect(page.locator('#check-cite-list .cited-also')).toHaveText(
+      "Also cited as 260 N.W. 287 Resolved through CourtListener's citation metadata");
+    await expect(page.locator('#check-rendered [data-partner]')).toHaveCount(0);
+  });
+});
+
+test.describe('parallel citations (#160)', () => {
+  test('a printing stare.pub doesn\'t hold resolves through the one it does, labelled as inferred', async ({ page }) => {
+    const outside = [];
+    page.on('request', (req) => {
+      if (/courtlistener|google/.test(new URL(req.url()).hostname)) outside.push(req.url());
+    });
+    await page.goto('/check');
+    await page.fill('#check-input', 'Murray v. Hurst, 163 Md. 481, 163 A. 183 (1932).');
+    await page.click('#check-btn');
+
+    await expect(page.locator('#check-summary')).toHaveText('2 case citations found (2 resolvable)');
+    await expect(page.locator('#check-cite-list .cited-entry')).toHaveCount(1);
+    await expect(page.locator('#check-cite-list .cited-case')).toHaveText('✓ 163 Md. 481');
+    await expect(page.locator('#check-cite-list .cited-also')).toHaveText(
+      'Also cited as 163 A. 183 Reported at 163 Md. 481, inferred from the citing text');
+    const reprint = page.locator('#check-rendered a.cite-link[data-partner="163 Md. 481"]');
+    await expect(reprint).toHaveText('163 A. 183');
+    await expect(reprint).toHaveAttribute('href', '#md/163/481');
+    await expect(reprint).toHaveAttribute('title', '163 A. 183. Reported at 163 Md. 481, inferred from the citing text');
+    await expect(page.locator('#check-rendered a.cite-lookup')).toHaveCount(0);
+    expect(outside).toEqual([]);
+  });
+
+  // The issue's example: Ray v. Bruce cites several decisions in an official
+  // reporter stare.pub holds and a regional one it doesn't.
+  test('in a case, a reprint links to the printing stare.pub holds', async ({ page }) => {
+    await page.goto('/#a2d/31/693-01');
+    await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found/);
+    const reprint = page.locator('#reader a.cite-link[data-partner="128 Neb. 783"]');
+    await expect(reprint).toHaveText('260 N.W. 287');
+    await expect(reprint).toHaveAttribute('href', '#neb/128/783');
+    await expect(reprint).toHaveAttribute('title', '260 N.W. 287. Reported at 128 Neb. 783, inferred from the citing text');
+    const e = page.locator('#sidebar .cited-entry', { has: page.locator('.cited-case', { hasText: '128 Neb. 783' }) });
+    await expect(e.locator('.cited-also')).toHaveText('Also cited as 260 N.W. 287 Reported at 128 Neb. 783, inferred from the citing text');
+    await expect(e.locator('.cited-count')).toHaveText('2×');
+  });
+
+  test('printings that open different cases are both shown, flagged for review', async ({ page }) => {
+    await page.goto('/check');
+    await page.fill('#check-input', 'Smith v. Jones, 128 Neb. 783, 31 A.2d 647 (1935). See 42 U.S.C. § 1983.');
+    await page.click('#check-btn');
+
+    await expect(page.locator('#check-summary')).toHaveText('2 case citations found (2 resolvable), 1 statute, 1 needs review');
+    const NOTE = (other) => `Cited in parallel with ${other}, which opens a different case; needs review`;
+    await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
+      `✓ 128 Neb. 783 ${NOTE('31 A.2d 647')}`,
+      `✓ 31 A.2d 647 ${NOTE('128 Neb. 783')}`,
+      '↗ 42 U.S.C. § 1983',
+    ]);
+    await expect(page.locator('#check-cite-list .cited-entry[data-cite-category="review"]')).toHaveCount(2);
+    await expect(page.locator('#check-rendered a.cite-review')).toHaveCount(2);
+    await page.getByRole('button', { name: 'Needs review' }).click();
+    await expect(page.locator('#check-cite-list .cited-entry:visible .cited-case')).toHaveText([
+      `✓ 128 Neb. 783 ${NOTE('31 A.2d 647')}`,
+      `✓ 31 A.2d 647 ${NOTE('128 Neb. 783')}`,
+    ]);
   });
 });
 

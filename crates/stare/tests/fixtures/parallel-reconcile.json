@@ -1,0 +1,514 @@
+{
+  "_comment": [
+    "Parallel-citation reconciliation (#160): each vector's printings and the verdicts",
+    "stare::parallel::reconcile and web/public/js/parallel.js both give for them.",
+    "`run` is the index of the first citation of the parallel run a printing is in (its own",
+    "index when it starts one or is in none); `lookup` is what the index says of it."
+  ],
+  "vectors": [
+    {
+      "name": "an official printing held, its reprint in a volume stare.pub doesn't hold (128 Neb. 783, 260 N.W. 287)",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "case": "neb/128/783"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "not_held"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true
+        },
+        {
+          "partner": 0,
+          "conflicts": [],
+          "preferred": false
+        }
+      ]
+    },
+    {
+      "name": "a reprint's page redacted in a held volume, its official printing held (R4)",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "case": "pa-super/150/1"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "held_miss"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true
+        },
+        {
+          "partner": 0,
+          "conflicts": [],
+          "preferred": false
+        }
+      ]
+    },
+    {
+      "name": "the reprint cited first",
+      "printings": [
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "not_held"
+          }
+        },
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "case": "neb/128/783"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": 1,
+          "conflicts": [],
+          "preferred": false
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true
+        }
+      ]
+    },
+    {
+      "name": "both printings open the same case, one through an alias",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "case": "neb/128/783"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "case": "neb/128/783"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false
+        }
+      ]
+    },
+    {
+      "name": "both held, the official printing cited second, shows by default (R3)",
+      "printings": [
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "case": "neb/128/783"
+          }
+        },
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "case": "neb/128/783"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true
+        }
+      ]
+    },
+    {
+      "name": "no official printing held: the first held one",
+      "printings": [
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "not_held"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "case": "f-supp/392/1023"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "case": "f-supp/392/1023"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": 1,
+          "conflicts": [],
+          "preferred": false
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false
+        }
+      ]
+    },
+    {
+      "name": "three printings, one held",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "case": "us/410/113"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "not_held"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "not_held"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true
+        },
+        {
+          "partner": 0,
+          "conflicts": [],
+          "preferred": false
+        },
+        {
+          "partner": 0,
+          "conflicts": [],
+          "preferred": false
+        }
+      ]
+    },
+    {
+      "name": "members open different cases: both flagged, nothing resolved through them (R2)",
+      "printings": [
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "case": "a2d/31/650"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "case": "pa/345/1"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "not_held"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [
+            1
+          ],
+          "preferred": false
+        },
+        {
+          "partner": null,
+          "conflicts": [
+            0
+          ],
+          "preferred": false
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false
+        }
+      ]
+    },
+    {
+      "name": "a conflict among three held members",
+      "printings": [
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "case": "x/1/1"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "case": "x/1/1"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "case": "y/2/2"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [
+            2
+          ],
+          "preferred": false
+        },
+        {
+          "partner": null,
+          "conflicts": [
+            2
+          ],
+          "preferred": false
+        },
+        {
+          "partner": null,
+          "conflicts": [
+            0,
+            1
+          ],
+          "preferred": false
+        }
+      ]
+    },
+    {
+      "name": "none resolve",
+      "printings": [
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "held_miss"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "not_held"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false
+        }
+      ]
+    },
+    {
+      "name": "an index that couldn't be read stays unchecked",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "case": "neb/128/783"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "unknown"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false
+        }
+      ]
+    },
+    {
+      "name": "two runs, only one with a held member",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "case": "neb/128/783"
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "not_held"
+          }
+        },
+        {
+          "run": 2,
+          "official": false,
+          "lookup": {
+            "status": "not_held"
+          }
+        },
+        {
+          "run": 2,
+          "official": false,
+          "lookup": {
+            "status": "not_held"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true
+        },
+        {
+          "partner": 0,
+          "conflicts": [],
+          "preferred": false
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false
+        }
+      ]
+    },
+    {
+      "name": "a citation in no run is left alone",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "case": "us/410/113"
+          }
+        },
+        {
+          "run": 1,
+          "official": false,
+          "lookup": {
+            "status": "not_held"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false
+        }
+      ]
+    }
+  ]
+}

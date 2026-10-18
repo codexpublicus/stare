@@ -11,6 +11,7 @@ import { indexUrl } from './sources.js';
 import { pinSuffix } from './router.js';
 import { loadWasm } from './wasm.js';
 import { citedPage, filePage, labelCases, pageSegment } from './pagekey.js';
+import { reconcileParallels } from './parallel.js';
 
 // External URL generation is now in Rust (stare::cite::external_url)
 
@@ -60,6 +61,9 @@ function fromRust(c) {
     // The edition citare read a variation as (`Ohio St.` for `127 Ohio
     // 545`, citare#86), else null.
     correctedReporter: c.corrected_reporter || null,
+    // An official reporter's citation (a state's, the U.S. Reports), which
+    // a parallel run shows by default when stare.pub holds it (#160).
+    official: Boolean(c.official),
     year: c.year || null,
     start: c.span[0],
     end: c.span[1],
@@ -354,6 +358,7 @@ export function inheritStatus(c, a) {
     caseLinks: a.caseLinks,
     via: a.via || null,
     aliasOf: a.aliasOf || null,
+    partner: a.partner || null,
   };
 }
 
@@ -377,7 +382,98 @@ export async function checkCitations(citations, check = checkAvailability, pageC
     if (!isShortForm(c)) entries.set(key, full(c));
     else entries.set(key, (c.antecedent ? full(c.antecedent) : Promise.resolve(null)).then(a => inheritStatus(c, a)));
   }
-  return Promise.all(entries.values());
+  return applyParallels(citations, await Promise.all(entries.values()));
+}
+
+// What the index says of a checked full citation, for reconcileParallels.
+function parallelLookup(c) {
+  if (c.resolvable) {
+    const id = caseIdentity(c);
+    return id ? { status: 'found', case: id } : { status: 'unknown' };
+  }
+  if (c.pageUnknown || !c.page || !c.volume || c.externalUrl || isStatute(c)) return { status: 'unknown' };
+  return { status: c.volumeHeld ? 'held_miss' : 'not_held' };
+}
+
+/**
+ * Parallel-citation reconciliation (#160) over checkCitations' entries
+ * (`checked`), for the parallel runs citare finds in `detected`
+ * (`parallelTo`), by reconcileParallels' rules:
+ *
+ * - A member that doesn't resolve on its own, in a run whose members that
+ *   do all open one case, resolves through the run's preferred printing:
+ *   it gets that printing's `slug`, `volume`, `page` and `aliasOf`, so it
+ *   opens the same case, and `partner`, the printing's raw string, which
+ *   labels it "inferred from the citing text" (partnerLabel). A short form
+ *   whose antecedent it is follows it.
+ * - Members that open different cases get `conflicts`, the raw strings of
+ *   the others, and `conflictRun`, the run's first citation; groupCitations
+ *   keeps them apart, and each is flagged as needing review.
+ * - The run's preferred printing (the official reporter's, when stare.pub
+ *   holds it) gets `preferred`, which groupCitations shows first.
+ *
+ * Returns the entries in the same order, the changed ones replaced.
+ */
+export function applyParallels(detected, checked) {
+  const byKey = new Map(checked.map(c => [c.key ?? c.raw, c]));
+  const members = [];
+  const lastAt = new Map();
+  for (const c of detected || []) {
+    if (c.type !== 'FullCaseCitation' || !byKey.has(c.raw)) continue;
+    const run = c.parallelTo && lastAt.has(c.parallelTo) ? members[lastAt.get(c.parallelTo)].run : members.length;
+    lastAt.set(c.raw, members.length);
+    members.push({ raw: c.raw, run, official: Boolean(c.official) });
+  }
+  if (!members.some((m, i) => m.run !== i)) return checked;
+
+  const entryOf = (m) => byKey.get(m.raw);
+  const verdicts = reconcileParallels(members.map(m => ({
+    run: m.run, official: m.official, lookup: parallelLookup(entryOf(m)),
+  })));
+  const changed = new Map();
+  const update = (raw, fields) => changed.set(raw, { ...(changed.get(raw) || byKey.get(raw)), ...fields });
+  verdicts.forEach((v, i) => {
+    const m = members[i];
+    if (v.conflicts.length) {
+      const others = v.conflicts.map(j => members[j].raw).filter(r => r !== m.raw);
+      update(m.raw, { conflicts: [...new Set(others)], conflictRun: members[m.run].raw });
+    }
+    if (v.preferred) update(m.raw, { preferred: true });
+    if (v.partner !== null && !(changed.get(m.raw) || entryOf(m)).resolvable) {
+      const p = entryOf(members[v.partner]);
+      update(m.raw, {
+        resolvable: true, pageUnknown: false, slug: p.slug, volume: p.volume, page: p.page,
+        via: null, aliasOf: p.aliasOf || null, partner: p.raw,
+      });
+    }
+  });
+  if (!changed.size) return checked;
+  return checked.map((c) => {
+    if (!isShortForm(c)) return changed.get(c.key ?? c.raw) || c;
+    const a = c.antecedent && changed.get(c.antecedent.raw);
+    return a && a.partner ? inheritStatus(c, a) : c;
+  });
+}
+
+/**
+ * The label on a citation resolved through its parallel partner (#160): "Reported
+ * at 128 Neb. 783, inferred from the citing text". citare read the two as one
+ * decision; no data says so, and nothing here calls the link verified. '' for
+ * any other citation.
+ */
+export function partnerLabel(c) {
+  return c?.partner ? `Reported at ${c.partner}, inferred from the citing text` : '';
+}
+
+/**
+ * The flag on a citation whose parallel citations open a different case (#160):
+ * "Cited in parallel with 31 A.2d 650, which opens a different case; needs
+ * review". '' for any other citation.
+ */
+export function conflictNote(c) {
+  if (!c?.conflicts?.length) return '';
+  const many = c.conflicts.length > 1;
+  return `Cited in parallel with ${c.conflicts.join(' and ')}, which ${many ? 'open' : 'opens'} a different case; needs review`;
 }
 
 // ---------------------------------------------------------------------------
@@ -591,10 +687,12 @@ function citationElementHtml(raw, inner, info, pin) {
     const segment = escapeHtml(pageSegment(citedPage(info.page) ?? info.page));
     const pinAttr = pin ? ` data-pin="${escapeHtml(pin)}"` : '';
     const at = escapeHtml(pinSuffix(pin, info.page));
-    const via = viaLabel(info.via);
-    const title = [refers || raw, read, via].filter(Boolean).join('. ');
+    const via = viaLabel(info.via) || partnerLabel(info);
+    const title = [refers || raw, read, via, conflictNote(info)].filter(Boolean).join('. ');
     const viaAttr = info.via ? ` data-via="${escapeHtml(info.via)}"` : '';
-    return `<a class="cite-link" href="#${slug}/${volume}/${segment}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr}${viaAttr} title="${escapeHtml(title)}">${inner}</a>`;
+    const partnerAttr = info.partner ? ` data-partner="${escapeHtml(info.partner)}"` : '';
+    const review = info.conflicts?.length ? ' cite-review' : '';
+    return `<a class="cite-link${review}" href="#${slug}/${volume}/${segment}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr}${viaAttr}${partnerAttr} title="${escapeHtml(title)}">${inner}</a>`;
   }
   if (isStatute(info)) {
     return `<span class="cite-statute" title="${titled(STATUTE_NOTE)}">${inner}</span>`;
@@ -663,11 +761,15 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
   if (c.resolvable) {
     const rel = caseRel ? ` rel="${escapeHtml(caseRel)}"` : '';
     // A case reached through an alias says where the link came from (#151).
-    const via = viaLabel(c.via);
+    // So does one resolved through its parallel partner (#160), and one whose
+    // parallel citations open a different case is flagged.
+    const via = viaLabel(c.via) || partnerLabel(c);
     const viaHtml = via ? `\n          <span class="cited-lookup cited-via">${escapeHtml(via)}</span>` : '';
-    return `<div class="cited-case${via ? ' cited-case-lookup' : wrap}">
+    const review = conflictNote(c);
+    const reviewHtml = review ? `\n          <span class="cited-lookup cited-review">${escapeHtml(review)}</span>` : '';
+    return `<div class="cited-case${via || review ? ' cited-case-lookup' : wrap}">
           <span class="cited-status ok">&#10003;</span>
-          <a class="cited-case-link" href="${escapeHtml(caseHref(c))}" target="_blank"${rel}>${raw}</a>${refersHtml}${viaHtml}
+          <a class="cited-case-link" href="${escapeHtml(caseHref(c))}" target="_blank"${rel}>${raw}</a>${refersHtml}${viaHtml}${reviewHtml}
         </div>`;
   }
   const externalUrl = safeExternalUrl(c.externalUrl);
@@ -751,6 +853,7 @@ export function caseIdentity(c) {
  * short form with no antecedent).
  */
 export function citeCategory(c) {
+  if (c.conflicts?.length) return 'review';
   if (c.resolvable) return 'held';
   if (isStatute(c) || safeExternalUrl(c.externalUrl)) return 'statute';
   if (c.noAntecedent || heldVolumeMiss(c) || lookupFailed(c)) return 'unresolved';
@@ -760,6 +863,7 @@ export function citeCategory(c) {
 /** The status chips' labels, by citeCategory, in the order they're shown. */
 export const CITE_CATEGORIES = [
   ['held', 'In stare.pub'],
+  ['review', 'Needs review'],
   ['elsewhere', 'Not yet indexed'],
   ['statute', 'Statutes'],
   ['unresolved', 'Unresolved'],
@@ -837,6 +941,7 @@ export function groupCitations(detected, checked, sameCase = []) {
   const keyOf = (c) => c.key ?? c.raw;
   const entries = (checked || []).filter(c => !isSectionReference(c));
   const fullKeys = new Set(entries.filter(c => !isShortForm(c)).map(keyOf));
+  const conflicting = new Set(entries.filter(c => c.conflicts?.length).map(keyOf));
 
   for (const c of entries) {
     const key = keyOf(c);
@@ -852,7 +957,10 @@ export function groupCitations(detected, checked, sameCase = []) {
     if (id) union(`case:${id}`, `k:${key}`);
   }
   for (const c of detected || []) {
-    if (c.parallelTo && fullKeys.has(c.raw) && fullKeys.has(c.parallelTo)) union(`k:${c.parallelTo}`, `k:${c.raw}`);
+    // Parallel citations that open different cases stay apart (#160): the
+    // index overrides citare's reading of the text.
+    if (c.parallelTo && fullKeys.has(c.raw) && fullKeys.has(c.parallelTo)
+      && !conflicting.has(c.raw) && !conflicting.has(c.parallelTo)) union(`k:${c.parallelTo}`, `k:${c.raw}`);
   }
   for (const [a, b] of sameCase || []) {
     if (parent.has(`k:${a}`) && parent.has(`k:${b}`)) union(`k:${a}`, `k:${b}`);
@@ -891,7 +999,10 @@ export function groupCitations(detected, checked, sameCase = []) {
 
   for (const g of groups) {
     const full = g.members.filter(m => !isShortForm(m));
-    g.primary = full.find(m => m.resolvable) || full[0] || g.members[0];
+    // A parallel run's preferred printing (#160), else a citation stare.pub
+    // holds on its own, else one resolved through its partner.
+    g.primary = full.find(m => m.preferred) || full.find(m => m.resolvable && !m.partner)
+      || full.find(m => m.resolvable) || full[0] || g.members[0];
     g.count = detected ? counts.get(g.id) || 0 : null;
     g.category = citeCategory(g.primary);
     const words = [];
@@ -922,7 +1033,7 @@ export function citedGroupHtml(g, caseHref, caseRel = 'noopener') {
   const also = g.members
     .filter(m => !isShortForm(m) && !seen.has(m.raw) && seen.add(m.raw))
     .map((m) => {
-      const note = (m.resolvable && viaLabel(m.via)) || lookupFailed(m) || heldVolumeMiss(m) || '';
+      const note = (m.resolvable && (viaLabel(m.via) || partnerLabel(m))) || lookupFailed(m) || heldVolumeMiss(m) || '';
       return `\n        <div class="cited-also">Also cited as ${escapeHtml(m.raw)}${note ? ` <span class="cited-also-note">${escapeHtml(note)}</span>` : ''}</div>`;
     })
     .join('');
@@ -954,14 +1065,17 @@ export function citedListHtml(groups, caseHref, caseRel = 'noopener') {
 
 /**
  * Counts for a list of checked citations (checkCitations' entries), with
- * statutes apart from cases: `{ cases, resolvable, statutes, other }`.
- * `cases` counts case citations and short forms that don't refer to a
- * statute, `resolvable` those of them stare.pub holds, `statutes` statutes
- * and regulations, linked or not, and `other` anything else citare names
- * (law reviews). Bare section references aren't counted.
+ * statutes apart from cases: `{ cases, resolvable, statutes, other,
+ * review }`. `cases` counts case citations and short forms that don't
+ * refer to a statute, `resolvable` those of them stare.pub holds (one
+ * resolved through its parallel partner among them, #160), `statutes`
+ * statutes and regulations, linked or not, and `other` anything else
+ * citare names (law reviews). `review` counts the parallel runs whose
+ * citations open different cases. Bare section references aren't counted.
  */
 export function citationCounts(citations) {
-  const n = { cases: 0, resolvable: 0, statutes: 0, other: 0 };
+  const n = { cases: 0, resolvable: 0, statutes: 0, other: 0, review: 0 };
+  n.review = new Set((citations || []).filter(c => c.conflicts?.length).map(c => c.conflictRun ?? c.raw)).size;
   for (const c of citations || []) {
     if (isSectionReference(c)) continue;
     if (isStatute(c) || safeExternalUrl(c.externalUrl)) n.statutes++;
@@ -977,14 +1091,16 @@ export function citationCounts(citations) {
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 /**
- * "3 case citations found (2 resolvable), 1 statute", from
- * citationCounts; the statute and other parts only when there are any.
+ * "3 case citations found (2 resolvable), 1 statute, 1 needs review", from
+ * citationCounts; the statute, other and review parts only when there are
+ * any.
  */
 export function citationSummary(citations) {
   const n = citationCounts(citations);
   let text = `${plural(n.cases, 'case citation', 'case citations')} found (${n.resolvable} resolvable)`;
   if (n.statutes) text += `, ${plural(n.statutes, 'statute', 'statutes')}`;
   if (n.other) text += `, ${n.other} other`;
+  if (n.review) text += `, ${n.review} ${n.review === 1 ? 'needs' : 'need'} review`;
   return text;
 }
 
