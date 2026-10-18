@@ -1,9 +1,11 @@
 name: Build and check the site
 description: >
-  The checks and build every site workflow runs (site.yml's previews and
-  release.yml's production release): cargo fmt, clippy and tests, the JS tests,
-  the stare-wasm build, citare's data bundle and the Astro build into web/dist.
-  Expects the repo to be checked out already.
+  The checks and build site.yml's previews run: cargo fmt, clippy and tests,
+  the JS tests, the stare-wasm build, citare's data bundle and the Astro build
+  into web/dist (build-web). release.yml doesn't run it: it deploys the
+  stare-wasm build and data bundle the merge commit's main build made and
+  checked, with only the Astro build redone for the release tag. Expects the
+  repo to be checked out already.
 
 inputs:
   ssh-private-key:
@@ -33,13 +35,42 @@ runs:
       with:
         ssh-private-key: ${{ inputs.ssh-private-key }}
 
+    # The toolchain pinned in rust-toolchain.toml, which also names the
+    # wasm32 target and clippy and rustfmt for rustup
+    - name: Read the pinned Rust toolchain
+      id: toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        channel=$(sed -n 's/^channel *= *"\(.*\)"$/\1/p' rust-toolchain.toml)
+        if [ -z "$channel" ]; then
+          echo "::error::no channel in rust-toolchain.toml"
+          exit 1
+        fi
+        echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
     - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
       with:
-        toolchain: stable
+        toolchain: ${{ steps.toolchain.outputs.channel }}
         targets: wasm32-unknown-unknown
         components: clippy, rustfmt
 
+    # Line tables only in the dev and test builds: panics and backtraces keep
+    # their file and line, and the target directory the cache saves and every
+    # job unpacks is smaller. Set before rust-cache, whose key includes CARGO_*
+    # variables.
+    - name: Trim debug info
+      shell: bash
+      run: echo "CARGO_PROFILE_DEV_DEBUG=line-tables-only" >> "$GITHUB_ENV"
+
+    # One cache for every job (the default key includes the job's name, so PR
+    # jobs never restored main's), written only by pushes to main. PRs restore
+    # it and save nothing, instead of each saving a ~575 MB cache of its own
+    # that only it could read.
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        shared-key: site
+        save-if: ${{ github.ref == 'refs/heads/main' }}
 
     - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
       with:
@@ -77,18 +108,7 @@ runs:
       shell: bash
       run: cargo run --quiet -p stare-admin -- export-citare-data web/public/data/citare/v1
 
-    - name: Install web dependencies
-      shell: bash
-      run: npm --prefix web ci
-
-    - name: Build web
-      shell: bash
-      env:
-        PUBLIC_RELEASE: ${{ inputs.release }}
-        PUBLIC_COMMIT: ${{ inputs.commit }}
-      run: |
-        set -euo pipefail
-        PUBLIC_BUILD_DATE=$(git log -1 --format=%cs HEAD)
-        export PUBLIC_BUILD_DATE
-        echo "Building ${PUBLIC_RELEASE:-dev} at ${PUBLIC_COMMIT:-unknown commit}, ${PUBLIC_BUILD_DATE}"
-        npm --prefix web run build
+    - uses: ./.github/actions/build-web
+      with:
+        release: ${{ inputs.release }}
+        commit: ${{ inputs.commit }}

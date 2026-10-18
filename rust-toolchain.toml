@@ -1,0 +1,9 @@
+# The Rust toolchain for local builds and CI. CI reads the channel from here
+# (.github/actions/build-site), and Swatinem/rust-cache keys its cache on the
+# rustc version, so following stable would empty the cache on every Rust
+# release (#79). Bump it on purpose, in its own commit.
+[toolchain]
+channel = "1.99.1"
+components = ["clippy", "rustfmt"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"
