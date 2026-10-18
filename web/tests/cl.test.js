@@ -6,11 +6,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
-import { gunzip, isClRecord, isGzip, sourceLineHtml } from '../public/js/cl.js';
+import { blockedLineHtml, gunzip, isClRecord, isGzip, reasonPhrase, sourceLineHtml } from '../public/js/cl.js';
 import { clRecordPath, clRecordUrl } from '../public/js/sources.js';
 
 const RECORD_BYTES = readFileSync(new URL('../../crates/stare/tests/fixtures/cl-record.json', import.meta.url));
 const RECORD = JSON.parse(RECORD_BYTES);
+const BLOCKED = JSON.parse(readFileSync(new URL('../../crates/stare/tests/fixtures/cl-record-blocked.json', import.meta.url)));
 const H1 = '0f3a9c2e7b1d4a65';
 
 describe('CourtListener paths', () => {
@@ -65,5 +66,44 @@ describe('records', () => {
     const html = sourceLineHtml({ source: { name: 'courtlistener', docket_number: '<b>1</b>', precedential_status: '"x"' } });
     assert.ok(html.includes('Docket &lt;b&gt;1&lt;/b&gt;'));
     assert.ok(html.includes('&quot;x&quot;'));
+  });
+});
+
+describe('the blocked provenance line', () => {
+  test('a case that is not blocked has none', () => {
+    assert.equal(blockedLineHtml(RECORD), '');
+    assert.equal(blockedLineHtml({ ...BLOCKED, source: undefined }), '');
+  });
+
+  test('says CourtListener excludes the case, and gives the reasons as inferred', () => {
+    assert.equal(blockedLineHtml(BLOCKED),
+      '<div class="reader-blocked" title="inferred from CourtListener&#39;s published blocking rules">'
+        + 'CourtListener excludes this case from search engines. '
+        + '(inferred: a redacted ID number in the text; unpublished within 30 years)</div>');
+  });
+
+  test('maps every reason code to a phrase, and marks the unverifiable', () => {
+    const b = {
+      blocked: false, date_blocked: null, docket_blocked: true,
+      reasons: ['court-category', 'keyword:minor+child', 'keyword:asylum', 'bankruptcy-docket'],
+      unverifiable: { 'bankruptcy-docket': 'no docket entries' },
+    };
+    assert.equal(blockedLineHtml({ source: { name: 'courtlistener', cl_blocked: b } }, 'x'),
+      '<div class="x">CourtListener excludes this case from search engines. (inferred: '
+        + 'a military, tax or similar court within 30 years; '
+        + 'mentions &quot;minor&quot; and &quot;child&quot; within 30 years; '
+        + 'mentions &quot;asylum&quot; within 30 years; a bankruptcy docket, unverified)</div>');
+    assert.equal(reasonPhrase('new-rule'), 'new-rule');
+  });
+
+  test('with no rule matching, the reason is unknown', () => {
+    const html = blockedLineHtml({ source: { name: 'courtlistener', cl_blocked: { blocked: true, reasons: ['unknown'] } } });
+    assert.ok(html.endsWith('search engines. (reason unknown)</div>'), html);
+  });
+
+  test('escapes what the record says', () => {
+    const html = blockedLineHtml({ source: { name: 'courtlistener', cl_blocked: { reasons: ['<b>'], reason_basis: '"x"' } } });
+    assert.ok(html.includes('inferred: &lt;b&gt;'));
+    assert.ok(html.includes('title="&quot;x&quot;"'));
   });
 });

@@ -1,5 +1,5 @@
 import { citationSummary, citedCaseHtml, orderCitedCases, renderTextHtml } from './citations.js';
-import { isClRecord, sourceLineHtml } from './cl.js';
+import { blockedLineHtml, isClRecord, sourceLineHtml } from './cl.js';
 import { insertPageMarkers } from './pages.js';
 import { pdfUrl as volumePdfUrl } from './sources.js';
 
@@ -23,6 +23,7 @@ export function renderReader(el, caseData, citations, pages = null) {
       <div class="reader-title">${esc(caseData.name_abbreviation)}</div>
       <div class="reader-meta">${esc(cite)} &mdash; ${esc(court)} &mdash; ${esc(caseData.decision_date)}</div>
       ${sourceLineHtml(caseData)}
+      ${blockedLineHtml(caseData)}
     </div>
   `;
 
@@ -172,6 +173,7 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
         <strong>Jurisdiction:</strong> ${esc(caseData.jurisdiction?.name_long || '')}
       </div>
       ${sourceLineHtml(caseData, 'sidebar-meta sidebar-source', { docket: false })}
+      ${blockedLineHtml(caseData, 'sidebar-meta sidebar-blocked')}
     </div>
     <div class="sidebar-section">
       <div class="sidebar-label">Citations</div>
