@@ -587,6 +587,9 @@ test.describe('the unified per-volume index', () => {
   // file with a `<folder>/` ref, and a3d 138 split into two parts at page 1000.
   // a2d 31 page 647 gets a CourtListener alias line after CAP's, and a3d 250 one
   // record, the hand-made one the Rust tests read (docs/plans/courtlistener-mirror.md).
+  // Parallel-citation aliases (#151): n-w 260, listed under the manifest's `aliases`,
+  // has only Pettegrew's (260 N.W. 287 is neb/128/0783-01, from cluster 8077312's
+  // citations), and a2d 31 page 648, where CAP has no case, one into a3d/138-2.
   const RECORD = readFileSync(new URL('../../crates/stare/tests/fixtures/cl-record.json', import.meta.url));
   const HASH = '0f3a9c2e7b1d4a65';
   const RECORD_URL = `https://data.stare.pub/cl/c/9876543/${HASH}.json.gz`;
@@ -626,6 +629,7 @@ test.describe('the unified per-volume index', () => {
       manifest.idx = 1;
       manifest.reporters.a3d = [...manifest.reporters.a3d, '250'];
       manifest.reporters['ny-slip-op'] = ['2021'];
+      manifest.aliases = { 'n-w': ['260'] };
       parts = manifest.parts || {};
       await route.fulfill({
         headers: { ...CORS, 'cache-control': 'no-cache' },
@@ -646,13 +650,17 @@ test.describe('the unified per-volume index', () => {
         lines = [['100', `cl,9876543/${HASH}`]];
       } else if (slug === 'ny-slip-op' && volume === '2021') {
         lines = [['1234', `cl,9876543/${HASH}`]];
+      } else if (slug === 'n-w' && volume === '260') {
+        lines = [['287', 'cap,neb/128/0783-01,via=cl:8077312']];
       } else {
         const folders = parts[slug]?.[volume]?.map((p) => p.volume) || [volume];
         for (const folder of folders) {
           const got = await folderLines(route, `${base}${slug}/${folder}`, folder === volume ? '' : `${folder}/`);
           if (got) lines.push(...got.map(([p, ref]) => [p, `cap,${ref}`]));
         }
-        if (slug === 'a2d' && volume === '31') lines.push(['647', `cl,1/${HASH}`]);
+        if (slug === 'a2d' && volume === '31') {
+          lines.push(['647', `cl,1/${HASH}`], ['648', 'cap,a3d/138-2/1012-01,via=cl:6']);
+        }
       }
       lines.sort(byPage);
       let text = lines.map(([p, rest]) => `${p},${rest}\n`).join('');
@@ -779,6 +787,39 @@ test.describe('the unified per-volume index', () => {
       await expect(page.locator('#check-cite-list a')).toHaveCount(0);
       await expect(page.locator('#check-rendered a')).toHaveCount(0);
     });
+  });
+
+  test('260 N.W. 287 resolves through its alias to 128 Neb. 783, labelled with its source', async ({ page }) => {
+    const seen = await routeIdx(page);
+    await page.goto('/');
+    await page.fill('#landing-input', '260 N.W. 287');
+    await page.click('#landing-btn');
+
+    await expect(page).toHaveURL(/#neb\/128\/783-01$/);
+    await expect(page.locator('#topbar-case')).toHaveText(/Pettegrew/);
+    await expect(page.locator('#reader .reader-alias')).toHaveText(
+      "Cited as n-w 260 287. Resolved through CourtListener's citation metadata (cluster 8077312).");
+    await expect(page.locator('#reader .reader-alias')).not.toContainText(/verified/i);
+    expect(seen.idx.some((u) => u.endsWith('/n-w/260.idx.gz'))).toBe(true);
+    expect(seen.bins).toEqual([]);
+  });
+
+  test('/check resolves aliases with their source, and links out a miss in a volume of aliases only', async ({ page }) => {
+    await routeIdx(page);
+    await page.goto('/check');
+    await page.fill('#check-input',
+      'Pettegrew v. Pettegrew, 260 N.W. 287 (Neb. 1935); Roe v. Doe, 260 N.W. 288 (Neb. 1935); Brooks v. Powers, 31 A.2d 648.');
+    await page.click('#check-btn');
+
+    await expect(page.locator('#check-summary')).toHaveText('3 case citations found (2 resolvable)');
+    const VIA = "Resolved through CourtListener's citation metadata";
+    const entry = (raw) => page.locator('#check-cite-list .cited-case', { hasText: raw });
+    await expect(entry('260 N.W. 287')).toHaveText(`✓ 260 N.W. 287 ${VIA}`);
+    await expect(entry('260 N.W. 287').locator('a.cited-case-link')).toHaveAttribute('href', '/#n-w/260/287-01');
+    await expect(entry('31 A.2d 648')).toHaveText(`✓ 31 A.2d 648 ${VIA}`);
+    // stare.pub holds nothing of N.W. 260 but the alias: a miss there links out.
+    await expect(entry('260 N.W. 288').locator('a.cited-lookup-link').first()).toHaveAttribute('href', /courtlistener\.com/);
+    await expect(page.locator('#check-rendered a.cite-link[data-via="cl:8077312"]')).toHaveAttribute('title', `260 N.W. 287. ${VIA}`);
   });
 
   test('/check resolves a CourtListener hit here and links nothing out for a miss', async ({ page }) => {

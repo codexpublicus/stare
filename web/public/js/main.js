@@ -1,7 +1,7 @@
 import { parseInput, resolve, extractCase, extractFile } from './resolve.js';
 import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } from './ui.js';
 import { getHashParams, setHash, onHashChange } from './router.js';
-import { processCitations, setupCiteHovers } from './citations.js';
+import { aliasNoteHtml, processCitations, setupCiteHovers } from './citations.js';
 import { renderPageViewer } from './pageviewer.js';
 import { pageBreaks, pageMarker } from './pages.js';
 import { preloadWasm, WasmLoadError } from './wasm.js';
@@ -160,6 +160,9 @@ async function showResolved(result, pin = null) {
 
   const multiEl = document.createElement('div');
   reader.innerHTML = '';
+  // A citation that resolved through an alias (#151) says what was cited and where the
+  // link came from.
+  if (result.alias) reader.insertAdjacentHTML('beforeend', aliasNoteHtml(result.alias));
   reader.appendChild(multiEl);
   const readerContent = document.createElement('div');
   readerContent.className = 'reader';
@@ -303,9 +306,12 @@ async function doResolve(reporter, volume, page, seq = null, pin = null) {
     const result = await resolve(reporter, volume, page, (msg) => setStatus(msg, false), seq);
     currentResult = result;
     // The folder the case is in, which can differ from the volume as cited (a3d/138-2).
-    setHash(reporter, result.volume, page, result.seq, pin);
+    // A citation that resolved through an alias (#151) goes to the case it names, whose
+    // pages a pin cite in the other printing doesn't number.
+    if (result.alias) setHash(result.reporter, result.volume, result.page, result.seq, null);
+    else setHash(reporter, result.volume, page, result.seq, pin);
     lastResolvedHash = window.location.hash;
-    showResolved(result, pin);
+    showResolved(result, result.alias ? null : pin);
   } catch (err) {
     if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
     // Only go to landing if we're not already showing a case
