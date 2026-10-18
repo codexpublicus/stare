@@ -120,9 +120,10 @@ describe('what goes in one entry', () => {
     assert.equal(groups.length, 1);
     assert.equal(groups[0].primary.raw, '524 N.E.2d 1', 'the one stare.pub holds is shown');
     assert.equal(groups[0].count, 3);
-    // The other citation keeps its own note: stare.pub holds the volume, and no case starts there.
+    // No case starts at the other's page in a volume stare.pub holds, so it
+    // resolves through its partner (#160), and says so.
     assert.match(citedGroupHtml(groups[0], () => '#'),
-      /<div class="cited-also">Also cited as 123 Ill\. 2d 45 <span class="cited-also-note">No case found at this page in Ill\. 2d vol\. 123<\/span><\/div>/);
+      /<div class="cited-also">Also cited as 123 Ill\. 2d 45 <span class="cited-also-note">Reported at 524 N\.E\.2d 1, inferred from the citing text<\/span><\/div>/);
   });
 
   test('two citations that open the same case meet, an alias among them, and keep its label', async () => {

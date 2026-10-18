@@ -141,6 +141,21 @@ brings); the build counts any that disagree as `slugs_differ`.
 `crates/stare/tests/fixtures/cl-sample-build.json` is a sample build that the Rust and JS
 tests resolve end to end.
 
+### Parallel citations (#160, `crates/stare/src/parallel.rs`, `web/public/js/parallel.js`)
+
+citare reads a run of citations as one decision (`128 Neb. 783, 260 N.W. 287`, the
+detected citation's `parallel_of`); the index says what each member opens. After the
+lookups, reconciliation applies the owner's D35 rulings: a member that misses (a volume
+stare.pub doesn't hold, or a page CAP redacted in one it does) resolves through the run's
+preferred printing when the members that resolve all open one case, labelled "Reported at
+128 Neb. 783, inferred from the citing text" and never called verified; members that open
+different cases are both shown, flagged "needs review", and kept apart in the list; and the
+preferred printing is the official reporter's (`DetectedCitation::official`: a state's, or
+the U.S. Reports) when stare.pub holds it. The site (`checkCitations`) and `stare check`
+apply the same rules, `reconcileParallels` and `stare::parallel::reconcile`, both tested on
+`crates/stare/tests/fixtures/parallel-reconcile.json`. A data alias (`via=cl:`) still wins:
+it resolves the member on its own, with its own label.
+
 ### CourtListener records (`crates/stare/src/cl.rs`, `web/public/js/cl.js`)
 
 Cases CAP doesn't hold come from CourtListener's bulk data

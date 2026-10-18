@@ -146,7 +146,7 @@ describe('bare section references', () => {
 describe('counts', () => {
   test('separate cases from statutes, leave out section references', async () => {
     const { unique } = await render();
-    assert.deepEqual(citationCounts(unique), { cases: 2, resolvable: 1, statutes: 3, other: 1 });
+    assert.deepEqual(citationCounts(unique), { cases: 2, resolvable: 1, statutes: 3, other: 1, review: 0 });
     assert.equal(citationSummary(unique), '2 case citations found (1 resolvable), 3 statutes, 1 other');
   });
 
