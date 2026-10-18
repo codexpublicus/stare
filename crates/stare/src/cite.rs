@@ -91,6 +91,19 @@ pub struct DetectedCitation {
     /// isn't looked up at all. Always `None` for a full citation.
     #[serde(default)]
     pub antecedent: Option<Antecedent>,
+    /// For a full case citation, the case name as the citing text gives it:
+    /// citare's plaintiff and defendant (`Roe v. Board of County
+    /// Commissioners`), or the one of them it found. `None` when it found
+    /// neither, and for anything but a full case citation. It is the citing
+    /// text's name for the case, not the cited case's own.
+    #[serde(default)]
+    pub case_name: Option<String>,
+    /// For a full case citation that is a parallel citation of the one
+    /// before it (`123 Ill. 2d 45, 524 N.E.2d 1`, which citare reads as one
+    /// case name with two citations), the index in this list of the first
+    /// citation of the run. `None` for the first, and for any other citation.
+    #[serde(default)]
+    pub parallel_of: Option<usize>,
 }
 
 /// The full citation a short form refers to: what a reader looks up to
@@ -158,6 +171,23 @@ impl DetectedCitation {
             law: self.law.clone(),
             case_links: self.case_links.clone(),
         }
+    }
+}
+
+/// A full case citation's parties, as `DetectedCitation::case_name` gives them.
+fn case_name(c: &Citation) -> Option<String> {
+    let Citation::FullCase(d) = c else {
+        return None;
+    };
+    let party = |p: &Option<String>| {
+        p.as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    match (party(&d.metadata.plaintiff), party(&d.metadata.defendant)) {
+        (Some(p), Some(d)) => Some(format!("{p} v. {d}")),
+        (p, d) => p.or(d),
     }
 }
 
@@ -238,6 +268,8 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
                 case_links: Vec::new(),
                 pin: pin_cite(c).and_then(normalize_pin),
                 antecedent: None,
+                case_name: case_name(c),
+                parallel_of: None,
             };
             if det.citation_type == "FullLawCitation" {
                 det.law = c.law().map(LawRef::from);
@@ -274,6 +306,20 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
             det
         })
         .collect();
+
+    // A full case citation that shares its case name's span with the full case
+    // citation just before it is a parallel citation of the same case, as
+    // citare's own find step reads it (it copies the parties across).
+    for i in 1..citations.len() {
+        if let (Citation::FullCase(cur), Citation::FullCase(pre)) =
+            (&citations[i], &citations[i - 1])
+        {
+            let start = cur.resource.common.full_span_start;
+            if start.is_some() && start == pre.resource.common.full_span_start {
+                detected[i].parallel_of = Some(detected[i - 1].parallel_of.unwrap_or(i - 1));
+            }
+        }
+    }
 
     // Tie each short form to its antecedent. citare's resolutions map each
     // resource (keyed by its first full citation) to every citation that
@@ -1639,6 +1685,28 @@ mod tests {
             .iter()
             .find(|c| c.citation_type == ty && c.matched_text == raw)
             .unwrap_or_else(|| panic!("no {ty} {raw:?} in {cites:#?}"))
+    }
+
+    /// #159: a full case citation carries the case name the citing text gives
+    /// it, and a parallel citation names the first citation of its run.
+    #[test]
+    fn full_case_citations_carry_case_names_and_parallels() {
+        let cites = detect_citations(
+            "See People v. Smith, 123 Ill. 2d 45, 524 N.E.2d 1 (1988). See also Roe v. Wade, 410 U.S. 113 (1973). Id. at 120.",
+        );
+        let first = find(&cites, "FullCaseCitation", "123 Ill. 2d 45");
+        let second = find(&cites, "FullCaseCitation", "524 N.E.2d 1");
+        let roe = find(&cites, "FullCaseCitation", "410 U.S. 113");
+        assert_eq!(first.case_name.as_deref(), Some("People v. Smith"));
+        assert_eq!(second.case_name.as_deref(), Some("People v. Smith"));
+        assert_eq!(roe.case_name.as_deref(), Some("Roe v. Wade"));
+        let at = |c: &DetectedCitation| cites.iter().position(|x| std::ptr::eq(x, c)).unwrap();
+        assert_eq!(first.parallel_of, None);
+        assert_eq!(second.parallel_of, Some(at(first)));
+        assert_eq!(roe.parallel_of, None, "a different case is not a parallel");
+        let id = find(&cites, "IdCitation", "Id.");
+        assert_eq!(id.case_name, None);
+        assert_eq!(id.parallel_of, None);
     }
 
     /// #120: `997 P.2d at 1023` refers to Roe, which starts at 1021. It was
