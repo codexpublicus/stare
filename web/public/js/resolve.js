@@ -6,6 +6,7 @@ import {
   citedSlug, foldedInto, hasIdx, indexPath, isVolumeKey, loadManifest, volumeCandidates,
 } from './manifest.js';
 import { loadWasm } from './wasm.js';
+import { citedPage, filePage, labelCases, pageKey } from './pagekey.js';
 
 let wasm = null;
 
@@ -16,8 +17,12 @@ let wasm = null;
  *   "a2d/31/647"        → URL format
  *   "a2d 31 647-02"     → with sequence
  *   "a3d 138-2 1012"    → naming a CAP volume folder
+ *   "cai-cas 1 xxix"    → a labelled page (front matter), slug format
+ *   "cal-app-4th 15 Supp. 1-01" → likewise, a supplement's page, with sequence
+ *   "1 Cai. Cas. xxix"  → citare, with a labelled page
  *
  * `volume` is a string: the number as cited, or a CAP folder name (see manifest.js).
+ * `page` is a number, or a label lowercased (pagekey.js).
  */
 export async function parseInput(raw) {
   const trimmed = raw.trim();
@@ -46,24 +51,28 @@ export async function parseInput(raw) {
 export function inputFromCitations(cites) {
   const c = cites[0];
   const slug = citedSlug(c);
-  if (!slug || !c.volume || !c.page) return null;
+  const page = citedPage(c.page);
+  if (!slug || !c.volume || page === null) return null;
   return {
     reporter: slug,
     volume: String(parseInt(c.volume, 10)),
-    page: parseInt(c.page, 10),
+    page,
     seq: null,
   };
 }
 
+// "<slug> <volume> <page>[-<seq>]", spaces or slashes between. The page is a number,
+// or a label, which can hold spaces ("Supp. 1"); the last "-<digits>" is the sequence.
 function parseSlugFormat(raw) {
-  const parts = raw.replace(/\//g, ' ').split(/\s+/);
-  if (parts.length !== 3) return null;
-  const [reporter, volume, pageStr] = parts;
+  const m = raw.match(/^([a-z0-9-]+)[/\s]+([^/\s]+)[/\s]+(.+)$/i);
+  if (!m) return null;
+  const [, reporter, volume, pageStr] = m;
   if (!isVolumeKey(volume)) return null;
 
-  const pageMatch = pageStr.match(/^(\d+)(?:-(\d+))?$/);
+  const pageMatch = pageStr.trim().match(/^([^/]+?)(?:-(\d+))?$/);
   if (!pageMatch) return null;
-  const page = parseInt(pageMatch[1], 10);
+  const page = pageKey(pageMatch[1]);
+  if (page === null) return null;
   const seq = pageMatch[2] ? parseInt(pageMatch[2], 10) : null;
 
   return { reporter: reporter.toLowerCase(), volume, page, seq };
@@ -90,6 +99,7 @@ async function fetchBin(reporter, volume) {
 // already loaded by then: every index file's path is under its `base`.)
 async function locate(reporter, volume, page, onStatus) {
   onStatus('Fetching index...');
+  if (typeof page === 'string') return locateLabel(reporter, volume, page);
   const binData = await fetchBin(reporter, volume);
   onStatus('Looking up page...');
   let caseFile = binData && wasm.lookup_page(binData, page);
@@ -105,6 +115,26 @@ async function locate(reporter, volume, page, onStatus) {
   if (!binData)
     throw new Error(`This volume hasn't been indexed yet. We're still building the index — check back soon.`);
   throw new Error(`No case starts at page ${page} in ${reporter} vol. ${volume}.`);
+}
+
+// The cases on a labelled page, from the `.multi` of the folder named, where the .bin
+// files keep them. A split volume's other folders aren't tried: their page ranges
+// are numbers.
+async function locateLabel(reporter, volume, label) {
+  const key = await indexPath(`${reporter}/${volume}.multi`);
+  let multi;
+  try {
+    multi = await fetchCachedText('multi', key, indexUrl(key));
+  } catch (e) {
+    throw new Error(`Couldn't reach the server. Check your connection and try again.`);
+  }
+  const allCases = labelCases(multi, label);
+  if (allCases.length === 0) {
+    if (multi === null && !(await fetchBin(reporter, volume)))
+      throw new Error(`This volume hasn't been indexed yet. We're still building the index — check back soon.`);
+    throw new Error(`No case starts at page ${label} in ${reporter} vol. ${volume}.`);
+  }
+  return { volume, allCases };
 }
 
 // `volume` is as cited or a folder name; the result's `volume` is the folder the case
@@ -138,7 +168,11 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
     if (entries) return resolveEntries(reporter, cited, page, entries, onStatus, seq);
   }
 
-  const { volume, binData, caseFile } = await locate(reporter, cited, page, onStatus);
+  const located = await locate(reporter, cited, page, onStatus);
+  if (located.allCases) {
+    return resolveCap(reporter, located.volume, page, located.allCases, onStatus, seq);
+  }
+  const { volume, binData, caseFile } = located;
   const multiKey = await indexPath(`${reporter}/${volume}.multi`);
   const multiData = await fetchCachedText('multi', multiKey, indexUrl(multiKey));
 
@@ -168,9 +202,9 @@ async function resolveEntries(reporter, cited, page, entries, onStatus, seq) {
   }
   const first = entries[0];
   if (first.source === 'cap' && first.reporter) {
-    const targetPage = parseInt(first.case_file.replace(/^\[/, ''), 10);
+    const targetPage = filePage(first.case_file);
     const result = await resolveCap(
-      first.reporter, first.folder, Number.isNaN(targetPage) ? page : targetPage,
+      first.reporter, first.folder, targetPage === null ? page : targetPage,
       [first.case_file], onStatus, null,
     );
     return { ...result, alias: { via: first.via || null, reporter, volume: cited, page } };

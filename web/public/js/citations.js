@@ -2,7 +2,7 @@
 // if the WASM fails to load, detectCitations rejects with a WasmLoadError and
 // callers show an error, not empty or degraded results.
 
-import { fetchCached } from './cache.js';
+import { fetchCached, fetchCachedText } from './cache.js';
 import { idxEntries } from './idx.js';
 import {
   citedSlug, hasAliasVolume, hasIdx, holdsVolume, indexPath, loadManifest, volumeCandidates,
@@ -10,6 +10,7 @@ import {
 import { indexUrl } from './sources.js';
 import { pinSuffix } from './router.js';
 import { loadWasm } from './wasm.js';
+import { citedPage, filePage, labelCases, pageSegment } from './pagekey.js';
 
 // External URL generation is now in Rust (stare::cite::external_url)
 
@@ -172,6 +173,12 @@ export function pageResult(entries) {
   };
 }
 
+// A volume folder's .multi text, or null when it has none (a 404).
+async function readMulti(slug, volume) {
+  const key = await indexPath(`${slug}/${volume}.multi`);
+  return fetchCachedText('multi', key, indexUrl(key));
+}
+
 // A volume folder's .bin, or null when it isn't indexed (a 404).
 async function readBin(slug, volume) {
   const key = await indexPath(`${slug}/${volume}.bin`);
@@ -197,7 +204,7 @@ async function readBin(slug, volume) {
  * as "couldn't check" (lookupFailed), never as a link or a miss (#144). What did load
  * stays cached, so the retry and later checks don't fetch it again.
  *
- * `deps` ({ manifest, readBin, lookup, idxEntries, retryDelay }) are injectable for
+ * `deps` ({ manifest, readBin, readMulti, lookup, idxEntries, retryDelay }) are injectable for
  * tests, which can't load the WASM or reach idx.stare.pub.
  */
 export async function checkPage(slug, volume, page, deps = {}) {
@@ -213,7 +220,8 @@ export async function checkPage(slug, volume, page, deps = {}) {
 }
 
 async function pageFound(slug, volume, page, deps) {
-  const p = parseInt(page, 10);
+  const p = citedPage(page);
+  if (p === null) return false;
   const cited = String(volume);
   const m = deps.manifest || await loadManifest();
   if (hasIdx(m)) {
@@ -224,6 +232,9 @@ async function pageFound(slug, volume, page, deps) {
 }
 
 async function capHasPage(slug, cited, p, m, deps) {
+  // A labelled page (`xxix`) is in the folder's .multi; a split volume's other folders
+  // cover number ranges only.
+  if (typeof p === 'string') return labelCases(await (deps.readMulti || readMulti)(slug, cited), p).length > 0;
   const read = deps.readBin || readBin;
   let lookup = deps.lookup;
   if (!lookup) {
@@ -561,12 +572,13 @@ function citationElementHtml(raw, inner, info, pin) {
     const slug = escapeHtml(info.slug);
     const volume = escapeHtml(String(info.volume));
     const page = escapeHtml(String(info.page));
+    const segment = escapeHtml(pageSegment(citedPage(info.page) ?? info.page));
     const pinAttr = pin ? ` data-pin="${escapeHtml(pin)}"` : '';
     const at = escapeHtml(pinSuffix(pin, info.page));
     const via = viaLabel(info.via);
     const title = via ? `${refers || raw}. ${via}` : refers || raw;
     const viaAttr = info.via ? ` data-via="${escapeHtml(info.via)}"` : '';
-    return `<a class="cite-link" href="#${slug}/${volume}/${page}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr}${viaAttr} title="${escapeHtml(title)}">${inner}</a>`;
+    return `<a class="cite-link" href="#${slug}/${volume}/${segment}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr}${viaAttr} title="${escapeHtml(title)}">${inner}</a>`;
   }
   if (isStatute(info)) {
     return `<span class="cite-statute" title="${titled(STATUTE_NOTE)}">${inner}</span>`;
@@ -705,14 +717,14 @@ export function caseIdentity(c) {
   if (!c?.resolvable || isShortForm(c)) return null;
   if (c.aliasOf) {
     const file = String(c.aliasOf.caseFile || '');
-    const page = parseInt(file.replace(/^\[/, ''), 10);
-    if (!c.aliasOf.slug || Number.isNaN(page)) return null;
+    const page = filePage(file);
+    if (!c.aliasOf.slug || page === null) return null;
     const seq = parseInt(file.slice(file.lastIndexOf('-') + 1), 10) || 1;
     const volume = String(c.aliasOf.folder || '').replace(/-\d+$/, '');
     return `${c.aliasOf.slug}/${volume}/${page}${seq > 1 ? `-${seq}` : ''}`;
   }
   if (!c.slug || c.volume == null || c.page == null) return null;
-  return `${c.slug}/${String(c.volume).replace(/-\d+$/, '')}/${parseInt(c.page, 10)}`;
+  return `${c.slug}/${String(c.volume).replace(/-\d+$/, '')}/${citedPage(c.page)}`;
 }
 
 /**
@@ -1036,7 +1048,7 @@ export async function fetchCasePreview(slug, volume, page, resolveFn) {
 
   const promise = (async () => {
     try {
-      const result = await resolveFn(slug, volume, parseInt(page, 10), () => {});
+      const result = await resolveFn(slug, volume, citedPage(page), () => {});
       const c = result.caseData;
       return {
         name: c.name_abbreviation,

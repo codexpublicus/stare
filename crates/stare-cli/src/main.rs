@@ -136,7 +136,8 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Resolve { citation } => {
             let input = citation.join(" ");
-            let result = match parse_labeled_input(&input) {
+            let labeled = parse_labeled_input(&input).or_else(|| cited_label(&input));
+            let result = match labeled {
                 Some((reporter, volume, label)) => resolve_label(&src, &reporter, &volume, &label)?,
                 None => {
                     let (reporter, volume, page) = parse_citation_input(&input)?;
@@ -237,6 +238,38 @@ fn parse_labeled_input(input: &str) -> Option<(String, String, String)> {
         return None;
     }
     Some((reporter.to_lowercase(), volume.to_string(), label))
+}
+
+/// A natural citation to a labelled page, as citare reads it: "1 Cai. Cas. xxix" is
+/// `("cai-cas", "1", "xxix")`. None when the first citation citare finds has a page
+/// that starts with a digit, or nothing to look up.
+fn cited_label(input: &str) -> Option<(String, String, String)> {
+    let detected = stare::cite::detect_citations(input);
+    let c = detected
+        .iter()
+        .find(|c| c.slug.is_some() && c.volume.is_some() && c.page.is_some())?;
+    let page = c.page.as_deref()?;
+    let volume = c.volume.as_deref()?.parse::<u32>().ok()?;
+    match cited_page(page)? {
+        stare::index::PageKey::Label(_) => {
+            Some((c.slug.clone()?, volume.to_string(), page.to_string()))
+        }
+        stare::index::PageKey::Number(_) => None,
+    }
+}
+
+/// The page a citation names, as the index keys it: a number when it's all digits, a
+/// label when it doesn't start with one (`xxix`, `Supp. 1`, lowercased). None for
+/// anything else (`647a`, a CCH paragraph `37,448`).
+fn cited_page(page: &str) -> Option<stare::index::PageKey> {
+    let page = page.trim();
+    if page.starts_with(|c: char| c.is_ascii_digit()) {
+        return page
+            .parse::<u32>()
+            .ok()
+            .map(|n| stare::index::PageKey::Number(n as usize));
+    }
+    stare::idx::parse_page(page)
 }
 
 // ---------------------------------------------------------------------------
@@ -763,11 +796,27 @@ fn check_target(c: &stare::cite::DetectedCitation) -> Option<CheckTarget<'_>> {
 /// when the build has one, else from the `.bin` files (and the other parts of a volume
 /// CAP split). A volume whose index has only aliases (the manifest's `aliases`) isn't
 /// held: a hit there resolves, and a miss is like any volume stare.pub doesn't hold.
+#[cfg(test)]
 fn check_page(src: &Sources, slug: &str, volume: u32, page: u32) -> (bool, bool, Option<String>) {
+    check_page_key(
+        src,
+        slug,
+        volume,
+        &stare::index::PageKey::Number(page as usize),
+    )
+}
+
+/// [`check_page`] for a page as the index keys it: a number, or a label (`xxix`), which
+/// the `.bin` files keep in the folder's `.multi`.
+fn check_page_key(
+    src: &Sources,
+    slug: &str,
+    volume: u32,
+    key: &stare::index::PageKey,
+) -> (bool, bool, Option<String>) {
     let cited = volume.to_string();
     let held_by_manifest = src.manifest().is_some_and(|m| m.holds_volume(slug, &cited));
-    let key = stare::index::PageKey::Number(page as usize);
-    if let Ok(Some(entries)) = idx_entries(src, slug, &cited, &key) {
+    if let Ok(Some(entries)) = idx_entries(src, slug, &cited, key) {
         let alias_only = src
             .manifest()
             .is_some_and(|m| m.has_alias_volume(slug, &cited));
@@ -775,6 +824,16 @@ fn check_page(src: &Sources, slug: &str, volume: u32, page: u32) -> (bool, bool,
         let via = entries.first().and_then(|e| e.via.clone());
         return ((held_by_manifest || !alias_only) || found, found, via);
     }
+    let page = match key {
+        stare::index::PageKey::Number(n) => *n as u32,
+        stare::index::PageKey::Label(label) => {
+            let multi = fetch_multi(src, slug, &cited).ok().flatten();
+            let labeled = stare::index::parse_labeled(multi.as_deref().unwrap_or(""));
+            let found = !stare::index::lookup_label(&labeled, label).is_empty();
+            let held = found || held_by_manifest || fetch_bin(src, slug, &cited).is_ok();
+            return (held, found, None);
+        }
+    };
     let mut candidates = vec![cited.clone()];
     if let Some(m) = src.manifest() {
         for v in m.candidates(slug, &cited, page) {
@@ -805,14 +864,12 @@ fn check_status(src: &Sources, c: &stare::cite::DetectedCitation) -> CheckStatus
     if t.law {
         return CheckStatus::Statute;
     }
-    let (Some(slug), Some(volume), Some(page)) = (
-        t.slug.as_deref(),
-        t.volume,
-        t.page.and_then(|p| p.parse::<u32>().ok()),
-    ) else {
+    let (Some(slug), Some(volume), Some(page)) =
+        (t.slug.as_deref(), t.volume, t.page.and_then(cited_page))
+    else {
         return CheckStatus::Unchecked;
     };
-    match check_page(src, slug, volume, page) {
+    match check_page_key(src, slug, volume, &page) {
         (_, true, Some(_)) => CheckStatus::FoundAlias,
         (_, true, None) => CheckStatus::Found,
         (true, false, _) => CheckStatus::HeldMiss,
@@ -826,8 +883,8 @@ fn check_status(src: &Sources, c: &stare::cite::DetectedCitation) -> CheckStatus
 /// then.
 fn check_via(src: &Sources, c: &stare::cite::DetectedCitation) -> Option<String> {
     let t = check_target(c)?;
-    let page = t.page?.parse::<u32>().ok()?;
-    check_page(src, t.slug.as_deref()?, t.volume?, page).2
+    let page = cited_page(t.page?)?;
+    check_page_key(src, t.slug.as_deref()?, t.volume?, &page).2
 }
 
 fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
@@ -1402,6 +1459,76 @@ mod tests {
         assert!(config::cache_get("bins", "v/v1/a2d/31.idx.gz").is_none());
         // CourtListener cases need the unified index.
         assert!(resolve_case(&src, "a3d", "250", 100).is_err());
+    }
+
+    /// #154: a labelled page (`xxix`, `Supp. 1`) resolves and checks from the unified
+    /// index, and from the `.multi` without it, typed in slug form or cited.
+    #[test]
+    fn labelled_pages_resolve_and_check() {
+        let _env = CACHE_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        for with_idx in [true, false] {
+            let cache = tempfile::tempdir().unwrap();
+            std::env::set_var("XDG_CACHE_HOME", cache.path());
+            let (idx, _data, src) = idx_fixture(with_idx);
+            // Say 0647-01 starts on page xxix, and 0649-01 on Supp. 1. Labels sort
+            // after numbers, so their lines go in the split volume's last part.
+            let v = idx.path().join("v/v1/a2d");
+            let tail = stare::idx::decode(&std::fs::read(v.join("31.1.idx.gz")).unwrap()).unwrap();
+            std::fs::write(
+                v.join("31.1.idx.gz"),
+                stare::idx::gzip(&format!("{tail}supp. 1,cap,0649-01\nxxix,cap,0647-01\n")),
+            )
+            .unwrap();
+            std::fs::write(v.join("31.multi"), "xxix,0647-01\nsupp. 1,0649-01\n").unwrap();
+
+            for (input, label, case_file) in [
+                ("a2d 31 xxix", "xxix", "0647-01"),
+                ("a2d 31 XXIX", "XXIX", "0647-01"),
+                ("a2d 31 Supp. 1", "Supp. 1", "0649-01"),
+            ] {
+                let (reporter, volume, got) = parse_labeled_input(input).unwrap();
+                assert_eq!(
+                    (reporter.as_str(), volume.as_str(), got.as_str()),
+                    ("a2d", "31", label)
+                );
+                let result = resolve_label(&src, &reporter, &volume, &got).unwrap();
+                assert_eq!(result.case_file, case_file, "{input} (idx: {with_idx})");
+            }
+            assert!(resolve_label(&src, "a2d", "31", "xxx").is_err());
+
+            // citare reads "31 A.2d xxix" with the label as its page.
+            assert_eq!(
+                cited_label("31 A.2d xxix"),
+                Some(("a2d".into(), "31".into(), "xxix".into()))
+            );
+            assert_eq!(cited_label("31 A.2d 647"), None);
+
+            let label = |l: &str| stare::index::PageKey::Label(l.into());
+            assert_eq!(
+                check_page_key(&src, "a2d", 31, &label("xxix")),
+                (true, true, None)
+            );
+            assert_eq!(
+                check_page_key(&src, "a2d", 31, &label("supp. 1")),
+                (true, true, None)
+            );
+            assert_eq!(
+                check_page_key(&src, "a2d", 31, &label("xxx")),
+                (true, false, None)
+            );
+            let cites = stare::cite::detect_citations("See 31 A.2d xxix.");
+            assert_eq!(check_status(&src, &cites[0]), CheckStatus::Found);
+        }
+    }
+
+    #[test]
+    fn cited_pages_are_numbers_or_labels() {
+        use stare::index::PageKey::{Label, Number};
+        assert_eq!(cited_page("647"), Some(Number(647)));
+        assert_eq!(cited_page("xxix"), Some(Label("xxix".into())));
+        assert_eq!(cited_page("Supp. 1"), Some(Label("supp. 1".into())));
+        assert_eq!(cited_page("647a"), None);
+        assert_eq!(cited_page("37,448"), None);
     }
 
     /// A statute with no link is a statute, not an unchecked case; one
