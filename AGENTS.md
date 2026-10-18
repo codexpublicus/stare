@@ -113,6 +113,13 @@ volume's other folder named directly (`a3d 138-2`) is read from its number's fil
 the lines that name that folder. A miss in a volume the index holds is a miss; it never
 links out. The WASM exposes `parse_idx` and `lookup_idx`.
 
+A labelled page (#154) is a page in every reader: `cai-cas 1 xxix`, `cal-app-4th 15 Supp. 1`
+and a citation citare reads with a label (`1 Cai. Cas. xxix`) resolve in the CLI and on the
+site, and `stare check` and the brief checker look them up. The site's hash carries the
+label URI-encoded (`#cal-app-4th/15/supp.%201-01`), and `web/public/js/pagekey.js` keys
+pages the way `idx::parse_page` and `index::page_key` do. Without `.idx.gz` a label is
+read from the folder's `.multi`.
+
 Every reporter's directory is citare's edition `slug` (citare#71, citare v0.6.0): CAP's
 slug where CAP has the reporter, else one citare derives from the edition name
 (`NY Slip Op` → `ny-slip-op`). Year-volume neutral citations share the CAP reporter's slug

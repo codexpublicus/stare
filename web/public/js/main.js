@@ -7,6 +7,7 @@ import { renderPageViewer } from './pageviewer.js';
 import { footnoteParagraphs, pageBreaks, pageMarker } from './pages.js';
 import { preloadWasm, WasmLoadError } from './wasm.js';
 import { showWasmProgress } from './wasmbar.js';
+import { filePage } from './pagekey.js';
 
 let currentResult = null;
 // The shown case's cited-cases list wired to its text (citenav.js), and a
@@ -133,18 +134,19 @@ function showLanding() {
 }
 
 // Case files are "<first page>-<seq>"; the page can itself hold a hyphen
-// ("1114-1140-01") or a bracket ("[106]-01").
+// ("1114-1140-01") or a bracket ("[106]-01"), or be a label ("xxix-01").
 function seqFromFile(caseFile) {
   return parseInt(caseFile.slice(caseFile.lastIndexOf('-') + 1), 10) || 1;
 }
 
 function pageFromFile(caseFile) {
-  return parseInt(caseFile.replace(/^\[/, ''), 10);
+  return filePage(caseFile);
 }
 
 function updatePrevNext(result, activeCaseFile) {
-  // Cases on unnumbered pages (front matter, "Supp. 1") can't be opened by page here.
-  const cases = (result.volumeCases || []).filter((f) => !Number.isNaN(pageFromFile(f)));
+  // Cases on labelled pages (front matter, "Supp. 1") sort by name, apart from where
+  // they fall in the volume, so the buttons step through the numbered pages only.
+  const cases = (result.volumeCases || []).filter((f) => typeof pageFromFile(f) === 'number');
   const idx = cases.indexOf(activeCaseFile);
 
   if (idx > 0) {

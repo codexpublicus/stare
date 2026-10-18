@@ -407,6 +407,27 @@ test('/#a2d/31/647-01 resolves through idx.stare.pub and renders the case', asyn
   }
 });
 
+// Labelled pages (#154): front matter and supplements, keyed by their label. The live
+// manifest has no `idx`, so these come from the volumes' .multi files.
+test('/#cai-cas/1/xxix-01 opens the case on front-matter page xxix', async ({ page }) => {
+  await page.goto('/#cai-cas/1/xxix-01');
+  await expect(page.locator('#topbar-case')).toHaveText('Johnston v. Ludlow');
+  await expect(page.locator('#topbar-cite')).toHaveText('1 Cai. Cas. xxix');
+});
+
+for (const [input, hash, name] of [
+  ['1 Cai. Cas. xxix', '#cai-cas/1/xxix-01', 'Johnston v. Ludlow'],
+  ['cal-app-4th 15 Supp. 1', '#cal-app-4th/15/supp.%201-01', 'Pino v. Campo'],
+]) {
+  test(`"${input}" resolves to its labelled page`, async ({ page }) => {
+    await page.goto('/');
+    await page.fill('#landing-input', input);
+    await page.click('#landing-btn');
+    await expect(page.locator('#topbar-case')).toHaveText(name);
+    expect(new URL(page.url()).hash).toBe(hash);
+  });
+}
+
 test('short cites and Id.s in a case link to their antecedent\'s case (#120)', async ({ page }) => {
   // McCallister v. State, 2019 WY 47, cites Roe v. Board of County
   // Commissioners, 997 P.2d 1021, then "997 P.2d at 1023". Burnett v.
@@ -700,6 +721,14 @@ test.describe('the unified per-volume index', () => {
     await expect(page.locator('#reader .reader-source')).toHaveCount(0);
     await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)/);
     expect(seen.idx.some((u) => u.endsWith('/a2d/31.idx.gz'))).toBe(true);
+    expect(seen.bins).toEqual([]);
+  });
+
+  test('a labelled page resolves from the .idx.gz, after the numbered pages (#154)', async ({ page }) => {
+    const seen = await routeIdx(page);
+    await page.goto('/#cai-cas/1/xxix');
+    await expect(page.locator('#topbar-case')).toHaveText('Johnston v. Ludlow');
+    expect(seen.idx.some((u) => u.endsWith('/cai-cas/1.idx.gz'))).toBe(true);
     expect(seen.bins).toEqual([]);
   });
 
