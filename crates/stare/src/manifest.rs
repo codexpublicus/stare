@@ -54,6 +54,13 @@
 //! their cases, which batch-index checks them against. A manifest without `idx` has only
 //! the `.bin`/`.multi` files.
 //!
+//! `aliases` lists the volumes whose `.idx.gz` has only aliases (#151): parallel
+//! citations into cases other volumes hold, such as the first-series regionals CAP never
+//! released (`"n-w": ["260"]`). stare.pub holds no case of their own, so they aren't in
+//! `reporters`: a reader fetches the file only to look a page up, a hit resolves to the
+//! alias's case, and a miss is a volume stare.pub doesn't hold, linked out like any
+//! other. A reader that doesn't know `aliases` sees them as volumes it doesn't hold.
+//!
 //! The legacy format (format 1, everything before it) is the bare reporter map with
 //! integer volumes, `{"a2d": [1, 2, 31]}`. It can't name split volumes, so reading it,
 //! [`Manifest::candidates`] guesses `<volume>-2`, the folder name every second part in
@@ -93,6 +100,9 @@ pub struct Manifest {
     /// The unified index's format ([`crate::idx::FORMAT`]) when the build has `.idx.gz`
     /// files (format 2 only).
     pub idx: Option<u32>,
+    /// Reporter slug → volumes whose `.idx.gz` has only aliases, in [`compare_volumes`]
+    /// order; never also in `reporters`.
+    pub aliases: BTreeMap<String, Vec<String>>,
     /// Read from the legacy format, which can't describe split volumes.
     pub legacy: bool,
 }
@@ -115,6 +125,8 @@ struct Format2 {
     parts: BTreeMap<String, BTreeMap<String, Vec<Part>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     idx: Option<u32>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    aliases: BTreeMap<String, Vec<String>>,
 }
 
 /// Whether `s` can name a volume folder: an ASCII digit first, then digits, lowercase
@@ -239,6 +251,7 @@ impl Manifest {
                 generated_at: f.generated_at,
                 base: f.base,
                 idx: f.idx,
+                aliases: f.aliases,
                 legacy: false,
             };
             m.normalize()?;
@@ -279,6 +292,16 @@ impl Manifest {
             volumes.sort_by(|a, b| compare_volumes(a, b));
             volumes.dedup();
         }
+        for (reporter, volumes) in &mut self.aliases {
+            if let Some(bad) = volumes.iter().find(|v| !is_volume_key(v)) {
+                bail!("manifest: bad alias volume {:?} under {}", bad, reporter);
+            }
+            let held = self.reporters.get(reporter);
+            volumes.retain(|v| !held.is_some_and(|h| h.contains(v)));
+            volumes.sort_by(|a, b| compare_volumes(a, b));
+            volumes.dedup();
+        }
+        self.aliases.retain(|_, v| !v.is_empty());
         for (reporter, numbers) in &self.parts {
             for parts in numbers.values() {
                 if let Some(bad) = parts.iter().find(|p| !is_volume_key(&p.volume)) {
@@ -300,6 +323,7 @@ impl Manifest {
             reporters: self.reporters.clone(),
             parts: self.parts.clone(),
             idx: self.idx,
+            aliases: self.aliases.clone(),
         };
         Ok(serde_json::to_string_pretty(&f)?)
     }
@@ -374,6 +398,14 @@ impl Manifest {
     /// number of a volume CAP split over several folders.
     pub fn holds_volume(&self, reporter: &str, volume: &str) -> bool {
         self.holds_cap_volume(reporter, volume)
+    }
+
+    /// Whether `volume` has an index file of aliases only (`aliases`): look the page up
+    /// there, and treat a miss as a volume stare.pub doesn't hold.
+    pub fn has_alias_volume(&self, reporter: &str, volume: &str) -> bool {
+        self.aliases
+            .get(reporter)
+            .is_some_and(|v| v.iter().any(|x| x == volume))
     }
 
     /// The folders to look `page` up in, in order, for a citation to `volume` (as cited,
@@ -644,6 +676,31 @@ mod tests {
         assert_eq!(Manifest::parse(m.to_json().unwrap().as_bytes()).unwrap(), m);
         let future = Manifest::parse(br#"{"format": 2, "idx": 2, "reporters": {}}"#).unwrap();
         assert!(!future.has_idx());
+    }
+
+    #[test]
+    fn reads_and_round_trips_alias_volumes() {
+        let m = Manifest::parse(
+            br#"{"format": 2, "idx": 1, "reporters": {"a2d": ["31"]},
+                 "aliases": {"nw": ["260", "9"], "a2d": ["31", "32"], "p": []}}"#,
+        )
+        .unwrap();
+        // Sorted; a held volume isn't also an alias volume; empty lists dropped.
+        assert_eq!(m.aliases["nw"], ["9", "260"]);
+        assert_eq!(m.aliases["a2d"], ["32"]);
+        assert!(!m.aliases.contains_key("p"));
+        assert!(m.has_alias_volume("nw", "260"));
+        assert!(!m.has_alias_volume("a2d", "31"));
+        assert!(!m.holds_volume("nw", "260"));
+        let back = Manifest::parse(m.to_json().unwrap().as_bytes()).unwrap();
+        assert_eq!(back, m);
+        assert!(
+            Manifest::parse(br#"{"format": 2, "reporters": {}, "aliases": {"nw": ["../x"]}}"#)
+                .is_err()
+        );
+        // Written only when there are some.
+        let none = Manifest::parse(br#"{"format": 2, "reporters": {}}"#).unwrap();
+        assert!(!none.to_json().unwrap().contains("aliases"));
     }
 
     #[test]
