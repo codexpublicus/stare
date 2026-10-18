@@ -11,7 +11,7 @@ import { defineConfig } from 'astro/config';
 // compressed in transit and its body stream decompressed, so Content-Length
 // can't give the size the stream adds up to.
 //
-// The bundle is the one `stare-admin export-citare-data` wrote to
+// The bundle is the one `stare-site export-citare-data` wrote to
 // public/data/citare/v1/ from the same Cargo.lock as the module, gzipped and
 // named citare-data-<first 16 hex digits of the uncompressed SHA-256>.bin.gz.
 // The JSON gives the .gz's size (`bytes`, what the progress bar counts) and
@@ -48,7 +48,7 @@ function citareBundle(dirUrl) {
 	if (names.length !== 1) {
 		throw new Error(
 			`expected one citare data bundle in ${BUNDLE_DIR}, found ${names.length}; ` +
-				`run stare-admin export-citare-data web/public/${BUNDLE_DIR}`,
+				`run stare-site export-citare-data web/public/${BUNDLE_DIR}`,
 		);
 	}
 	const [name] = names;

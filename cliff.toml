@@ -54,8 +54,9 @@ protect_breaking_commits = false
 # Only commits touching what the site is built from count: the web app, the WASM
 # bindings, the core library the bindings compile (a change there changes what the
 # browser resolves), the Worker config and the site's own build and deploy workflow.
-# The CLIs, the archival pipeline, docs and the release files are left out; a
-# release-workflow change moves no visitor's experience.
+# The CLI, docs and the release files are left out; a release-workflow change
+# moves no visitor's experience. stare-site exports the citare data bundle the
+# site serves, so it counts.
 include_paths = [
   # Release tags point at the release PR's merge commit, which touches only
   # CHANGELOG.md. Without it here git-cliff never sees the tagged commits,
@@ -65,6 +66,7 @@ include_paths = [
   "web/**",
   "crates/stare/**",
   "crates/stare-wasm/**",
+  "crates/stare-site/**",
   "wrangler.jsonc",
   ".github/workflows/site.yml",
   ".github/actions/build-site/**",

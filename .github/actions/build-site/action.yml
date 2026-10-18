@@ -106,7 +106,7 @@ runs:
     # citare version in Cargo.lock
     - name: Export citare's data bundle
       shell: bash
-      run: cargo run --quiet -p stare-admin -- export-citare-data web/public/data/citare/v1
+      run: cargo run --quiet -p stare-site -- export-citare-data web/public/data/citare/v1
 
     - uses: ./.github/actions/build-web
       with:

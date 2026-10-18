@@ -3,4 +3,4 @@
 set -euo pipefail
 
 wasm-pack build crates/stare-wasm --target web --out-dir ../../web/public/wasm
-cargo run --quiet -p stare-admin -- export-citare-data web/public/data/citare/v1
+cargo run --quiet -p stare-site -- export-citare-data web/public/data/citare/v1

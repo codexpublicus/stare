@@ -9,8 +9,10 @@
 ## Repository Structure
 
 ```
-crates/stare        — core lookup library (index parsing, zip/case extraction, resolve)
-crates/stare-cli     — `stare` and `stare-admin` binaries
+crates/stare        — core lookup library (index parsing, zip/case extraction, resolve) and the
+                      readers and writers for the published formats
+crates/stare-cli     — the `stare` binary
+crates/stare-site    — `stare-site export-citare-data`, the site build's citare data bundle
 crates/stare-wasm    — wasm-bindgen bindings for the website (same core as the CLI)
 data/                — committed index files (e.g. a2d/31.bin) and other build artifacts
 web/                 — Astro site: landing, about, brief checker, case viewer
@@ -19,10 +21,26 @@ docs/plans/cap-preservation-plan.md — Original plan: outreach, risk assessment
 docs/plans/static-case-law-mirror.md — Mirror of static.case.law: status, file formats, aria2 setup
 docs/plans/extraction-plan.md       — Citation index + data pipeline: bin index, R2 layout, WASM client
 docs/plans/search-plan.md           — Search + data products: RoaringBuckets, DuckLake, comparisons
-mirror/                             — Docker compose + config for the aria2 mirror job
-pipelines/archival-pdf/             - archival per-volume PDF builder (#51): uv project, image, RUNBOOK.md
-pipelines/courtlistener/            - CourtListener bulk export to per-case records (#83, #84): uv project, RUNBOOK.md
 ```
+
+### The data build: codexpublicus/stare-builder
+
+The producer side moved to codexpublicus/stare-builder with its history (#163):
+`stare-admin` (the index build, `build-manifest`, `build-report`, `build-idx`),
+`pipelines/archival-pdf` and `pipelines/courtlistener`, the aria2 mirror job and tar audit
+(`mirror/`), the operator mise tasks (`index-build`, `index-publish`, `cl-fetch`,
+`cl-build`, `cl-test`, `archival-*`), their
+runbooks and the homelab notes. Its AGENTS.md covers them.
+
+This repo is the reader: the site, the CLI, stare-wasm, `crates/stare` with the readers
+and writers for every published format (the per-volume index, the manifest, records), and
+the format specs, including `schemas/` for the build report and `reports/index.json` that
+`/data` reads. `stare::schemas` compiles them in, and stare-builder's report test validates
+against that at its pinned rev. A
+change to a published format lands here first, in the format's reader, writer and the docs
+below; stare-builder pins `crates/stare` by commit and picks it up when it bumps the pin.
+stare-builder depends on stare, never the other way round, and nothing here may depend on
+it. stare's CI builds no pipeline.
 
 ## Architecture
 
@@ -88,12 +106,13 @@ slug where CAP has the reporter, else one citare derives from the edition name
 at volumes CAP's can't reach (`2019-Ohio-1234` is `ohio/2019`, `2021 ND 123` is `nd/2021`).
 `resolvable_citations`, the CLI and the site (`citedSlug` in `manifest.js`) look citations
 up by it; with a data bundle older than v0.6.0, which has no slugs, by `harvard_slug`.
-`stare-admin --cl` files each CourtListener citation under the slugs of the editions citare
+stare-builder's `stare-admin --cl` files each CourtListener citation under the slugs of the editions citare
 finds in its citation string, or of its reporter's edition name when citare can't read the
 string (CourtListener writes `2019 T.C. Memo. 123`); a name citare splits between reporters
 (`Hill`, `Ct. Cl.`) is filed under each of its slugs. The pipeline's manifest carries
-citare's slugs too, from its copy of `data/edition-slugs.json` (`crates/stare/tests/edition_slugs.rs`
-checks the copy); the build counts any that disagree as `slugs_differ`.
+citare's slugs too, from its copy of `data/edition-slugs.json` (stare-builder's
+`crates/stare-admin/tests/edition_slugs.rs` checks the copy against the citare its stare pin
+brings); the build counts any that disagree as `slugs_differ`.
 `crates/stare/tests/fixtures/cl-sample-build.json` is a sample build that the Rust and JS
 tests resolve end to end.
 
@@ -110,36 +129,11 @@ build record paths. Nothing is published yet; the e2e tests serve a hand-made re
 
 ### Index builds and publishing
 
-Each index build is immutable and versioned with a CalVer data version (`vYYYY.MM.DD`, `.N`
-for a later one the same day). Both steps are operator-run on ml-01 and never automatic:
-
-- `mise run index-build <stare tag> [version] [--allow <file>] [--cl <manifest>]` builds
-  `stare-admin` from the tag and runs `batch-index`, `build-manifest` and `build-report` in
-  a throwaway container (no network, the mirror read-only) into
-  `codexpublicus-index:/builds/<version>/`, with `build.log`, `build.json`,
-  `batch-index.json` and `report.json`. `batch-index` writes the `.bin`/`.multi` files and
-  the unified index from the same zips, folding split volumes by CAP's
-  VolumesMetadata.json, plus `cl` lines from a CourtListener export manifest
-  (`cl/exports/<date>/manifest.ndjson.gz`) given with `--cl`; `stare-admin build-idx`
-  rebuilds the unified index from a finished build's `.bin`/`.multi`. The report
-  (`schemas/index-report.v1.schema.json`) has the build's identity, totals, per-reporter
-  counts, every allow-listed and failed volume, a diff against
-  `/index/current/report.json` when the published build has one, and `idx`: the unified
-  index's volumes, files, split and CourtListener-only volumes, lines per source, sizes and
-  what the CourtListener input held.
-- `mise run index-publish <version>` checks the build's exit status and counts and its
-  report, uploads it to `stare-pub-idx/v/<version>/` (`Cache-Control: public,
-  max-age=31536000, immutable`, `.idx.gz` as `application/gzip` with no Content-Encoding,
-  `report.json` next to last, its manifest last), adds the
-  build to `reports/index.json` (`max-age=60`), saves the old root `manifest.json` and
-  `reports/index.json` to `codexpublicus-index:/published/`, writes the root
-  `manifest.json` (the build's plus `base`, `max-age=60`), and points
-  `codexpublicus-index:/current` at the build.
-- Rolling back is `mise run index-publish <earlier version>` for a version still in `v/`: it
-  only rewrites `reports/index.json` and the root manifest. To go back to the
-  pre-versioning root, upload the saved copy from `published/` as `manifest.json`.
-
-Nothing in `v/` is ever overwritten or deleted by these tasks.
+Index builds run from codexpublicus/stare-builder (`mise run index-build`, `mise run
+index-publish`, operator-run on ml-01); its AGENTS.md has the steps. Each build is immutable
+under `v/<version>/` with a CalVer data version (`vYYYY.MM.DD`, `.N` for a later one the
+same day), and the root `manifest.json`'s `base` names the live one. Rolling back is
+publishing an earlier version.
 
 The first build with the unified index keeps `.bin`/`.multi` beside it for one release, and
 the next drops them. Release the site and CLI that read `.idx.gz` before publishing a
@@ -193,7 +187,7 @@ The Worker compresses on the fly, less tightly than brotli 11. Bytes on the wire
 
 Since #117 the module is built without citare's reporter, edition and court tables
 (citare's `embedded-data` feature, off in stare-wasm through `stare`'s own). The build
-exports them with `stare-admin export-citare-data`, gzipped with zopfli, to
+exports them with `stare-site export-citare-data`, gzipped with zopfli, to
 `/data/citare/v1/citare-data-<SHA-256 prefix>.bin.gz`; the prefix is the uncompressed
 bundle's, citare's own name for it. `_headers` serves it as `application/gzip`,
 `immutable` for a year and with no Content-Encoding, so Cloudflare sends the file as it is
@@ -237,7 +231,7 @@ Sizes vary widely by volume: a2d/31's tar is 102 MB (83 MB of it JPGs) and its P
 ## Organization and infrastructure
 
 This repo is `codexpublicus/stare` in the `codexpublicus` GitHub org, alongside
-`codexpublicus/gorsuch-library`, `codexpublicus/infra` (shared zones, edge rules and the
+`codexpublicus/stare-builder` (the data build), `codexpublicus/gorsuch-library`, `codexpublicus/infra` (shared zones, edge rules and the
 LFS proxy) and `codexpublicus/codexpublicus.org` (umbrella site).
 
 Shared Cloudflare values come from the Pulumi stack `organization/codexpublicus-infra/prod`,
@@ -269,8 +263,7 @@ openssh-client and poppler-utils (lokkju/infra#81), and has no passwordless sudo
 installed, tries `sudo -n apt-get` only for missing ones and fails naming them otherwise, and
 sets `TMPDIR` to `$RUNNER_TEMP`, because the sidecar sees only the runner's work volume and a
 `docker run -v` of a `/tmp` path would mount an empty directory. `build-site` asks it for
-`build-essential pkg-config openssh-client`, the archival-pdf job for `poppler-utils`, and the
-archival-image job for nothing but `TMPDIR`. Toolchains still come from their setup actions
+`build-essential pkg-config openssh-client`. Toolchains still come from their setup actions
 (`setup-node`, `rust-toolchain`, `setup-uv`). The Playwright suite installs Chromium's
 headless shell itself and checks its shared libraries with `ldd`; it runs
 `playwright install-deps` only if some are missing and sudo works, so those libraries have to
@@ -296,7 +289,7 @@ may run code from a fork or check out PR code under `pull_request_target`.
 - **The release PR** (`release-prepare.yml`, on every push to `main`): git-cliff collects the
   Conventional Commits since the last release tag and keeps one open PR from `release/next`,
   "chore(release): next site release", that updates `CHANGELOG.md`. Only `feat`, `fix` and
-  `perf` commits touching the site (`web/`, `crates/stare`, `crates/stare-wasm`, `wrangler.jsonc`,
+  `perf` commits touching the site (`web/`, `crates/stare`, `crates/stare-wasm`, `crates/stare-site`, `wrangler.jsonc`,
   `site.yml`, `.github/actions/build-site/` and `.github/actions/build-web/`) after the commit in `scripts/release-baseline` are releasable; docs, chore, ci, test, build, style and refactor are
   hidden, and with nothing releasable there's no PR. The version in the PR is a preview.
 - **Releasing** (`release.yml`, when the bot's release PR from `release/next` merges into
@@ -362,38 +355,12 @@ its declaration.
 Infrastructure changes go through PRs to codexpublicus/infra, not this repo. See that
 repo's `AGENTS.md` for the Pulumi, Wrangler and LFS rules that apply across the org.
 
-### Archival PDF pipeline (`pipelines/archival-pdf/`, #51)
+### Archival PDFs and CourtListener records
 
-`stare-archival` builds one PDF/A-3b per volume from the mirror's tars (lossless JBIG2
-generic region images, the ALTO words as an invisible text layer, METS page labels, a
-bookmark per case; linearized, so a reader fetches any one page by HTTP range request
-instead of the whole volume), verifies every page's pixels and text against the tar, and writes a
-manifest per volume. `build-all` runs volumes in parallel and resumes from passing
-manifests for the same tar SHA-256, commit and tool versions. `mise run archival-test`
-runs ruff and pytest; `mise run archival-image` builds the pipeline image (native jbig2,
-poppler, rclone; bases pinned by digest) and `mise run archival-image-test` builds the
-fixture volume inside it. CI (`.github/workflows/pipelines.yml`) runs both.
-
-The operator runs it on ml-01 from `pipelines/archival-pdf/RUNBOOK.md`: the mirror is the
-read-only Docker volume `codexpublicus-cap-mirror`, the output goes to
-`codexpublicus-derived` (`cap-pdf/<reporter>/<volume>.pdf`,
-`cap-pdf/_manifests/<reporter>/<volume>.json`), and rclone uploads `cap-pdf/` to
-`codex-data/cap-pdf/`. Nothing in the pipeline writes to the mirror.
-
-### CourtListener bulk export (`pipelines/courtlistener/`, #83)
-
-`stare-cl` lists CourtListener's quarterly bulk export in its public S3 bucket, fetches one
-export's tables resumably into `$STARE_CL_DIR/<date>/` with an `export.json` of sizes,
-ETags and SHA-256s, re-verifies them, and reads the PostgreSQL CSV dialect. `stare-cl stage`,
-`text` and `records` then classify each cluster against CAP's index (SQLite staging), keep
-the selected clusters' opinion text, and write one CAP-shaped record per case with a
-`source` block, an export manifest, a delta and a crosswalk of the CAP-held clusters
-(local disk only; publishing is slice 5). `mise run cl-build <ref> --index <version>` builds
-the `stare-cl` image on the host and runs the whole pipeline against the
-`codexpublicus-courtlistener` volume.
-`mise run cl-fetch` runs the fetch (operator-run on ml-01, about 63 GB); `mise run cl-test` runs ruff
-and pytest, as CI (`.github/workflows/pipelines.yml`) does. See
-`pipelines/courtlistener/RUNBOOK.md`.
+The archival per-volume PDF pipeline (#51) and the CourtListener bulk-export pipeline (#83)
+are in codexpublicus/stare-builder, with their runbooks. What they publish, and how the site
+and CLI read it, is above: `/cl/c/...` records (`crates/stare/src/cl.rs`) and, later, the
+`codex-data/cap-pdf/` volumes.
 
 ## Current Status
 
@@ -408,7 +375,7 @@ and pytest, as CI (`.github/workflows/pipelines.yml`) does. See
   aria2 `codex-mirror` container is stopped.
 - **Pending, tracked by issue** (`gh issue list -R codexpublicus/stare`):
   - #42: `codex-data` contents and `data.stare.pub` exposure (tier 1 uploaded 2026-09-29)
-  - #51: archival per-volume PDFs (pipeline in `pipelines/archival-pdf/`)
+  - #51: archival per-volume PDFs (pipeline in codexpublicus/stare-builder)
   - #52, #61: Akoma Ntoso case text (profile in codexpublicus/exemplar); parallel-citation display
   - #60, #63: CalVer releases and version display; the index manifest
   - #10 — a computable court record key, a stable identifier for every decision
@@ -444,24 +411,9 @@ and pytest, as CI (`.github/workflows/pipelines.yml`) does. See
 
 ## Infrastructure
 
-- **ml-01** (192.168.32.210): k3s node, runs Docker, aria2 mirror
-- **TrueNAS** (truenas.lodenheim.lokkju.com / 192.168.32.200): NFS storage
-  - `mega/codexpublicus/`: one parent dataset for the org's data, each child its own NFS
-    export to 192.168.32.0/24 (MapRoot: root):
-    - `cap-mirror`: the static.case.law mirror, **read-only** (ZFS `readonly=on` and a
-      read-only export). Renamed from `mega/codex-publicus` on 2026-09-29.
-    - `derived`: pipeline outputs (archival PDFs and manifests, later Akoma Ntoso documents)
-    - `index`: citation index builds (`stare-pub-idx/`, the files served at idx.stare.pub)
-    - `backups`: restore points (e.g. `stare/stare-pub-idx-2026-09-27`)
-  - `mega/k8s`: k8s persistent volumes
-- Access TrueNAS via NFS mounts and `showmount -e`, not SSH
-- Inspect corpus files from the mirror, never from static.case.law. On ml-01 the Docker volumes
-  `codexpublicus-cap-mirror` (read-only), `codexpublicus-derived`, `codexpublicus-index` and
-  `codexpublicus-backups` mount those exports; corpus files are at
-  `downloads/<reporter>/<volume>.<ext>`, e.g.
-  `ssh ml-01 'docker run --rm -v codexpublicus-cap-mirror:/data:ro rclone/rclone:latest cat /data/downloads/a2d/31.tar.csv'`.
-  The read-write datasets are owned by uid 1000; run containers that write to them as
-  `--user 1000:1000`.
+The homelab (ml-01, TrueNAS and the `codexpublicus-*` Docker volumes) runs the data build
+and the CI runners; codexpublicus/stare-builder's AGENTS.md describes it. Inspect corpus
+files from the mirror there, never from static.case.law.
 
 ## Key Context
 

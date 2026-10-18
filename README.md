@@ -2,8 +2,10 @@
 
 **stare.pub** — Free, serverless U.S. case law citation resolution and search.
 
-**Repository**: `codexpublicus/stare` in the Codex Publicus GitHub org, alongside
-`codexpublicus/gorsuch-library`, `codexpublicus/infra` (shared zones, edge rules and the LFS proxy)
+**Repository**: `codexpublicus/stare` in the Codex Publicus GitHub org: the site, the `stare`
+CLI and the library that reads the published data. The data itself (the citation index,
+archival PDFs, CourtListener records) is built and published from `codexpublicus/stare-builder`.
+Alongside them are `codexpublicus/gorsuch-library`, `codexpublicus/infra` (shared zones, edge rules and the LFS proxy)
 and `codexpublicus/codexpublicus.org` (umbrella site). Shared Cloudflare values come from the
 Pulumi stack `organization/codexpublicus-infra/prod`.
 

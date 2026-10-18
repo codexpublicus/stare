@@ -93,6 +93,9 @@ aria2's `--save-session` acts as a shrinking queue:
 
 ### Files
 
+The `mirror/` directory moved to codexpublicus/stare-builder with the rest of the data build
+(#163); the paths below are in that repo.
+
 | File | Purpose |
 |------|---------|
 | `mirror/docker-compose.yaml` | Docker compose with NFS volume mount |
