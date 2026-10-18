@@ -7,6 +7,8 @@
 .reader-source a, .sidebar-source a { color: var(--link); text-decoration: none; }
 .reader-source a:hover, .sidebar-source a:hover { color: var(--link-hover); text-decoration: underline; }
 .sidebar-source { margin-top: 6px; font-size: 12px; }
+.reader-blocked { margin-top: 2px; font-size: 13px; color: var(--text-secondary); }
+.sidebar-blocked { margin-top: 4px; font-size: 12px; }
 .reader-author { font-family: var(--font-text); font-style: italic; color: var(--text-secondary); margin-bottom: 16px; font-size: 15px; }
 .reader-text { font-family: var(--font-text); font-size: 16px; line-height: 1.8; color: var(--text-body); }
 .reader-text p { margin-bottom: 16px; }

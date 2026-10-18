@@ -2,6 +2,7 @@
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::io::Read;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -50,12 +51,93 @@ pub struct Source {
     pub docket_number: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub precedential_status: Option<String>,
-    /// Which CourtListener opinion field the text came from (`html_with_citations`).
+    /// Which CourtListener opinion field the text came from (`html_with_citations`), or
+    /// one per opinion when they came from different fields.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub text_field: Option<String>,
+    pub text_field: Option<TextField>,
     /// The case's page on the source's own site.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// Set when CourtListener blocks the case, or its docket, from search engines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cl_blocked: Option<ClBlocked>,
+}
+
+/// `source.text_field`: one field name for the whole case, or a list, one name per entry
+/// of `casebody.opinions` in the same order, when the opinions came from different fields.
+/// Either shape serializes as it was read.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum TextField {
+    One(String),
+    PerOpinion(Vec<String>),
+}
+
+/// `source.cl_blocked` (stare-builder's `blocking.py`): CourtListener's blocked flags for
+/// the cluster and its docket, and the blocking rules that match the case. CourtListener
+/// doesn't publish why it blocked an item, so `reasons` is an inference, and
+/// `reason_basis` says so. Nothing is hidden for it; the viewer shows a provenance line.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ClBlocked {
+    #[serde(default)]
+    pub blocked: bool,
+    #[serde(default)]
+    pub date_blocked: Option<String>,
+    #[serde(default)]
+    pub docket_blocked: bool,
+    /// Reason codes: `id-number`, `unpublished-30y`, `keyword:<term>`, `court-category`,
+    /// `bankruptcy-docket` or `unknown`.
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason_basis: Option<String>,
+    /// Reasons the export can't confirm, each with why.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub unverifiable: BTreeMap<String, String>,
+}
+
+/// The provenance line's wording. Placeholder; the owner chooses the final text.
+pub const CL_BLOCKED_NOTICE: &str = "CourtListener excludes this case from search engines.";
+
+impl ClBlocked {
+    /// The provenance line: the notice and the inferred reasons, e.g.
+    /// "CourtListener excludes this case from search engines. (inferred: unpublished
+    /// within 30 years)". Mirrors `blockedLineHtml` in `web/public/js/cl.js`.
+    pub fn notice(&self) -> String {
+        let known: Vec<String> = self
+            .reasons
+            .iter()
+            .filter(|r| r.as_str() != "unknown")
+            .map(|r| {
+                let phrase = reason_phrase(r);
+                if self.unverifiable.contains_key(r) {
+                    format!("{phrase}, unverified")
+                } else {
+                    phrase
+                }
+            })
+            .collect();
+        if known.is_empty() {
+            format!("{CL_BLOCKED_NOTICE} (reason unknown)")
+        } else {
+            format!("{CL_BLOCKED_NOTICE} (inferred: {})", known.join("; "))
+        }
+    }
+}
+
+/// A short readable phrase for one `cl_blocked` reason code; an unrecognized code as is.
+pub fn reason_phrase(code: &str) -> String {
+    match code {
+        "id-number" => "a redacted ID number in the text".into(),
+        "unpublished-30y" => "unpublished within 30 years".into(),
+        "court-category" => "a military, tax or similar court within 30 years".into(),
+        "bankruptcy-docket" => "a bankruptcy docket".into(),
+        "keyword:minor+child" => "mentions \"minor\" and \"child\" within 30 years".into(),
+        _ => match code.strip_prefix("keyword:") {
+            Some(term) => format!("mentions \"{term}\" within 30 years"),
+            None => code.into(),
+        },
+    }
 }
 
 /// CourtListener's ids for a record: its cluster, docket and opinions.
@@ -250,6 +332,89 @@ mod tests {
                 ..Default::default()
             }
         );
+    }
+
+    #[test]
+    fn text_field_reads_a_string_or_a_list_and_writes_it_back_the_same() {
+        let case = CaseJson::parse(include_bytes!("../tests/fixtures/cl-record.json")).unwrap();
+        let source = case.source.as_ref().unwrap();
+        assert_eq!(
+            source.text_field,
+            Some(TextField::One("html_with_citations".into()))
+        );
+        let again = serde_json::to_value(&case).unwrap();
+        assert_eq!(again["source"]["text_field"], "html_with_citations");
+
+        let case =
+            CaseJson::parse(include_bytes!("../tests/fixtures/cl-record-blocked.json")).unwrap();
+        let source = case.source.as_ref().unwrap();
+        assert_eq!(
+            source.text_field,
+            Some(TextField::PerOpinion(vec![
+                "html_with_citations".into(),
+                "plain_text".into()
+            ]))
+        );
+        let again = serde_json::to_value(&case).unwrap();
+        assert_eq!(
+            again["source"]["text_field"],
+            serde_json::json!(["html_with_citations", "plain_text"])
+        );
+    }
+
+    #[test]
+    fn cl_blocked_reads_the_record_block_and_says_why_as_an_inference() {
+        let case = CaseJson::parse(include_bytes!("../tests/fixtures/cl-record.json")).unwrap();
+        assert_eq!(case.source.unwrap().cl_blocked, None);
+
+        let raw = include_bytes!("../tests/fixtures/cl-record-blocked.json");
+        let case = CaseJson::parse(raw).unwrap();
+        let blocked = case.source.as_ref().unwrap().cl_blocked.clone().unwrap();
+        assert!(blocked.blocked);
+        assert!(!blocked.docket_blocked);
+        assert_eq!(blocked.date_blocked.as_deref(), Some("2021-04-23"));
+        assert_eq!(blocked.reasons, ["id-number", "unpublished-30y"]);
+        assert_eq!(
+            blocked.reason_basis.as_deref(),
+            Some("inferred from CourtListener's published blocking rules")
+        );
+        assert!(blocked.unverifiable.is_empty());
+        assert_eq!(
+            blocked.notice(),
+            "CourtListener excludes this case from search engines. \
+             (inferred: a redacted ID number in the text; unpublished within 30 years)"
+        );
+        // The block serializes as it was read.
+        let original: serde_json::Value = serde_json::from_slice(raw).unwrap();
+        let again = serde_json::to_value(&case).unwrap();
+        assert_eq!(
+            again["source"]["cl_blocked"],
+            original["source"]["cl_blocked"]
+        );
+
+        let docket: ClBlocked = serde_json::from_str(
+            r#"{"blocked": false, "date_blocked": null, "docket_blocked": true,
+                "reasons": ["bankruptcy-docket", "keyword:minor+child", "keyword:asylum"],
+                "reason_basis": "inferred from CourtListener's published blocking rules",
+                "unverifiable": {"bankruptcy-docket": "no docket entries"}}"#,
+        )
+        .unwrap();
+        assert_eq!(docket.date_blocked, None);
+        assert_eq!(
+            docket.notice(),
+            "CourtListener excludes this case from search engines. (inferred: a bankruptcy \
+             docket, unverified; mentions \"minor\" and \"child\" within 30 years; mentions \"asylum\" within 30 years)"
+        );
+        let unknown = ClBlocked {
+            blocked: true,
+            reasons: vec!["unknown".into()],
+            ..Default::default()
+        };
+        assert_eq!(
+            unknown.notice(),
+            "CourtListener excludes this case from search engines. (reason unknown)"
+        );
+        assert_eq!(reason_phrase("new-rule"), "new-rule");
     }
 
     #[test]
