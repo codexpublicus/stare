@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Build the fixture volume inside the archival pipeline image (run archival-image first)"
-#USAGE arg "[image]" help="the image to test" default="stare-archival:local"
-set -euo pipefail
-
-"${MISE_PROJECT_ROOT}/pipelines/archival-pdf/scripts/image_smoke.sh" "${usage_image:-stare-archival:local}"

@@ -229,7 +229,8 @@ cases, 1% corrected) touched 3,633 index files, 13.5 MB.
 
 ## Pipeline
 
-`pipelines/courtlistener/` (uv project, CLI `stare-cl`), run on ml-01 in a container like
+`pipelines/courtlistener/` in codexpublicus/stare-builder (uv project, CLI `stare-cl`; it was in
+this repo until #163), run on ml-01 in a container like
 `index-build`, against the `codexpublicus-courtlistener` volume (`/mnt/mega/codexpublicus/courtlistener`
 on TrueNAS):
 
