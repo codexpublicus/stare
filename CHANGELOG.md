@@ -2,6 +2,21 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
+## v2026.10.18.1 - 2026-10-18
+
+### Features
+
+- cite: resolve by citare's edition slug
+- idx: resolve parallel citations through CourtListener aliases
+- web: go from a cited case to where the text cites it, and filter the list
+- web: serve robots.txt, sitemap.xml and llms.txt
+
+### Fixes
+
+- web: show a failed index lookup as unchecked, never as a link
+- case: read source.text_field as a list and show source.cl_blocked
+- resolve citations to labelled pages (xxix, Supp. 1)
+
 ## v2026.10.17.1 - 2026-10-17
 
 ### Features
