@@ -252,7 +252,8 @@ not from any per-site config. That stack owns stare.pub's zone and DNS, the `sta
 R2 bucket and `idx.stare.pub` (moved there from
 `lokkju-infra` on 2026-09-27; see codexpublicus/stare#3), the `codex-data` R2 bucket, the
 Workers deploy token, the citare deploy key and the three Actions secrets that carry them
-(`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CITARE_DEPLOY_KEY`). This repo runs no
+(`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CITARE_DEPLOY_KEY`), plus
+`CITARE_DEPLOY_KEY` again as a Dependabot secret. This repo runs no
 Pulumi of its own.
 
 stare.pub has no email of its own. The published contact address is `info@codexpublicus.org`.
@@ -292,7 +293,10 @@ may run code from a fork or check out PR code under `pull_request_target`.
   `-D warnings`, `cargo test --workspace`, the JS tests, the WASM build and the Astro build,
   then upload a Worker version and keep one updating comment with its preview URL
   (`https://<version>-stare-pub.nick-441.workers.dev`), then run the Playwright smoke suite
-  (`web/e2e/`, `.github/actions/smoke-test`) against that URL.
+  (`web/e2e/`, `.github/actions/smoke-test`) against that URL. Dependabot's PRs stop after
+  the build: a workflow Dependabot triggers sees only Dependabot secrets, and infra stores
+  `CITARE_DEPLOY_KEY` there but not the Workers token, since a dependency bump runs the new
+  version's build scripts and the token can deploy production (codexpublicus/stare-builder#6).
 - **Pushes to `main`** (`site.yml`, job "Preview main (not production)") run the same checks
   and upload a version to the `main` preview alias (and the `site-wasm` artifact `release.yml`
   deploys),
