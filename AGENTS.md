@@ -126,6 +126,11 @@ slug where CAP has the reporter, else one citare derives from the edition name
 at volumes CAP's can't reach (`2019-Ohio-1234` is `ohio/2019`, `2021 ND 123` is `nd/2021`).
 `resolvable_citations`, the CLI and the site (`citedSlug` in `manifest.js`) look citations
 up by it; with a data bundle older than v0.6.0, which has no slugs, by `harvard_slug`.
+A reporter citare reads as a variation of an edition with another name (citare#86, v0.7.0:
+`127 Ohio 545` is the Ohio State Reports, since the Ohio Reports end at volume 20) keeps
+`reporter` as cited and gets that edition's slug, with the edition's name in
+`corrected_reporter`. The site's link says "Read as 127 Ohio St. 545", and the miss notes,
+the CLI's `stare check` and the CourtListener and Scholar links use the edition's name.
 stare-builder's `stare-admin --cl` files each CourtListener citation under the slugs of the editions citare
 finds in its citation string, or of its reporter's edition name when citare can't read the
 string (CourtListener writes `2019 T.C. Memo. 123`); a name citare splits between reporters
@@ -193,6 +198,10 @@ wasm-opt, which made the compressed module larger. Measured 2026-10-03 (gzip -9,
 | citare v0.6.0 with edition slugs (#153) | 1,778,036 | 645,197 | 470,490 |
 | its bundle, `citare-data-72bb280b4d192063.bin` (v0.5.3's `a1dbd84e5cd5ff0a`: 433,931, 125,483, 99,852) | 449,928 | 132,941 | 106,407 |
 | the same bundle with zopfli, as served (v0.5.3's: 116,249) | | 123,689 | |
+| main before citare v0.7.0, 2026-10-18 | 1,802,588 | 653,599 | 477,547 |
+| citare v0.7.0 | 1,808,401 | 656,040 | 478,513 |
+| its bundle, `citare-data-0d5ed0510f1b34b4.bin` | 450,896 | 133,024 | 106,464 |
+| the same bundle with zopfli, as served | | 123,748 | |
 
 The Worker compresses on the fly, less tightly than brotli 11. Bytes on the wire, same day:
 

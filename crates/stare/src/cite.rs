@@ -61,6 +61,13 @@ pub struct DetectedCitation {
     pub page: Option<String>,
     /// Reporter abbreviation from the citation groups
     pub reporter: Option<String>,
+    /// The edition citare read `reporter` as, when it matched only as a
+    /// variation of an edition with another name (citare#86): `127 Ohio 545`
+    /// is the Ohio State Reports, `Ohio St.`, since the Ohio Reports end at
+    /// volume 20. `None` when the reporter is an edition's own name or a
+    /// spacing of it (`U. S.`), and for laws and journals.
+    #[serde(default)]
+    pub corrected_reporter: Option<String>,
     /// Year if detected
     pub year: Option<i32>,
     /// External URL for statutes/regulations (Cornell, govinfo, eCFR and
@@ -122,6 +129,8 @@ pub struct Antecedent {
     pub volume: Option<String>,
     pub page: Option<String>,
     pub reporter: Option<String>,
+    #[serde(default)]
+    pub corrected_reporter: Option<String>,
     pub year: Option<i32>,
     pub external_url: Option<String>,
     #[serde(default)]
@@ -166,6 +175,7 @@ impl DetectedCitation {
             volume: self.volume.clone(),
             page: self.page.clone(),
             reporter: self.reporter.clone(),
+            corrected_reporter: self.corrected_reporter.clone(),
             year: self.year,
             external_url: self.external_url.clone(),
             law: self.law.clone(),
@@ -185,10 +195,28 @@ fn case_name(c: &Citation) -> Option<String> {
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
-    match (party(&d.metadata.plaintiff), party(&d.metadata.defendant)) {
-        (Some(p), Some(d)) => Some(format!("{p} v. {d}")),
-        (p, d) => p.or(d),
+    let name = match (party(&d.metadata.plaintiff), party(&d.metadata.defendant)) {
+        (Some(p), Some(d)) => format!("{p} v. {d}"),
+        (p, d) => p.or(d)?,
+    };
+    // `Id., (1990), 52 Ohio St.3d 155` names the case by an id. citation,
+    // which citare v0.7.0 resolves to the citation after it (citare#84) and
+    // reports as that citation's case name. It names no case.
+    (!regex!(r"(?i)^(?:id|ibid)\.").is_match(&name)).then_some(name)
+}
+
+/// The edition a case citation's reporter was read as when it matched only
+/// as a variation of an edition with another name (see
+/// `DetectedCitation::corrected_reporter`).
+fn corrected_reporter(c: &Citation) -> Option<String> {
+    let r = c.resource_common()?;
+    if !r.exact_editions.is_empty() || r.variation_editions.is_empty() {
+        return None;
     }
+    let corrected = c.corrected_reporter()?;
+    let squash = |s: &str| s.split_whitespace().collect::<String>();
+    let cited = c.common().groups.get("reporter").cloned().flatten();
+    (cited.as_deref().map(squash) != Some(squash(&corrected))).then_some(corrected)
 }
 
 /// A citation's pin cite as citare found it, if it has one.
@@ -262,6 +290,7 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
                 volume: groups.get("volume").cloned().flatten(),
                 page: groups.get("page").cloned().flatten(),
                 reporter: groups.get("reporter").cloned().flatten(),
+                corrected_reporter: corrected_reporter(c),
                 year: c.resource_common().and_then(|r| r.year),
                 external_url: None,
                 law: None,
@@ -923,9 +952,15 @@ pub fn case_links(citation: &DetectedCitation) -> Vec<CaseLink> {
     if citation.citation_type != "FullCaseCitation" {
         return Vec::new();
     }
+    // A variation is looked up under the edition citare read it as:
+    // CourtListener reads `127 Ohio 545` as the Ohio Reports, which have no
+    // volume 127.
     let (Some(volume), Some(reporter), Some(page)) = (
         citation.volume.as_deref(),
-        citation.reporter.as_deref(),
+        citation
+            .corrected_reporter
+            .as_deref()
+            .or(citation.reporter.as_deref()),
         citation.page.as_deref(),
     ) else {
         return Vec::new();
@@ -1811,6 +1846,144 @@ mod tests {
         assert_eq!(
             a.case_links[0].url,
             "https://www.courtlistener.com/c/U.S./598/175/"
+        );
+    }
+
+    /// citare v0.7.0 (citare#76) keeps a parallel group to one decision, so
+    /// a supra naming a case decided twice under one name (the district
+    /// court and the reversal) has no antecedent. v0.6.0 tied it to the
+    /// district court's citation through a group that spanned both.
+    #[test]
+    fn supra_of_two_decisions_with_one_name_has_no_antecedent() {
+        let cites = detect_citations(
+            "Brown v. Liberty Loan Corp. of Duval, 392 F.Supp. 1023 (M.D.Fla.1975), \
+             rev'd, Brown v. Liberty Loan Corp. of Duval, 539 F.2d 1355 (5th Cir. 1976). \
+             The court held. Brown v. Liberty Loan Corp. of Duval, supra, at 1360.",
+        );
+        let supra = find(&cites, "SupraCitation", "supra,");
+        assert!(supra.antecedent.is_none(), "{cites:#?}");
+        assert_eq!(supra.page, None);
+        assert!(resolvable_citations(&cites)
+            .iter()
+            .all(|c| c.citation_type == "FullCaseCitation"));
+    }
+
+    /// citare#84: `Id., (1990), 52 Ohio St.3d 155` names Murray by an id.
+    /// citation. The Id. refers to the citation after it, and that
+    /// citation has no case name of its own.
+    #[test]
+    fn id_used_as_a_case_name() {
+        let text = "In re Murray (1990), 52 Ohio St.3d 155, 157; Stanley v. Illinois (1972), \
+                    405 U.S. 645, 651. Id., (1990), 52 Ohio St.3d 155, 157.";
+        let cites = detect_citations(text);
+        let id = find(&cites, "IdCitation", "Id.,");
+        let a = id.antecedent.as_ref().expect("antecedent");
+        // Murray, not Stanley v. Illinois before it. citare keys both of
+        // Murray's citations as one resource, so the antecedent is the
+        // first.
+        assert_eq!(a.matched_text, "52 Ohio St.3d 155", "{cites:#?}");
+        let named: Vec<Option<&str>> = cites
+            .iter()
+            .filter(|c| c.citation_type == "FullCaseCitation")
+            .map(|c| c.case_name.as_deref())
+            .collect();
+        assert_eq!(
+            named,
+            [
+                Some("Murray (1990)"),
+                Some("Stanley v. Illinois (1972)"),
+                None
+            ]
+        );
+    }
+
+    /// citare#84: the parallel citations of a certiorari denial, which have
+    /// no case name, are one run of their own, apart from the decision
+    /// before them (citare#76).
+    #[test]
+    fn nameless_parallel_run_in_subsequent_history() {
+        let cites = detect_citations(
+            "Flaksa v. Little River Marine Construction Co., 389 F.2d 885 (5th Cir.), \
+             cert. den., 392 U.S. 928, 88 S.Ct. 2287, 20 L.Ed.2d 1387 (1968).",
+        );
+        let parallels: Vec<(&str, Option<usize>, Option<&str>)> = cites
+            .iter()
+            .map(|c| {
+                (
+                    c.matched_text.as_str(),
+                    c.parallel_of,
+                    c.case_name.as_deref(),
+                )
+            })
+            .collect();
+        let flaksa = Some("Flaksa v. Little River Marine Construction Co.");
+        assert_eq!(
+            parallels,
+            [
+                ("389 F.2d 885", None, flaksa),
+                ("392 U.S. 928", None, None),
+                ("88 S.Ct. 2287", Some(1), None),
+                ("20 L.Ed.2d 1387", Some(1), None),
+            ]
+        );
+    }
+
+    /// citare#86: `127 Ohio 545` is the Ohio State Reports, CAP's
+    /// `ohio-st`, read as a variation; the Ohio Reports end at volume 20.
+    /// It keeps the reporter it was cited with, and links out under the
+    /// one it was read as.
+    #[test]
+    fn a_variation_is_read_as_its_edition() {
+        let cites = detect_citations("Troop A Riding Academy v. Miller, 127 Ohio 545 (1934).");
+        let c = find(&cites, "FullCaseCitation", "127 Ohio 545");
+        assert_eq!(c.slug.as_deref(), Some("ohio-st"));
+        assert_eq!(c.harvard_slug.as_deref(), Some("ohio-st"));
+        assert_eq!(c.reporter.as_deref(), Some("Ohio"));
+        assert_eq!(c.corrected_reporter.as_deref(), Some("Ohio St."));
+        assert_eq!(
+            c.case_links[0].url,
+            "https://www.courtlistener.com/c/Ohio%20St./127/545/"
+        );
+        assert!(c.case_links[1].url.ends_with("q=%22127+Ohio+St.+545%22"));
+        // The Ohio Reports' own volumes, and an edition's own name or a
+        // spacing of it, aren't variations.
+        for text in ["20 Ohio 1", "410 U. S. 113", "3 F. 2d 4", "100 Ohio St. 1"] {
+            let cites = detect_citations(text);
+            assert_eq!(cites.len(), 1, "{text}");
+            assert_eq!(cites[0].corrected_reporter, None, "{text}");
+        }
+        assert!(detect_citations("300 Ohio 5").is_empty());
+        // A short form's antecedent carries it.
+        let cites =
+            detect_citations("Troop A Riding Academy v. Miller, 127 Ohio 545 (1934). Id. at 547.");
+        let id = find(&cites, "IdCitation", "Id.");
+        assert_eq!(
+            id.antecedent
+                .as_ref()
+                .unwrap()
+                .corrected_reporter
+                .as_deref(),
+            Some("Ohio St.")
+        );
+    }
+
+    /// citare#79: a citation citare can't narrow to one edition takes the
+    /// CAP reporter, not an edition split off its name: `172 Wash. 688` is
+    /// Washington's, not Virginia's `wash-va`.
+    #[test]
+    fn an_ambiguous_name_takes_the_cap_reporter() {
+        for (text, slug) in [
+            ("172 Wash. 688", "wash"),
+            ("1995 Mass. App. Div. 12", "mass-app-div-annual"),
+            ("10 Mass. App. Div. 12", "mass-app-div"),
+            ("171 Ct.Cl. 497", "us-ct-cl"),
+        ] {
+            assert_eq!(resolved(text).0, slug, "{text}");
+        }
+        assert_eq!(
+            detect_citations("2012-Ohio-3150")[0].harvard_slug,
+            None,
+            "a year volume CAP's ohio doesn't file"
         );
     }
 

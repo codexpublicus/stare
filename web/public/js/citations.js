@@ -57,6 +57,9 @@ function fromRust(c) {
     volume: c.volume ? parseInt(c.volume, 10) : null,
     page: c.page || null,
     reporter: c.reporter || null,
+    // The edition citare read a variation as (`Ohio St.` for `127 Ohio
+    // 545`, citare#86), else null.
+    correctedReporter: c.corrected_reporter || null,
     year: c.year || null,
     start: c.span[0],
     end: c.span[1],
@@ -341,6 +344,7 @@ export function inheritStatus(c, a) {
     slug: a.slug,
     harvard_slug: a.harvard_slug,
     reporter: a.reporter,
+    correctedReporter: a.correctedReporter || null,
     volume: a.volume,
     page: a.page,
     volumeHeld: a.volumeHeld,
@@ -499,7 +503,7 @@ export const SECTION_NOTE = 'Section reference';
  */
 export function heldVolumeMiss(info) {
   if (!info || info.resolvable || info.pageUnknown || !info.volumeHeld || safeExternalUrl(info.externalUrl)) return null;
-  return `No case found at this page in ${info.reporter || info.slug} vol. ${info.volume}`;
+  return `No case found at this page in ${info.correctedReporter || info.reporter || info.slug} vol. ${info.volume}`;
 }
 
 /**
@@ -509,7 +513,18 @@ export function heldVolumeMiss(info) {
  */
 export function lookupFailed(info) {
   if (!info?.pageUnknown || info.resolvable || !info.volumeHeld) return null;
-  return `Couldn't reach the index for ${info.reporter || info.slug} vol. ${info.volume}; reload to try again`;
+  return `Couldn't reach the index for ${info.correctedReporter || info.reporter || info.slug} vol. ${info.volume}; reload to try again`;
+}
+
+/**
+ * For a full citation whose reporter citare read as a variation of an
+ * edition with another name (citare#86), what it was read as: "Read as 127
+ * Ohio St. 545" for `127 Ohio 545`, which stare.pub looks up under the Ohio
+ * State Reports. Null otherwise.
+ */
+export function readAs(info) {
+  if (!info?.correctedReporter || isShortForm(info) || !info.volume || !info.page) return null;
+  return `Read as ${info.volume} ${info.correctedReporter} ${info.page}`;
 }
 
 /** The note for a short form citare couldn't tie to an earlier citation. */
@@ -563,7 +578,8 @@ function citationElementHtml(raw, inner, info, pin) {
   if (info.noAntecedent) {
     return `<span class="cite-unresolved cite-no-antecedent" title="${escapeHtml(NO_ANTECEDENT)}">${inner}</span>`;
   }
-  const titled = (note) => escapeHtml(refers ? `${refers}. ${note}` : note);
+  const read = readAs(info);
+  const titled = (note) => escapeHtml([refers, read, note].filter(Boolean).join('. '));
   const externalUrl = safeExternalUrl(info.externalUrl);
   if (externalUrl) {
     return `<a class="cite-link cite-external" href="${escapeHtml(externalUrl)}" ${OUTBOUND} title="${titled('View on external site')}">${inner}</a>`;
@@ -576,7 +592,7 @@ function citationElementHtml(raw, inner, info, pin) {
     const pinAttr = pin ? ` data-pin="${escapeHtml(pin)}"` : '';
     const at = escapeHtml(pinSuffix(pin, info.page));
     const via = viaLabel(info.via);
-    const title = via ? `${refers || raw}. ${via}` : refers || raw;
+    const title = [refers || raw, read, via].filter(Boolean).join('. ');
     const viaAttr = info.via ? ` data-via="${escapeHtml(info.via)}"` : '';
     return `<a class="cite-link" href="#${slug}/${volume}/${segment}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr}${viaAttr} title="${escapeHtml(title)}">${inner}</a>`;
   }
@@ -595,7 +611,7 @@ function citationElementHtml(raw, inner, info, pin) {
   if (lookup) {
     return `<a class="cite-lookup" href="${escapeHtml(lookup.url)}" ${OUTBOUND} title="${titled(lookupLabel(lookup))}">${inner}</a>`;
   }
-  return `<span class="cite-unresolved" title="${escapeHtml(refers || 'Not yet indexed')}">${inner}</span>`;
+  return `<span class="cite-unresolved" title="${titled(refers ? '' : 'Not yet indexed')}">${inner}</span>`;
 }
 
 /**

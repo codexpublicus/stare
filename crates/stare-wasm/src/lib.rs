@@ -124,7 +124,7 @@ pub fn data_loaded() -> bool {
 }
 
 /// Detect citations in text using citare. Returns JSON array of DetectedCitation.
-/// Each has: matched_text, citation_type, span, harvard_slug, slug (the index slug), volume, page, reporter, year.
+/// Each has: matched_text, citation_type, span, harvard_slug, slug (the index slug), volume, page, reporter, corrected_reporter (the edition a variation was read as), year.
 ///
 /// `span` is converted here, at the WASM boundary, from citare_core's UTF-8
 /// byte offsets to Unicode scalar value (char) offsets, matching how

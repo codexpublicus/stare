@@ -750,6 +750,8 @@ impl CheckStatus {
 /// form's antecedent. A short form is never looked up at its pin page.
 struct CheckTarget<'a> {
     slug: Option<String>,
+    /// The edition a variation was read as (`Ohio St.` for `127 Ohio 545`),
+    /// else the reporter as cited.
     reporter: Option<&'a str>,
     volume: Option<u32>,
     page: Option<&'a str>,
@@ -772,7 +774,7 @@ fn check_target(c: &stare::cite::DetectedCitation) -> Option<CheckTarget<'_>> {
         let a = c.antecedent.as_ref()?;
         return Some(CheckTarget {
             slug: slug_for(&a.slug, &a.reporter),
-            reporter: a.reporter.as_deref(),
+            reporter: a.corrected_reporter.as_deref().or(a.reporter.as_deref()),
             volume: a.volume.as_deref().and_then(|v| v.parse().ok()),
             page: a.page.as_deref(),
             external_url: a.external_url.as_deref(),
@@ -782,7 +784,7 @@ fn check_target(c: &stare::cite::DetectedCitation) -> Option<CheckTarget<'_>> {
     }
     Some(CheckTarget {
         slug: slug_for(&c.slug, &c.reporter),
-        reporter: c.reporter.as_deref(),
+        reporter: c.corrected_reporter.as_deref().or(c.reporter.as_deref()),
         volume: c.volume.as_deref().and_then(|v| v.parse().ok()),
         page: c.page.as_deref(),
         external_url: c.external_url.as_deref(),
