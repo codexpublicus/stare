@@ -38,7 +38,8 @@ the format specs, including `schemas/` for the build report and `reports/index.j
 `/data` reads. `stare::schemas` compiles them in, and stare-builder's report test validates
 against that at its pinned rev. A
 change to a published format lands here first, in the format's reader, writer and the docs
-below; stare-builder pins `crates/stare` by commit and picks it up when it bumps the pin.
+below; stare-builder pins `crates/stare` by a site release tag (`vYYYY.MM.DD.N`) and picks
+it up when it bumps the pin, so a change it needs ships in a release first.
 stare-builder depends on stare, never the other way round, and nothing here may depend on
 it. stare's CI builds no pipeline.
 
