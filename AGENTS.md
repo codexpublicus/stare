@@ -82,10 +82,20 @@ volume's other folder named directly (`a3d 138-2`) is read from its number's fil
 the lines that name that folder. A miss in a volume the index holds is a miss; it never
 links out. The WASM exposes `parse_idx` and `lookup_idx`.
 
-Slugs for reporters CAP never had come from citare's edition `slug` (citare#71, not yet in
-a citare release). Until stare takes it, the build slugs them the same way
-(`NY Slip Op` → `ny-slip-op`), and the resolvers, which look up by `harvard_slug`, reach
-CourtListener cases only in reporters CAP has.
+Every reporter's directory is citare's edition `slug` (citare#71, citare v0.6.0): CAP's
+slug where CAP has the reporter, else one citare derives from the edition name
+(`NY Slip Op` → `ny-slip-op`). Year-volume neutral citations share the CAP reporter's slug
+at volumes CAP's can't reach (`2019-Ohio-1234` is `ohio/2019`, `2021 ND 123` is `nd/2021`).
+`resolvable_citations`, the CLI and the site (`citedSlug` in `manifest.js`) look citations
+up by it; with a data bundle older than v0.6.0, which has no slugs, by `harvard_slug`.
+`stare-admin --cl` files each CourtListener citation under the slugs of the editions citare
+finds in its citation string, or of its reporter's edition name when citare can't read the
+string (CourtListener writes `2019 T.C. Memo. 123`); a name citare splits between reporters
+(`Hill`, `Ct. Cl.`) is filed under each of its slugs. The pipeline's manifest carries
+citare's slugs too, from its copy of `data/edition-slugs.json` (`crates/stare/tests/edition_slugs.rs`
+checks the copy); the build counts any that disagree as `slugs_differ`.
+`crates/stare/tests/fixtures/cl-sample-build.json` is a sample build that the Rust and JS
+tests resolve end to end.
 
 ### CourtListener records (`crates/stare/src/cl.rs`, `web/public/js/cl.js`)
 
@@ -165,6 +175,10 @@ wasm-opt, which made the compressed module larger. Measured 2026-10-03 (gzip -9,
 | citare v0.5.2 without embedded data (#117), with #123, 2026-10-05 | 1,651,074 | 605,210 | 443,615 |
 | its data bundle, `citare-data-d23ebb063eb8f24b.bin` | 424,260 | 124,747 | 97,901 |
 | the same bundle with zopfli, as served (`.bin.gz`) | | 113,812 | |
+| main before #153 (citare v0.5.3), 2026-10-17 | 1,777,038 | 644,193 | 470,543 |
+| citare v0.6.0 with edition slugs (#153) | 1,778,036 | 645,197 | 470,490 |
+| its bundle, `citare-data-72bb280b4d192063.bin` (v0.5.3's `a1dbd84e5cd5ff0a`: 433,931, 125,483, 99,852) | 449,928 | 132,941 | 106,407 |
+| the same bundle with zopfli, as served (v0.5.3's: 116,249) | | 123,689 | |
 
 The Worker compresses on the fly, less tightly than brotli 11. Bytes on the wire, same day:
 

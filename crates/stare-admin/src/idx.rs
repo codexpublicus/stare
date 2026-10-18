@@ -92,12 +92,20 @@ pub struct ClInput {
     pub skipped_volume: u64,
     /// Citations left out: a page a line can't hold.
     pub skipped_page: u64,
-    /// Citations left out: no usable slug.
+    /// Citations left out: citare has no reporter edition for them.
     pub skipped_slug: u64,
-    /// Citations whose slug was derived from the reporter's name, CAP having none.
-    pub derived_slug: u64,
-    /// Citations CAP's table gives several slugs (`Ct. Cl.`), indexed under each.
+    /// Citations citare didn't find in their citation string, slugged by their
+    /// reporter's edition name instead.
+    #[serde(default)]
+    pub slug_by_name: u64,
+    /// Citations indexed under several slugs: an edition name citare splits
+    /// between reporters (`Hill`, `Ct. Cl.`).
     pub several_slugs: u64,
+    /// Citations whose manifest `slugs` (the pipeline's, from its copy of
+    /// citare's `edition-slugs.json`) aren't the slugs citare gives here. The
+    /// index uses citare's; a count above zero means the two have drifted.
+    #[serde(default)]
+    pub slugs_differ: u64,
 }
 
 #[derive(Deserialize)]
@@ -110,6 +118,9 @@ struct ManifestLine {
 
 #[derive(Deserialize)]
 struct ManifestCite {
+    /// The citation as written (`2019-Ohio-1234`); manifests have it since #83.
+    #[serde(default)]
+    cite: Option<String>,
     #[serde(default)]
     volume: Option<String>,
     #[serde(default)]
@@ -118,43 +129,102 @@ struct ManifestCite {
     page: Option<String>,
     #[serde(default, rename = "type")]
     cite_type: Option<i64>,
-    /// citare's slug, once the pipeline writes it (citare#71).
+    /// The slugs the pipeline gives the reporter, from citare's
+    /// `edition-slugs.json`; checked, not used.
     #[serde(default)]
-    slug: Option<String>,
-    #[serde(default)]
-    cap_slugs: Vec<String>,
+    slugs: Option<Vec<String>>,
 }
 
 /// CourtListener citation types that are never a reporter volume: LEXIS and Westlaw.
 const VENDOR_TYPES: [i64; 2] = [6, 7];
 
-/// A reporter name as a slug, the way citare names an edition CAP doesn't have
-/// (citare#71): lowercased, apostrophes dropped, every other run of characters that
-/// aren't ASCII letters or digits one hyphen. `NY Slip Op` → `ny-slip-op`, `F.4th` →
-/// `f-4th`.
-pub fn derive_slug(reporter: &str) -> String {
-    let mut out = String::new();
-    let mut gap = false;
-    for c in reporter.chars().flat_map(char::to_lowercase) {
-        if matches!(c, '\'' | '\u{2019}' | '\u{2018}') {
-            continue;
-        }
-        if c.is_ascii_alphanumeric() {
-            if gap && !out.is_empty() {
-                out.push('-');
-            }
-            out.push(c);
-            gap = false;
-        } else {
-            gap = true;
-        }
-    }
-    out
+/// How one manifest citation went.
+enum Cited {
+    Vendor,
+    Volume,
+    Page,
+    NoSlug,
+    Lines {
+        volume: String,
+        page: stare::index::PageKey,
+        slugs: Vec<String>,
+        by_name: bool,
+        differ: bool,
+    },
 }
+
+/// The slugs a CourtListener citation is indexed under: citare's, for the editions it
+/// finds in the citation string, the way a reader's lookup finds them
+/// (`stare::cite::detect_citations`). Where the reporter's name is an edition name
+/// citare splits between reporters, only that name's slugs are kept (`5 Hill 1` is
+/// `hill` or `hill-sc`, not the `Hill Eq.` citare also matches). A citation citare
+/// doesn't find in its string is slugged by its reporter's edition name (curly quotes
+/// read as straight ones, as in `edition_slugs` in the pipeline's `reporters.py`).
+fn cite_slugs(c: &ManifestCite, names: &BTreeMap<String, Vec<String>>) -> Cited {
+    if c.cite_type.is_some_and(|t| VENDOR_TYPES.contains(&t)) {
+        return Cited::Vendor;
+    }
+    let volume = c.volume.as_deref().unwrap_or("").trim();
+    if !stare::manifest::is_volume_key(volume) {
+        return Cited::Volume;
+    }
+    let Some(page) = c.page.as_deref().and_then(stare::idx::parse_page) else {
+        return Cited::Page;
+    };
+    let reporter = c.reporter.as_deref().unwrap_or("").trim();
+    let text = match c.cite.as_deref() {
+        Some(t) if !t.trim().is_empty() => t.to_string(),
+        _ => format!("{volume} {reporter} {}", c.page.as_deref().unwrap_or("")),
+    };
+    let named = names
+        .get(reporter)
+        .or_else(|| names.get(&reporter.replace(['\u{2018}', '\u{2019}'], "'")));
+    let found = stare::cite::edition_slugs(&text).into_iter().find(|e| {
+        e.volume.trim() == volume && stare::idx::parse_page(&e.page).as_ref() == Some(&page)
+    });
+    let (slugs, by_name) = match (found, named) {
+        (Some(e), Some(named)) => {
+            let kept: Vec<String> = e
+                .slugs
+                .iter()
+                .filter(|s| named.contains(s))
+                .cloned()
+                .collect();
+            (if kept.is_empty() { e.slugs } else { kept }, false)
+        }
+        (Some(e), None) => (e.slugs, false),
+        (None, Some(named)) => (named.clone(), true),
+        (None, None) => (Vec::new(), false),
+    };
+    let slugs: Vec<String> = slugs
+        .into_iter()
+        .filter(|s| stare::cl::is_reporter_slug(s))
+        .collect();
+    if slugs.is_empty() {
+        return Cited::NoSlug;
+    }
+    let differ = c.slugs.as_ref().is_some_and(|given| {
+        let mut a = given.clone();
+        let mut b = slugs.clone();
+        a.sort();
+        b.sort();
+        a != b
+    });
+    Cited::Lines {
+        volume: volume.to_string(),
+        page,
+        slugs,
+        by_name,
+        differ,
+    }
+}
+
+/// Manifest lines read and handled at a time, in parallel.
+const CHUNK: usize = 20_000;
 
 /// Read a CourtListener export manifest (`cl/exports/<date>/manifest.ndjson.gz`, as
 /// `stare-cl records` writes it; gzipped or plain): one `cl` line per citation of each
-/// record, under the slug and volume as cited.
+/// record, under citare's slug for it (see `cite_slugs`) and the volume as cited.
 pub fn read_cl_manifest(path: &Path) -> anyhow::Result<(BTreeMap<VolumeKey, Vec<Entry>>, ClInput)> {
     let file =
         std::fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
@@ -182,72 +252,72 @@ pub fn read_cl_manifest(path: &Path) -> anyhow::Result<(BTreeMap<VolumeKey, Vec<
             .map(String::from),
         ..Default::default()
     };
+    let names = stare::cite::edition_slug_table();
     let mut out: BTreeMap<VolumeKey, Vec<Entry>> = BTreeMap::new();
-    for (i, line) in reader.lines().enumerate() {
-        let line = line.with_context(|| format!("{}: line {}", path.display(), i + 1))?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        let record: ManifestLine = serde_json::from_str(&line).with_context(|| {
-            format!("{}: line {} isn't a manifest record", path.display(), i + 1)
-        })?;
-        if !stare::cl::is_hash(&record.hash) {
-            anyhow::bail!(
-                "{}: line {}: bad hash {:?}",
-                path.display(),
-                i + 1,
-                record.hash
-            );
-        }
-        input.records += 1;
-        let before = input.lines;
-        for c in &record.citations {
-            input.citations += 1;
-            if c.cite_type.is_some_and(|t| VENDOR_TYPES.contains(&t)) {
-                input.skipped_vendor += 1;
-                continue;
+    let mut lines = reader.lines().enumerate().peekable();
+    while lines.peek().is_some() {
+        let mut chunk: Vec<(usize, String)> = Vec::with_capacity(CHUNK);
+        for (i, line) in lines.by_ref().take(CHUNK) {
+            let line = line.with_context(|| format!("{}: line {}", path.display(), i + 1))?;
+            if !line.trim().is_empty() {
+                chunk.push((i, line));
             }
-            let volume = c.volume.as_deref().unwrap_or("").trim();
-            if !stare::manifest::is_volume_key(volume) {
-                input.skipped_volume += 1;
-                continue;
-            }
-            let Some(page) = c.page.as_deref().and_then(stare::idx::parse_page) else {
-                input.skipped_page += 1;
-                continue;
-            };
-            let slugs: Vec<String> = match (&c.slug, c.cap_slugs.is_empty()) {
-                (Some(s), _) => vec![s.clone()],
-                (None, false) => c.cap_slugs.clone(),
-                (None, true) => {
-                    let s = derive_slug(c.reporter.as_deref().unwrap_or(""));
-                    if !s.is_empty() {
-                        input.derived_slug += 1;
-                    }
-                    vec![s]
+        }
+        let done: Vec<(ManifestLine, Vec<Cited>)> = chunk
+            .par_iter()
+            .map(|(i, line)| -> anyhow::Result<_> {
+                let record: ManifestLine = serde_json::from_str(line).with_context(|| {
+                    format!("{}: line {} isn't a manifest record", path.display(), i + 1)
+                })?;
+                if !stare::cl::is_hash(&record.hash) {
+                    anyhow::bail!(
+                        "{}: line {}: bad hash {:?}",
+                        path.display(),
+                        i + 1,
+                        record.hash
+                    );
                 }
-            };
-            let slugs: Vec<String> = slugs
-                .into_iter()
-                .filter(|s| stare::cl::is_reporter_slug(s))
-                .collect();
-            if slugs.is_empty() {
-                input.skipped_slug += 1;
-                continue;
+                let cited = record
+                    .citations
+                    .iter()
+                    .map(|c| cite_slugs(c, &names))
+                    .collect();
+                Ok((record, cited))
+            })
+            .collect::<anyhow::Result<_>>()?;
+        for (record, cited) in done {
+            input.records += 1;
+            let before = input.lines;
+            for c in cited {
+                input.citations += 1;
+                match c {
+                    Cited::Vendor => input.skipped_vendor += 1,
+                    Cited::Volume => input.skipped_volume += 1,
+                    Cited::Page => input.skipped_page += 1,
+                    Cited::NoSlug => input.skipped_slug += 1,
+                    Cited::Lines {
+                        volume,
+                        page,
+                        slugs,
+                        by_name,
+                        differ,
+                    } => {
+                        input.slug_by_name += u64::from(by_name);
+                        input.slugs_differ += u64::from(differ);
+                        if slugs.len() > 1 {
+                            input.several_slugs += 1;
+                        }
+                        for slug in slugs {
+                            let entry = Entry::cl(page.clone(), record.id, &record.hash)?;
+                            out.entry((slug, volume.clone())).or_default().push(entry);
+                            input.lines += 1;
+                        }
+                    }
+                }
             }
-            if slugs.len() > 1 {
-                input.several_slugs += 1;
+            if input.lines == before {
+                input.records_without_lines += 1;
             }
-            for slug in slugs {
-                let entry = Entry::cl(page.clone(), record.id, &record.hash)?;
-                out.entry((slug, volume.to_string()))
-                    .or_default()
-                    .push(entry);
-                input.lines += 1;
-            }
-        }
-        if input.lines == before {
-            input.records_without_lines += 1;
         }
     }
     Ok((out, input))
@@ -540,16 +610,6 @@ mod tests {
         assert_eq!(at("b", "1").volume, "1");
     }
 
-    #[test]
-    fn slugs_derive_like_citare() {
-        assert_eq!(derive_slug("NY Slip Op"), "ny-slip-op");
-        assert_eq!(derive_slug("F.4th"), "f-4th");
-        assert_eq!(derive_slug("N.Y.S.3d"), "n-y-s-3d");
-        assert_eq!(derive_slug("T.C. Memo."), "t-c-memo");
-        assert_eq!(derive_slug("F. App’x"), "f-appx");
-        assert_eq!(derive_slug("..."), "");
-    }
-
     fn write_manifest(dir: &Path, lines: &[serde_json::Value]) -> PathBuf {
         let d = dir.join("cl/exports/2026-09-30");
         std::fs::create_dir_all(&d).unwrap();
@@ -569,27 +629,39 @@ mod tests {
             dir.path(),
             &[
                 serde_json::json!({"id": 1, "hash": H1, "first_seen": "2026-09-30", "citations": [
-                    {"cite": "2021 NY Slip Op 01234", "volume": "2021", "reporter": "NY Slip Op", "page": "01234", "type": 2, "cap_slugs": []},
-                    {"cite": "2021 WL 1", "volume": "2021", "reporter": "WL", "page": "1", "type": 7, "cap_slugs": []},
+                    {"cite": "2021 NY Slip Op 01234", "volume": "2021", "reporter": "NY Slip Op", "page": "01234", "type": 2, "slugs": ["ny-slip-op"]},
+                    {"cite": "2021 WL 1", "volume": "2021", "reporter": "WL", "page": "1", "type": 7, "slugs": []},
                 ]}),
                 serde_json::json!({"id": 2, "hash": H1, "citations": [
-                    {"volume": "250", "reporter": "A.3d", "page": "100", "type": 3, "cap_slugs": ["a3d"]},
-                    {"volume": "1", "reporter": "Ct. Cl.", "page": "5", "type": 2, "cap_slugs": ["us-ct-cl", "wv-ct-cl"]},
-                    {"volume": "x y", "reporter": "A.3d", "page": "1", "type": 3, "cap_slugs": ["a3d"]},
-                    {"volume": "2", "reporter": "A.3d", "page": "", "type": 3, "cap_slugs": ["a3d"]},
-                    {"volume": "20", "reporter": "Ohio", "page": "7", "type": 8, "slug": "ohio", "cap_slugs": []},
+                    // No `cite`, as in a manifest from before #83: "250 A.3d 100".
+                    {"volume": "250", "reporter": "A.3d", "page": "100", "type": 3},
+                    {"cite": "1 Ct. Cl. 5", "volume": "1", "reporter": "Ct. Cl.", "page": "5", "type": 2},
+                    {"volume": "x y", "reporter": "A.3d", "page": "1", "type": 3},
+                    {"volume": "2", "reporter": "A.3d", "page": "", "type": 3},
+                    // The Ohio neutral citation shares CAP's `ohio` at a year volume.
+                    {"cite": "2019-Ohio-1234", "volume": "2019", "reporter": "Ohio", "page": "1234", "type": 8, "slugs": ["ohio"]},
+                    {"cite": "2021 ND 123", "volume": "2021", "reporter": "ND", "page": "123", "type": 8, "slugs": ["nd-neutral"]},
                 ]}),
-                serde_json::json!({"id": 3, "hash": H1, "citations": []}),
+                serde_json::json!({"id": 3, "hash": H1, "citations": [
+                    // citare has no `Foo.`; nothing to file it under.
+                    {"cite": "5 Foo. 1", "volume": "5", "reporter": "Foo.", "page": "1", "type": 2},
+                    // A string citare doesn't read as a citation: slugged by name.
+                    {"cite": "20 Ohio", "volume": "20", "reporter": "Ohio", "page": "7", "type": 2},
+                ]}),
+                serde_json::json!({"id": 4, "hash": H1, "citations": []}),
             ],
         );
         let (lines, input) = read_cl_manifest(&path).unwrap();
         assert_eq!(input.export.as_deref(), Some("2026-09-30"));
-        assert_eq!((input.records, input.citations, input.lines), (3, 7, 5));
+        assert_eq!((input.records, input.citations, input.lines), (4, 10, 7));
         assert_eq!(input.skipped_vendor, 1);
         assert_eq!(input.skipped_volume, 1);
         assert_eq!(input.skipped_page, 1);
-        assert_eq!(input.derived_slug, 1);
+        assert_eq!(input.skipped_slug, 1);
+        assert_eq!(input.slug_by_name, 1);
         assert_eq!(input.several_slugs, 1);
+        // The pipeline's `nd-neutral` isn't citare's `nd`.
+        assert_eq!(input.slugs_differ, 1);
         assert_eq!(input.records_without_lines, 1);
         let at = |s, v| {
             lines[&key(s, v)]
@@ -601,7 +673,106 @@ mod tests {
         assert_eq!(at("a3d", "250"), [format!("100,cl,2/{H1}")]);
         assert_eq!(at("us-ct-cl", "1").len(), 1);
         assert_eq!(at("wv-ct-cl", "1").len(), 1);
-        assert_eq!(at("ohio", "20"), [format!("7,cl,2/{H1}")]);
+        assert_eq!(at("ohio", "2019"), [format!("1234,cl,2/{H1}")]);
+        assert_eq!(at("nd", "2021"), [format!("123,cl,2/{H1}")]);
+        assert_eq!(at("ohio", "20"), [format!("7,cl,3/{H1}")]);
+    }
+
+    /// `crates/stare/tests/fixtures/cl-sample-build.json`: a sample build of reporters
+    /// CAP never had. Each one's index file is what the build writes, and a reader's
+    /// citation string reaches its record through citare, as the site and the CLI look
+    /// it up. web/tests/cl-slugs.test.js reads the same file.
+    #[test]
+    fn every_courtlistener_only_reporter_in_a_sample_build_resolves_from_a_citation() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../stare/tests/fixtures/cl-sample-build.json"
+        ))
+        .unwrap();
+        let hash = fixture["hash"].as_str().unwrap();
+        let cites = fixture["citations"].as_array().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let records: Vec<serde_json::Value> = cites
+            .iter()
+            .map(|c| {
+                serde_json::json!({"id": c["cluster_id"], "hash": hash, "citations": [{
+                    "cite": c["cite"], "volume": c["volume"], "reporter": c["reporter"],
+                    "page": c["page"], "type": c["type"], "slugs": [c["detected"]["slug"]],
+                }]})
+            })
+            .collect();
+        let path = write_manifest(dir.path(), &records);
+        let (cl, input) = read_cl_manifest(&path).unwrap();
+        assert_eq!(input.lines, cites.len() as u64);
+        assert_eq!(input.slugs_differ, 0);
+        let out = dir.path().join("out");
+        let written = write(&out, BTreeMap::new(), &[], cl).unwrap();
+
+        // The build is the fixture's `idx`, file for file.
+        let idx = fixture["idx"].as_object().unwrap();
+        let built: BTreeMap<String, String> = written
+            .volumes
+            .iter()
+            .map(|(s, v)| {
+                let p = out.join(stare::idx::path(s, v, 0).unwrap());
+                (
+                    format!("{s}/{v}"),
+                    stare::idx::decode(&std::fs::read(p).unwrap()).unwrap(),
+                )
+            })
+            .collect();
+        let want: BTreeMap<String, String> = idx
+            .iter()
+            .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
+            .collect();
+        assert_eq!(built, want);
+
+        let mut reached = std::collections::BTreeSet::new();
+        for c in cites {
+            let text = c["text"].as_str().unwrap();
+            let detected = stare::cite::detect_citations(text);
+            let found = stare::cite::resolvable_citations(&detected);
+            assert_eq!(found.len(), 1, "{text}: {detected:?}");
+            let d = found[0];
+            let want = &c["detected"];
+            assert_eq!(d.matched_text, text);
+            assert_eq!(d.slug.as_deref(), want["slug"].as_str(), "{text}");
+            assert_eq!(
+                d.harvard_slug.as_deref(),
+                want["harvard_slug"].as_str(),
+                "{text}"
+            );
+            assert_eq!(d.volume.as_deref(), want["volume"].as_str(), "{text}");
+            assert_eq!(d.page.as_deref(), want["page"].as_str(), "{text}");
+            assert_eq!(d.reporter.as_deref(), c["reporter"].as_str(), "{text}");
+
+            let slug = d.slug.as_deref().unwrap();
+            let volume = d.volume.as_deref().unwrap();
+            let file = out.join(stare::idx::path(slug, volume, 0).unwrap());
+            let index = stare::idx::parse_bytes(&std::fs::read(&file).unwrap()).unwrap();
+            let page = stare::idx::parse_page(d.page.as_deref().unwrap()).unwrap();
+            let hits: Vec<_> = index
+                .lookup(&page)
+                .iter()
+                .filter_map(|e| e.cl_record())
+                .collect();
+            assert_eq!(hits, [(c["cluster_id"].as_u64().unwrap(), hash)], "{text}");
+            reached.insert(format!("{slug}/{volume}"));
+        }
+        assert_eq!(reached, want.keys().cloned().collect());
+    }
+
+    #[test]
+    fn a_split_edition_name_keeps_its_own_slugs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_manifest(
+            dir.path(),
+            &[serde_json::json!({"id": 1, "hash": H1, "citations": [
+                {"cite": "5 Hill 100", "volume": "5", "reporter": "Hill", "page": "100", "type": 2},
+            ]})],
+        );
+        let (lines, _) = read_cl_manifest(&path).unwrap();
+        let slugs: Vec<&str> = lines.keys().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(slugs, ["hill", "hill-sc"]);
     }
 
     #[test]

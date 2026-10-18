@@ -205,7 +205,7 @@ fn parse_citation_input(input: &str) -> Result<(String, String, u32)> {
     // Try citare
     let detected = stare::cite::detect_citations(input);
     for c in &detected {
-        if let (Some(slug), Some(vol_str), Some(page_str)) = (&c.harvard_slug, &c.volume, &c.page) {
+        if let (Some(slug), Some(vol_str), Some(page_str)) = (&c.slug, &c.volume, &c.page) {
             if let (Ok(vol), Ok(page)) = (vol_str.parse::<u32>(), page_str.parse::<u32>()) {
                 return Ok((slug.clone(), vol.to_string(), page));
             }
@@ -702,7 +702,7 @@ fn check_target(c: &stare::cite::DetectedCitation) -> Option<CheckTarget<'_>> {
     if c.is_short_form() {
         let a = c.antecedent.as_ref()?;
         return Some(CheckTarget {
-            slug: slug_for(&a.harvard_slug, &a.reporter),
+            slug: slug_for(&a.slug, &a.reporter),
             reporter: a.reporter.as_deref(),
             volume: a.volume.as_deref().and_then(|v| v.parse().ok()),
             page: a.page.as_deref(),
@@ -712,7 +712,7 @@ fn check_target(c: &stare::cite::DetectedCitation) -> Option<CheckTarget<'_>> {
         });
     }
     Some(CheckTarget {
-        slug: slug_for(&c.harvard_slug, &c.reporter),
+        slug: slug_for(&c.slug, &c.reporter),
         reporter: c.reporter.as_deref(),
         volume: c.volume.as_deref().and_then(|v| v.parse().ok()),
         page: c.page.as_deref(),

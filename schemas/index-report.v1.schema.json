@@ -104,20 +104,22 @@
     },
     "cl_input": {
       "type": "object",
-      "required": ["export", "records", "citations", "lines", "records_without_lines", "skipped_vendor", "skipped_volume", "skipped_page", "skipped_slug", "derived_slug", "several_slugs"],
+      "required": ["export", "records", "citations", "lines", "records_without_lines", "skipped_vendor", "skipped_volume", "skipped_page", "skipped_slug", "several_slugs"],
       "additionalProperties": false,
       "properties": {
         "export": { "type": ["string", "null"], "description": "The export date, from the manifest's directory." },
         "records": { "type": "integer", "minimum": 0 },
         "citations": { "type": "integer", "minimum": 0 },
-        "lines": { "type": "integer", "minimum": 0, "description": "Index lines made; a citation CAP's table gives two slugs makes two." },
+        "lines": { "type": "integer", "minimum": 0, "description": "Index lines made; a citation indexed under two slugs makes two." },
         "records_without_lines": { "type": "integer", "minimum": 0 },
         "skipped_vendor": { "type": "integer", "minimum": 0, "description": "Westlaw and LEXIS citations, never a reporter volume." },
         "skipped_volume": { "type": "integer", "minimum": 0, "description": "Citations whose volume can't be a path." },
         "skipped_page": { "type": "integer", "minimum": 0, "description": "Citations whose page can't be a line's page." },
-        "skipped_slug": { "type": "integer", "minimum": 0, "description": "Citations with no usable reporter slug." },
-        "derived_slug": { "type": "integer", "minimum": 0, "description": "Citations of a reporter CAP doesn't have, slugged from its name." },
-        "several_slugs": { "type": "integer", "minimum": 0, "description": "Citations indexed under several slugs (`Ct. Cl.`)." }
+        "skipped_slug": { "type": "integer", "minimum": 0, "description": "Citations of a reporter citare has no edition for." },
+        "derived_slug": { "type": "integer", "minimum": 0, "description": "Builds before citare v0.6.0: citations of a reporter CAP doesn't have, slugged from its name." },
+        "slug_by_name": { "type": "integer", "minimum": 0, "description": "Citations citare didn't find in their citation string, slugged by their reporter's edition name." },
+        "several_slugs": { "type": "integer", "minimum": 0, "description": "Citations indexed under several slugs: an edition name citare splits between reporters (`Hill`, `Ct. Cl.`)." },
+        "slugs_differ": { "type": "integer", "minimum": 0, "description": "Citations whose manifest `slugs` aren't citare's; the index uses citare's." }
       }
     },
     "data_version": {

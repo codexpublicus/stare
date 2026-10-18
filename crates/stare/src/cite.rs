@@ -46,6 +46,13 @@ pub struct DetectedCitation {
     pub span: (usize, usize),
     /// Harvard CAP slug if available (e.g., "a2d")
     pub harvard_slug: Option<String>,
+    /// citare's slug for the edition (citare#71): CAP's slug where CAP has the
+    /// reporter, else one derived from the edition name (`ny-slip-op`). The
+    /// index is looked up by this, under `<slug>/<volume>`. `None` for laws,
+    /// journals and citations with no edition. Loaded with a data bundle older
+    /// than citare v0.6.0, which has no slugs, it is `harvard_slug` instead.
+    #[serde(default)]
+    pub slug: Option<String>,
     /// Volume number from the citation groups
     pub volume: Option<String>,
     /// First page from the citation groups. `None` for a blank page
@@ -97,6 +104,8 @@ pub struct Antecedent {
     /// `spans_to_char_offsets` has run.
     pub span: (usize, usize),
     pub harvard_slug: Option<String>,
+    #[serde(default)]
+    pub slug: Option<String>,
     pub volume: Option<String>,
     pub page: Option<String>,
     pub reporter: Option<String>,
@@ -140,6 +149,7 @@ impl DetectedCitation {
             citation_type: self.citation_type.clone(),
             span: self.span,
             harvard_slug: self.harvard_slug.clone(),
+            slug: self.slug.clone(),
             volume: self.volume.clone(),
             page: self.page.clone(),
             reporter: self.reporter.clone(),
@@ -188,6 +198,7 @@ pub struct CaseLink {
 /// Detect all citations in a text using citare-core.
 pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
     let citations = citare_core::get_citations(text, false, "", &[]);
+    let slugs = data_has_slugs();
 
     let mut detected: Vec<DetectedCitation> = citations
         .iter()
@@ -195,21 +206,29 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
             let (start, end) = c.span();
             let groups = &c.common().groups;
 
-            let harvard_slug = c
-                .resource_common()
-                .and_then(|r| r.edition_guess.as_ref())
-                .and_then(|e| e.harvard_slug.clone())
-                .or_else(|| {
-                    c.resource_common()
-                        .and_then(|r| r.all_editions.first())
-                        .and_then(|e| e.harvard_slug.clone())
-                });
+            let edition_field = |field: fn(&citare_core::Edition) -> &Option<String>| {
+                c.resource_common()
+                    .and_then(|r| r.edition_guess.as_ref())
+                    .and_then(|e| field(e).clone())
+                    .or_else(|| {
+                        c.resource_common()
+                            .and_then(|r| r.all_editions.first())
+                            .and_then(|e| field(e).clone())
+                    })
+            };
+            let harvard_slug = edition_field(|e| &e.harvard_slug);
+            let slug = if slugs {
+                edition_field(|e| &e.slug)
+            } else {
+                harvard_slug.clone()
+            };
 
             let mut det = DetectedCitation {
                 matched_text: c.matched_text().to_string(),
                 citation_type: c.type_name().to_string(),
                 span: (start, end),
                 harvard_slug,
+                slug,
                 volume: groups.get("volume").cloned().flatten(),
                 page: groups.get("page").cloned().flatten(),
                 reporter: groups.get("reporter").cloned().flatten(),
@@ -248,7 +267,7 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
             // Generate external URL for statutes/regulations. citare gives
             // some law citations a reporter's slug ("N.Y. Penal Law" gets
             // "ny"), so a law citation is checked whatever its slug.
-            if det.citation_type == "FullLawCitation" || det.harvard_slug.is_none() {
+            if det.citation_type == "FullLawCitation" || det.slug.is_none() {
                 det.external_url = external_url(&det);
             }
             det.case_links = case_links(&det);
@@ -934,17 +953,149 @@ pub fn spans_to_char_offsets(
     Ok(())
 }
 
-/// Filter to only citations that have a Harvard slug (resolvable via our index).
+/// A full case citation as the index build files it: the slugs of every
+/// edition citare says it may be in, the one it guesses first, with the volume
+/// and page as citare read them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditionSlugs {
+    /// One, unless reporters that share an edition name were given slugs of
+    /// their own (`Hill`: `hill` and `hill-sc`). A reader may land on any.
+    pub slugs: Vec<String>,
+    pub volume: String,
+    pub page: String,
+}
+
+/// The full case citations citare finds in `text`, with their editions'
+/// slugs. [`detect_citations`] looks a citation up under the first of them.
+pub fn edition_slugs(text: &str) -> Vec<EditionSlugs> {
+    citare_core::get_citations(text, false, "", &[])
+        .iter()
+        .filter(|c| c.type_name() == "FullCaseCitation")
+        .filter_map(|c| {
+            let r = c.resource_common()?;
+            let groups = &c.common().groups;
+            let mut slugs: Vec<String> = Vec::new();
+            for e in r.edition_guess.iter().chain(&r.all_editions) {
+                if let Some(s) = &e.slug {
+                    if !slugs.contains(s) {
+                        slugs.push(s.clone());
+                    }
+                }
+            }
+            Some(EditionSlugs {
+                slugs,
+                volume: groups.get("volume").cloned().flatten()?,
+                page: groups.get("page").cloned().flatten()?,
+            })
+        })
+        .filter(|e| !e.slugs.is_empty())
+        .collect()
+}
+
+/// Every case-reporter edition name citare knows, with its slugs, sorted: the
+/// contents of citare's `data/edition-slugs.json`.
+pub fn edition_slug_table() -> std::collections::BTreeMap<String, Vec<String>> {
+    let mut table: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    for e in &citare_core::data::get().editions {
+        if let Some(slug) = &e.slug {
+            let slugs = table.entry(e.short_name.clone()).or_default();
+            if !slugs.contains(slug) {
+                slugs.push(slug.clone());
+            }
+        }
+    }
+    for slugs in table.values_mut() {
+        slugs.sort();
+    }
+    table
+}
+
+/// Whether the loaded citare data names editions' slugs. A bundle older than
+/// citare v0.6.0 has none, and then citations are looked up by `harvard_slug`.
+fn data_has_slugs() -> bool {
+    citare_core::data::get()
+        .editions
+        .iter()
+        .any(|e| e.slug.is_some())
+}
+
+/// Filter to only citations that have a slug (resolvable via our index).
 pub fn resolvable_citations(citations: &[DetectedCitation]) -> Vec<&DetectedCitation> {
     citations
         .iter()
-        .filter(|c| c.harvard_slug.is_some() && c.volume.is_some() && c.page.is_some())
+        .filter(|c| c.slug.is_some() && c.volume.is_some() && c.page.is_some())
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The one citation `text` resolves through, as `(slug, volume, page)`.
+    fn resolved(text: &str) -> (String, String, String) {
+        let cites = detect_citations(text);
+        let r = resolvable_citations(&cites);
+        assert_eq!(r.len(), 1, "{text}: {cites:?}");
+        let c = r[0];
+        (
+            c.slug.clone().unwrap(),
+            c.volume.clone().unwrap(),
+            c.page.clone().unwrap(),
+        )
+    }
+
+    #[test]
+    fn citations_resolve_by_citare_slug() {
+        // citare#71's table: CAP's slug where CAP has the reporter, else derived.
+        for (text, slug, volume, page) in [
+            ("2021 NY Slip Op 01234", "ny-slip-op", "2021", "01234"),
+            ("10 F.4th 100", "f-4th", "10", "100"),
+            ("100 N.Y.S.3d 200", "n-y-s-3d", "100", "200"),
+            ("150 A.D.3d 100", "ad3d", "150", "100"),
+            ("400 P.3d 100", "p3d", "400", "100"),
+        ] {
+            assert_eq!(
+                resolved(text),
+                (slug.into(), volume.into(), page.into()),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn neutral_citations_share_the_cap_slug_by_volume() {
+        // The Ohio neutral citation and CAP's Ohio Reports are both `ohio`,
+        // at volumes that can't overlap; likewise `2021 ND 123` and N.D.
+        assert_eq!(
+            resolved("2019-Ohio-1234"),
+            ("ohio".into(), "2019".into(), "1234".into())
+        );
+        assert_eq!(
+            resolved("20 Ohio 1"),
+            ("ohio".into(), "20".into(), "1".into())
+        );
+        assert_eq!(
+            resolved("2021 ND 123"),
+            ("nd".into(), "2021".into(), "123".into())
+        );
+        assert_eq!(
+            resolved("50 N.D. 1"),
+            ("nd".into(), "50".into(), "1".into())
+        );
+        let nd = detect_citations("2021 ND 123");
+        assert_eq!(nd[0].harvard_slug, None);
+    }
+
+    #[test]
+    fn a_law_has_no_slug_whatever_its_harvard_slug() {
+        let cites = detect_citations("N.Y. Penal Law § 125.25");
+        let c = cites
+            .iter()
+            .find(|c| c.citation_type == "FullLawCitation")
+            .expect("a law citation");
+        assert_eq!(c.slug, None);
+        assert!(resolvable_citations(&cites).is_empty());
+    }
 
     #[test]
     fn detect_case_citation() {

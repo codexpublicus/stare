@@ -34,6 +34,18 @@ export function isIndexBase(s) {
 
 const VOLUME_KEY = /^\d(?:[0-9a-z-]*[0-9a-z])?$/;
 
+/**
+ * The slug a detected citation is looked up under: citare's edition `slug`
+ * (citare#71), the reporter's directory in the index for every source. Output
+ * from a module or data bundle older than citare v0.6.0 has no `slug` field,
+ * and then CAP's `harvard_slug` is used. A `slug` that is present but null
+ * (a law, or no edition) means there is none, whatever `harvard_slug` says.
+ */
+export function citedSlug(c) {
+  if (c == null) return null;
+  return (c.slug !== undefined ? c.slug : c.harvard_slug) || null;
+}
+
 export function isVolumeKey(s) {
   return typeof s === 'string' && VOLUME_KEY.test(s);
 }
