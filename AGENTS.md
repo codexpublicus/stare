@@ -28,12 +28,14 @@ docs/plans/search-plan.md           — Search + data products: RoaringBuckets, 
 The producer side moved to codexpublicus/stare-builder with its history (#163):
 `stare-admin` (the index build, `build-manifest`, `build-report`, `build-idx`),
 `pipelines/archival-pdf` and `pipelines/courtlistener`, the aria2 mirror job and tar audit
-(`mirror/`), the build report's JSON Schemas (`schemas/`), the operator mise tasks
-(`index-build`, `index-publish`, `cl-fetch`, `cl-build`, `cl-test`, `archival-*`), their
+(`mirror/`), the operator mise tasks (`index-build`, `index-publish`, `cl-fetch`,
+`cl-build`, `cl-test`, `archival-*`), their
 runbooks and the homelab notes. Its AGENTS.md covers them.
 
-This repo is the reader: the site, the CLI, stare-wasm, and `crates/stare` with the readers
-and writers for every published format (the per-volume index, the manifest, records). A
+This repo is the reader: the site, the CLI, stare-wasm, `crates/stare` with the readers
+and writers for every published format (the per-volume index, the manifest, records), and
+the format specs, including `schemas/` for the build report and `reports/index.json` that
+`/data` reads. stare-builder's report test validates against `schemas/` at its pinned rev. A
 change to a published format lands here first, in the format's reader, writer and the docs
 below; stare-builder pins `crates/stare` by commit and picks it up when it bumps the pin.
 stare-builder depends on stare, never the other way round, and nothing here may depend on
@@ -58,8 +60,8 @@ Three interfaces to the same data, all static files:
 /index/v/{version}/{reporter}/{vol}.bin    — CAP-only citation lookup (page offset → case file), kept for one release beside .idx.gz; immutable
 /index/v/{version}/{reporter}/{vol}.multi  — pages with several cases, likewise; immutable
 /index/v/{version}/manifest.json  — the build's own manifest (no `base`)
-/index/v/{version}/report.json    — the build's report (stare-builder's schemas/index-report.v1.schema.json); immutable
-/index/reports/index.json         — every published build's report totals, oldest first (stare-builder's schemas/reports-index.v1.schema.json); charted at stare.pub/data
+/index/v/{version}/report.json    — the build's report (schemas/index-report.v1.schema.json); immutable
+/index/reports/index.json         — every published build's report totals, oldest first (schemas/reports-index.v1.schema.json); charted at stare.pub/data
 /index/{reporter}/{vol}.bin       — the pre-versioning index, for clients that ignore `base`
 /index/reporters.json             — abbreviation → slug mapping
 /cap/{reporter}/{vol}.zip         — case text JSONs (codex-data bucket, served at data.stare.pub/cap)

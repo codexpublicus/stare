@@ -3,9 +3,9 @@ import { indexUrl } from './sources.js';
 // The /data page: every published index rebuild's report, charted over time, and the
 // live build's per-reporter numbers (codexpublicus/stare#101).
 //
-// It reads idx.stare.pub/reports/index.json (schemas/reports-index.v1.schema.json in
-// codexpublicus/stare-builder), which index-publish keeps, and the live build's
-// report.json (schemas/index-report.v1.schema.json there). The charts are inline SVG drawn here; there is
+// It reads idx.stare.pub/reports/index.json (schemas/reports-index.v1.schema.json),
+// which index-publish keeps, and the live build's report.json
+// (schemas/index-report.v1.schema.json). The charts are inline SVG drawn here; there is
 // no chart library. Everything the page needs is in this one module.
 
 export const REPORTS_URL = indexUrl('reports/index.json');
