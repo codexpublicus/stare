@@ -1,13 +1,18 @@
 import { parseInput, resolve, extractCase, extractFile } from './resolve.js';
 import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } from './ui.js';
-import { getHashParams, setHash, onHashChange } from './router.js';
+import { caseHash, getHashParams, setHash, onHashChange } from './router.js';
 import { aliasNoteHtml, processCitations, setupCiteHovers } from './citations.js';
+import { attachCiteNav } from './citenav.js';
 import { renderPageViewer } from './pageviewer.js';
-import { pageBreaks, pageMarker } from './pages.js';
+import { footnoteParagraphs, pageBreaks, pageMarker } from './pages.js';
 import { preloadWasm, WasmLoadError } from './wasm.js';
 import { showWasmProgress } from './wasmbar.js';
 
 let currentResult = null;
+// The shown case's cited-cases list wired to its text (citenav.js), and a
+// place in the text (`~c=3`) to go to once its citations are found.
+let citeNav = null;
+let pendingCite = null;
 
 // DOM refs
 const landing = document.getElementById('landing');
@@ -75,15 +80,48 @@ function goToPage(page) {
   document.fonts?.ready.then(() => { if (target === t) markTarget(); });
 }
 
-// The page breaks in a case's opinions, from the case's CAP HTML in the
-// volume zip; none when the zip has no HTML for it, or there's no zip (a
-// CourtListener record, which has no pages).
+// The page breaks and footnotes in a case's opinions, from the case's CAP
+// HTML in the volume zip; none when the zip has no HTML for it, or there's
+// no zip (a CourtListener record, which has no pages).
 function casePages(zipData, caseFile, caseData) {
-  if (!zipData) return null;
+  const none = { pages: null, footnotes: null };
+  if (!zipData) return none;
   try {
-    return pageBreaks(extractFile(zipData, `html/${caseFile}.html`), caseData.casebody?.opinions || []);
+    const html = extractFile(zipData, `html/${caseFile}.html`);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const opinions = caseData.casebody?.opinions || [];
+    let footnotes = null;
+    try {
+      footnotes = footnoteParagraphs(html, opinions, () => doc);
+    } catch {
+      footnotes = null;
+    }
+    return { pages: pageBreaks(html, opinions, () => doc), footnotes };
   } catch {
-    return null;
+    return none;
+  }
+}
+
+// Put the shown case's place in the hash (`~c=3`), without a history entry
+// or a hashchange, so the link can be shared.
+function setCiteHash(n) {
+  const p = getHashParams();
+  if (!p) return;
+  const hash = caseHash(p.reporter, p.volume, p.page, p.seq, null, n);
+  if (window.location.hash === hash) return;
+  history.replaceState(history.state, '', hash);
+  lastResolvedHash = hash;
+}
+
+// Wire the sidebar's cited-cases list to the reader's text, and go to the
+// place a `~c=` fragment named, if any.
+function wireCiteNav(listEl, readerContent) {
+  citeNav?.destroy();
+  citeNav = attachCiteNav({ list: listEl, text: readerContent, onMove: setCiteHash });
+  if (pendingCite) {
+    const n = pendingCite;
+    pendingCite = null;
+    citeNav.goTo(n);
   }
 }
 
@@ -140,7 +178,10 @@ function updateTopbar(caseData) {
   topbarCase.textContent = caseData.name_abbreviation;
 }
 
-async function showResolved(result, pin = null) {
+async function showResolved(result, pin = null, cite = null) {
+  citeNav?.destroy();
+  citeNav = null;
+  pendingCite = cite;
   landing.classList.add('hidden');
   resolved.classList.remove('hidden');
   sidebarToggle.classList.remove('hidden');
@@ -188,20 +229,24 @@ async function showResolved(result, pin = null) {
   renderMultiNotice(multiEl, result.allCases, result.caseFile, switchCase);
   statusBar.classList.add('hidden');
   const shown = showCase(result.caseFile, result.caseData, result);
-  goToPage(pin);
+  goToPage(cite ? null : pin);
   await shown;
 
   function showCase(caseFile, caseData, actions) {
     shownCaseFile = caseFile;
     const cached = citationsByCase.get(caseFile) || null;
-    renderReader(readerContent, caseData, cached, pagesFor(caseFile, caseData));
+    const layout = pagesFor(caseFile, caseData);
+    citeNav?.destroy();
+    citeNav = null;
+    renderReader(readerContent, caseData, cached, layout.pages, layout.footnotes);
     citationStatusHandle = renderSidebar(
       sidebar, caseData, result.reporter, result.volume, result.allCases,
-      cached?.unique || null, cached ? 'done' : 'loading'
+      cached?.unique || null, cached ? 'done' : 'loading', cached?.groups || null
     );
     wireActions(actions);
     if (cached) {
       setupCiteHovers(readerContent, resolve);
+      wireCiteNav(citationStatusHandle.listEl, readerContent);
       return Promise.resolve();
     }
     return highlightCase(caseFile, caseData, actions);
@@ -217,18 +262,20 @@ async function showResolved(result, pin = null) {
   async function highlightCase(caseFile, caseData, actions) {
     const handle = citationStatusHandle;
     try {
-      const { unique, occurrencesByOpinion } = await processCitations(caseData);
+      const { unique, occurrencesByOpinion, groups } = await processCitations(caseData);
       const citationMap = new Map(unique.map(c => [c.key, c]));
-      const citations = { unique, citationMap, occurrencesByOpinion };
+      const citations = { unique, citationMap, occurrencesByOpinion, groups };
       // Cache empty results too, so switching back doesn't detect again.
       citationsByCase.set(caseFile, citations);
       if (shownCaseFile !== caseFile) return;
       if (unique.length > 0) {
-        renderReader(readerContent, caseData, citations, pagesFor(caseFile, caseData));
+        const layout = pagesFor(caseFile, caseData);
+        renderReader(readerContent, caseData, citations, layout.pages, layout.footnotes);
         markTarget();
       }
-      updateCitationStatus(handle, caseData, unique, 'done');
+      updateCitationStatus(handle, caseData, unique, 'done', groups);
       setupCiteHovers(readerContent, resolve);
+      wireCiteNav(handle.listEl, readerContent);
     } catch (e) {
       console.error('Citation detection failed:', e);
       if (shownCaseFile !== caseFile) return;
@@ -297,10 +344,10 @@ function setStatus(msg, isError) {
   }
 }
 
-async function doResolve(reporter, volume, page, seq = null, pin = null) {
+async function doResolve(reporter, volume, page, seq = null, pin = null, cite = null) {
   landingBtn.disabled = true;
   setStatus('', false);
-  showWasmBar(() => doResolve(reporter, volume, page, seq, pin));
+  showWasmBar(() => doResolve(reporter, volume, page, seq, pin, cite));
 
   try {
     const result = await resolve(reporter, volume, page, (msg) => setStatus(msg, false), seq);
@@ -309,9 +356,9 @@ async function doResolve(reporter, volume, page, seq = null, pin = null) {
     // A citation that resolved through an alias (#151) goes to the case it names, whose
     // pages a pin cite in the other printing doesn't number.
     if (result.alias) setHash(result.reporter, result.volume, result.page, result.seq, null);
-    else setHash(reporter, result.volume, page, result.seq, pin);
+    else setHash(reporter, result.volume, page, result.seq, pin, cite);
     lastResolvedHash = window.location.hash;
-    showResolved(result, result.alias ? null : pin);
+    showResolved(result, result.alias ? null : pin, result.alias ? null : cite);
   } catch (err) {
     if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
     // Only go to landing if we're not already showing a case
@@ -471,11 +518,16 @@ onHashChange((params) => {
   if (currentHash === lastResolvedHash) return;
   if (isShownCase(params)) {
     lastResolvedHash = currentHash;
+    if (params.cite) {
+      // Before the citations are found, the place waits for them.
+      if (!citeNav?.goTo(params.cite)) pendingCite = citeNav ? null : params.cite;
+      return;
+    }
     goToPage(params.pin);
     return;
   }
   landingInput.value = `${params.reporter} ${params.volume} ${params.page}`;
-  doResolve(params.reporter, params.volume, params.page, params.seq, params.pin);
+  doResolve(params.reporter, params.volume, params.page, params.seq, params.pin, params.cite);
 });
 
 // Handle back to empty hash (return to landing)
@@ -489,7 +541,7 @@ window.addEventListener('hashchange', () => {
 const initial = getHashParams();
 if (initial) {
   landingInput.value = `${initial.reporter} ${initial.volume} ${initial.page}`;
-  doResolve(initial.reporter, initial.volume, initial.page, initial.seq, initial.pin);
+  doResolve(initial.reporter, initial.volume, initial.page, initial.seq, initial.pin, initial.cite);
 }
 
 // Fetch and compile the WASM in the background once the page has painted;

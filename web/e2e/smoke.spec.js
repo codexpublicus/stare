@@ -265,18 +265,18 @@ test('/check lists the citations citare finds', async ({ page }) => {
   await expect(page.locator('#check-summary')).toHaveText('3 case citations found (3 resolvable), 1 statute');
   // Resolvable citations first, as links to the case viewer; then the
   // statute, linked to its text. "Id." resolves through Barney, the
-  // citation before it (#120).
+  // citation before it (#120), and is listed with it, one entry per
+  // cited case (#159).
   await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
     '✓ 31 A.2d 647',
     '✓ 138 U.S. 529',
-    '✓ Id. Refers to 138 U.S. 529',
     '↗ 42 U.S.C. § 1983',
   ]);
   const links = page.locator('#check-cite-list a.cited-case-link');
   await expect(links.nth(0)).toHaveAttribute('href', '/#a2d/31/647-01');
   await expect(links.nth(1)).toHaveAttribute('href', '/#us/138/529-01');
-  await expect(links.nth(2)).toHaveAttribute('href', '/#us/138/529-01');
-  await expect(links.nth(3)).toHaveAttribute('href', 'https://www.law.cornell.edu/uscode/text/42/1983');
+  await expect(links.nth(2)).toHaveAttribute('href', 'https://www.law.cornell.edu/uscode/text/42/1983');
+  await expect(page.locator('#check-cite-list .cited-entry', { hasText: '138 U.S. 529' }).locator('.cited-count')).toHaveText('2×');
   await expect(page.locator('#check-rendered a.cite-link', { hasText: 'Id.' }))
     .toHaveAttribute('title', 'Refers to 138 U.S. 529, at 533');
 });
@@ -417,8 +417,12 @@ test('short cites and Id.s in a case link to their antecedent\'s case (#120)', a
   await expect(roe).toHaveAttribute('href', '#p2d/997/1021@1023');
   await expect(roe).toHaveAttribute('title', 'Refers to 997 P.2d 1021, at 1023');
   await expect(page.locator('#reader a.cite-link[href="#p2d/997/1023"]')).toHaveCount(0);
-  await expect(page.locator('#sidebar .cited-case', { hasText: '997 P.2d at 1023' }))
-    .toHaveText('✓ 997 P.2d at 1023 Refers to 997 P.2d 1021');
+  // The short cite is one of Roe's places, listed under Roe (#159).
+  await expect(page.locator('#sidebar .cited-case', { hasText: '997 P.2d at 1023' })).toHaveCount(0);
+  await expect(roe).toHaveAttribute('data-cite-form', 'short');
+  const group = await page.locator('#reader a.cite-link', { hasText: /^997 P\.2d 1021$/ }).first().getAttribute('data-cite-group');
+  await expect(roe).toHaveAttribute('data-cite-group', group);
+  await expect(page.locator(`#sidebar .cited-entry[data-cite-group="${group}"]`)).toContainText('997 P.2d 1021');
 
   // Three Id.s after Anderson v. W. Hodgeman & Sons, 524 N.W.2d 418, each
   // with its own pin, link to Anderson.
@@ -547,13 +551,17 @@ test.describe('an index file that fails to load (#144)', () => {
     await expect(page.locator('#topbar-case')).toHaveText('Brooks v. Powers');
     await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found/);
 
-    // Its three Id.s refer to it, and are unchecked with it.
-    const entries = page.locator('#sidebar .cited-case', { hasText: '101 A.3d 249' });
-    await expect(entries).toHaveCount(4);
-    await expect(entries.first()).toHaveText(`? 101 A.3d 249 ${UNKNOWN('A.3d', 101)}`);
-    expect(await entries.locator('.cited-status').allTextContents()).toEqual(
-      Array(await entries.count()).fill('?'));
-    await expect(entries.locator('a')).toHaveCount(0);
+    // It is listed under its parallel citation, 314 Conn. 303, which the opinion
+    // gives first (#159), with its own note; its Id.s are unchecked with it, and are places of
+    // that one entry.
+    const entries = page.locator('#sidebar .cited-entry', { hasText: '101 A.3d 249' });
+    await expect(entries).toHaveCount(1);
+    await expect(entries.locator('.cited-also')).toHaveText(`Also cited as 101 A.3d 249 ${UNKNOWN('A.3d', 101)}`);
+    await expect(entries.locator('a', { hasText: '101 A.3d 249' })).toHaveCount(0);
+    const group = await entries.getAttribute('data-cite-group');
+    const ids = page.locator('#reader .cite-unknown[data-cite-form="short"]');
+    expect(await ids.count()).toBeGreaterThanOrEqual(3);
+    for (const g of await ids.evaluateAll((els) => els.map((el) => el.dataset.citeGroup))) expect(g).toBe(group);
     await expect(page.locator('#reader .cite-unknown', { hasText: '101 A.3d 249' }).first())
       .toHaveAttribute('title', UNKNOWN('A.3d', 101));
     await expect(page.locator('#reader a', { hasText: '101 A.3d 249' })).toHaveCount(0);
@@ -876,5 +884,207 @@ test.describe('/data before the first index report', () => {
     await expect(page.locator('#data-root')).toContainText('Index reports start with the next rebuild.');
     // The footer's "Index v…" line links here; it stays hidden if the manifest can't be read.
     await expect(page.locator('footer [data-site-data-line]')).toHaveAttribute('href', '/data');
+  });
+});
+
+test.describe('from a cited case to where the text cites it (#159)', () => {
+  const BROOKS = '/#a3d/138-2/1012-01';
+  const done = (page) => expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found/);
+  // The sidebar entry whose own citation is `raw`.
+  const entry = (page, raw) => page.locator('#sidebar .cited-entry', {
+    has: page.locator('.cited-case', { hasText: raw }),
+  });
+  const places = async (page, e) => page.locator(`#reader [data-cite-group="${await e.getAttribute('data-cite-group')}"]`);
+  const live = (page) => page.locator('#sidebar .cited-live[aria-live="polite"]');
+
+  test('a case cited once: the control goes to its one place and highlights it', async ({ page }) => {
+    await page.goto(BROOKS);
+    await done(page);
+    const e = entry(page, '261 Conn. 941');
+    await expect(e.locator('.cited-count')).toHaveText('1×');
+    await e.locator('.cited-show').click();
+    const place = page.locator('#reader .cite-place-current');
+    await expect(place).toHaveText('261 Conn. 941');
+    await expect(place).toBeInViewport();
+    await expect(e.locator('.cited-pos')).toHaveText('1 of 1');
+    await expect(live(page)).toHaveText('1 of 1: 261 Conn. 941');
+    // Opening the cited case stays the entry's main action.
+    await expect(e.locator('a.cited-case-link')).toHaveAttribute('href', /#conn\/261\/941$/);
+    await expect(page).toHaveURL(/#a3d\/138-2\/1012-01~c=\d+$/);
+  });
+
+  test('a case cited several times, with supra, Id. and a footnote: every place, in order', async ({ page }) => {
+    await page.goto(BROOKS);
+    await done(page);
+    const e = entry(page, '303 Conn. 845');
+    const all = await places(page, e);
+    const m = await all.count();
+    expect(m).toBeGreaterThanOrEqual(5);
+    await expect(e.locator('.cited-count')).toHaveText(`${m}×`);
+    // Full citations, a supra and an Id., and some in a footnote.
+    await expect(all.filter({ hasText: /^supra/ })).toHaveCount(1);
+    await expect(all.filter({ hasText: /^Id\./ })).not.toHaveCount(0);
+    for (const short of await all.filter({ hasText: /^(supra|Id\.)/ }).all()) {
+      await expect(short).toHaveAttribute('data-cite-form', 'short');
+    }
+    const inNote = page.locator('#reader .reader-footnote').locator(`[data-cite-group="${await e.getAttribute('data-cite-group')}"]`);
+    await expect(inNote).not.toHaveCount(0);
+
+    await e.locator('.cited-show').click();
+    // The first place, with all of them highlighted.
+    await expect(page.locator('#reader .cite-place')).toHaveCount(m);
+    await expect(all.first()).toHaveClass(/\bcite-place-current\b/);
+    await expect(e.locator('.cited-pos')).toHaveText(`1 of ${m}`);
+    // Next goes to the second; previous from the first wraps to the last,
+    // which is in the footnote.
+    await e.locator('.cited-next').click();
+    await expect(all.nth(1)).toHaveClass(/\bcite-place-current\b/);
+    await expect(e.locator('.cited-pos')).toHaveText(`2 of ${m}`);
+    await e.locator('.cited-prev').click();
+    await e.locator('.cited-prev').click();
+    await expect(all.last()).toHaveClass(/\bcite-place-current\b/);
+    await expect(all.last()).toBeInViewport();
+    const note = await all.last().evaluate((el) => el.closest('.reader-footnote').dataset.footnote);
+    await expect(live(page)).toHaveText(`${m} of ${m}: ${(await all.last().textContent()).trim()}, in footnote ${note}`);
+  });
+
+  test('[ and ] step through the places from the keyboard', async ({ page }) => {
+    await page.goto(BROOKS);
+    await done(page);
+    const e = entry(page, '303 Conn. 845');
+    const all = await places(page, e);
+    const m = await all.count();
+    await e.locator('.cited-show').focus();
+    await page.keyboard.press(']');
+    await expect(all.first()).toHaveClass(/\bcite-place-current\b/);
+    await page.keyboard.press(']');
+    await expect(e.locator('.cited-pos')).toHaveText(`2 of ${m}`);
+    await page.keyboard.press('[');
+    await expect(e.locator('.cited-pos')).toHaveText(`1 of ${m}`);
+    await expect(live(page)).toHaveText(`1 of ${m}: 303 Conn. 845`);
+    await expect(e.locator('.cited-show')).toBeFocused();
+  });
+
+  test('a place has a fragment that opens the case there', async ({ page }) => {
+    await page.goto(BROOKS);
+    await done(page);
+    const e = entry(page, '303 Conn. 845');
+    const supra = (await places(page, e)).filter({ hasText: /^supra/ });
+    const n = await supra.getAttribute('data-cite-n');
+
+    await page.goto('/');
+    await page.goto(`${BROOKS}~c=${n}`);
+    await done(page);
+    const current = page.locator('#reader .cite-place-current');
+    await expect(current).toHaveText(/^supra/);
+    await expect(current).toHaveAttribute('data-cite-n', n);
+    await expect(current).toBeInViewport();
+    await expect(entry(page, '303 Conn. 845')).toHaveClass(/\bcited-entry-active\b/);
+    await expect(page).toHaveURL(new RegExp(`~c=${n}$`));
+
+    // Another place of the same case, without reloading it.
+    await page.evaluate(() => { window.location.hash = window.location.hash.replace(/~c=\d+$/, '~c=1'); });
+    await expect(page.locator('#reader .cite-place-current')).toHaveAttribute('data-cite-n', '1');
+  });
+
+  test('hovering or focusing a citation in the text highlights its entry', async ({ page }) => {
+    await page.goto(BROOKS);
+    await done(page);
+    const e = entry(page, '261 Conn. 941');
+    await page.locator('#reader a.cite-link', { hasText: '261 Conn. 941' }).hover();
+    await expect(e).toHaveClass(/\bcited-entry-hover\b/);
+    await page.mouse.move(0, 0);
+    await expect(e).not.toHaveClass(/\bcited-entry-hover\b/);
+    await page.locator('#reader a.cite-link', { hasText: '261 Conn. 941' }).focus();
+    await expect(e).toHaveClass(/\bcited-entry-hover\b/);
+  });
+
+  test('/check filters its list as you type, by name, citation or reporter, and by status', async ({ page }) => {
+    const text = [
+      "The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App. 1943),",
+      'held that residence is the test. See Barney v. Oelrichs, 138 U.S. 529 (1891).',
+      'Id. at 533. See also 42 U.S.C. § 1983.',
+    ].join(' ');
+    await page.goto('/check');
+    await page.fill('#check-input', text);
+    await page.click('#check-btn');
+    await expect(page.locator('#check-summary')).toHaveText('3 case citations found (3 resolvable), 1 statute');
+
+    const filter = page.getByRole('searchbox', { name: 'Filter cited cases' });
+    const shown = page.locator('#check-cite-list .cited-entry:visible .cited-case');
+    const count = page.locator('#check-cite-list').locator('xpath=..').locator('.cited-filter-count');
+    await filter.fill('a.2d');
+    await expect(shown).toHaveText(['✓ 31 A.2d 647']);
+    await expect(count).toHaveText('1 of 3');
+    await filter.fill('OELRICHS');
+    await expect(shown).toHaveText(['✓ 138 U.S. 529']);
+    await filter.fill('usc 1983');
+    await expect(shown).toHaveText(['↗ 42 U.S.C. § 1983']);
+    await filter.fill('nothing like it');
+    await expect(shown).toHaveCount(0);
+    await expect(count).toHaveText('0 of 3');
+    await filter.press('Escape');
+    await expect(filter).toHaveValue('');
+    await expect(shown).toHaveCount(3);
+    await expect(count).toBeHidden();
+
+    await page.getByRole('button', { name: 'Statutes' }).click();
+    await expect(page.getByRole('button', { name: 'Statutes' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(shown).toHaveText(['↗ 42 U.S.C. § 1983']);
+    await expect(count).toHaveText('1 of 3');
+    await page.getByRole('button', { name: 'In stare.pub' }).click();
+    await expect(shown).toHaveCount(3);
+  });
+
+  test('/check steps through a case\'s places from the keyboard, Id. marked as a short form', async ({ page }) => {
+    await page.goto('/check');
+    await page.fill('#check-input', 'See Barney v. Oelrichs, 138 U.S. 529 (1891). Id. at 533.');
+    await page.click('#check-btn');
+    const e = page.locator('#check-cite-list .cited-entry', { hasText: '138 U.S. 529' });
+    await expect(e.locator('.cited-count')).toHaveText('2×');
+    await e.getByRole('button', { name: /^Show where the text cites 138 U\.S\. 529/ }).focus();
+    await page.keyboard.press(']');
+    await expect(page.locator('#check-rendered .cite-place-current')).toHaveText('138 U.S. 529');
+    await page.keyboard.press(']');
+    const id = page.locator('#check-rendered .cite-place-current');
+    await expect(id).toHaveText('Id. at 533');
+    await expect(id).toHaveAttribute('data-cite-form', 'short');
+    await expect(page.locator('#check-cite-list ~ .cited-live')).toHaveText('2 of 2: Id. at 533 (short form)');
+  });
+
+  test('/check lists an alias-resolved citation under the case it opens, with its label', async ({ page }) => {
+    // The unified index isn't published yet: the routes add it for the two volumes
+    // the text cites. 260 N.W. 287 is an alias (#151) of 128 Neb. 783; cited apart
+    // from it, not as its parallel, it still opens the same case and joins its entry.
+    const CORS = { 'access-control-allow-origin': '*' };
+    await page.route('https://idx.stare.pub/manifest.json', async (route) => {
+      const manifest = await (await route.fetch()).json();
+      manifest.idx = 1;
+      manifest.aliases = { 'n-w': ['260'] };
+      await route.fulfill({ headers: { ...CORS, 'cache-control': 'no-cache' }, contentType: 'application/json', body: JSON.stringify(manifest) });
+    });
+    const idx = { 'neb/128': '783,cap,0783-01\n', 'n-w/260': '287,cap,neb/128/0783-01,via=cl:8077312\n' };
+    await page.route(/^https:\/\/idx\.stare\.pub\/.*\/(neb\/128|n-w\/260)\.idx\.gz$/, (route) => {
+      const key = route.request().url().match(/(neb\/128|n-w\/260)\.idx\.gz$/)[1];
+      return route.fulfill({ headers: CORS, contentType: 'application/gzip', body: gzipSync(idx[key]) });
+    });
+
+    await page.goto('/check');
+    await page.fill('#check-input', 'Pettegrew v. Pettegrew, 128 Neb. 783 (1935). See also 260 N.W. 287.');
+    await page.click('#check-btn');
+    await expect(page.locator('#check-summary')).toHaveText('2 case citations found (2 resolvable)');
+
+    const VIA = "Resolved through CourtListener's citation metadata";
+    const e = page.locator('#check-cite-list .cited-entry');
+    await expect(e).toHaveCount(1);
+    await expect(e.locator('.cited-case')).toHaveText('✓ 128 Neb. 783');
+    await expect(e.locator('.cited-also')).toHaveText(`Also cited as 260 N.W. 287 ${VIA}`);
+    await expect(e).not.toContainText(/verified/i);
+    await expect(e.locator('.cited-count')).toHaveText('2×');
+    await e.locator('.cited-show').click();
+    await e.locator('.cited-next').click();
+    const alias = page.locator('#check-rendered .cite-place-current');
+    await expect(alias).toHaveText('260 N.W. 287');
+    await expect(alias).toHaveAttribute('title', `260 N.W. 287. ${VIA}`);
   });
 });

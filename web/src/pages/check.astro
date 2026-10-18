@@ -103,7 +103,8 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 		</div>
 
 		<script is:inline type="module">
-			import { detectCitations, checkCitations, occurrence, escapeHtml, renderTextHtml, citedCaseHtml, orderCitedCases, citationSummary } from '/js/citations.js';
+			import { detectCitations, checkCitations, occurrence, escapeHtml, renderTextHtml, citedListHtml, groupCitations, citationSummary } from '/js/citations.js';
+			import { attachCiteNav } from '/js/citenav.js';
 			import { preloadWasm, WasmLoadError } from '/js/wasm.js';
 			import { showWasmProgress } from '/js/wasmbar.js';
 
@@ -114,6 +115,8 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 			const rendered = document.getElementById('check-rendered');
 			const citeList = document.getElementById('check-cite-list');
 			const summary = document.getElementById('check-summary');
+			// The list wired to the text (citenav.js), for the latest check.
+			let citeNav = null;
 
 			btn.addEventListener('click', async () => {
 				const text = input.value.trim();
@@ -123,6 +126,8 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 				status.classList.remove('check-error');
 				status.textContent = 'Scanning for citations...';
 				results.classList.remove('visible');
+				citeNav?.destroy();
+				citeNav = null;
 				// The loading bar, if the WASM isn't ready; it reports a load
 				// failure itself, with a Retry button that reruns the check.
 				showWasmProgress(document.getElementById('check-wasm-progress'), { onRetryReady: () => btn.click() });
@@ -141,6 +146,9 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 					// per antecedent, through it): the volume in the manifest,
 					// then the page in the volume's index.
 					const checked = await checkCitations(citations);
+					// One list entry per cited case (#159); this also tags each
+					// entry with its group, which the text's citations carry.
+					const groups = groupCitations(citations, checked);
 
 					// Build citation map for highlighting
 					const citationMap = new Map();
@@ -161,10 +169,10 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 					// to look for elsewhere (CourtListener, Google Scholar), then
 					// statutes with no link, then the rest.
 					const caseHref = (c) => `/#${c.slug}/${c.volume}/${c.page}-01`;
-					const listHtml = orderCitedCases(checked).map(c => citedCaseHtml(c, caseHref, '')).join('');
-					citeList.innerHTML = listHtml;
+					citeList.innerHTML = citedListHtml(groups, caseHref, '');
 
 					results.classList.add('visible');
+					citeNav = attachCiteNav({ list: citeList, text: rendered });
 					status.textContent = '';
 				} catch (e) {
 					// No partial results: a WASM load failure (WasmLoadError,
