@@ -928,17 +928,20 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
   const places = async (page, e) => page.locator(`#reader [data-cite-group="${await e.getAttribute('data-cite-group')}"]`);
   const live = (page) => page.locator('#sidebar .cited-live[aria-live="polite"]');
 
-  test('a case cited once: the control goes to its one place and highlights it', async ({ page }) => {
+  // `cert. denied, 261 Conn. 941, 808 A.2d 1132`: one decision cited once, in two
+  // reporters, which citare v0.7.0 reads as one parallel run (citare#84).
+  test('a case cited once, in two reporters: the control goes to its first place and highlights both', async ({ page }) => {
     await page.goto(BROOKS);
     await done(page);
     const e = entry(page, '261 Conn. 941');
-    await expect(e.locator('.cited-count')).toHaveText('1×');
+    await expect(e.locator('.cited-count')).toHaveText('2×');
     await e.locator('.cited-show').click();
+    await expect(page.locator('#reader .cite-place')).toHaveText(['261 Conn. 941', '808 A.2d 1132']);
     const place = page.locator('#reader .cite-place-current');
     await expect(place).toHaveText('261 Conn. 941');
     await expect(place).toBeInViewport();
-    await expect(e.locator('.cited-pos')).toHaveText('1 of 1');
-    await expect(live(page)).toHaveText('1 of 1: 261 Conn. 941');
+    await expect(e.locator('.cited-pos')).toHaveText('1 of 2');
+    await expect(live(page)).toHaveText('1 of 2: 261 Conn. 941');
     // Opening the cited case stays the entry's main action.
     await expect(e.locator('a.cited-case-link')).toHaveAttribute('href', /#conn\/261\/941$/);
     await expect(page).toHaveURL(/#a3d\/138-2\/1012-01~c=\d+$/);
