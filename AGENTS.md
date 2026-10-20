@@ -141,7 +141,7 @@ brings); the build counts any that disagree as `slugs_differ`.
 `crates/stare/tests/fixtures/cl-sample-build.json` is a sample build that the Rust and JS
 tests resolve end to end.
 
-### Parallel citations (#160, `crates/stare/src/parallel.rs`, `web/public/js/parallel.js`)
+### Parallel citations (#160, `crates/stare/src/parallel.rs`)
 
 citare reads a run of citations as one decision (`128 Neb. 783, 260 N.W. 287`, the
 detected citation's `parallel_of`); the index says what each member opens. After the
@@ -151,10 +151,13 @@ preferred printing when the members that resolve all open one case, labelled "Re
 128 Neb. 783, inferred from the citing text" and never called verified; members that open
 different cases are both shown, flagged "needs review", and kept apart in the list; and the
 preferred printing is the official reporter's (`DetectedCitation::official`: a state's, or
-the U.S. Reports) when stare.pub holds it. The site (`checkCitations`) and `stare check`
-apply the same rules, `reconcileParallels` and `stare::parallel::reconcile`, both tested on
-`crates/stare/tests/fixtures/parallel-reconcile.json`. A data alias (`via=cl:`) still wins:
-it resolves the member on its own, with its own label.
+the U.S. Reports) when stare.pub holds it. The rules are one function,
+`stare::parallel::reconcile`, tested on `crates/stare/tests/fixtures/parallel-reconcile.json`:
+`stare check` calls it directly, and the site's `checkCitations` through the WASM export
+`reconcile_parallels` (#185). A data alias (`via=cl:`) still wins: it resolves the member on
+its own, with its own label. The JS tests load the built WASM (`web/tests/wasm-node.js`) for
+these rules, so CI builds it before running them, and `mise run test-js` runs `build-wasm`
+first.
 
 ### CourtListener records (`crates/stare/src/cl.rs`, `web/public/js/cl.js`)
 
@@ -321,7 +324,7 @@ may run code from a fork or check out PR code under `pull_request_target`.
   starts cold. `Swatinem/rust-cache` uses one key (`shared-key: site`) for every job, and
   only pushes to `main` save it; PRs restore `main`'s and save nothing.
 - **Pull requests** (`site.yml`, job "Preview PR") run `cargo fmt --check`, clippy with
-  `-D warnings`, `cargo test --workspace`, the JS tests, the WASM build and the Astro build,
+  `-D warnings`, `cargo test --workspace`, the WASM build, the JS tests and the Astro build,
   then upload a Worker version and keep one updating comment with its preview URL
   (`https://<version>-stare-pub.nick-441.workers.dev`), then run the Playwright smoke suite
   (`web/e2e/`, `.github/actions/smoke-test`) against that URL. Dependabot's PRs stop after

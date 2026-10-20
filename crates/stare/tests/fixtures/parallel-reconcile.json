@@ -1,7 +1,7 @@
 {
   "_comment": [
     "Parallel-citation reconciliation (#160): each vector's printings and the verdicts",
-    "stare::parallel::reconcile and web/public/js/parallel.js both give for them.",
+    "stare::parallel::reconcile gives for them (the site calls it through the WASM).",
     "`run` is the index of the first citation of the parallel run a printing is in (its own",
     "index when it starts one or is in none); `lookup` is what the index says of it."
   ],

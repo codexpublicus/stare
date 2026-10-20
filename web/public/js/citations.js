@@ -11,7 +11,6 @@ import { indexUrl } from './sources.js';
 import { pinSuffix } from './router.js';
 import { loadWasm } from './wasm.js';
 import { citedPage, filePage, labelCases, pageSegment } from './pagekey.js';
-import { reconcileParallels } from './parallel.js';
 
 // External URL generation is now in Rust (stare::cite::external_url)
 
@@ -101,6 +100,22 @@ function fromRust(c) {
 export async function detectCitations(text) {
   const w = await loadWasm();
   return citationsFromRust(JSON.parse(w.detect_citations(text)));
+}
+
+/**
+ * Parallel-citation reconciliation (#160): `stare::parallel::reconcile`, the
+ * rules `stare check` applies, through the WASM. `printings` are
+ * `{ run, official, lookup }`: `run` is the index of the first citation of
+ * the printing's parallel run (its own index when it starts one or is in
+ * none), and `lookup` is `{ status: 'found', case }`,
+ * `{ status: 'held_miss' }`, `{ status: 'not_held' }` or
+ * `{ status: 'unknown' }`. Resolves to one `{ partner, conflicts, preferred }`
+ * per printing, in order. Rejects, with a WasmLoadError, if the WASM fails to
+ * load.
+ */
+export async function reconcileParallels(printings) {
+  const w = await loadWasm();
+  return JSON.parse(w.reconcile_parallels(JSON.stringify(printings)));
 }
 
 /** The WASM's `detect_citations` output, parsed, as detectCitations returns it. */
@@ -366,10 +381,12 @@ export function inheritStatus(c, a) {
  * Check a list of detected citations, each distinct citation once: full
  * citations by raw string, short forms through their antecedent's status
  * (looked up once, with the antecedent's own entry). Returns one entry per
- * `citationKey`, in order of first occurrence. `check` and `pageCheck` are
- * injectable for tests, as in processCitations.
+ * `citationKey`, in order of first occurrence. `check`, `pageCheck` and
+ * `reconcile` are injectable for tests, as in processCitations.
  */
-export async function checkCitations(citations, check = checkAvailability, pageCheck = checkPage) {
+export async function checkCitations(
+  citations, check = checkAvailability, pageCheck = checkPage, reconcile = reconcileParallels,
+) {
   const byRaw = new Map();
   const full = (c) => {
     if (!byRaw.has(c.raw)) byRaw.set(c.raw, checkCitation(c, check, pageCheck));
@@ -382,7 +399,7 @@ export async function checkCitations(citations, check = checkAvailability, pageC
     if (!isShortForm(c)) entries.set(key, full(c));
     else entries.set(key, (c.antecedent ? full(c.antecedent) : Promise.resolve(null)).then(a => inheritStatus(c, a)));
   }
-  return applyParallels(citations, await Promise.all(entries.values()));
+  return applyParallels(citations, await Promise.all(entries.values()), reconcile);
 }
 
 // What the index says of a checked full citation, for reconcileParallels.
@@ -398,7 +415,8 @@ function parallelLookup(c) {
 /**
  * Parallel-citation reconciliation (#160) over checkCitations' entries
  * (`checked`), for the parallel runs citare finds in `detected`
- * (`parallelTo`), by reconcileParallels' rules:
+ * (`parallelTo`), by the rules of `reconcile` (reconcileParallels, the
+ * WASM's, unless a test injects one):
  *
  * - A member that doesn't resolve on its own, in a run whose members that
  *   do all open one case, resolves through the run's preferred printing:
@@ -412,9 +430,10 @@ function parallelLookup(c) {
  * - The run's preferred printing (the official reporter's, when stare.pub
  *   holds it) gets `preferred`, which groupCitations shows first.
  *
- * Returns the entries in the same order, the changed ones replaced.
+ * Resolves to the entries in the same order, the changed ones replaced. A
+ * text with no parallel run never calls `reconcile`.
  */
-export function applyParallels(detected, checked) {
+export async function applyParallels(detected, checked, reconcile = reconcileParallels) {
   const byKey = new Map(checked.map(c => [c.key ?? c.raw, c]));
   const members = [];
   const lastAt = new Map();
@@ -427,7 +446,7 @@ export function applyParallels(detected, checked) {
   if (!members.some((m, i) => m.run !== i)) return checked;
 
   const entryOf = (m) => byKey.get(m.raw);
-  const verdicts = reconcileParallels(members.map(m => ({
+  const verdicts = await reconcile(members.map(m => ({
     run: m.run, official: m.official, lookup: parallelLookup(entryOf(m)),
   })));
   const changed = new Map();
@@ -494,12 +513,16 @@ export function conflictNote(c) {
  *   The reader highlights from these, looking each `key` up in `unique`.
  * - `groups`: groupCitations' cited cases, one per case, for the lists.
  *
- * `check`, `detect` and `pageCheck` are injectable replacements for
- * `checkAvailability`, `detectCitations` and `checkPage`, used by tests to
- * stub the network fetch and the WASM, which Node can't load from the site
- * path. Rejects, with a WasmLoadError, if the WASM fails to load.
+ * `check`, `detect`, `pageCheck` and `reconcile` are injectable replacements
+ * for `checkAvailability`, `detectCitations`, `checkPage` and
+ * `reconcileParallels`, used by tests to stub the network fetch and to hand
+ * in the WASM, which Node can't load from the site path. Rejects, with a
+ * WasmLoadError, if the WASM fails to load.
  */
-export async function processCitations(caseData, check = checkAvailability, detect = detectCitations, pageCheck = checkPage) {
+export async function processCitations(
+  caseData, check = checkAvailability, detect = detectCitations, pageCheck = checkPage,
+  reconcile = reconcileParallels,
+) {
   const allCites = [];
   const occurrencesByOpinion = [];
 
@@ -509,7 +532,7 @@ export async function processCitations(caseData, check = checkAvailability, dete
     occurrencesByOpinion.push(detected.map(c => occurrence(c)));
   }
 
-  const unique = await checkCitations(allCites, check, pageCheck);
+  const unique = await checkCitations(allCites, check, pageCheck, reconcile);
   return { unique, occurrencesByOpinion, groups: groupCitations(allCites, unique) };
 }
 

@@ -15,8 +15,9 @@
 //! - The preferred printing is the official reporter's when stare.pub holds it, else the
 //!   first member that resolves (R3).
 //!
-//! The site applies the same rules in `web/public/js/parallel.js`; both are tested on the
-//! vectors in `tests/fixtures/parallel-reconcile.json`.
+//! This is the only implementation: `stare check` calls [`reconcile`] directly, and the
+//! site through the WASM export `reconcile_parallels` (`crates/stare-wasm`). It is tested
+//! on the vectors in `tests/fixtures/parallel-reconcile.json`.
 
 use serde::{Deserialize, Serialize};
 

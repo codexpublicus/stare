@@ -2,7 +2,8 @@
 // N.W. 287`) resolves through the printing stare.pub holds, labelled as inferred from
 // the citing text; members that open different cases are flagged for review; and the
 // official reporter's printing is the one listed first. Rendered through the same
-// functions the reader, the sidebar and /check use.
+// functions the reader, the sidebar and /check use, with the rules from the WASM
+// (stare::parallel::reconcile), as the site has them.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -16,15 +17,17 @@ import {
   occurrence,
   renderTextHtml,
 } from '../public/js/citations.js';
-import { reconcileParallels } from '../public/js/parallel.js';
+import { reconcile } from './wasm-node.js';
 
 const VECTORS = JSON.parse(readFileSync(
   new URL('../../crates/stare/tests/fixtures/parallel-reconcile.json', import.meta.url),
 )).vectors;
 
-describe('reconcileParallels', () => {
+// The rules are Rust's, tested there on these vectors; this checks they cross the WASM
+// boundary in the shape checkCitations reads (`partner` null, not missing, and so on).
+describe('the WASM export reconcile_parallels', () => {
   for (const v of VECTORS) {
-    test(v.name, () => assert.deepEqual(reconcileParallels(v.printings), v.verdicts));
+    test(v.name, async () => assert.deepEqual(await reconcile(v.printings), v.verdicts));
   }
 });
 
@@ -57,6 +60,7 @@ async function check(text, detected, { held = [], cases = {} } = {}) {
       const key = `${slug}/${volume}/${page}`;
       return key in cases ? cases[key] : false;
     },
+    reconcile,
   );
   const groups = groupCitations(detected, checked);
   const map = new Map(checked.map(c => [c.key, c]));
