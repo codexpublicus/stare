@@ -176,8 +176,8 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "citare-core"
-version = "0.7.0"
-source = "git+ssh://git@github.com/codexpublicus/citare.git?tag=v0.7.0#1b738bf1ab679e90315c9170742462b59212cff8"
+version = "0.7.1"
+source = "git+ssh://git@github.com/codexpublicus/citare.git?tag=v0.7.1#1a296a9017c22b4681030c8742a2fd7b757bea1a"
 dependencies = [
  "aho-corasick",
  "citare-data-build",
@@ -194,8 +194,8 @@ dependencies = [
 
 [[package]]
 name = "citare-data-build"
-version = "0.7.0"
-source = "git+ssh://git@github.com/codexpublicus/citare.git?tag=v0.7.0#1b738bf1ab679e90315c9170742462b59212cff8"
+version = "0.7.1"
+source = "git+ssh://git@github.com/codexpublicus/citare.git?tag=v0.7.1#1a296a9017c22b4681030c8742a2fd7b757bea1a"
 dependencies = [
  "regex",
  "regex-syntax",
