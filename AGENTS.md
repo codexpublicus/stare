@@ -399,6 +399,11 @@ the smoke suite against a deployed site (the main preview by default), and
 `scripts/cliff --unreleased --tag "$(node scripts/calver.mjs)"` previews the next release's notes (`scripts/cliff` is git-cliff with the baseline range; the first release's hand-written summary is in `cliff.toml`).
 Nobody deploys by hand; the one exception was the first deploy that created the Worker.
 
+Before each site release, the doc review (`.claude/skills/doc-review/`, #201) checks the
+site's pages, the agent files, this file, the READMEs and the CLI's help against what merged
+since the commit in `docs/.reviewed-at` and the live static files, and opens one PR with the
+fixes. `scripts/changes.sh` there lists the merged PRs, releases and live state.
+
 `idx.stare.pub`'s CORS allows `stare.pub`, its subdomains and the account's workers.dev
 subdomain, so previews resolve citations too.
 
