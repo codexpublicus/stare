@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 #MISE description="Run the JS test suites for web/ and the release scripts"
+#MISE depends=["build-wasm"]
 set -euo pipefail
 
 # node --test given a bare directory path does not recurse (verified against
 # Node 22.2.0-24.19.0); an explicit glob does, and also picks up new test
-# files under web/tests/ and scripts/tests/ without editing this task.
+# files under web/tests/ and scripts/tests/ without editing this task. The web
+# tests load the stare WASM from web/public/wasm (web/tests/wasm-node.js), so the
+# WASM is built first: the parallel-citation rules are only in Rust (#185).
 node --test 'web/tests/**/*.test.js' 'scripts/tests/**/*.test.mjs'

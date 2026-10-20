@@ -1,7 +1,7 @@
 name: Build and check the site
 description: >
   The checks and build site.yml's previews run: cargo fmt, clippy and tests,
-  the JS tests, the stare-wasm build, citare's data bundle and the Astro build
+  the stare-wasm build, the JS tests, citare's data bundle and the Astro build
   into web/dist (build-web). release.yml doesn't run it: it deploys the
   stare-wasm build and data bundle the merge commit's main build made and
   checked, with only the Astro build redone for the release tag. Expects the
@@ -94,13 +94,15 @@ runs:
       shell: bash
       run: cargo test --workspace
 
-    - name: JS tests
-      shell: bash
-      run: node --test 'web/tests/**/*.test.js' 'scripts/tests/**/*.test.mjs'
-
     - name: Build stare-wasm
       shell: bash
       run: wasm-pack build crates/stare-wasm --target web --out-dir ../../web/public/wasm
+
+    # After the WASM build: the JS tests load web/public/wasm for the parallel-citation
+    # rules, which exist only in Rust (#185).
+    - name: JS tests
+      shell: bash
+      run: node --test 'web/tests/**/*.test.js' 'scripts/tests/**/*.test.mjs'
 
     # The citare data bundle the module loads at runtime (#117), from the
     # citare version in Cargo.lock

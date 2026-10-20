@@ -22,6 +22,7 @@ import {
 } from '../public/js/citations.js';
 import { footnoteParagraphs } from '../public/js/pages.js';
 import { caseHash, parseHash } from '../public/js/router.js';
+import { reconcile } from './wasm-node.js';
 
 // A detected citation in the shape detectCitations returns, located in
 // `text` by its raw string (the nth occurrence).
@@ -36,12 +37,13 @@ function cite(text, raw, fields = {}, nth = 0) {
   };
 }
 
-// processCitations over one opinion, with `detected` standing in for the WASM;
-// `cases` are the `slug/volume/page`s with a case (true) or an alias there.
+// processCitations over one opinion, with `detected` standing in for citare and
+// the WASM's reconciliation for parallel runs; `cases` are the `slug/volume/page`s
+// with a case (true) or an alias there.
 async function run(text, detected, cases = {}) {
   const check = async () => true;
   const pageCheck = async (slug, volume, page) => cases[`${slug}/${volume}/${page}`] || false;
-  const out = await processCitations({ casebody: { opinions: [{ text }] } }, check, async () => detected, pageCheck);
+  const out = await processCitations({ casebody: { opinions: [{ text }] } }, check, async () => detected, pageCheck, reconcile);
   const map = new Map(out.unique.map(c => [c.key, c]));
   return { ...out, html: renderTextHtml(text, out.occurrencesByOpinion[0], map).join('\n') };
 }

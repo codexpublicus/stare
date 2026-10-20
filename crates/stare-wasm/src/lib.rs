@@ -148,6 +148,20 @@ pub fn detect_citations(text: &str) -> Result<String, JsError> {
     serde_json::to_string(&citations).map_err(|e| JsError::new(&e.to_string()))
 }
 
+/// Parallel-citation reconciliation (#160, D35): `stare::parallel::reconcile`, the
+/// rules `stare check` applies, for the site's `checkCitations`. Takes a JSON array of
+/// printings, `{ run, official, lookup }`, `lookup` being `{ status: "found", case }`,
+/// `{ status: "held_miss" }`, `{ status: "not_held" }` or `{ status: "unknown" }`.
+/// Returns a JSON array of one `{ partner, conflicts, preferred }` per printing, in
+/// order, `partner` an index or null. Throws on JSON that isn't a list of printings.
+#[wasm_bindgen]
+pub fn reconcile_parallels(printings: &str) -> Result<String, JsError> {
+    let printings: Vec<stare::parallel::Printing> =
+        serde_json::from_str(printings).map_err(|e| JsError::new(&e.to_string()))?;
+    serde_json::to_string(&stare::parallel::reconcile(&printings))
+        .map_err(|e| JsError::new(&e.to_string()))
+}
+
 /// List all case filenames in a zip. Returns a JSON array of strings.
 #[wasm_bindgen]
 pub fn list_cases(zip_bytes: &[u8]) -> Result<String, JsError> {
