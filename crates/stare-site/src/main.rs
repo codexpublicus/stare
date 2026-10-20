@@ -1,7 +1,8 @@
 //! Build steps for the stare.pub site that need the stare library. The site build
 //! (`.github/actions/build-site`, `mise run build-wasm`) runs `export-citare-data`
 //! after building stare-wasm. It was `stare-admin export-citare-data` until
-//! stare-admin moved to codexpublicus/stare-builder (#163).
+//! stare-admin moved to codexpublicus/stare-builder (#163). `export-reporters`
+//! writes the reporter map, `/reporters.json` (#161).
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
@@ -25,6 +26,18 @@ enum Commands {
         /// Output directory, created if missing
         dir: PathBuf,
     },
+    /// Write the reporter map (stare::reporters, schemas/reporters.v1.schema.json)
+    /// to FILE: every reporter slug, the abbreviations citare reads as it, the
+    /// volumes the index manifest lists and the URL templates for the index and
+    /// case files. The site serves it at /reporters.json.
+    ExportReporters {
+        /// The index manifest to take volumes from, a copy of
+        /// https://idx.stare.pub/manifest.json
+        #[arg(long)]
+        manifest: PathBuf,
+        /// Output file; its directory is created if missing
+        file: PathBuf,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -33,8 +46,40 @@ fn main() -> anyhow::Result<()> {
             let path = export_citare_data(&dir)?;
             println!("{}", path.display());
         }
+        Commands::ExportReporters { manifest, file } => {
+            let bytes = std::fs::read(&manifest)
+                .with_context(|| format!("reading {}", manifest.display()))?;
+            let manifest = stare::manifest::Manifest::parse(&bytes)
+                .with_context(|| format!("parsing {}", manifest.display()))?;
+            let map = export_reporters(&manifest, &file)?;
+            println!(
+                "{}: {} slugs, {} abbreviations",
+                file.display(),
+                map.reporters.len(),
+                map.abbreviations.len()
+            );
+        }
     }
     Ok(())
+}
+
+/// Writes the reporter map for `manifest` and the citare data built into stare
+/// to `file`, as one line of JSON.
+fn export_reporters(
+    manifest: &stare::manifest::Manifest,
+    file: &Path,
+) -> anyhow::Result<stare::reporters::ReporterMap> {
+    let map = stare::reporters::from_citare(
+        Some(manifest),
+        &stare::data::file_name(stare::data::embedded()),
+    );
+    if let Some(dir) = file.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    }
+    let mut json = serde_json::to_string(&map)?;
+    json.push('\n');
+    std::fs::write(file, json).with_context(|| format!("writing {}", file.display()))?;
+    Ok(map)
 }
 
 /// Writes stare's embedded citare data bundle into `dir`, gzipped, under its

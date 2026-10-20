@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-#MISE description="Build the stare-wasm crate into web/public/wasm and export citare's data bundle"
+#MISE description="Build the stare-wasm crate into web/public/wasm, export citare's data bundle and write /reporters.json"
 set -euo pipefail
 
 wasm-pack build crates/stare-wasm --target web --out-dir ../../web/public/wasm
 cargo run --quiet -p stare-site -- export-citare-data web/public/data/citare/v1
+
+# The reporter map (#161) takes its volumes from the live index manifest.
+manifest=$(mktemp)
+trap 'rm -f "$manifest"' EXIT
+curl -fsSL --retry 3 https://idx.stare.pub/manifest.json -o "$manifest"
+cargo run --quiet -p stare-site -- export-reporters --manifest "$manifest" web/public/reporters.json
