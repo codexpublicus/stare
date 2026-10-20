@@ -1198,24 +1198,30 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
 
 // The crawler files (#171, #161): served as text and XML, and parsing as they do
 // in the build.
-test('/robots.txt is served as text, disallows /c/ and names the sitemap', async ({ request }) => {
+test('/robots.txt is served as text, disallows /c/ but the curated cases, and names the sitemap', async ({ request }) => {
   const response = await request.get('/robots.txt');
   expect(response.status()).toBe(200);
   expect(response.headers()['content-type']).toBe('text/plain; charset=utf-8');
-  const { groups, sitemaps } = parseRobots(await response.text());
+  const body = await response.body();
+  // Google reads the first 500 KiB and drops the rest.
+  expect(body.length).toBeLessThanOrEqual(500 * 1024);
+  const { groups, sitemaps } = parseRobots(body.toString('utf8'));
   const all = groups.find((g) => g.agents.includes('*'));
   expect(all.signals).toEqual({ search: 'yes', 'ai-input': 'yes' });
-  expect(isAllowed(all, '/c/a2d/31/647')).toBe(false);
+  expect(isAllowed(all, '/c/')).toBe(false);
+  expect(isAllowed(all, '/c/zz-not-curated/1/1/')).toBe(false);
   expect(isAllowed(all, '/about/')).toBe(true);
   expect(sitemaps).toEqual(['https://stare.pub/sitemap.xml']);
 });
 
-test('/sitemap.xml is served as XML and lists the site pages', async ({ request }) => {
+test('/sitemap.xml is served as XML, lists the site pages, and its cases are the ones robots.txt allows', async ({ request }) => {
   const response = await request.get('/sitemap.xml');
   expect(response.status()).toBe(200);
   expect(response.headers()['content-type']).toBe('application/xml; charset=utf-8');
   const locs = parseSitemap(await response.text()).map((u) => u.loc);
   expect(locs).toEqual(expect.arrayContaining(['https://stare.pub/', 'https://stare.pub/about/', 'https://stare.pub/check/']));
+  const all = parseRobots(await (await request.get('/robots.txt')).text()).groups.find((g) => g.agents.includes('*'));
+  for (const loc of locs) expect(isAllowed(all, new URL(loc).pathname), loc).toBe(true);
 });
 
 test('/llms.txt is served as UTF-8 text in llmstxt.org\'s shape', async ({ request }) => {
