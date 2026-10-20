@@ -470,13 +470,25 @@ Everything an agent uses is a static file; nothing runs per request (the owner's
 - **`/schemas/<file>`**: `src/pages/schemas/[name].json.js` publishes `schemas/*.schema.json`
   at the URL each `$id` names, and fails the build if one doesn't match.
 - **JSON-LD**: a `WebSite` on `/` and a `Dataset` on `/data` (`src/lib/jsonld.js`,
-  `components/JsonLd.astro`), with figures from `collection.json`. The Dataset has no `license`
-  yet; that's the owner's call.
+  `components/JsonLd.astro`), with figures from `collection.json`. The Dataset's `hasPart`
+  gives each licence its own sub-dataset (below).
+- **Licences** (the owner's ruling of 2026-10-20, D63(1)): CC0 1.0 for the CAP case files
+  and anything else republished under its source's CC0 terms; CC BY-NC-ND 4.0, crediting
+  stare.pub, for everything else the project produces (the citation index, the manifest and
+  build reports, the reporter map, the OpenAPI document and schemas, case pages, other site
+  data). `crates/stare/src/license.rs` and `web/src/lib/license.js` hold the two. They appear
+  as `license` in `reporters.json` and `cap-glyphs.json`, `info.license` in `openapi.json`,
+  `x-license` in each schema, a `license` per `hasPart` and per download in the `/data`
+  JSON-LD, and in prose in `llms.txt` and on `/data`. CourtListener records have no licence
+  stated until the owner rules on them, and the reporters-db data inside `reporters.json` is an
+  open question on the PR that added this. A new published JSON file must
+  state one, or the tests below fail. The code licence (Polyform Shield) is separate.
 
 `crates/stare-site/tests/agent_files.rs` validates an exported `reporters.json` against its
 schema and `openapi.json` against the OpenAPI 3.1 schema (vendored in `tests/fixtures/`), and
 checks that the OpenAPI describes GETs only and that its refs resolve. `web/tests/agentfiles.test.js`
-covers the JSON-LD and `llms.txt`'s links, and `web/e2e/agents.spec.js` checks the deployed
+covers the JSON-LD and `llms.txt`'s links; both check that every published JSON file states a
+licence, and `web/e2e/agents.spec.js` checks the deployed
 site serves all of it.
 
 Per-case JSON (`data.stare.pub/case/<slug>/<vol>/<page>.json`, the issue's third static piece)

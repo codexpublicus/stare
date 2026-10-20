@@ -1,6 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://stare.pub/schemas/index-report.v1.schema.json",
+  "x-license": {
+    "id": "CC-BY-NC-ND-4.0",
+    "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+    "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+    "source": "https://stare.pub"
+  },
   "title": "stare.pub index build report, format 1",
   "description": "What one citation index build found: who built it from what, the totals, per-reporter counts, the volumes that failed or were allow-listed, and what changed since the previous build. Written by `stare-admin build-report` as builds/<version>/report.json and published at idx.stare.pub/v/<version>/report.json. A change that breaks a reader bumps `format` and this file's name.",
   "type": "object",

@@ -6,6 +6,7 @@ pub mod config;
 pub mod data;
 pub mod idx;
 pub mod index;
+pub mod license;
 pub mod manifest;
 pub mod parallel;
 pub mod reporters;

@@ -21,6 +21,8 @@ test('/reporters.json maps abbreviations to slugs, with volumes and URL template
   expect(map.urls.index).toBe('https://idx.stare.pub/{base}{slug}/{volume}.idx.gz');
   expect(map.generated_from.index_build.version).toMatch(/^v\d{4}\.\d{2}\.\d{2}/);
   expect(map.generated_from.citare_data).toMatch(/^citare-data-[0-9a-f]{16}\.bin$/);
+  expect(map.license.url).toBe('https://creativecommons.org/licenses/by-nc-nd/4.0/');
+  expect(map.license.source).toBe('https://stare.pub');
 });
 
 test('/openapi.json is the OpenAPI document in the repo', async ({ request }) => {
@@ -36,7 +38,9 @@ test('the JSON Schemas are published at their $id', async ({ request }) => {
     const response = await request.get(`/schemas/${name}`);
     expect(response.status(), name).toBe(200);
     expect(response.headers()['content-type'], name).toMatch(/^application\/json\b/);
-    expect((await response.json()).$id).toBe(`https://stare.pub/schemas/${name}`);
+    const schema = await response.json();
+    expect(schema.$id).toBe(`https://stare.pub/schemas/${name}`);
+    expect(schema['x-license'].url, name).toBe('https://creativecommons.org/licenses/by-nc-nd/4.0/');
   }
 });
 
@@ -55,6 +59,11 @@ test('/ has WebSite JSON-LD and /data has Dataset JSON-LD', async ({ page }) => 
   const urls = data.distribution.map((d) => d.contentUrl);
   expect(urls).toContain('https://stare.pub/reporters.json');
   expect(urls).toContain('https://idx.stare.pub/manifest.json');
+  expect(data.hasPart.map((p) => p.license).sort()).toEqual([
+    'https://creativecommons.org/licenses/by-nc-nd/4.0/',
+    'https://creativecommons.org/licenses/by-nc-nd/4.0/',
+    'https://creativecommons.org/publicdomain/zero/1.0/',
+  ]);
 });
 
 test('/llms.txt links the agent files', async ({ request }) => {

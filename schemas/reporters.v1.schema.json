@@ -1,14 +1,32 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://stare.pub/schemas/reporters.v1.schema.json",
+  "x-license": {
+    "id": "CC-BY-NC-ND-4.0",
+    "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+    "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+    "source": "https://stare.pub"
+  },
   "title": "stare.pub reporter map, format 1",
   "description": "stare.pub/reporters.json: every reporter slug the index files volumes under, the abbreviations citare reads as each, the volumes the index held when the site was built, and URL templates for the index and case files. `stare-site export-reporters` generates it from the citare data bundle and the index manifest (crates/stare/src/reporters.rs). The live manifest at idx.stare.pub/manifest.json stays the authority on which volumes are held.",
   "type": "object",
-  "required": ["$schema", "format", "generated_from", "urls", "abbreviations", "reporters"],
+  "required": ["$schema", "format", "license", "generated_from", "urls", "abbreviations", "reporters"],
   "additionalProperties": false,
   "properties": {
     "$schema": { "const": "https://stare.pub/schemas/reporters.v1.schema.json" },
     "format": { "const": 1 },
+    "license": {
+      "type": "object",
+      "description": "The licence the reporter map is published under, and stare.pub as its source.",
+      "required": ["id", "name", "url", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "The SPDX identifier (CC-BY-NC-ND-4.0)." },
+        "name": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "source": { "type": "string", "format": "uri", "description": "Where the file comes from: https://stare.pub, the authoritative copy." }
+      }
+    },
     "generated_from": {
       "type": "object",
       "required": ["citare_data", "reporters_db_commit", "index_build"],

@@ -126,7 +126,7 @@ describe('public/llms.txt', () => {
     assert.equal(llms.title, 'stare.pub');
     assert.match(llms.summary, /citation/);
     assert.deepEqual(llms.sections.map((s) => s.name),
-      ['Resolving a citation', 'Pages', 'Files', 'Local tools', 'Crawling and use']);
+      ['Resolving a citation', 'Pages', 'Files', 'Licences', 'Local tools', 'Crawling and use']);
   });
 
   test('links every page in the sitemap', () => {

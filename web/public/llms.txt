@@ -41,6 +41,13 @@ Index files under `v/<version>/` and the case files never change once published;
 - [Reporter map](https://stare.pub/reporters.json): abbreviations to slugs, volume ranges and URL templates, generated from citare's data and the index manifest at each site build; its JSON Schema is [reporters.v1.schema.json](https://stare.pub/schemas/reporters.v1.schema.json)
 - [OpenAPI description](https://stare.pub/openapi.json): every static GET above as OpenAPI 3.1, with content types and cache headers, for frameworks that build tools from OpenAPI. It describes files, not an API: nothing computes a response
 
+## Licences
+
+- The Caselaw Access Project case files on `data.stare.pub/cap/` are [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), the terms CAP published them under.
+- Everything else the project produces is [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/): the citation index, the index manifest and build reports, the reporter map, the OpenAPI document and the JSON Schemas, the case pages and the site's other data. Credit stare.pub (https://stare.pub), the authoritative source.
+- The CourtListener records under `data.stare.pub/cl/` aren't published yet; no licence is stated for them.
+- The JSON files say which applies: `license` in reporters.json, `info.license` in openapi.json, `x-license` in each schema. The `/data` page's JSON-LD gives each part of the dataset its own `license`.
+
 ## Local tools
 
 The `stare` command-line tool resolves citations and prints case text from the same static files, and a local MCP server in it, `stare mcp`, is planned, so an agent can resolve citations through tools running on its own machine. Neither is published as a package yet. stare.pub hosts no MCP server; anything that runs, runs on your side.
