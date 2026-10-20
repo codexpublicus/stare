@@ -90,6 +90,8 @@ fn the_schema_rejects_what_it_should() {
         ("/abbreviations/A.2d", json!(["A2D"])),
         ("/reporters/a2d/volumes/count", json!(0)),
         ("/urls/index", json!("https://example.com/{slug}")),
+        ("/license/url", json!(1)),
+        ("/license/source", json!(null)),
     ] {
         let mut map = good.clone();
         *map.pointer_mut(pointer).unwrap() = bad.clone();
@@ -216,4 +218,78 @@ fn openapi_json_lists_every_published_schema() {
         .collect();
     files.sort();
     assert_eq!(listed, files);
+}
+
+/// The licence a published JSON file states (#161): `license` in reporters.json,
+/// `info.license` in openapi.json, `x-license` in a schema.
+fn stated_license(doc: &Value) -> Option<&str> {
+    [
+        &doc["license"]["url"],
+        &doc["info"]["license"]["url"],
+        &doc["x-license"]["url"],
+    ]
+    .into_iter()
+    .find_map(Value::as_str)
+}
+
+#[test]
+fn every_published_json_file_states_a_license() {
+    use stare::license::{CC0, CC_BY_NC_ND};
+    let dir = tempfile::tempdir().unwrap();
+    let mut files: Vec<(String, Value)> = vec![
+        ("reporters.json".into(), export_reporters(dir.path())),
+        ("web/public/openapi.json".into(), openapi()),
+    ];
+    // Every other JSON file the site serves from web/public, and every schema.
+    for sub in ["web/public", "schemas"] {
+        for entry in walk(&repo().join(sub)) {
+            let name = entry.strip_prefix(repo()).unwrap().display().to_string();
+            if name.ends_with(".json") && !files.iter().any(|(n, _)| *n == name) {
+                files.push((name, read_json(&entry)));
+            }
+        }
+    }
+    assert!(files.len() >= 5, "{files:?}");
+    for (name, doc) in &files {
+        let url = stated_license(doc).unwrap_or_else(|| panic!("{name}: no licence"));
+        assert!(
+            [CC0.url, CC_BY_NC_ND.url].contains(&url),
+            "{name}: {url} isn't one of the two licences"
+        );
+    }
+
+    // Everything these files cover is the project's own, so CC BY-NC-ND, with
+    // stare.pub as the source.
+    let reporters = &files[0].1;
+    assert_eq!(
+        reporters["license"],
+        serde_json::to_value(CC_BY_NC_ND).unwrap()
+    );
+    assert_eq!(reporters["license"]["source"], "https://stare.pub");
+    assert_eq!(files[1].1["info"]["license"]["url"], CC_BY_NC_ND.url);
+    for (name, doc) in files.iter().filter(|(n, _)| n.starts_with("schemas/")) {
+        assert_eq!(
+            doc["x-license"],
+            serde_json::to_value(CC_BY_NC_ND).unwrap(),
+            "{name}"
+        );
+    }
+}
+
+/// Every file under `dir`, recursively. The generated reporters.json in web/public
+/// is skipped because the test exports its own, and web/public/wasm because it is
+/// wasm-pack's output, the stare code's package, which the code licence covers.
+fn walk(dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() && path.file_name().is_some_and(|n| n == "wasm") {
+            continue;
+        } else if path.is_dir() {
+            out.extend(walk(&path));
+        } else if path.file_name().is_some_and(|n| n != "reporters.json") {
+            out.push(path);
+        }
+    }
+    out
 }

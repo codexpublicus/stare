@@ -13,6 +13,7 @@
 //! own schedule, so the live manifest's `reporters` stays the authority on what is held;
 //! `index_build` names the build the volumes came from.
 
+use crate::license::License;
 use crate::manifest::Manifest;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -37,6 +38,8 @@ pub struct ReporterMap {
     #[serde(rename = "$schema")]
     pub schema: String,
     pub format: u32,
+    /// The map's licence, CC BY-NC-ND 4.0 ([`crate::license`]).
+    pub license: License,
     pub generated_from: GeneratedFrom,
     pub urls: Urls,
     /// Every name and variation → the slugs it can be filed under, sorted. Most have
@@ -258,6 +261,7 @@ pub fn build(
     ReporterMap {
         schema: crate::schemas::REPORTERS_V1_ID.to_string(),
         format: FORMAT,
+        license: crate::license::CC_BY_NC_ND,
         generated_from: GeneratedFrom {
             citare_data: String::new(),
             reporters_db_commit: None,

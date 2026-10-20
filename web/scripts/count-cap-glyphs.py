@@ -63,6 +63,13 @@ def main() -> None:
             "(seed 102). Made by web/scripts/count-cap-glyphs.py; read by "
             "web/scripts/subset-fonts.py."
         ),
+        # stare.pub's licence for the data the project produces (#161)
+        "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+            "source": "https://stare.pub",
+        },
         "volumes": len(volumes),
         "cases": cases,
         "total_code_points": total,

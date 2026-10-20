@@ -3,6 +3,7 @@
 // <script type="application/ld+json"> by components/JsonLd.astro. The figures
 // come from collection.json, like every other figure on the site.
 import { casesLabel, collection } from './collection.js';
+import { CC0, CC_BY_NC_ND, SOURCE } from './license.js';
 
 export const SITE = 'https://stare.pub';
 
@@ -31,7 +32,108 @@ export function webSite() {
   };
 }
 
+// What a CC BY-NC-ND part credits: stare.pub, the authoritative copy.
+const creditText = `stare.pub (${SOURCE})`;
+
+const capDataset = {
+  '@type': 'Dataset',
+  name: 'Caselaw Access Project',
+  url: 'https://case.law/',
+  license: CC0.url,
+};
+
+// The Dataset's parts, one per licence (#161): the CAP case files stare.pub
+// republishes under CAP's CC0 terms, and the citation index and the reporter map
+// the project produces, under CC BY-NC-ND. The CourtListener records aren't
+// published yet and aren't a part.
+function parts() {
+  return [
+    {
+      '@type': 'Dataset',
+      '@id': `${SITE}/data/#cap-case-files`,
+      name: 'Caselaw Access Project case files',
+      description:
+        `${casesLabel} from the Harvard Caselaw Access Project, one zip per reporter volume, ` +
+        'republished under CAP’s CC0 terms.',
+      url: 'https://data.stare.pub/cap/',
+      license: CC0.url,
+      isBasedOn: capDataset,
+      publisher,
+      distribution: [
+        {
+          '@type': 'DataDownload',
+          name: 'A volume’s case files (Atlantic Reporter, Second Series, volume 31)',
+          description: 'One zip per volume at https://data.stare.pub/cap/<slug>/<volume>.zip, with each case as json/<file>.json.',
+          contentUrl: 'https://data.stare.pub/cap/a2d/31.zip',
+          encodingFormat: 'application/zip',
+          license: CC0.url,
+        },
+      ],
+    },
+    {
+      '@type': 'Dataset',
+      '@id': `${SITE}/data/#citation-index`,
+      name: 'stare.pub citation index',
+      description:
+        'The citation index stare.pub builds over the case files: one gzipped file per reporter volume ' +
+        'mapping first pages to case files, the manifest naming the live build, and every build’s report.',
+      url: `${SITE}/data/`,
+      license: CC_BY_NC_ND.url,
+      creditText,
+      creator: publisher,
+      publisher,
+      distribution: [
+        {
+          '@type': 'DataDownload',
+          name: 'Index manifest',
+          description: 'The live index build: every reporter slug and the volumes held, and where the build’s files are.',
+          contentUrl: 'https://idx.stare.pub/manifest.json',
+          encodingFormat: 'application/json',
+          license: CC_BY_NC_ND.url,
+        },
+        {
+          '@type': 'DataDownload',
+          name: 'Index build reports',
+          contentUrl: 'https://idx.stare.pub/reports/index.json',
+          encodingFormat: 'application/json',
+          license: CC_BY_NC_ND.url,
+        },
+        {
+          '@type': 'DataDownload',
+          name: 'A volume’s citation index (Atlantic Reporter, Second Series, volume 31)',
+          description: 'One file per volume at https://idx.stare.pub/<base><slug>/<volume>.idx.gz; lines are page,source,ref.',
+          contentUrl: 'https://idx.stare.pub/v/v2026.10.18/a2d/31.idx.gz',
+          encodingFormat: 'application/gzip',
+          license: CC_BY_NC_ND.url,
+        },
+      ],
+    },
+    {
+      '@type': 'Dataset',
+      '@id': `${SITE}/data/#reporter-map`,
+      name: 'stare.pub reporter map',
+      description: 'Reporter abbreviations to the slugs the index and case files use, with volume ranges and URL templates.',
+      url: `${SITE}/reporters.json`,
+      license: CC_BY_NC_ND.url,
+      creditText,
+      creator: publisher,
+      publisher,
+      distribution: [
+        {
+          '@type': 'DataDownload',
+          name: 'Reporter map',
+          description: 'Reporter abbreviations to the slugs the index and case files use, with volume ranges and URL templates.',
+          contentUrl: `${SITE}/reporters.json`,
+          encodingFormat: 'application/json',
+          license: CC_BY_NC_ND.url,
+        },
+      ],
+    },
+  ];
+}
+
 export function dataset() {
+  const hasPart = parts();
   return {
     '@context': 'https://schema.org',
     '@type': 'Dataset',
@@ -40,7 +142,8 @@ export function dataset() {
     description:
       `A citation index over U.S. case law, ${casesLabel} from the Harvard Caselaw Access Project, ` +
       'with the case text, published as static files: one gzipped index file per reporter volume ' +
-      'mapping first pages to case files, and the volumes’ case files as zips.',
+      'mapping first pages to case files, and the volumes’ case files as zips. The case files are CC0 1.0, ' +
+      'under CAP’s terms; the index and the reporter map are CC BY-NC-ND 4.0, with stare.pub as the source.',
     url: `${SITE}/data/`,
     isAccessibleForFree: true,
     inLanguage: 'en-US',
@@ -51,45 +154,11 @@ export function dataset() {
     publisher,
     isPartOf: { '@id': `${SITE}/#website` },
     isBasedOn: [
-      { '@type': 'Dataset', name: 'Caselaw Access Project', url: 'https://case.law/' },
+      capDataset,
       { '@type': 'Dataset', name: 'CourtListener bulk data', url: 'https://www.courtlistener.com/help/api/bulk-data/' },
     ],
-    distribution: [
-      {
-        '@type': 'DataDownload',
-        name: 'Index manifest',
-        description: 'The live index build: every reporter slug and the volumes held, and where the build’s files are.',
-        contentUrl: 'https://idx.stare.pub/manifest.json',
-        encodingFormat: 'application/json',
-      },
-      {
-        '@type': 'DataDownload',
-        name: 'Reporter map',
-        description: 'Reporter abbreviations to the slugs the index and case files use, with volume ranges and URL templates.',
-        contentUrl: `${SITE}/reporters.json`,
-        encodingFormat: 'application/json',
-      },
-      {
-        '@type': 'DataDownload',
-        name: 'Index build reports',
-        contentUrl: 'https://idx.stare.pub/reports/index.json',
-        encodingFormat: 'application/json',
-      },
-      {
-        '@type': 'DataDownload',
-        name: 'A volume’s citation index (Atlantic Reporter, Second Series, volume 31)',
-        description: 'One file per volume at https://idx.stare.pub/<base><slug>/<volume>.idx.gz; lines are page,source,ref.',
-        contentUrl: 'https://idx.stare.pub/v/v2026.10.18/a2d/31.idx.gz',
-        encodingFormat: 'application/gzip',
-      },
-      {
-        '@type': 'DataDownload',
-        name: 'A volume’s case files (Atlantic Reporter, Second Series, volume 31)',
-        description: 'One zip per volume at https://data.stare.pub/cap/<slug>/<volume>.zip, with each case as json/<file>.json.',
-        contentUrl: 'https://data.stare.pub/cap/a2d/31.zip',
-        encodingFormat: 'application/zip',
-      },
-    ],
+    hasPart,
+    distribution: hasPart.flatMap((part) => part.distribution),
   };
 }
 
