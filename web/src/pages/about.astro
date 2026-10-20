@@ -47,7 +47,7 @@ const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
 			<h2>How it works</h2>
 			<p>When you look up a citation, your browser:</p>
 			<ul>
-				<li>fetches the volume's citation index, about 7 KB, which says which case starts on which page;</li>
+				<li>fetches the volume's citation index, a gzipped text file usually under 2 KB, which says which case starts on which page;</li>
 				<li>fetches the volume's case data, a zip of typically 1.5 MB, from the Codex Publicus copy at data.stare.pub;</li>
 				<li>unpacks and renders the case itself, using a WebAssembly build of the same Rust code the <code>stare</code> command line tool runs;</li>
 				<li>caches both files, so later lookups in that volume don't download them again.</li>
@@ -112,7 +112,7 @@ const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
 				<li><strong>citare</strong>: the citation parser behind the reader and the brief checker, written in Rust and compiled to WebAssembly. It's a Codex Publicus project, inspired by the <a href="https://free.law/" target="_blank" rel="noopener">Free Law Project</a>'s eyecite, and it uses their reporters-db for its reporter data.</li>
 				<li><strong><a href="https://www.oasis-open.org/committees/legaldocml/" target="_blank" rel="noopener">Akoma Ntoso</a></strong>: the OASIS standard for legal documents, which the structured case text will follow.</li>
 				<li><strong>PDF/A</strong>: the ISO archival PDF standard the per-volume PDFs are built to.</li>
-				<li><strong><a href="https://www.rust-lang.org/" target="_blank" rel="noopener">Rust</a></strong>: the core lookup code, compiled to the <code>stare</code> command line tool and to WebAssembly for the browser. The index is one binary file per volume, 8 bytes per page, so the case on any page is one offset lookup away.</li>
+				<li><strong><a href="https://www.rust-lang.org/" target="_blank" rel="noopener">Rust</a></strong>: the core lookup code, compiled to the <code>stare</code> command line tool and to WebAssembly for the browser. The index is one small gzipped text file per volume, a line for each case's first page, so the case on any page is one lookup away.</li>
 				<li><strong><a href="https://astro.build/" target="_blank" rel="noopener">Astro</a></strong>: the site, as plain HTML, JavaScript and CSS.</li>
 				<li><strong><a href="https://www.cloudflare.com/" target="_blank" rel="noopener">Cloudflare</a></strong>: Workers serve the site and R2 holds the index and the case text. Any static host would do, whether S3, IPFS or a directory on your own machine.</li>
 			</ul>
