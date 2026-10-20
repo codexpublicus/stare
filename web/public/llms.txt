@@ -45,7 +45,7 @@ The `stare` command-line tool resolves citations and prints case text from the s
 
 ## Crawling and use
 
-- The site's pages, and the curated case pages under `/case/` as they're added, may be crawled; [sitemap.xml](https://stare.pub/sitemap.xml) lists them with the date each last changed. Case pages under `/c/` are not to be crawled. To work through many cases, fetch the static files above instead of crawling pages; that's what they're for.
+- The site's pages may be crawled. Every case page has one permanent URL under `/c/`, which is not to be crawled except for a curated set of cases that `robots.txt` allows by name (or by reporter or volume); [sitemap.xml](https://stare.pub/sitemap.xml) lists the pages and those cases with the date each last changed. A case's URL doesn't change when it joins or leaves the set. To work through many cases, fetch the static files above instead of crawling pages; that's what they're for.
 - `idx.stare.pub` and `data.stare.pub` are data hosts, and their `robots.txt` disallows crawling them. Fetching the files the recipe names is fine.
 - Content signals, on every host: `search=yes, ai-input=yes`. `ai-train` is not stated. The definitions are Cloudflare's Content Signals Policy, quoted in [robots.txt](https://stare.pub/robots.txt).
 - Contact: info@codexpublicus.org

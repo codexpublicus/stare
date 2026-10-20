@@ -1,7 +1,7 @@
-// Checks for the crawler-facing files in public/ (codexpublicus/stare#171,
+// Checks for the crawler-facing files (codexpublicus/stare#171,
 // #161): robots.txt and llms.txt. The build runs them on dist/ and fails on a
 // problem (astro.config.mjs), and web/tests/crawlfiles.test.js runs them on
-// public/.
+// what the build would serve.
 
 // RFC 9309's fields plus Sitemap, and Content-Signal from Cloudflare's Content
 // Signals Policy (contentsignals.org), which goes inside a User-agent group.

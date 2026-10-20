@@ -6,7 +6,8 @@ import { gunzipSync } from 'node:zlib';
 import { defineConfig } from 'astro/config';
 
 import { isAllowed, parseLlmsTxt, parseRobots } from './src/lib/crawlfiles.js';
-import { CURATED_PREFIX, FULL_PREFIX, SITE, isShallow, parseSitemap, renderSitemap, sitemapEntries } from './src/lib/sitemap.js';
+import { CASE_PREFIX, ROBOTS_MAX_BYTES, curatedAllows, curatedSet } from './src/lib/robots.js';
+import { SITE, isShallow, parseSitemap, renderSitemap, sitemapEntries } from './src/lib/sitemap.js';
 
 // Writes /wasm/stare_wasm_bg.json for the loader (public/js/wasm.js): the WASM
 // module's byte count, for the progress bar, and the citare data bundle the
@@ -65,9 +66,10 @@ function citareBundle(dirUrl) {
 }
 
 // Writes /sitemap.xml (src/lib/sitemap.js) and checks it, robots.txt and llms.txt
-// (codexpublicus/stare#171, #161): the build fails if one is missing or wouldn't
-// parse, if robots.txt stops pointing at the sitemap, disallowing the full-corpus
-// case prefix or allowing the site's pages, or if the sitemap lists a page
+// (codexpublicus/stare#171 ruling D44, #161): the build fails if one is missing
+// or wouldn't parse, if robots.txt passes 500 KiB, stops pointing at the
+// sitemap, disallowing /c/ or allowing the site's pages, if its /c/ Allow lines
+// aren't the ones src/data/curated.json gives, or if the sitemap lists a page
 // robots.txt disallows.
 const crawlFiles = {
 	name: 'stare-crawl-files',
@@ -76,7 +78,8 @@ const crawlFiles = {
 			const pagesDir = fileURLToPath(new URL('./src/pages/', import.meta.url));
 			const dated = !isShallow(pagesDir);
 			if (!dated) logger.warn('shallow clone: sitemap.xml has no lastmod (git can\'t date the pages)');
-			const xml = renderSitemap(sitemapEntries(pagesDir, { dated }));
+			const curated = curatedSet(JSON.parse(readFileSync(new URL('./src/data/curated.json', import.meta.url), 'utf8')));
+			const xml = renderSitemap(sitemapEntries(pagesDir, { dated, curated }));
 			writeFileSync(fileURLToPath(new URL('sitemap.xml', dir)), xml);
 			const urls = parseSitemap(xml);
 
@@ -85,17 +88,24 @@ const crawlFiles = {
 				if (!existsSync(file)) throw new Error(`${name} is missing from the build`);
 				return readFileSync(file, 'utf8');
 			};
-			const robots = parseRobots(read('robots.txt'));
+			const robotsText = read('robots.txt');
+			const robotsBytes = Buffer.byteLength(robotsText);
+			if (robotsBytes > ROBOTS_MAX_BYTES) throw new Error(`robots.txt is ${robotsBytes} bytes, past ${ROBOTS_MAX_BYTES}`);
+			const robots = parseRobots(robotsText);
 			const all = robots.groups.find((g) => g.agents.includes('*'));
 			if (!all) throw new Error('robots.txt has no User-agent: * group');
 			if (!robots.sitemaps.includes(`${SITE}/sitemap.xml`)) throw new Error('robots.txt must name the sitemap');
-			if (isAllowed(all, `${FULL_PREFIX}a2d/31/647`)) throw new Error(`robots.txt must disallow ${FULL_PREFIX}`);
-			if (!isAllowed(all, `${CURATED_PREFIX}a2d/31/647`)) throw new Error(`robots.txt must allow ${CURATED_PREFIX}`);
+			if (isAllowed(all, CASE_PREFIX)) throw new Error(`robots.txt must disallow ${CASE_PREFIX}`);
+			if (!isAllowed(all, '/about/')) throw new Error('robots.txt must allow the site pages');
+			const allows = all.allow.filter((p) => p.startsWith(CASE_PREFIX)).sort();
+			if (JSON.stringify(allows) !== JSON.stringify(curatedAllows(curated))) {
+				throw new Error(`robots.txt's ${CASE_PREFIX} Allow lines aren't the curated set in src/data/curated.json`);
+			}
 			for (const { loc } of urls) {
 				if (!isAllowed(all, new URL(loc).pathname)) throw new Error(`robots.txt disallows ${loc}, which the sitemap lists`);
 			}
 			parseLlmsTxt(read('llms.txt'));
-			logger.info(`sitemap.xml: ${urls.length} pages${dated ? '' : ', undated'}; robots.txt and llms.txt check out`);
+			logger.info(`sitemap.xml: ${urls.length} URLs (${curated.cases.length} curated cases)${dated ? '' : ', pages undated'}; robots.txt (${robotsBytes} bytes, ${allows.length} ${CASE_PREFIX} allows) and llms.txt check out`);
 		},
 	},
 };

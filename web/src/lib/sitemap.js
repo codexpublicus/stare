@@ -12,16 +12,16 @@
 // can't date a file, so the build leaves lastmod out rather than guessing; the
 // release build checks out the full history and dates every page.
 //
-// Case pages aren't here yet. The curated set (#172) goes under CURATED_PREFIX
-// with its own lastmod from the record, and the rest of the corpus under
-// FULL_PREFIX, which robots.txt disallows.
+// After the pages come the curated cases (src/lib/robots.js, ruling D44 on
+// #171), each at its permanent /c/ URL with the lastmod its curated.json entry
+// gives, the same set robots.txt allows.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 
-export const SITE = 'https://stare.pub';
-export const CURATED_PREFIX = '/case/';
-export const FULL_PREFIX = '/c/';
+import { SITE, curatedSitemapEntries } from './robots.js';
+
+export { SITE };
 
 // Source files whose changes count as a page's content changing.
 const FOLLOW = new Set(['.astro', '.js', '.mjs', '.ts']);
@@ -104,13 +104,15 @@ export function renderSitemap(entries) {
   ].join('\n');
 }
 
-// Every page with its lastmod, or without one in a shallow clone.
-export function sitemapEntries(pagesDir, { dated = true } = {}) {
-  return sitePages(pagesDir).map(({ path, file }) => {
+// Every page with its lastmod, or without one in a shallow clone, then the
+// curated cases (`curatedSet` in robots.js).
+export function sitemapEntries(pagesDir, { dated = true, curated = { cases: [] } } = {}) {
+  const pages = sitePages(pagesDir).map(({ path, file }) => {
     const files = contentFiles(file).filter(existsSync);
     const lastmod = dated ? lastCommitDate(files, dirname(file)) : null;
     return { loc: `${SITE}${path}`, lastmod };
   });
+  return [...pages, ...curatedSitemapEntries(curated)];
 }
 
 // Checks a sitemap's text the way a crawler reads it: well-formed enough to find
