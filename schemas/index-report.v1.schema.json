@@ -14,6 +14,7 @@
   "additionalProperties": false,
   "properties": {
     "format": { "const": 1 },
+    "license": { "$ref": "#/$defs/license", "description": "The licence the report, and the build it describes, are published under: CC BY-NC-ND 4.0 with stare.pub as the source. Absent from reports written before it was added." },
     "version": { "$ref": "#/$defs/data_version" },
     "generated_at": { "$ref": "#/$defs/timestamp", "description": "When build-report wrote this report." },
     "build": {
@@ -88,6 +89,18 @@
     }
   },
   "$defs": {
+    "license": {
+      "type": "object",
+      "description": "A licence as stare.pub's files state it (the same shape as reporters.json's `license`).",
+      "required": ["id", "name", "url", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "The SPDX identifier (CC-BY-NC-ND-4.0)." },
+        "name": { "type": "string" },
+        "url": { "type": "string" },
+        "source": { "type": "string", "description": "Where the file comes from: https://stare.pub, the authoritative copy." }
+      }
+    },
     "idx": {
       "type": "object",
       "required": ["format", "volumes", "files", "split_volumes", "cl_only_volumes", "lines", "malformed", "gz_bytes", "max_gz_bytes", "cl_input"],

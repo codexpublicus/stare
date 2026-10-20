@@ -479,10 +479,29 @@ Everything an agent uses is a static file; nothing runs per request (the owner's
   data). `crates/stare/src/license.rs` and `web/src/lib/license.js` hold the two. They appear
   as `license` in `reporters.json` and `cap-glyphs.json`, `info.license` in `openapi.json`,
   `x-license` in each schema, a `license` per `hasPart` and per download in the `/data`
-  JSON-LD, and in prose in `llms.txt` and on `/data`. CourtListener records have no licence
-  stated until the owner rules on them, and the reporters-db data inside `reporters.json` is an
-  open question on the PR that added this. A new published JSON file must
+  JSON-LD, and in prose in `llms.txt` and on `/data`. A new published JSON file must
   state one, or the tests below fail. The code licence (Polyform Shield) is separate.
+- **Upstream attribution** (the owner's ruling D65, 2026-10-20). Where stare.pub republishes
+  another project's data, that data keeps its own licence and credit:
+  - reporters-db and courts-db (Free Law Project, BSD 2-Clause): `license.rs` has
+    `REPORTERS_DB` and `COURTS_DB`, with their LICENSE files copied verbatim into
+    `crates/stare/src/licenses/` (`tests/upstream_licenses.rs` checks the copies against the
+    submodules in the citare checkout stare is built with; a citare bump that changes one
+    fails there). `reporters.json` has `sources`: reporters-db, the commit the citare bundle
+    records, its licence and text, and the fields from it (`REPORTERS_DB_FIELDS`). The citare
+    data bundle is binary, so `export-citare-data` writes a sidecar next to it,
+    `/data/citare/v1/citare-data-<hash>.json` (`stare::data::Sidecar`), with the bundle's CC
+    BY-NC-ND licence and both upstreams' sections, commits, licences and texts. `_headers`
+    serves the sidecar as JSON. The `/data` JSON-LD names both in `isBasedOn` on the reporter
+    map and the `#citare-data` part.
+  - CourtListener records carry the Public Domain Mark 1.0 that CourtListener puts on its bulk
+    data (`PUBLIC_DOMAIN_MARK`), in `license`, and `attribution`: CourtListener, Free Law
+    Project, and the export date (`COURTLISTENER`; `CaseJson::license`/`attribution`).
+    stare-builder's record writer adds both. The JSON-LD's CourtListener `isBasedOn` states the
+    mark; the records aren't a part until they're published.
+  - The index manifest (`Manifest::license`), build reports and `reports/index.json` take a
+    `license` (CC BY-NC-ND, stare.pub as the source) that stare-builder writes; the report
+    schemas accept it, and files from before it have none.
 
 `crates/stare-site/tests/agent_files.rs` validates an exported `reporters.json` against its
 schema and `openapi.json` against the OpenAPI 3.1 schema (vendored in `tests/fixtures/`), and

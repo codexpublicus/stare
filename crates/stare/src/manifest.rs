@@ -61,6 +61,11 @@
 //! alias's case, and a miss is a volume stare.pub doesn't hold, linked out like any
 //! other. A reader that doesn't know `aliases` sees them as volumes it doesn't hold.
 //!
+//! `license`, when present, is the licence the build's files are published under, which
+//! stare-builder's `build-manifest` writes: CC BY-NC-ND 4.0 with stare.pub as the source
+//! ([`crate::license::CC_BY_NC_ND`], #161, D65). Readers don't need it; manifests written
+//! before it have none.
+//!
 //! The legacy format (format 1, everything before it) is the bare reporter map with
 //! integer volumes, `{"a2d": [1, 2, 31]}`. It can't name split volumes, so reading it,
 //! [`Manifest::candidates`] guesses `<volume>-2`, the folder name every second part in
@@ -103,6 +108,9 @@ pub struct Manifest {
     /// Reporter slug → volumes whose `.idx.gz` has only aliases, in [`compare_volumes`]
     /// order; never also in `reporters`.
     pub aliases: BTreeMap<String, Vec<String>>,
+    /// The licence the build's files are published under (format 2 only; absent from
+    /// manifests written before it).
+    pub license: Option<crate::license::Stated>,
     /// Read from the legacy format, which can't describe split volumes.
     pub legacy: bool,
 }
@@ -127,6 +135,8 @@ struct Format2 {
     idx: Option<u32>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     aliases: BTreeMap<String, Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    license: Option<crate::license::Stated>,
 }
 
 /// Whether `s` can name a volume folder: an ASCII digit first, then digits, lowercase
@@ -252,6 +262,7 @@ impl Manifest {
                 base: f.base,
                 idx: f.idx,
                 aliases: f.aliases,
+                license: f.license,
                 legacy: false,
             };
             m.normalize()?;
@@ -324,6 +335,7 @@ impl Manifest {
             parts: self.parts.clone(),
             idx: self.idx,
             aliases: self.aliases.clone(),
+            license: self.license.clone(),
         };
         Ok(serde_json::to_string_pretty(&f)?)
     }
@@ -676,6 +688,22 @@ mod tests {
         assert_eq!(Manifest::parse(m.to_json().unwrap().as_bytes()).unwrap(), m);
         let future = Manifest::parse(br#"{"format": 2, "idx": 2, "reporters": {}}"#).unwrap();
         assert!(!future.has_idx());
+    }
+
+    #[test]
+    fn reads_and_round_trips_the_license() {
+        let mut m = a3d();
+        assert_eq!(m.license, None);
+        let raw: serde_json::Value = serde_json::from_str(&m.to_json().unwrap()).unwrap();
+        assert!(raw.get("license").is_none());
+        m.license = Some(crate::license::CC_BY_NC_ND.into());
+        let json = m.to_json().unwrap();
+        let raw: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            raw["license"],
+            serde_json::to_value(crate::license::CC_BY_NC_ND).unwrap()
+        );
+        assert_eq!(Manifest::parse(json.as_bytes()).unwrap(), m);
     }
 
     #[test]

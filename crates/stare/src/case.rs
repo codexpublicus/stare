@@ -19,6 +19,28 @@ pub struct CaseJson {
     /// CourtListener record (`crate::cl`) has `{"name": "courtlistener", ...}`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<Source>,
+    /// The record's licence. A CourtListener record carries the Public Domain Mark 1.0
+    /// CourtListener puts on its bulk data ([`crate::license::PUBLIC_DOMAIN_MARK`], D65);
+    /// CAP's case JSON has none (the case files are CC0, as CAP published them).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license: Option<crate::license::Stated>,
+    /// Who the record credits: CourtListener (Free Law Project) and the export it came
+    /// from, in a CourtListener record (D65).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<Attribution>,
+}
+
+/// A record's `attribution` (docs/plans/courtlistener-mirror.md, "The record").
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Attribution {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publisher: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// The export the record came from (`2026-09-30`), the same as `source.export`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export: Option<String>,
 }
 
 impl CaseJson {
@@ -318,6 +340,22 @@ mod tests {
         assert_eq!(ids.opinions, [11111, 11112]);
         assert_eq!(case.citations[0].cite, "250 A.3d 100");
         assert_eq!(case.casebody.opinions.len(), 2);
+        // The Public Domain Mark, crediting CourtListener and the export (D65).
+        assert_eq!(
+            case.license,
+            Some(crate::license::PUBLIC_DOMAIN_MARK.into())
+        );
+        let credit = case.attribution.as_ref().unwrap();
+        assert_eq!(credit.name, crate::license::COURTLISTENER.name);
+        assert_eq!(credit.publisher.as_deref(), Some("Free Law Project"));
+        assert_eq!(
+            credit.url.as_deref(),
+            Some("https://www.courtlistener.com/")
+        );
+        assert_eq!(credit.export, source.export);
+        let again = serde_json::to_value(&case).unwrap();
+        assert_eq!(again["license"]["id"], "CC-PDM-1.0");
+        assert_eq!(again["attribution"]["export"], "2026-09-30");
 
         // Only `name` is required in `source`.
         let bare = br#"{"id": 1, "name": "A v. B", "name_abbreviation": "A v. B",

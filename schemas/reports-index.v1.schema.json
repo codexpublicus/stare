@@ -14,6 +14,7 @@
   "additionalProperties": false,
   "properties": {
     "format": { "const": 1 },
+    "license": { "$ref": "index-report.v1.schema.json#/$defs/license", "description": "The licence the history is published under, the one its newest report states: CC BY-NC-ND 4.0 with stare.pub as the source. Absent from histories written before it was added." },
     "reports": {
       "type": "array",
       "items": {

@@ -8,9 +8,18 @@
 # Content-Encoding: Cloudflare doesn't compress application/gzip again, the
 # browser doesn't decompress it on the way in, and the loader gunzips it with
 # DecompressionStream.
+#
+# Next to each bundle is its sidecar, citare-data-<hash>.json: the bundle's
+# licence and the reporters-db and courts-db sections with their licences and
+# notices (D65). Its name has the same hash, so it's immutable too, and it's
+# served as JSON. A request matching both rules gets both rules' headers, so
+# the content types are set per extension and only Cache-Control is shared.
 /data/citare/*
   Cache-Control: public, max-age=31536000, immutable
+/data/citare/*.gz
   Content-Type: application/gzip
+/data/citare/*.json
+  Content-Type: application/json; charset=utf-8
 
 # The crawler files (#171, #161). llms.txt is UTF-8 Markdown with a few
 # non-ASCII characters; say so, so no client guesses Latin-1.

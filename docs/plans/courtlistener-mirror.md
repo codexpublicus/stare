@@ -106,6 +106,10 @@ path, and adds a `source` block. CAP records get `source: {"name": "cap"}` impli
   "court": {"name": "Supreme Court of Pennsylvania"},
   "jurisdiction": {"name_long": "Pennsylvania"},
   "casebody": {"opinions": [{"type": "majority", "author": "Saylor", "text": "..."}]},
+  "license": {"id": "CC-PDM-1.0", "name": "Public Domain Mark 1.0 Universal",
+              "url": "https://creativecommons.org/publicdomain/mark/1.0/", "source": "https://stare.pub"},
+  "attribution": {"name": "CourtListener", "publisher": "Free Law Project",
+                  "url": "https://www.courtlistener.com/", "export": "2026-09-30"},
   "source": {
     "name": "courtlistener",
     "export": "2026-09-30",
@@ -130,6 +134,12 @@ path, and adds a `source` block. CAP records get `source: {"name": "cap"}` impli
   since stare links citations itself. `source.text_field` says which field it was.
 - `citations` lists every citation the cluster has, typed with CAP's vocabulary (`official`,
   `parallel`, `vendor`, `neutral`).
+- `license` and `attribution` follow the owner's ruling D65: CourtListener marks its bulk data
+  "free of known copyright restrictions" with the Public Domain Mark 1.0
+  (https://wiki.free.law/c/courtlistener/help/api/bulk-data/bulk-legal-data), so each record
+  carries that mark and credits CourtListener (Free Law Project) and the export it came from.
+  `attribution.export` is `source.export`. stare reads both (`CaseJson::license`,
+  `CaseJson::attribution`) and `crates/stare/src/license.rs` has the constants.
 
 ## Storage
 
@@ -147,7 +157,7 @@ Records are served like the citare data bundle: `Content-Type: application/gzip`
 JSON too in case a proxy decodes them.
 
 `<hash>` is the first 16 hex digits of the sha256 of the record's canonical JSON (sorted keys,
-no `source.export`/`first_seen`, so an unchanged case hashes the same in every export). One object
+no `source.export`/`first_seen` or `attribution.export`, so an unchanged case hashes the same in every export). One object
 per case, rather than CAP-style volume zips, is what makes
 [#84](https://github.com/codexpublicus/stare/issues/84) fall out of the layout: a new export uploads
 only the cases whose hash changed, an offline mirror ([#23](https://github.com/codexpublicus/stare/issues/23))

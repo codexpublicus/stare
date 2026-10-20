@@ -1,0 +1,101 @@
+{
+ "format": 1,
+ "version": "v2026.10.18",
+ "generated_at": "2026-10-18T14:07:54Z",
+ "build": {
+  "stare_tag": "main",
+  "stare_commit": "b6c1d3fcc95e6e4ba5933d9368e2e0a4b1009c44",
+  "builder_ref": "main",
+  "builder_commit": "b6c1d3fcc95e6e4ba5933d9368e2e0a4b1009c44",
+  "stare_pin": "v2026.10.18.1",
+  "stare_rev": "5624c1f8dbb451e3c24637565510455e8ca8b8df",
+  "stare_admin": "0.1.0",
+  "citare": "v0.6.0",
+  "cap_release": "VolumesMetadata.json sha256:df5da71c76b6d75b59cfbb07387c71fb255e7a9f8d095c8a676559527532204d",
+  "started_at": "2026-10-18T12:08:58Z",
+  "finished_at": "2026-10-18T14:07:54Z",
+  "duration_seconds": 7136
+ },
+ "totals": {
+  "reporters": 401,
+  "volumes": 40622,
+  "split_volumes": 131,
+  "split_parts": 263,
+  "cases": 6920598,
+  "entries": 6920598,
+  "shortfall": 0,
+  "labeled": 2411,
+  "long_names": 1238,
+  "allowed": 0,
+  "failed": 0
+ },
+ "reporters": {
+  "a2d": {
+   "volumes": 967,
+   "cases": 59930,
+   "entries": 59930,
+   "shortfall": 0
+  }
+ },
+ "allowed": [],
+ "failed": [],
+ "volumes": {
+  "a2d": {
+   "100": {
+    "cases": 9,
+    "entries": 9,
+    "digest": "403c1edecd606298"
+   },
+   "101": {
+    "cases": 15,
+    "entries": 15,
+    "digest": "97b6393504a416c5"
+   },
+   "102": {
+    "cases": 21,
+    "entries": 21,
+    "digest": "98d0fa44e63c320e"
+   }
+  }
+ },
+ "diff": {
+  "previous_version": "v2026.10.05",
+  "previous_generated_at": "2026-10-05T07:12:14Z",
+  "volumes_added": [],
+  "volumes_removed": [],
+  "volumes_changed": [],
+  "counts_changed": [],
+  "reporters": {},
+  "totals": {
+   "volumes": [
+    40622,
+    40622
+   ],
+   "cases": [
+    6920598,
+    6920598
+   ],
+   "entries": [
+    6920598,
+    6920598
+   ]
+  }
+ },
+ "idx": {
+  "format": 1,
+  "volumes": 40490,
+  "files": 41055,
+  "split_volumes": 383,
+  "cl_only_volumes": 0,
+  "lines": {
+   "cap": 6920598,
+   "cl": 0
+  },
+  "malformed": 0,
+  "gz_bytes": 29087781,
+  "max_gz_bytes": 4523,
+  "cl_input": null,
+  "alias_lines": 0,
+  "alias_only_volumes": 0
+ }
+}
