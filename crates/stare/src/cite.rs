@@ -1904,19 +1904,48 @@ mod tests {
         // Murray's citations as one resource, so the antecedent is the
         // first.
         assert_eq!(a.matched_text, "52 Ohio St.3d 155", "{cites:#?}");
-        let named: Vec<Option<&str>> = cites
+        // citare v0.7.1 (citare#89) reads the year before each volume as
+        // the citation's own, so it no longer ends the case name.
+        let named: Vec<(Option<&str>, Option<i32>)> = cites
             .iter()
             .filter(|c| c.citation_type == "FullCaseCitation")
-            .map(|c| c.case_name.as_deref())
+            .map(|c| (c.case_name.as_deref(), c.year))
             .collect();
         assert_eq!(
             named,
             [
-                Some("Murray (1990)"),
-                Some("Stanley v. Illinois (1972)"),
-                None
+                (Some("Murray"), Some(1990)),
+                (Some("Stanley v. Illinois"), Some(1972)),
+                (None, Some(1990)),
             ]
         );
+    }
+
+    /// citare#89: a year in parentheses right before the volume, Ohio's
+    /// style (`Troop A Riding Academy v. Miller (1934), 127 Ohio 545`), is
+    /// the citation's year and stays out of the case name. v0.7.0 named the
+    /// case `Troop A Riding Academy v. Miller (1934)` and gave it no year.
+    #[test]
+    fn year_before_the_volume_is_the_citations_year() {
+        let cites = detect_citations("Troop A Riding Academy v. Miller (1934), 127 Ohio 545.");
+        let c = find(&cites, "FullCaseCitation", "127 Ohio 545");
+        assert_eq!(
+            c.case_name.as_deref(),
+            Some("Troop A Riding Academy v. Miller")
+        );
+        assert_eq!(c.year, Some(1934));
+        assert_eq!(c.slug.as_deref(), Some("ohio-st"));
+        assert_eq!(c.corrected_reporter.as_deref(), Some("Ohio St."));
+        // Without a comma, and through a parallel run: both printings carry
+        // the year and the name, and the second is the first's parallel.
+        let cites = detect_citations("See Stanley v. Illinois (1972) 405 U.S. 645, 92 S.Ct. 1208.");
+        let us = find(&cites, "FullCaseCitation", "405 U.S. 645");
+        let sct = find(&cites, "FullCaseCitation", "92 S.Ct. 1208");
+        for c in [us, sct] {
+            assert_eq!(c.case_name.as_deref(), Some("Stanley v. Illinois"));
+            assert_eq!(c.year, Some(1972));
+        }
+        assert_eq!(sct.parallel_of, Some(0));
     }
 
     /// citare#84: the parallel citations of a certiorari denial, which have
