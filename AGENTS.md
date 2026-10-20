@@ -374,8 +374,9 @@ credits Codex Publicus and lokkju and shows the build: on a release, the CalVer 
 to `/updates#<tag>`; on any other build (PR previews, the main preview, local), `preview` and
 the commit date. It never shows a commit SHA; the SHA is only in a `data-commit` attribute.
 The values come from `PUBLIC_RELEASE`, `PUBLIC_COMMIT` and `PUBLIC_BUILD_DATE`. It also shows
-the index manifest's data version once #63 adds one, and until then the manifest's
-Last-Modified date.
+the live index's data version from the manifest's `version` (`Index v2026.10.18`), read in the
+browser by `web/public/js/dataversion.js`, and the manifest's Last-Modified date for a manifest
+without one.
 
 `CHANGELOG.md` is rendered at build time three ways: every release on `/updates` (each with
 an anchor named for its tag), the latest three on /about's "What's new", and the Atom feed
@@ -419,7 +420,10 @@ repo's `AGENTS.md` for the Pulumi, Wrangler and LFS rules that apply across the 
 The crawl design is D41 and D44 on #171: one canonical URL per case, a sitemap of the site pages
 plus a curated set of case pages, and the rest of the corpus not crawled. Every case keeps one
 permanent page at `/c/<slug>/<volume>/<page>/` (`CASE_PREFIX` and `casePath` in
-`src/lib/robots.js`), and no URL changes when a case's crawl status does. `robots.txt` has
+`src/lib/robots.js`), and no URL changes when a case's crawl status does. When several cases
+start on one page, each gets `/c/<slug>/<volume>/<page>/<n>/` in CAP's file order and the bare
+page path lists them (D59 on #171); an `Allow:` on the page path covers all of them. That
+segment applies once case pages ship. `robots.txt` has
 `Disallow: /c/` plus an `Allow:` line per curated case; the longer rule wins. The one list is
 `src/data/curated.json` (empty until #172 picks the set): `src/pages/robots.txt.js` renders
 `robots.txt` from it at build time, and the sitemap lists the same cases with each entry's
@@ -503,9 +507,13 @@ CourtListener records, a new data build rather than a site change.
 ## Current Status
 
 - **Live**: stare.pub serves the Astro site from the `stare-pub` Worker (since 2026-09-29; the
-  old Pages project is deleted by #41). CI deploys it when a release PR merges (#60); until
-  the first release, production is the last `main` push deployed before #60 landed.
-- **Live**: `idx.stare.pub` (R2 bucket `stare-pub-idx`) serves the citation index files.
+  old Pages project is deleted by #41). CI deploys it when a release PR merges (#60), so
+  production is the latest `vYYYY.MM.DD.N` release tag, and `main` can be ahead of it.
+- **Live**: `idx.stare.pub` (R2 bucket `stare-pub-idx`) serves the citation index files. The
+  live build is the one the root `manifest.json`'s `version` names; at the 2026-10-20 doc review
+  that was `v2026.10.18`, the unified `.idx.gz` index (`idx: 1`) with `.bin`/`.multi` beside it,
+  40,622 volume folders under 401 slugs and 6,920,598 cases, all from CAP. No CourtListener
+  records or `via=cl:` aliases are published yet.
 - **Zips**: the site and the CLI fetch case zips from `https://data.stare.pub/cap/<reporter>/<volume>.zip`
   (our copy, #27). Tars, `.tar.csv` and the volume PDF link still point at static.case.law.
 - **Mirror**: complete. TrueNAS `mega/codexpublicus/cap-mirror` holds 40,622 zips and 39,964
@@ -515,9 +523,7 @@ CourtListener records, a new data build rather than a site change.
   - #42: `codex-data` contents and `data.stare.pub` exposure (tier 1 uploaded 2026-09-29)
   - #51: archival per-volume PDFs (pipeline in codexpublicus/stare-builder)
   - #52, #61: Akoma Ntoso case text (profile in codexpublicus/exemplar); parallel-citation display
-  - #60, #63: CalVer releases and version display; the index manifest
   - #10 — a computable court record key, a stable identifier for every decision
-  - #9 — statutes and regulations: link out for now, hold them later
   - #8 — add case sources beyond CAP
   - #7 — pass-through citation resolver for cases this repo doesn't hold
   - #6 — offline, self-hosted law reference library, US then other countries
@@ -529,9 +535,9 @@ CourtListener records, a new data build rather than a site change.
 
 ## Development Phases
 
-1. **Mirror static.case.law** (in progress) — aria2 downloading all tars, PDFs, zips, metadata
-2. **Citation index + CLI tool** — reporters.json, .bin index builder, Python CLI (`stare resolve a2d 31 647` → text)
-3. **Web tool (WASM)** — Rust/WASM citation parser, zip extraction, Cloudflare Pages UI; PDF as fallback viewer link
+1. **Mirror static.case.law** (done 2026-09-29): every tar, PDF, zip and metadata file, on TrueNAS
+2. **Citation index + CLI tool** (done): the per-volume index at idx.stare.pub, built in codexpublicus/stare-builder, and the Rust `stare` CLI (`stare resolve a2d 31 647` → text)
+3. **Web tool (WASM)** (live at stare.pub): citare and stare-wasm in the browser, zip extraction, served by the `stare-pub` Worker; PDF as fallback viewer link
 4. **DuckLake** — process zips into Parquet, build catalog, assign stable case IDs
 5. **RoaringBuckets search** — generate bitmaps from DuckLake data, add search to web UI
 6. **Page viewer** — tar range access + ALTO XML rendering in WASM (deferred; not needed for core text resolution)

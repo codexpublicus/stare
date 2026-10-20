@@ -1,20 +1,22 @@
-/// `stare download` — fetch the citation index (.bin) and case data (.zip) for one or
-/// more reporters into the local cache, so later `resolve`/`list` calls work offline.
+/// `stare download`: fetch the citation index and case data (.zip) for one or more
+/// reporters into the local cache, so later `resolve`/`list` calls work offline. The
+/// index is each volume's `.idx.gz` (and its parts) when the manifest has `idx: 1`, and
+/// its `.bin` otherwise.
 ///
 /// Design notes (see docs/plans/extraction-plan.md for the index/data layout):
 /// - Files land in the same cache directories `resolve`/`list` already read from
-///   (`<cache>/bins/<reporter>/<vol>.bin`, `<cache>/zips/<reporter>/<vol>.zip`), so a
+///   (`<cache>/bins/<reporter>/<vol>.idx.gz` or `.bin`, `<cache>/zips/<reporter>/<vol>.zip`), so a
 ///   download followed by `stare --index <cache>/bins --data <cache>/zips resolve ...`
 ///   (or just letting the normal cache lookup do its job) works without a network call.
 /// - The list of volumes per reporter comes from `manifest.json` at the root of the
-///   index source (written by `stare-admin build-manifest`). The manifest is always
+///   index source (written by stare-builder's `stare-admin build-manifest`). The manifest is always
 ///   fetched fresh, since it changes when the index is rebuilt, and saved as
 ///   `<cache>/bins/manifest.json`.
 /// - Index files are at their path under the manifest's `base` when it has one
-///   (`v/v2026.10.03/a3d/138.bin`), on the source and in the cache alike, so files from
+///   (`v/v2026.10.18/a3d/138.idx.gz`), on the source and in the cache alike, so files from
 ///   two index versions never mix and `<cache>/bins` reads like an index source.
 /// - A file already on disk is skipped when its size matches the remote size (via a
-///   HEAD request's Content-Length). No checksum is published for .bin/.zip files
+///   HEAD request's Content-Length). No checksum is published for index files or zips
 ///   (only .tar.sha256 exists, and tars aren't part of this command), so size is the
 ///   best available verification. A size mismatch triggers a re-download.
 /// - If the HEAD request itself fails (network error or non-2xx) and a local copy
@@ -309,7 +311,7 @@ fn fetch_idx_volume(
 }
 
 /// Run a download pass: for each requested reporter, look up its volumes in the
-/// manifest, then fetch the .bin (index) and .zip (data) for each, skipping files
+/// manifest, then fetch the index (.idx.gz or .bin) and .zip (data) for each, skipping files
 /// already cached at the correct size. Errors on individual files are recorded and
 /// don't stop the rest of the run.
 pub fn run(cfg: &DownloadConfig, mut on_event: impl FnMut(Event)) -> Result<Report> {

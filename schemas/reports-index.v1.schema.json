@@ -8,7 +8,7 @@
     "source": "https://stare.pub"
   },
   "title": "stare.pub index report history, format 1",
-  "description": "idx.stare.pub/reports/index.json: one entry per published index build, oldest first, each with its report's totals. `mise run index-publish` adds or replaces the published version's entry before it writes the root manifest.json. The stare.pub /data page charts it.",
+  "description": "idx.stare.pub/reports/index.json: one entry per published index build, oldest first, each with its report's totals. codexpublicus/stare-builder's `mise run index-publish` adds or replaces the published version's entry before it writes the root manifest.json. The stare.pub /data page charts it.",
   "type": "object",
   "required": ["format", "reports"],
   "additionalProperties": false,
