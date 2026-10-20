@@ -5,7 +5,7 @@
 ## Resolving a citation
 
 1. Split the citation into volume, reporter and first page: `31 A.2d 647` is volume `31`, reporter `A.2d`, page `647`.
-2. Turn the reporter into its slug, the directory name the files use: CAP's slug for the reporter where CAP has it, otherwise one made from the reporter's name. `A.2d` is `a2d`, `F. Supp. 2d` is `f-supp-2d`, `Cal. App. 4th` is `cal-app-4th`, `U.S.` is `us`, `NY Slip Op` is `ny-slip-op`. The keys of the manifest's `reporters` object are every slug there is.
+2. Turn the reporter into its slug, the directory name the files use: CAP's slug for the reporter where CAP has it, otherwise one made from the reporter's name. `A.2d` is `a2d`, `F. Supp. 2d` is `f-supp-2d`, `Cal. App. 4th` is `cal-app-4th`, `U.S.` is `us`, `NY Slip Op` is `ny-slip-op`. The keys of the manifest's `reporters` object are every slug there is. [reporters.json](https://stare.pub/reporters.json) maps every reporter abbreviation and variation citare knows (`A.2d`, `A. 2d`, `N.W.`) to its slugs, with the volumes each slug held at the last site build and templates for the URLs in the steps below.
 3. GET `https://idx.stare.pub/manifest.json`. It's JSON, cached for 60 seconds, and names the live index build:
    - `reporters`: slug → the volume folders held. A volume missing here isn't in the corpus.
    - `parts`: slug → volume → `[{volume, first_page, last_page}]`, for the volumes CAP split over two or three folders (`a3d` volume `138` is folders `138` and `138-2`). Use the folder whose page range holds the page; the ranges can overlap, so try each.
@@ -38,6 +38,8 @@ Index files under `v/<version>/` and the case files never change once published;
 - [Index manifest](https://idx.stare.pub/manifest.json): the live build, its reporters and volumes
 - [Index build reports](https://idx.stare.pub/reports/index.json): every published build's totals
 - [Example case zip](https://data.stare.pub/cap/a2d/31.zip): volume 31 of the Atlantic Reporter, Second Series
+- [Reporter map](https://stare.pub/reporters.json): abbreviations to slugs, volume ranges and URL templates, generated from citare's data and the index manifest at each site build; its JSON Schema is [reporters.v1.schema.json](https://stare.pub/schemas/reporters.v1.schema.json)
+- [OpenAPI description](https://stare.pub/openapi.json): every static GET above as OpenAPI 3.1, with content types and cache headers, for frameworks that build tools from OpenAPI. It describes files, not an API: nothing computes a response
 
 ## Local tools
 

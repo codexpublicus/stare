@@ -1,5 +1,7 @@
 ---
+import JsonLd from '../components/JsonLd.astro';
 import SiteFooter from '../components/SiteFooter.astro';
+import { dataset } from '../lib/jsonld.js';
 import '../styles/theme.css';
 import '../styles/layout.css';
 import '../styles/data.css';
@@ -17,6 +19,7 @@ import '../styles/data.css';
 		<meta property="og:type" content="website" />
 		<meta property="og:url" content="https://stare.pub/data" />
 		<meta property="og:image" content="https://stare.pub/og-image.png" />
+		<JsonLd data={dataset()} />
 		<script is:inline>
 			try {
 				var theme = localStorage.getItem('stare-theme');
