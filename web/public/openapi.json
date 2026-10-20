@@ -1,0 +1,381 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "stare.pub static files",
+    "version": "1",
+    "summary": "The static files behind stare.pub, for resolving U.S. case law citations with plain GETs.",
+    "description": "Every path here is a static file on object storage or the site's static assets. Nothing computes a response: there are no query parameters, no keys and no server-side search. Resolving a citation is three GETs: the index manifest (`getManifest`), the volume's index (`getVolumeIndex`), and the case file it names (`getCapVolumeZip`). `https://stare.pub/llms.txt` has the recipe in prose, and `https://stare.pub/reporters.json` (`getReporterMap`) maps a reporter abbreviation to the slug the paths use.\n\nThe hosts: `idx.stare.pub` serves the citation index, `data.stare.pub` the case files, and `stare.pub` the site and the files describing the rest. Files under `v/<version>/` on the index host and the case files never change once published. Only the root manifest and the report history change, when an index build goes live.\n\nCORS: `idx.stare.pub` and `data.stare.pub` send `Access-Control-Allow-Origin` only to stare.pub and its previews, so a browser page on another origin can't read them. A client that isn't a browser page isn't affected.",
+    "contact": { "name": "Codex Publicus", "email": "info@codexpublicus.org", "url": "https://stare.pub/about/" }
+  },
+  "servers": [
+    { "url": "https://stare.pub", "description": "The site and its static files" }
+  ],
+  "externalDocs": { "description": "The resolution recipe", "url": "https://stare.pub/llms.txt" },
+  "tags": [
+    { "name": "index", "description": "idx.stare.pub: the citation index, one file per volume as cited" },
+    { "name": "cases", "description": "data.stare.pub: the case text" },
+    { "name": "site", "description": "stare.pub: files that describe the rest" }
+  ],
+  "paths": {
+    "/manifest.json": {
+      "servers": [{ "url": "https://idx.stare.pub" }],
+      "get": {
+        "operationId": "getManifest",
+        "tags": ["index"],
+        "summary": "The live index build's manifest",
+        "description": "Names the live build (`version`, and `base`, the path its files are under) and lists every volume the index holds by reporter slug. Fetch it first and build every index URL from its `base`. It changes when a new build goes live, so revalidate it after a minute.",
+        "responses": {
+          "200": {
+            "description": "The manifest",
+            "headers": { "Cache-Control": { "$ref": "#/components/headers/CacheShort" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Manifest" } } }
+          }
+        }
+      }
+    },
+    "/v/{version}/manifest.json": {
+      "servers": [{ "url": "https://idx.stare.pub" }],
+      "parameters": [{ "$ref": "#/components/parameters/version" }],
+      "get": {
+        "operationId": "getBuildManifest",
+        "tags": ["index"],
+        "summary": "One index build's own manifest",
+        "description": "The same as the root manifest for that build, without `base`: its files are next to it. Never changes.",
+        "responses": {
+          "200": {
+            "description": "The build's manifest",
+            "headers": { "Cache-Control": { "$ref": "#/components/headers/CacheImmutable" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Manifest" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v/{version}/{slug}/{volume}.idx.gz": {
+      "servers": [{ "url": "https://idx.stare.pub" }],
+      "parameters": [
+        { "$ref": "#/components/parameters/version" },
+        { "$ref": "#/components/parameters/slug" },
+        { "$ref": "#/components/parameters/volume" }
+      ],
+      "get": {
+        "operationId": "getVolumeIndex",
+        "tags": ["index"],
+        "summary": "A volume's citation index (part 0)",
+        "description": "Gzipped UTF-8 text, served as `application/gzip` with no `Content-Encoding`, so the client gunzips it. One line per case: `page,source,ref`.\n\n- `page`: the case's first page, a number or a page label lowercased (`xxix`).\n- `source` `cap`: `ref` is the case file in the volume's zip (`0647-01`, read as `json/0647-01.json`). A ref with a folder (`138-2/1012-01`) is in that folder's zip. A ref with a reporter (`neb/128/0783-01`) is a case in another volume, followed by `key=value` fields; `via=cl:<cluster>` means CourtListener's citation metadata linked it. Parse the fields from the end of the line, since case files can hold commas.\n- `source` `cl`: `ref` is `<cluster_id>/<hash>`, a CourtListener record on data.stare.pub (none are published yet).\n\nLines that share a page are in order; the first is the case cited. Skip blank lines, lines starting with `#`, and sources you don't know. A volume split past 1,000 lines starts with `#parts,<first page of part 1>,<first page of part 2>,...`; a page at or past part n's first page is in part n (`getVolumeIndexPart`).\n\nThe volume is the number as cited, never a split folder's name (`138`, not `138-2`). A volume the manifest doesn't list returns 404.",
+        "responses": {
+          "200": {
+            "description": "The gzipped index",
+            "headers": { "Cache-Control": { "$ref": "#/components/headers/CacheImmutable" } },
+            "content": {
+              "application/gzip": {
+                "schema": { "type": "string", "contentMediaType": "application/gzip" },
+                "example": "647,cap,0647-01\n649,cap,0649-01\n652,cap,0652-01\n"
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v/{version}/{slug}/{volume}.{part}.idx.gz": {
+      "servers": [{ "url": "https://idx.stare.pub" }],
+      "parameters": [
+        { "$ref": "#/components/parameters/version" },
+        { "$ref": "#/components/parameters/slug" },
+        { "$ref": "#/components/parameters/volume" },
+        {
+          "name": "part",
+          "in": "path",
+          "required": true,
+          "description": "The part number, 1 or more, from the position of its first page in part 0's `#parts` header.",
+          "schema": { "type": "integer", "minimum": 1 }
+        }
+      ],
+      "get": {
+        "operationId": "getVolumeIndexPart",
+        "tags": ["index"],
+        "summary": "A later part of a split volume's citation index",
+        "description": "Same format as part 0, without the `#parts` header.",
+        "responses": {
+          "200": {
+            "description": "The gzipped index part",
+            "headers": { "Cache-Control": { "$ref": "#/components/headers/CacheImmutable" } },
+            "content": { "application/gzip": { "schema": { "type": "string", "contentMediaType": "application/gzip" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/reports/index.json": {
+      "servers": [{ "url": "https://idx.stare.pub" }],
+      "get": {
+        "operationId": "getReportHistory",
+        "tags": ["index"],
+        "summary": "Every published index build's report totals",
+        "description": "Oldest first. Charted at https://stare.pub/data/.",
+        "responses": {
+          "200": {
+            "description": "The report history",
+            "headers": { "Cache-Control": { "$ref": "#/components/headers/CacheShort" } },
+            "content": { "application/json": { "schema": { "$ref": "https://stare.pub/schemas/reports-index.v1.schema.json" } } }
+          }
+        }
+      }
+    },
+    "/v/{version}/report.json": {
+      "servers": [{ "url": "https://idx.stare.pub" }],
+      "parameters": [{ "$ref": "#/components/parameters/version" }],
+      "get": {
+        "operationId": "getBuildReport",
+        "tags": ["index"],
+        "summary": "One index build's report",
+        "description": "Counts by reporter and every volume that failed or was let through with a known reason. Several megabytes.",
+        "responses": {
+          "200": {
+            "description": "The build's report",
+            "headers": { "Cache-Control": { "$ref": "#/components/headers/CacheImmutable" } },
+            "content": { "application/json": { "schema": { "$ref": "https://stare.pub/schemas/index-report.v1.schema.json" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/cap/{slug}/{folder}.zip": {
+      "servers": [{ "url": "https://data.stare.pub" }],
+      "parameters": [
+        { "$ref": "#/components/parameters/slug" },
+        {
+          "name": "folder",
+          "in": "path",
+          "required": true,
+          "description": "The volume's folder: the volume number, or the folder an index ref names (`138-2`).",
+          "schema": { "type": "string", "pattern": "^[0-9A-Za-z][0-9A-Za-z-]*$" },
+          "example": "31"
+        }
+      ],
+      "get": {
+        "operationId": "getCapVolumeZip",
+        "tags": ["cases"],
+        "summary": "A Caselaw Access Project volume's case files",
+        "description": "The volume's zip as CAP published it: `json/<ref>.json` is a case (name, decision date, citations, court, jurisdiction, and `casebody.opinions` with each opinion's type, author and text), `metadata/CasesMetadata.json` lists every case with its first and last page, and `html/` has the cases as HTML. Typically 1 to 2 MB. Range requests work, so a client can read the zip's central directory from the end and fetch one case's bytes. Sent with ETag and Last-Modified and no Cache-Control; the file never changes.",
+        "parameters": [
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "description": "A byte range, to read part of the zip.",
+            "schema": { "type": "string" },
+            "example": "bytes=-65536"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The zip",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": { "application/zip": { "schema": { "type": "string", "contentMediaType": "application/zip" } } }
+          },
+          "206": {
+            "description": "The requested bytes of the zip",
+            "headers": {
+              "Content-Range": { "schema": { "type": "string" }, "description": "The bytes sent and the zip's size, `bytes 0-99/422856`." }
+            },
+            "content": { "application/zip": { "schema": { "type": "string", "contentMediaType": "application/zip" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/llms.txt": {
+      "get": {
+        "operationId": "getLlmsTxt",
+        "tags": ["site"],
+        "summary": "How to use stare.pub, for language models and agents",
+        "responses": {
+          "200": {
+            "description": "Markdown",
+            "headers": { "Cache-Control": { "$ref": "#/components/headers/CacheRevalidate" } },
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    },
+    "/reporters.json": {
+      "get": {
+        "operationId": "getReporterMap",
+        "tags": ["site"],
+        "summary": "Reporter abbreviations to slugs, with volume ranges and URL templates",
+        "description": "`abbreviations` maps every edition name and variation citare knows (`A.2d`, `A. 2d`) to the slugs the index and case paths use. `reporters` gives each slug's names, editions, the volumes the index held when the site was built, and whether CAP has it. `urls` has the URL templates. Generated from the citare data and the index manifest at each site build; the live manifest stays the authority on which volumes are held.",
+        "responses": {
+          "200": {
+            "description": "The reporter map",
+            "headers": { "Cache-Control": { "$ref": "#/components/headers/CacheRevalidate" } },
+            "content": { "application/json": { "schema": { "$ref": "https://stare.pub/schemas/reporters.v1.schema.json" } } }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "getOpenApi",
+        "tags": ["site"],
+        "summary": "This document",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1",
+            "headers": { "Cache-Control": { "$ref": "#/components/headers/CacheRevalidate" } },
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/schemas/{schema}": {
+      "parameters": [
+        {
+          "name": "schema",
+          "in": "path",
+          "required": true,
+          "description": "A JSON Schema's file name.",
+          "schema": { "enum": ["reporters.v1.schema.json", "index-report.v1.schema.json", "reports-index.v1.schema.json"] }
+        }
+      ],
+      "get": {
+        "operationId": "getSchema",
+        "tags": ["site"],
+        "summary": "The JSON Schemas for the published JSON files",
+        "responses": {
+          "200": {
+            "description": "A JSON Schema, draft 2020-12",
+            "headers": { "Cache-Control": { "$ref": "#/components/headers/CacheRevalidate" } },
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/sitemap.xml": {
+      "get": {
+        "operationId": "getSitemap",
+        "tags": ["site"],
+        "summary": "The site's pages, with the date each last changed",
+        "responses": {
+          "200": {
+            "description": "A sitemap",
+            "headers": { "Cache-Control": { "$ref": "#/components/headers/CacheRevalidate" } },
+            "content": { "application/xml": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    },
+    "/updates.xml": {
+      "get": {
+        "operationId": "getUpdatesFeed",
+        "tags": ["site"],
+        "summary": "Every site release, as an Atom feed",
+        "responses": {
+          "200": {
+            "description": "Atom",
+            "headers": { "Cache-Control": { "$ref": "#/components/headers/CacheRevalidate" } },
+            "content": { "application/xml": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "version": {
+        "name": "version",
+        "in": "path",
+        "required": true,
+        "description": "An index build's data version, the manifest's `version`. The manifest's `base` is `v/<version>/`.",
+        "schema": { "type": "string", "pattern": "^v[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}(\\.[1-9][0-9]*)?$" },
+        "example": "v2026.10.18"
+      },
+      "slug": {
+        "name": "slug",
+        "in": "path",
+        "required": true,
+        "description": "A reporter's slug: a key of the manifest's `reporters`, or of `reporters` in reporters.json (`A.2d` is `a2d`, `F. Supp. 2d` is `f-supp-2d`).",
+        "schema": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "example": "a2d"
+      },
+      "volume": {
+        "name": "volume",
+        "in": "path",
+        "required": true,
+        "description": "The volume as cited: a number, or a year for year-volume neutral citations (`2019-Ohio-1234` is `ohio` volume `2019`).",
+        "schema": { "type": "string", "pattern": "^[0-9A-Za-z][0-9A-Za-z-]*$" },
+        "example": "31"
+      }
+    },
+    "headers": {
+      "CacheShort": {
+        "description": "`public, max-age=60`: changes when an index build goes live.",
+        "schema": { "type": "string", "const": "public, max-age=60" }
+      },
+      "CacheImmutable": {
+        "description": "`public, max-age=31536000, immutable`: never changes once published.",
+        "schema": { "type": "string", "const": "public, max-age=31536000, immutable" }
+      },
+      "CacheRevalidate": {
+        "description": "`public, max-age=0, must-revalidate`: changes with each site release; revalidate with the ETag.",
+        "schema": { "type": "string", "const": "public, max-age=0, must-revalidate" }
+      },
+      "ETag": {
+        "description": "The file's entity tag, for conditional requests.",
+        "schema": { "type": "string" }
+      }
+    },
+    "responses": {
+      "NotFound": {
+        "description": "No such file: a volume or build the index doesn't have. For a volume, check the manifest first; a citation into a volume it doesn't list has no case on stare.pub."
+      }
+    },
+    "schemas": {
+      "Manifest": {
+        "type": "object",
+        "description": "An index build's manifest, format 2 (crates/stare/src/manifest.rs in the stare source).",
+        "required": ["format", "reporters"],
+        "properties": {
+          "format": { "const": 2 },
+          "version": { "type": "string", "description": "The build's data version, `vYYYY.MM.DD`, with `.N` for a later build the same day." },
+          "generated_at": { "type": "string", "description": "When the build's manifest was written, RFC 3339 UTC." },
+          "base": { "type": "string", "description": "Where this build's index files are, relative to the manifest (`v/v2026.10.18/`). Only the root manifest has it; without it the files are next to the manifest." },
+          "volumes": { "type": "integer", "description": "CAP volume folders indexed." },
+          "entries": { "type": "integer", "description": "CAP index entries." },
+          "idx": { "type": "integer", "description": "1 when the build has the `.idx.gz` files `getVolumeIndex` serves." },
+          "reporters": {
+            "type": "object",
+            "description": "Slug → the volumes held, by folder: usually the number, plus `-2` and the like for a volume CAP split over folders.",
+            "additionalProperties": { "type": "array", "items": { "type": "string" } }
+          },
+          "parts": {
+            "type": "object",
+            "description": "Slug → volume number → its folders with the page range each covers, for volumes CAP split. The ranges can overlap; try each folder whose range holds the page.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["volume", "first_page", "last_page"],
+                  "properties": {
+                    "volume": { "type": "string" },
+                    "first_page": { "type": "integer" },
+                    "last_page": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "aliases": {
+            "type": "object",
+            "description": "Slug → volumes whose `.idx.gz` holds only aliases into cases other volumes hold. They aren't in `reporters`.",
+            "additionalProperties": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}
