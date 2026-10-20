@@ -1,43 +1,25 @@
-# Astro Starter Kit: Minimal
+# stare.pub site
 
-```sh
-npm create astro@latest -- --template minimal
-```
+The Astro site served at stare.pub: the landing page and case viewer (`src/pages/index.astro`),
+the brief checker (`check.astro`), `/about`, `/data`, `/updates` and its Atom feed, plus the
+crawl and agent files (`robots.txt`, `sitemap.xml`, `llms.txt`, `openapi.json`,
+`reporters.json` and `/schemas/`). The build is static HTML, JavaScript and CSS; the pages
+resolve citations in the browser with the stare-wasm module in `public/wasm/`.
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+- `src/pages/`: the pages, and the build-time `robots.txt`, `updates.xml` and schema routes
+- `src/lib/`, `src/data/`: figures, JSON-LD, licences, crawl rules and the curated case list
+- `public/js/`: the client code (citation detection and lookup, the viewer, `/data`'s charts)
+- `public/`: `llms.txt`, `openapi.json`, fonts and the WASM build
+- `tests/`: Node tests (`node --test`); `e2e/`: the Playwright smoke suite
 
-## 🚀 Project Structure
+From the repo root:
 
-Inside of your Astro project, you'll see the following folders and files:
+| Command | What it does |
+| :-- | :-- |
+| `mise run build-wasm` | Builds stare-wasm, citare's data bundle and `reporters.json` into `public/` |
+| `mise run build-web` | `npm ci` and `astro build` into `dist/` |
+| `mise run test-js` | The Node tests (builds the WASM first) |
+| `mise run e2e [url]` | The smoke suite against a deployed site, the main preview by default |
+| `npm --prefix web run dev` | The Astro dev server |
 
-```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
-```
-
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
-
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
-
-Any static assets, like images, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+AGENTS.md at the repo root covers releases, deploys and the published formats.

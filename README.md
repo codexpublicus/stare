@@ -11,16 +11,16 @@ Pulumi stack `organization/codexpublicus-infra/prod`.
 
 ## What is this?
 
-A system for resolving legal citations (like `31 A.2d 647`) to full case text and original scanned PDFs — with no backend server. Everything is static files on Cloudflare R2 and IPFS, queried via HTTP range requests.
+A system for resolving legal citations (like `31 A.2d 647`) to full case text and original scanned PDFs, with no backend server. Everything is static files on Cloudflare R2, fetched with plain GETs: the index manifest, the volume's index file and the volume's case zip.
 
 Primary use case: LLM citation validation. An MCP server or local tool takes a citation and returns the case text, so an AI can verify that a cited case actually exists and says what was claimed.
 
 ## Data
 
 Built on the [Harvard Caselaw Access Project](https://case.law/) dataset:
-- **6.7 million cases** from 1658 to 2018
-- **40,622 reporter volumes** with scanned page images and ALTO OCR
-- All public domain (CC0)
+- **6.9 million cases** (6,920,598) decided from 1658 to 2020
+- **40,622 reporter volumes** with scanned page images and ALTO OCR, all of them in the live index
+- CAP's case files are CC0 1.0; see Licences below
 
 ## Architecture
 
@@ -28,9 +28,9 @@ Three interfaces to the same data, all static files:
 
 | Interface | What it does | How it works |
 |-----------|-------------|-------------|
-| **Citation index** | `31 A.2d 647` → case text + PDF | Binary index, one HTTP range request |
+| **Citation index** | `31 A.2d 647` → case text + PDF | One gzipped text file per volume (`page,source,ref` lines), one GET |
 | **Search** | "negligence cases in California, 1990-2000" | RoaringBuckets bitmap intersection |
-| **DuckLake** | SQL over 6.7M cases | Frozen DuckDB + Parquet on R2 |
+| **DuckLake** | SQL over 6.9M cases | Frozen DuckDB + Parquet on R2 |
 
 Target hosting cost: **< $8/month** for everything.
 
@@ -58,17 +58,21 @@ stare cache status
 
 `--index`/`--data` flags (or `STARE_INDEX`/`STARE_DATA` env vars, or `stare config set`)
 override the default sources (`https://idx.stare.pub` and `https://data.stare.pub/cap`).
-Downloaded and resolved files are cached under `~/.cache/stare/`.
+Downloaded and resolved files are cached under `~/.cache/stare/`. `stare download` doesn't
+throttle requests to stare.pub's own hosts; against any other data source (static.case.law, a
+mirror) it waits 700 ms between requests. A 429, or a 503 with a Retry-After, is waited out and
+retried up to three times.
 
 ## Status
 
 - [x] Data source analysis (`static-case-law-mirror.md`)
-- [ ] Mirror static.case.law (~10% complete, ETA ~7 days)
-- [ ] Citation index
+- [x] Mirror static.case.law (complete 2026-09-29: 40,622 zips, 39,964 tars, `.tar.csv` files and PDFs)
+- [x] Citation index (idx.stare.pub; the live build is the one `manifest.json`'s `version` names)
+- [x] Website (stare.pub), with the brief checker at stare.pub/check
+- [ ] CourtListener records for cases CAP doesn't hold (not published yet)
 - [ ] DuckLake database
 - [ ] RoaringBuckets search index
-- [ ] MCP server
-- [ ] Website (stare.pub)
+- [ ] MCP server (`stare mcp`, #162)
 - [ ] IPFS distribution
 
 ## Documentation
@@ -80,7 +84,14 @@ Downloaded and resolved files are cached under `~/.cache/stare/`.
 | `docs/plans/static-case-law-mirror.md` | Mirror status, file format analysis, aria2 setup |
 | `docs/plans/extraction-plan.md` | Citation index design, R2 layout, WASM client architecture |
 | `docs/plans/search-plan.md` | RoaringBuckets vs Tantivy analysis, DuckLake design, cost estimates |
+| `docs/plans/courtlistener-mirror.md` | CourtListener records and the unified index |
+| `AGENTS.md` | Current architecture, formats, releases and status, kept up to date |
 
 ## License
 
-The case law data is public domain (CC0). This project's code is TBD.
+The code is PolyForm Shield 1.0.0 (the `license` in each crate's `Cargo.toml`).
+
+The Caselaw Access Project case files on `data.stare.pub/cap/` are CC0 1.0, the terms CAP
+published them under. Everything else the project produces (the citation index, the manifest
+and build reports, the reporter map, the OpenAPI document and schemas, the case pages and the
+site's other data) is CC BY-NC-ND 4.0, crediting stare.pub (https://stare.pub).
