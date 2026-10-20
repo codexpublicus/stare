@@ -110,6 +110,16 @@ runs:
       shell: bash
       run: cargo run --quiet -p stare-site -- export-citare-data web/public/data/citare/v1
 
+    # The reporter map, /reporters.json (#161): citare's names and variations
+    # from the same bundle, and the volumes the live index manifest lists
+    - name: Write the reporter map
+      shell: bash
+      run: |
+        set -euo pipefail
+        manifest="$RUNNER_TEMP/index-manifest.json"
+        curl -fsSL --retry 3 https://idx.stare.pub/manifest.json -o "$manifest"
+        cargo run --quiet -p stare-site -- export-reporters --manifest "$manifest" web/public/reporters.json
+
     - uses: ./.github/actions/build-web
       with:
         release: ${{ inputs.release }}

@@ -12,7 +12,8 @@
 crates/stare        — core lookup library (index parsing, zip/case extraction, resolve) and the
                       readers and writers for the published formats
 crates/stare-cli     — the `stare` binary
-crates/stare-site    — `stare-site export-citare-data`, the site build's citare data bundle
+crates/stare-site    — `stare-site export-citare-data` and `export-reporters`: the site build's
+                      citare data bundle and /reporters.json
 crates/stare-wasm    — wasm-bindgen bindings for the website (same core as the CLI)
 data/                — committed index files (e.g. a2d/31.bin) and other build artifacts
 web/                 — Astro site: landing, about, brief checker, case viewer
@@ -65,7 +66,7 @@ Three interfaces to the same data, all static files:
 /index/v/{version}/report.json    — the build's report (schemas/index-report.v1.schema.json); immutable
 /index/reports/index.json         — every published build's report totals, oldest first (schemas/reports-index.v1.schema.json); charted at stare.pub/data
 /index/{reporter}/{vol}.bin       — the pre-versioning index, for clients that ignore `base`
-/index/reporters.json             — abbreviation → slug mapping
+/index/reporters.json             — planned, never published; the reporter map is stare.pub/reporters.json (#161, below)
 /cap/{reporter}/{vol}.zip         — case text JSONs (codex-data bucket, served at data.stare.pub/cap)
 /cl/c/{cluster_id}/{hash}.json.gz — one CourtListener record, CAP's case JSON shape plus `source` (codex-data, data.stare.pub/cl); immutable
 /data/{reporter}/{vol}.tar        — page images + ALTO OCR (range requests via tar.csv)
@@ -445,6 +446,42 @@ The archival per-volume PDF pipeline (#51) and the CourtListener bulk-export pip
 are in codexpublicus/stare-builder, with their runbooks. What they publish, and how the site
 and CLI read it, is above: `/cl/c/...` records (`crates/stare/src/cl.rs`) and, later, the
 `codex-data/cap-pdf/` volumes.
+
+### Agent files (#161: `reporters.json`, `openapi.json`, `/schemas/`, JSON-LD)
+
+Everything an agent uses is a static file; nothing runs per request (the owner's rule of
+2026-10-17 on #161: no Worker routes, no `run_worker_first`). A runtime an agent wants, such as
+`stare mcp` (#162), runs on the agent's side against these files.
+
+- **`/reporters.json`** is generated, never hand-written: `stare-site export-reporters
+  --manifest <file> web/public/reporters.json` (`crates/stare/src/reporters.rs`) takes the
+  names and variations from the citare bundle stare is built with (the edition table, and the
+  literal spellings in its reporter map's variation extractors) and the volumes from an index
+  manifest. `build-site` and `mise run build-wasm` fetch the live manifest for it, so the site
+  build needs idx.stare.pub to be up, and the `site-wasm` artifact carries the file to the
+  release like the bundle. Its volumes are a snapshot; the live manifest stays the authority.
+  The format is `schemas/reporters.v1.schema.json` (`stare::schemas::REPORTERS_V1`); change
+  the schema, the module and `FORMAT` together.
+- **`/openapi.json`** (`web/public/openapi.json`) is hand-written OpenAPI 3.1 for the static
+  GETs: the idx manifest, per-volume `.idx.gz` and its parts, the build reports, the CAP zips
+  and the site's own files, each with its content type and Cache-Control as served. GET only,
+  no query parameters, no request bodies. Update it with any change to a published path or
+  header. CourtListener records stay out until stare-builder publishes them.
+- **`/schemas/<file>`**: `src/pages/schemas/[name].json.js` publishes `schemas/*.schema.json`
+  at the URL each `$id` names, and fails the build if one doesn't match.
+- **JSON-LD**: a `WebSite` on `/` and a `Dataset` on `/data` (`src/lib/jsonld.js`,
+  `components/JsonLd.astro`), with figures from `collection.json`. The Dataset has no `license`
+  yet; that's the owner's call.
+
+`crates/stare-site/tests/agent_files.rs` validates an exported `reporters.json` against its
+schema and `openapi.json` against the OpenAPI 3.1 schema (vendored in `tests/fixtures/`), and
+checks that the OpenAPI describes GETs only and that its refs resolve. `web/tests/agentfiles.test.js`
+covers the JSON-LD and `llms.txt`'s links, and `web/e2e/agents.spec.js` checks the deployed
+site serves all of it.
+
+Per-case JSON (`data.stare.pub/case/<slug>/<vol>/<page>.json`, the issue's third static piece)
+waits on stare-builder: it's a one-time write of about 7M objects from the zips plus the
+CourtListener records, a new data build rather than a site change.
 
 ## Current Status
 

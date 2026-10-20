@@ -1,6 +1,8 @@
 ---
+import JsonLd from '../components/JsonLd.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import { casesLabel, yearRange } from '../lib/collection.js';
+import { webSite } from '../lib/jsonld.js';
 import '../styles/theme.css';
 import '../styles/layout.css';
 import '../styles/reader.css';
@@ -21,6 +23,7 @@ import '../styles/reader.css';
 		<meta name="twitter:card" content="summary_large_image" />
 		<meta name="twitter:title" content="§tare.pub — Free U.S. Case Law Lookup" />
 		<meta name="twitter:description" content={`Resolve legal citations to full case text and original scanned pages. ${casesLabel}. Serverless. Actually.`} />
+		<JsonLd data={webSite()} />
 		<script is:inline>
 			try {
 				var theme = localStorage.getItem('stare-theme');

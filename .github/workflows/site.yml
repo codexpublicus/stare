@@ -105,15 +105,16 @@ jobs:
           release: ${{ steps.label.outputs.release }}
           commit: ${{ github.sha }}
 
-      # release.yml deploys this commit's stare-wasm build and citare data
-      # bundle from here if the commit is a release PR's merge, instead of
-      # building and checking them again.
+      # release.yml deploys this commit's stare-wasm build, citare data
+      # bundle and reporter map from here if the commit is a release PR's
+      # merge, instead of building and checking them again.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: site-wasm
           path: |
             web/public/wasm/
             web/public/data/citare/
+            web/public/reporters.json
           if-no-files-found: error
           retention-days: 30
           overwrite: true

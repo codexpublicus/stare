@@ -14,9 +14,13 @@ path = "src/main.rs"
 stare = { path = "../stare" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+serde_json = "1"
 # gzips citare's data bundle for the site (#117); about 9% smaller than gzip -9
 zopfli = { version = "0.8", default-features = false, features = ["std", "gzip"] }
 
 [dev-dependencies]
 flate2 = "1"
+# Validates reporters.json against its schema and openapi.json against the
+# OpenAPI 3.1 schema in tests (#161); no network or file resolving
+jsonschema = { version = "0.59", default-features = false }
 tempfile = "3"

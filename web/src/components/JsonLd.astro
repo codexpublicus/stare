@@ -1,0 +1,7 @@
+---
+// One schema.org JSON-LD block (src/lib/jsonld.js), static in the page's <head>.
+import { serialize } from '../lib/jsonld.js';
+
+const { data } = Astro.props;
+---
+<script type="application/ld+json" is:inline set:html={serialize(data)} />

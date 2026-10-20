@@ -8,6 +8,7 @@ pub mod idx;
 pub mod index;
 pub mod manifest;
 pub mod parallel;
+pub mod reporters;
 pub mod schemas;
 
 #[cfg(not(target_arch = "wasm32"))]
