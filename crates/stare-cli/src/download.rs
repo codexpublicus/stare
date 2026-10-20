@@ -23,15 +23,18 @@
 ///   reporter. The error only propagates when there's no local file to fall back on.
 /// - Files are written atomically (temp file + rename via `stare::config::atomic_write`)
 ///   so a killed process or a concurrent reader never sees a partial file.
-/// - Requests to the data source (data.stare.pub) are rate-limited per AGENTS.md
-///   (max 1-2 req/sec). The index source is our own R2 bucket and isn't rate-limited.
+/// - Requests to a third-party data source, such as static.case.law, are rate-limited
+///   per AGENTS.md (max 1-2 req/sec). Our own hosts (data.stare.pub, idx.stare.pub,
+///   R2 behind Cloudflare) aren't, and neither is the index source; see `crate::http`.
+/// - A 429 or 503 from any host is waited on for its Retry-After and retried.
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 pub const USER_AGENT: &str = "stare/0.1.0 (case law tool; github.com/codexpublicus/stare)";
 
-/// Conservative default: comfortably under the 1-2 req/sec ceiling in AGENTS.md.
+/// Conservative default: comfortably under the 1-2 req/sec ceiling in AGENTS.md. It
+/// applies only to a data source that isn't one of our hosts (`crate::http`).
 pub const DEFAULT_DATA_RATE_LIMIT: Duration = Duration::from_millis(700);
 
 /// What happened to a single file during a download pass.
@@ -89,7 +92,8 @@ pub struct DownloadConfig<'a> {
     pub data_source: &'a str,
     pub cache_dir: &'a Path,
     pub reporters: &'a [String],
-    /// Minimum interval between requests to the data source. Tests pass `Duration::ZERO`.
+    /// Minimum interval between requests to a third-party data source; a data source
+    /// on one of our hosts isn't throttled whatever this is. Tests pass `Duration::ZERO`.
     pub data_rate_limit: Duration,
 }
 
@@ -129,9 +133,7 @@ fn fetch_manifest(
 ) -> Result<(stare::manifest::Manifest, Vec<u8>)> {
     let bytes = if stare_cli_is_url(index_source) {
         let url = format!("{}/manifest.json", index_source);
-        let resp = client
-            .get(&url)
-            .send()
+        let resp = crate::http::send_with_retry(|| client.get(&url))
             .with_context(|| format!("failed to fetch {}", url))?;
         if !resp.status().is_success() {
             bail!("HTTP {} fetching {}", resp.status(), url);
@@ -153,8 +155,8 @@ fn stare_cli_is_url(s: &str) -> bool {
 }
 
 /// Fetch one file (bin or zip) into `cache_subdir/key`, skipping it if a same-size
-/// copy already exists. `rate_limiter` is `Some` only for data-source (data.stare.pub)
-/// requests, per AGENTS.md.
+/// copy already exists. `rate_limiter` is `Some` only for data-source requests; its
+/// interval is zero when the data source is one of our hosts.
 fn fetch_and_cache(
     client: &reqwest::blocking::Client,
     source: &str,
@@ -174,7 +176,7 @@ fn fetch_and_cache(
         // back on. If the file is already cached, a flaky connection or a hiccup on
         // the server shouldn't turn a re-run over an already-downloaded reporter into
         // a wall of errors: trust the cached copy and warn instead.
-        let expected_len = match client.head(&url).send() {
+        let expected_len = match crate::http::send_with_retry(|| client.head(&url)) {
             Ok(resp) if resp.status().is_success() => resp
                 .headers()
                 .get(reqwest::header::CONTENT_LENGTH)
@@ -215,9 +217,7 @@ fn fetch_and_cache(
         if let Some(limiter) = rate_limiter.as_mut() {
             limiter.wait();
         }
-        let resp = client
-            .get(&url)
-            .send()
+        let resp = crate::http::send_with_retry(|| client.get(&url))
             .with_context(|| format!("failed to fetch {}", url))?;
         if !resp.status().is_success() {
             bail!("HTTP {} fetching {}", resp.status(), url);
@@ -320,7 +320,10 @@ pub fn run(cfg: &DownloadConfig, mut on_event: impl FnMut(Event)) -> Result<Repo
 
     let (manifest, manifest_bytes) = fetch_manifest(&client, cfg.index_source)?;
     let mut report = Report::default();
-    let mut data_limiter = RateLimiter::new(cfg.data_rate_limit);
+    let mut data_limiter = RateLimiter::new(crate::http::request_interval(
+        cfg.data_source,
+        cfg.data_rate_limit,
+    ));
 
     let bins_dir: PathBuf = cfg.cache_dir.join("bins");
     let zips_dir: PathBuf = cfg.cache_dir.join("zips");

@@ -340,9 +340,7 @@ fn fetch_optional_index(src: &Sources, path: &str) -> Result<Option<Vec<u8>>> {
         let client = reqwest::blocking::Client::builder()
             .user_agent("stare/0.1.0 (case law tool; github.com/codexpublicus/stare)")
             .build()?;
-        let response = client
-            .get(&url)
-            .send()
+        let response = stare_cli::http::send_with_retry(|| client.get(&url))
             .with_context(|| format!("failed to fetch {}", url))?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
@@ -404,9 +402,7 @@ fn fetch_url(url: &str) -> Result<Vec<u8>> {
     let client = reqwest::blocking::Client::builder()
         .user_agent("stare/0.1.0 (case law tool; github.com/codexpublicus/stare)")
         .build()?;
-    let response = client
-        .get(url)
-        .send()
+    let response = stare_cli::http::send_with_retry(|| client.get(url))
         .with_context(|| format!("failed to fetch {}", url))?;
     if !response.status().is_success() {
         bail!("HTTP {} fetching {}", response.status(), url);

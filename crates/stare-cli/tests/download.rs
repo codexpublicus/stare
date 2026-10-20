@@ -554,3 +554,168 @@ fn a_manifest_without_base_reads_the_root() {
     assert!(report.errors.is_empty(), "{:?}", report.errors);
     assert!(cache.path().join("bins/a2d/31.bin").exists());
 }
+
+/// A manifest of `n` volumes of a2d, with an index file on `index_server` and a zip on
+/// `data_server` for each.
+fn mock_volumes(
+    index_server: &mut mockito::Server,
+    data_server: &mut mockito::Server,
+    n: usize,
+) -> Vec<mockito::Mock> {
+    let volumes: Vec<String> = (1..=n).map(|v| v.to_string()).collect();
+    let mut mocks = vec![index_server
+        .mock("GET", "/manifest.json")
+        .with_status(200)
+        .with_body(format!(r#"{{"a2d": [{}]}}"#, volumes.join(", ")))
+        .create()];
+    for v in &volumes {
+        for (server, path) in [
+            (&mut *index_server, format!("/a2d/{v}.bin")),
+            (&mut *data_server, format!("/a2d/{v}.zip")),
+        ] {
+            mocks.push(
+                server
+                    .mock("HEAD", path.as_str())
+                    .with_status(200)
+                    .with_header("content-length", "4")
+                    .create(),
+            );
+            mocks.push(
+                server
+                    .mock("GET", path.as_str())
+                    .with_status(200)
+                    .with_body("abcd")
+                    .create(),
+            );
+        }
+    }
+    mocks
+}
+
+/// #76: a data source that isn't one of our hosts (here 127.0.0.1, standing in for
+/// static.case.law) keeps the minimum interval between requests.
+#[test]
+fn third_party_data_source_is_throttled() {
+    let mut index_server = mockito::Server::new();
+    let mut data_server = mockito::Server::new();
+    let _mocks = mock_volumes(&mut index_server, &mut data_server, 3);
+
+    let cache = tempfile::tempdir().unwrap();
+    let cfg = DownloadConfig {
+        index_source: &index_server.url(),
+        data_source: &data_server.url(),
+        cache_dir: cache.path(),
+        reporters: &["a2d".to_string()],
+        data_rate_limit: Duration::from_millis(150),
+    };
+
+    let start = std::time::Instant::now();
+    let report = run(&cfg, |_| {}).unwrap();
+    assert!(report.errors.is_empty(), "{:?}", report.errors);
+    assert_eq!(report.zips_downloaded, 3);
+    // Three zips, each a HEAD and a GET: six throttled requests, five waits.
+    assert!(
+        start.elapsed() >= Duration::from_millis(5 * 150),
+        "took {:?}",
+        start.elapsed()
+    );
+}
+
+/// A 429 is waited on for its Retry-After and retried, from any host.
+#[test]
+fn retries_after_429() {
+    let mut index_server = mockito::Server::new();
+    let mut data_server = mockito::Server::new();
+
+    let _manifest = index_server
+        .mock("GET", "/manifest.json")
+        .with_status(200)
+        .with_body(r#"{"us": [3]}"#)
+        .create();
+    let _bin_head = index_server
+        .mock("HEAD", "/us/3.bin")
+        .with_status(200)
+        .with_header("content-length", "4")
+        .create();
+    let _bin_get = index_server
+        .mock("GET", "/us/3.bin")
+        .with_status(200)
+        .with_body("abcd")
+        .create();
+    let busy = data_server
+        .mock("HEAD", "/us/3.zip")
+        .with_status(429)
+        .with_header("retry-after", "0")
+        .expect(2)
+        .create();
+    let _zip_head = data_server
+        .mock("HEAD", "/us/3.zip")
+        .with_status(200)
+        .with_header("content-length", "4")
+        .create();
+    let _zip_get = data_server
+        .mock("GET", "/us/3.zip")
+        .with_status(200)
+        .with_body("abcd")
+        .create();
+
+    let cache = tempfile::tempdir().unwrap();
+    let cfg = DownloadConfig {
+        index_source: &index_server.url(),
+        data_source: &data_server.url(),
+        cache_dir: cache.path(),
+        reporters: &["us".to_string()],
+        data_rate_limit: Duration::ZERO,
+    };
+
+    let report = run(&cfg, |_| {}).unwrap();
+    assert!(report.errors.is_empty(), "{:?}", report.errors);
+    assert_eq!(report.zips_downloaded, 1);
+    busy.assert();
+}
+
+/// A 429 that doesn't let up is reported as an error once the retries run out.
+#[test]
+fn gives_up_after_repeated_429() {
+    let mut index_server = mockito::Server::new();
+    let mut data_server = mockito::Server::new();
+
+    let _manifest = index_server
+        .mock("GET", "/manifest.json")
+        .with_status(200)
+        .with_body(r#"{"us": [3]}"#)
+        .create();
+    let _bin_head = index_server
+        .mock("HEAD", "/us/3.bin")
+        .with_status(200)
+        .with_header("content-length", "4")
+        .create();
+    let _bin_get = index_server
+        .mock("GET", "/us/3.bin")
+        .with_status(200)
+        .with_body("abcd")
+        .create();
+    let busy = data_server
+        .mock("HEAD", "/us/3.zip")
+        .with_status(429)
+        .with_header("retry-after", "0")
+        .expect(1 + stare_cli::http::MAX_RETRIES as usize)
+        .create();
+
+    let cache = tempfile::tempdir().unwrap();
+    let cfg = DownloadConfig {
+        index_source: &index_server.url(),
+        data_source: &data_server.url(),
+        cache_dir: cache.path(),
+        reporters: &["us".to_string()],
+        data_rate_limit: Duration::ZERO,
+    };
+
+    let report = run(&cfg, |_| {}).unwrap();
+    assert!(
+        report.errors.iter().any(|e| e.contains("429")),
+        "{:?}",
+        report.errors
+    );
+    busy.assert();
+}
