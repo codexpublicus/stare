@@ -1,4 +1,4 @@
-//! The JSON Schemas for the index build's reports, compiled in from the repo's
+//! The JSON Schemas for the index build's reports and the reporter map, compiled in from the repo's
 //! `schemas/` directory, which stays their source. They are published-format
 //! specs: stare.pub's `/data` page reads both files, and codexpublicus/stare-builder,
 //! which writes them, validates what it writes against these at the stare rev it pins.
@@ -11,6 +11,13 @@ pub const INDEX_REPORT_V1: &str = include_str!("../../../schemas/index-report.v1
 /// build's report totals, format 1.
 pub const REPORTS_INDEX_V1: &str = include_str!("../../../schemas/reports-index.v1.schema.json");
 
+/// `schemas/reporters.v1.schema.json`: `stare.pub/reporters.json`, the reporter map
+/// ([`crate::reporters`]), format 1.
+pub const REPORTERS_V1: &str = include_str!("../../../schemas/reporters.v1.schema.json");
+
+/// [`REPORTERS_V1`]'s `$id`, which `reporters.json` names as its `$schema`.
+pub const REPORTERS_V1_ID: &str = "https://stare.pub/schemas/reporters.v1.schema.json";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -20,6 +27,7 @@ mod tests {
         for (schema, file) in [
             (INDEX_REPORT_V1, "index-report.v1.schema.json"),
             (REPORTS_INDEX_V1, "reports-index.v1.schema.json"),
+            (REPORTERS_V1, "reporters.v1.schema.json"),
         ] {
             let value: serde_json::Value = serde_json::from_str(schema).unwrap();
             assert_eq!(

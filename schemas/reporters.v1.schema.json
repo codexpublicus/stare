@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stare.pub/schemas/reporters.v1.schema.json",
+  "title": "stare.pub reporter map, format 1",
+  "description": "stare.pub/reporters.json: every reporter slug the index files volumes under, the abbreviations citare reads as each, the volumes the index held when the site was built, and URL templates for the index and case files. `stare-site export-reporters` generates it from the citare data bundle and the index manifest (crates/stare/src/reporters.rs). The live manifest at idx.stare.pub/manifest.json stays the authority on which volumes are held.",
+  "type": "object",
+  "required": ["$schema", "format", "generated_from", "urls", "abbreviations", "reporters"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "const": "https://stare.pub/schemas/reporters.v1.schema.json" },
+    "format": { "const": 1 },
+    "generated_from": {
+      "type": "object",
+      "required": ["citare_data", "reporters_db_commit", "index_build"],
+      "additionalProperties": false,
+      "properties": {
+        "citare_data": {
+          "type": "string",
+          "pattern": "^citare-data-[0-9a-f]{16}\\.bin$",
+          "description": "The citare data bundle the names and variations came from; the site serves it gzipped at /data/citare/v1/<name>.gz."
+        },
+        "reporters_db_commit": {
+          "type": ["string", "null"],
+          "description": "The reporters-db commit the bundle was built from."
+        },
+        "index_build": {
+          "description": "The index manifest the volumes came from, or null when the map was built without one.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["version", "base", "generated_at"],
+              "additionalProperties": false,
+              "properties": {
+                "version": { "type": ["string", "null"], "pattern": "^v[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}(\\.[1-9][0-9]*)?$" },
+                "base": { "type": ["string", "null"] },
+                "generated_at": { "type": ["string", "null"] }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "urls": {
+      "type": "object",
+      "description": "URL templates. {base} is the live manifest's `base` (v/<version>/); {slug} is a key of `reporters`; {volume} a volume as cited; {folder} the volume folder an index line names (the volume, or a split part such as 138-2); {ref} the case file an index line names; {part} an index part number from the `#parts` header.",
+      "required": ["manifest", "index", "index_part", "cap_zip", "cap_case_in_zip", "cl_record", "viewer"],
+      "additionalProperties": false,
+      "properties": {
+        "manifest": { "const": "https://idx.stare.pub/manifest.json" },
+        "index": { "const": "https://idx.stare.pub/{base}{slug}/{volume}.idx.gz" },
+        "index_part": { "const": "https://idx.stare.pub/{base}{slug}/{volume}.{part}.idx.gz" },
+        "cap_zip": { "const": "https://data.stare.pub/cap/{slug}/{folder}.zip" },
+        "cap_case_in_zip": { "const": "json/{ref}.json" },
+        "cl_record": { "const": "https://data.stare.pub/cl/c/{cluster_id}/{hash}.json.gz" },
+        "viewer": { "const": "https://stare.pub/#{slug}/{volume}/{page}" }
+      }
+    },
+    "abbreviations": {
+      "type": "object",
+      "description": "Every edition name and variation citare knows for a case reporter, exactly as written, mapped to the slugs it can be filed under. Most have one; a name several reporters share (Hill) has several, and citare picks among them by the volume and the citing text.",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": { "$ref": "#/$defs/slug" }
+      }
+    },
+    "reporters": {
+      "type": "object",
+      "description": "Slug to what it holds and how it is cited. Lists every slug citare assigns and every slug the index holds.",
+      "propertyNames": { "$ref": "#/$defs/slug" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["names", "variations", "editions", "cap", "volumes"],
+        "additionalProperties": false,
+        "properties": {
+          "names": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "The canonical abbreviations of the editions filed under this slug (A.2d). Empty for a slug the index holds that citare has no edition for."
+          },
+          "variations": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Other spellings citare reads as one of `names` (A. 2d)."
+          },
+          "editions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "reporter", "start_year", "end_year"],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string" },
+                "reporter": { "type": "string", "description": "The reporter's full name in reporters-db." },
+                "start_year": { "type": ["integer", "null"] },
+                "end_year": { "type": ["integer", "null"], "description": "null for a reporter still publishing or one with no end date in reporters-db." }
+              }
+            }
+          },
+          "cap": {
+            "type": "boolean",
+            "description": "Whether this is the Caselaw Access Project's slug for the reporter, the folder CAP filed its volumes under."
+          },
+          "volumes": {
+            "description": "The volume folders the index held at build time, or null when it held none: a citation into the reporter then has no case on stare.pub.",
+            "oneOf": [
+              { "type": "null" },
+              {
+                "type": "object",
+                "required": ["count", "first", "last"],
+                "additionalProperties": false,
+                "properties": {
+                  "count": { "type": "integer", "minimum": 1 },
+                  "first": { "type": "string" },
+                  "last": { "type": "string" },
+                  "split": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Volume numbers whose cases CAP split over several folders (138 is 138 and 138-2); the manifest's `parts` gives each folder's pages."
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" }
+  }
+}
