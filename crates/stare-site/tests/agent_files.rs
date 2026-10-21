@@ -77,6 +77,26 @@ fn reporters_json_matches_its_schema() {
     );
     let bundle = stare::data::file_name(stare::data::embedded());
     assert_eq!(map["generated_from"]["citare_data"], json!(bundle));
+
+    // The reporters-db fields name reporters-db, its commit, licence and notice (D65).
+    let sources = map["sources"].as_array().unwrap();
+    assert_eq!(sources.len(), 1);
+    let rdb = &sources[0];
+    assert_eq!(rdb["name"], "reporters-db");
+    assert_eq!(rdb["url"], "https://github.com/freelawproject/reporters-db");
+    assert_eq!(rdb["commit"], map["generated_from"]["reporters_db_commit"]);
+    assert_eq!(rdb["license"]["id"], "BSD-2-Clause");
+    assert_eq!(rdb["license"]["text"], stare::license::REPORTERS_DB.text);
+    assert_eq!(rdb["copyright"], "Copyright (c) 2014, Free Law Project");
+    assert_eq!(
+        rdb["fields"],
+        json!([
+            "abbreviations (keys)",
+            "reporters.*.names",
+            "reporters.*.variations",
+            "reporters.*.editions"
+        ])
+    );
 }
 
 #[test]
@@ -92,6 +112,10 @@ fn the_schema_rejects_what_it_should() {
         ("/urls/index", json!("https://example.com/{slug}")),
         ("/license/url", json!(1)),
         ("/license/source", json!(null)),
+        ("/sources", json!({})),
+        ("/sources/0/fields", json!([])),
+        ("/sources/0/license/text", json!(null)),
+        ("/sources/0/commit", json!(1)),
     ] {
         let mut map = good.clone();
         *map.pointer_mut(pointer).unwrap() = bad.clone();
@@ -100,6 +124,9 @@ fn the_schema_rejects_what_it_should() {
             "{pointer} = {bad} passed"
         );
     }
+    let mut map = good.clone();
+    map.as_object_mut().unwrap().remove("sources");
+    assert!(!errors(&schema, &map).is_empty(), "no sources passed");
 }
 
 fn openapi() -> Value {
@@ -239,6 +266,10 @@ fn every_published_json_file_states_a_license() {
     let mut files: Vec<(String, Value)> = vec![
         ("reporters.json".into(), export_reporters(dir.path())),
         ("web/public/openapi.json".into(), openapi()),
+        (
+            "citare data sidecar".into(),
+            export_citare_sidecar(dir.path()),
+        ),
     ];
     // Every other JSON file the site serves from web/public, and every schema.
     for sub in ["web/public", "schemas"] {
@@ -267,6 +298,10 @@ fn every_published_json_file_states_a_license() {
     );
     assert_eq!(reporters["license"]["source"], "https://stare.pub");
     assert_eq!(files[1].1["info"]["license"]["url"], CC_BY_NC_ND.url);
+    assert_eq!(
+        files[2].1["license"],
+        serde_json::to_value(CC_BY_NC_ND).unwrap()
+    );
     for (name, doc) in files.iter().filter(|(n, _)| n.starts_with("schemas/")) {
         assert_eq!(
             doc["x-license"],
@@ -274,6 +309,49 @@ fn every_published_json_file_states_a_license() {
             "{name}"
         );
     }
+}
+
+/// The sidecar `stare-site export-citare-data` writes next to the bundle.
+fn export_citare_sidecar(dir: &Path) -> Value {
+    let out = dir.join("citare");
+    let status = Command::new(env!("CARGO_BIN_EXE_stare-site"))
+        .arg("export-citare-data")
+        .arg(&out)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    read_json(&out.join(stare::data::sidecar_name(stare::data::embedded())))
+}
+
+#[test]
+fn the_citare_data_sidecar_attributes_reporters_db_and_courts_db() {
+    let dir = tempfile::tempdir().unwrap();
+    let sidecar = export_citare_sidecar(dir.path());
+    let bundle = stare::data::file_name(stare::data::embedded());
+    assert_eq!(sidecar["file"], format!("{bundle}.gz"));
+    assert_eq!(sidecar["bundle"], bundle);
+    let sources = sidecar["sources"].as_array().unwrap();
+    let names: Vec<_> = sources
+        .iter()
+        .map(|s| s["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["reporters-db", "courts-db"]);
+    assert_eq!(
+        sources[0]["license"]["text"],
+        stare::license::REPORTERS_DB.text
+    );
+    assert_eq!(
+        sources[1]["license"]["text"],
+        stare::license::COURTS_DB.text
+    );
+    assert_eq!(
+        sources[1]["copyright"],
+        "Copyright (c) 2020, Free Law Project"
+    );
+    assert_eq!(sources[1]["fields"], json!(["section 9, court keys"]));
+    // The same reporters-db commit reporters.json names.
+    let map = export_reporters(dir.path());
+    assert_eq!(sources[0]["commit"], map["sources"][0]["commit"]);
 }
 
 /// Every file under `dir`, recursively. The generated reporters.json in web/public
@@ -292,4 +370,70 @@ fn walk(dir: &Path) -> Vec<PathBuf> {
         }
     }
     out
+}
+
+/// The index build's files on idx.stare.pub state their licence (D65): the build
+/// report and the report history accept a `license` of the shape reporters.json's has,
+/// CC BY-NC-ND 4.0 with stare.pub as the source, and reports from before it, without
+/// one. The fixtures are the published v2026.10.18 report, trimmed to one reporter and
+/// three volumes, and the history as published.
+#[test]
+fn the_index_report_and_history_schemas_take_a_license() {
+    let report_schema: Value = serde_json::from_str(stare::schemas::INDEX_REPORT_V1).unwrap();
+    let history_schema: Value = serde_json::from_str(stare::schemas::REPORTS_INDEX_V1).unwrap();
+    let registry = jsonschema::Registry::new()
+        .add(
+            "https://stare.pub/schemas/index-report.v1.schema.json",
+            report_schema.clone(),
+        )
+        .unwrap()
+        .prepare()
+        .unwrap();
+    let history_validator = jsonschema::options()
+        .with_registry(&registry)
+        .build(&history_schema)
+        .expect("schema compiles");
+    let history_errors = |v: &Value| -> Vec<String> {
+        history_validator
+            .iter_errors(v)
+            .map(|e| format!("{} at {}", e, e.instance_path()))
+            .collect()
+    };
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let license = serde_json::to_value(stare::license::CC_BY_NC_ND).unwrap();
+
+    let mut report = read_json(&fixtures.join("index-report-v2026.10.18.json"));
+    assert_eq!(errors(&report_schema, &report), Vec::<String>::new());
+    report["license"] = license.clone();
+    assert_eq!(errors(&report_schema, &report), Vec::<String>::new());
+
+    let mut history = read_json(&fixtures.join("reports-index-v2026.10.18.json"));
+    assert_eq!(history_errors(&history), Vec::<String>::new());
+    history["license"] = license.clone();
+    assert_eq!(history_errors(&history), Vec::<String>::new());
+
+    for (pointer, bad) in [
+        ("/license/url", json!(1)),
+        ("/license/source", json!(null)),
+        ("/license/extra", json!("x")),
+    ] {
+        let mut r = report.clone();
+        let mut h = history.clone();
+        match r.pointer_mut(pointer) {
+            Some(v) => *v = bad.clone(),
+            None => r["license"]["extra"] = bad.clone(),
+        }
+        match h.pointer_mut(pointer) {
+            Some(v) => *v = bad.clone(),
+            None => h["license"]["extra"] = bad.clone(),
+        }
+        assert!(
+            !errors(&report_schema, &r).is_empty(),
+            "report {pointer} = {bad} passed"
+        );
+        assert!(
+            !history_errors(&h).is_empty(),
+            "history {pointer} = {bad} passed"
+        );
+    }
 }

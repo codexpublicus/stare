@@ -1,0 +1,41 @@
+{
+  "format": 1,
+  "reports": [
+    {
+      "version": "v2026.10.05",
+      "generated_at": "2026-10-05T07:12:14Z",
+      "report": "v/v2026.10.05/report.json",
+      "totals": {
+        "reporters": 401,
+        "volumes": 40622,
+        "split_volumes": 131,
+        "split_parts": 263,
+        "cases": 6920598,
+        "entries": 6920598,
+        "shortfall": 0,
+        "labeled": 2411,
+        "long_names": 1238,
+        "allowed": 0,
+        "failed": 0
+      }
+    },
+    {
+      "version": "v2026.10.18",
+      "generated_at": "2026-10-18T14:07:54Z",
+      "report": "v/v2026.10.18/report.json",
+      "totals": {
+        "reporters": 401,
+        "volumes": 40622,
+        "split_volumes": 131,
+        "split_parts": 263,
+        "cases": 6920598,
+        "entries": 6920598,
+        "shortfall": 0,
+        "labeled": 2411,
+        "long_names": 1238,
+        "allowed": 0,
+        "failed": 0
+      }
+    }
+  ]
+}

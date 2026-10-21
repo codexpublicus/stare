@@ -20,8 +20,10 @@ enum Commands {
     /// Write the citare data bundle built into stare to DIR, gzipped with
     /// zopfli, as citare-data-<hash>.bin.gz, where <hash> is the uncompressed
     /// bundle's (the one stare-wasm loads; the site serves it from
-    /// /data/citare/v1/). Removes any other citare-data-* file there and
-    /// prints the file's path.
+    /// /data/citare/v1/), and its sidecar, citare-data-<hash>.json: the
+    /// bundle's licence and the reporters-db and courts-db sections with their
+    /// licences and notices. Removes any other citare-data-* file there and
+    /// prints the bundle's path.
     ExportCitareData {
         /// Output directory, created if missing
         dir: PathBuf,
@@ -83,18 +85,19 @@ fn export_reporters(
 }
 
 /// Writes stare's embedded citare data bundle into `dir`, gzipped, under its
-/// published name, and removes other bundles there so the site build finds
-/// exactly one. The name keeps the uncompressed bundle's hash, citare's own
+/// published name, with its sidecar (`stare::data::Sidecar`), and removes other
+/// bundles and sidecars there so the site build finds exactly one. The name keeps the uncompressed bundle's hash, citare's own
 /// name for it: it changes exactly when the data does, and a different
 /// compressor's bytes under the same name still decompress to the same bundle.
 fn export_citare_data(dir: &Path) -> anyhow::Result<PathBuf> {
     let bytes = stare::data::embedded();
     let name = format!("{}.gz", stare::data::file_name(bytes));
+    let sidecar_name = stare::data::sidecar_name(bytes);
     std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let other = entry.file_name().to_string_lossy().into_owned();
-        if other != name && other.starts_with("citare-data-") {
+        if other != name && other != sidecar_name && other.starts_with("citare-data-") {
             std::fs::remove_file(entry.path())?;
         }
     }
@@ -107,6 +110,10 @@ fn export_citare_data(dir: &Path) -> anyhow::Result<PathBuf> {
     )?;
     let path = dir.join(&name);
     std::fs::write(&path, gz).with_context(|| format!("writing {}", path.display()))?;
+    let sidecar = dir.join(&sidecar_name);
+    let mut json = serde_json::to_string_pretty(&stare::data::embedded_sidecar())?;
+    json.push('\n');
+    std::fs::write(&sidecar, json).with_context(|| format!("writing {}", sidecar.display()))?;
     Ok(path)
 }
 
@@ -124,6 +131,7 @@ mod tests {
             b"old",
         )
         .unwrap();
+        std::fs::write(dir.path().join("citare-data-0000000000000000.json"), b"old").unwrap();
         std::fs::write(dir.path().join("keep.txt"), b"x").unwrap();
         let path = export_citare_data(dir.path()).unwrap();
         let mut bytes = Vec::new();
@@ -138,6 +146,16 @@ mod tests {
             .map(|e| e.unwrap().file_name().into_string().unwrap())
             .collect();
         names.sort();
-        assert_eq!(names, vec![name.to_string(), "keep.txt".to_string()]);
+        let sidecar = stare::data::sidecar_name(&bytes);
+        assert_eq!(
+            names,
+            vec![name.to_string(), sidecar.clone(), "keep.txt".to_string()]
+        );
+        let json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join(&sidecar)).unwrap()).unwrap();
+        assert_eq!(json["file"], name);
+        assert_eq!(json["license"]["url"], stare::license::CC_BY_NC_ND.url);
+        assert_eq!(json["sources"][0]["name"], "reporters-db");
+        assert_eq!(json["sources"][1]["name"], "courts-db");
     }
 }

@@ -22,6 +22,8 @@
       }
     ]
   },
+  "license": {"id": "CC-PDM-1.0", "name": "Public Domain Mark 1.0 Universal", "url": "https://creativecommons.org/publicdomain/mark/1.0/", "source": "https://stare.pub"},
+  "attribution": {"name": "CourtListener", "publisher": "Free Law Project", "url": "https://www.courtlistener.com/", "export": "2026-09-30"},
   "source": {
     "name": "courtlistener",
     "export": "2026-09-30",

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 import { collection } from '../src/lib/collection.js';
 import { dataset, serialize, webSite } from '../src/lib/jsonld.js';
-import { CC0, CC_BY_NC_ND, LICENSE_URLS } from '../src/lib/license.js';
+import { BSD_2_CLAUSE, CC0, CC_BY_NC_ND, LICENSE_URLS, PUBLIC_DOMAIN_MARK } from '../src/lib/license.js';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
@@ -43,19 +43,34 @@ describe('JSON-LD', () => {
 
   test('/data attaches each licence to the part of the dataset it covers', () => {
     const d = dataset();
-    assert.ok(Array.isArray(d.hasPart) && d.hasPart.length === 3);
+    assert.ok(Array.isArray(d.hasPart) && d.hasPart.length === 4);
     const byId = Object.fromEntries(d.hasPart.map((p) => [p['@id'], p]));
     const cap = byId['https://stare.pub/data/#cap-case-files'];
     const index = byId['https://stare.pub/data/#citation-index'];
     const reporters = byId['https://stare.pub/data/#reporter-map'];
+    const citare = byId['https://stare.pub/data/#citare-data'];
     assert.equal(cap.license, CC0.url);
     assert.equal(cap.isBasedOn.url, 'https://case.law/');
     assert.equal(index.license, CC_BY_NC_ND.url);
     assert.equal(reporters.license, CC_BY_NC_ND.url);
-    for (const part of [index, reporters]) {
+    assert.equal(citare.license, CC_BY_NC_ND.url);
+    for (const part of [index, reporters, citare]) {
       assert.equal(part.creditText, 'stare.pub (https://stare.pub)');
     }
-    for (const part of d.hasPart) {
+    // The reporter map is based on reporters-db, the citare bundle on reporters-db
+    // and courts-db, each with its BSD 2-Clause licence and copyright notice (D65).
+    const upstreams = (part) => part.isBasedOn.map((u) => [u.url, u.license, u.copyrightNotice, u.creator.name]);
+    assert.deepEqual(upstreams(reporters), [
+      ['https://github.com/freelawproject/reporters-db', BSD_2_CLAUSE.url, 'Copyright (c) 2014, Free Law Project', 'Free Law Project'],
+    ]);
+    assert.deepEqual(upstreams(citare), [
+      ['https://github.com/freelawproject/reporters-db', BSD_2_CLAUSE.url, 'Copyright (c) 2014, Free Law Project', 'Free Law Project'],
+      ['https://github.com/freelawproject/courts-db', BSD_2_CLAUSE.url, 'Copyright (c) 2020, Free Law Project', 'Free Law Project'],
+    ]);
+    // The bundle's name changes with its content, so its part has no fixed download.
+    assert.equal(citare.distribution, undefined);
+    assert.match(citare.description, /citare-data-<hash>\.json/);
+    for (const part of d.hasPart.filter((p) => p !== citare)) {
       assert.equal(part['@type'], 'Dataset');
       assert.ok(part.name && part.description && part.url && part.publisher);
       assert.ok(part.distribution.length > 0);
@@ -70,14 +85,17 @@ describe('JSON-LD', () => {
       assert.match(dist.contentUrl, /^https:\/\/data\.stare\.pub\/cap\//);
     }
     // The top-level distribution is the parts' downloads, so every one has a licence.
-    assert.deepEqual(d.distribution, d.hasPart.flatMap((p) => p.distribution));
+    assert.deepEqual(d.distribution, d.hasPart.flatMap((p) => p.distribution ?? []));
     for (const dist of d.distribution) assert.ok(LICENSE_URLS.includes(dist.license));
-    // isBasedOn names CAP with its CC0; CourtListener's records aren't published
-    // and carry no licence here.
+    // isBasedOn names CAP with its CC0, and CourtListener's bulk data with the Public
+    // Domain Mark CourtListener puts on it. CourtListener's records aren't published,
+    // so they aren't a part.
     const capSource = d.isBasedOn.find((x) => x.url === 'https://case.law/');
     assert.equal(capSource.license, CC0.url);
     const cl = d.isBasedOn.find((x) => x.url.includes('courtlistener'));
-    assert.equal(cl.license, undefined);
+    assert.equal(cl.license, PUBLIC_DOMAIN_MARK.url);
+    assert.equal(cl.creator.name, 'Free Law Project');
+    assert.ok(!d.hasPart.some((p) => JSON.stringify(p).includes('data.stare.pub/cl')));
     assert.equal(d.url, 'https://stare.pub/data/');
     // The JSON-LD survives serialization as valid JSON with the parts intact.
     assert.deepEqual(JSON.parse(serialize(d)).hasPart.map((p) => p.license), d.hasPart.map((p) => p.license));
@@ -124,6 +142,20 @@ describe('licences', () => {
     for (const file of files) {
       const url = stated(JSON.parse(readFileSync(file, 'utf8')));
       assert.ok(LICENSE_URLS.includes(url), `${file}: ${url}`);
+    }
+  });
+
+  test('llms.txt and /data name reporters-db, courts-db and the Public Domain Mark for the CourtListener records', () => {
+    for (const text of [read('../public/llms.txt'), read('../src/pages/data.astro')]) {
+      for (const url of [
+        'https://github.com/freelawproject/reporters-db',
+        'https://github.com/freelawproject/courts-db',
+        BSD_2_CLAUSE.url,
+        PUBLIC_DOMAIN_MARK.url,
+        'citare-data-',
+      ]) {
+        assert.ok(text.includes(url), url);
+      }
     }
   });
 

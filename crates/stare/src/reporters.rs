@@ -13,7 +13,7 @@
 //! own schedule, so the live manifest's `reporters` stays the authority on what is held;
 //! `index_build` names the build the volumes came from.
 
-use crate::license::License;
+use crate::license::{License, Source};
 use crate::manifest::Manifest;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -33,13 +33,29 @@ pub const CAP_CASE_PATH: &str = "json/{ref}.json";
 pub const CL_RECORD_URL: &str = "https://data.stare.pub/cl/c/{cluster_id}/{hash}.json.gz";
 pub const VIEWER_URL: &str = "https://stare.pub/#{slug}/{volume}/{page}";
 
+/// The fields of the map taken from reporters-db, by way of citare's data bundle: the
+/// names and variations (`abbreviations`' keys, each reporter's `names` and
+/// `variations`) and the editions (name, the reporter's full name, start and end
+/// years). The slugs, `cap`, `volumes` and `urls` are the project's, from CAP's
+/// reporter list, citare and the index manifest.
+pub const REPORTERS_DB_FIELDS: &[&str] = &[
+    "abbreviations (keys)",
+    "reporters.*.names",
+    "reporters.*.variations",
+    "reporters.*.editions",
+];
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReporterMap {
     #[serde(rename = "$schema")]
     pub schema: String,
     pub format: u32,
-    /// The map's licence, CC BY-NC-ND 4.0 ([`crate::license`]).
+    /// The map's licence, CC BY-NC-ND 4.0 ([`crate::license`]), for everything in it
+    /// that [`ReporterMap::sources`] doesn't name.
     pub license: License,
+    /// The upstream data some of the map's fields come from, with its licence and
+    /// copyright notice (D65): reporters-db, for [`REPORTERS_DB_FIELDS`].
+    pub sources: Vec<Source>,
     pub generated_from: GeneratedFrom,
     pub urls: Urls,
     /// Every name and variation → the slugs it can be filed under, sorted. Most have
@@ -180,6 +196,10 @@ pub fn from_citare(manifest: Option<&Manifest>, citare_data: &str) -> ReporterMa
     let mut map = build(&editions, &variations, manifest);
     map.generated_from.citare_data = citare_data.to_string();
     map.generated_from.reporters_db_commit = data.meta("reporters_db_commit").map(str::to_string);
+    map.sources = vec![crate::license::REPORTERS_DB.source(
+        map.generated_from.reporters_db_commit.as_deref(),
+        REPORTERS_DB_FIELDS,
+    )];
     map
 }
 
@@ -262,6 +282,7 @@ pub fn build(
         schema: crate::schemas::REPORTERS_V1_ID.to_string(),
         format: FORMAT,
         license: crate::license::CC_BY_NC_ND,
+        sources: vec![crate::license::REPORTERS_DB.source(None, REPORTERS_DB_FIELDS)],
         generated_from: GeneratedFrom {
             citare_data: String::new(),
             reporters_db_commit: None,
@@ -402,6 +423,14 @@ mod tests {
         // A variation reporters-db lists for the Atlantic Reporter, Second Series.
         assert!(map.reporters["a2d"].variations.iter().any(|v| v == "A. 2d"));
         assert!(map.generated_from.reporters_db_commit.is_some());
+        // The reporters-db fields name reporters-db, at the commit the bundle records.
+        assert_eq!(map.sources.len(), 1);
+        let source = &map.sources[0];
+        assert_eq!(source.name, "reporters-db");
+        assert_eq!(source.commit, map.generated_from.reporters_db_commit);
+        assert_eq!(source.license.id, "BSD-2-Clause");
+        assert_eq!(source.license.text, crate::license::REPORTERS_DB.text);
+        assert_eq!(source.fields, REPORTERS_DB_FIELDS);
         // Every abbreviation names slugs the map lists.
         for slugs in map.abbreviations.values() {
             for s in slugs {
