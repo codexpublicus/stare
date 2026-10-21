@@ -503,6 +503,14 @@ Everything an agent uses is a static file; nothing runs per request (the owner's
     BY-NC-ND licence and both upstreams' sections, commits, licences and texts. `_headers`
     serves the sidecar as JSON. The `/data` JSON-LD names both in `isBasedOn` on the reporter
     map and the `#citare-data` part.
+  - `sources` is a list with one entry per source, each saying what it `contributes` (the
+    owner's ruling D67, 2026-10-21). Some names, variations and editions come from citare's own
+    supplements (`data/reporters-local.json`, `data/laws-local.json` in codexpublicus/citare),
+    so both `sources` lists end with a citare entry (`stare::license::citare`): the citare
+    commit stare is built with (`CITARE_COMMIT`, checked against `Cargo.lock`'s by
+    `tests/upstream_licenses.rs`, so a citare bump fails until it's updated) and the project's
+    CC BY-NC-ND licence with stare.pub as the source, no text or copyright line. Rows aren't
+    marked by source. The JSON-LD adds citare's supplements to both parts' `isBasedOn`.
   - CourtListener records carry the Public Domain Mark 1.0 that CourtListener puts on its bulk
     data (`PUBLIC_DOMAIN_MARK`), in `license`, and `attribution`: CourtListener, Free Law
     Project, and the export date (`COURTLISTENER`; `CaseJson::license`/`attribution`).
@@ -511,6 +519,11 @@ Everything an agent uses is a static file; nothing runs per request (the owner's
   - The index manifest (`Manifest::license`), build reports and `reports/index.json` take a
     `license` (CC BY-NC-ND, stare.pub as the source) that stare-builder writes; the report
     schemas accept it, and files from before it have none.
+  - They also take an optional `based_on` (D67, `Manifest::based_on`, the report schema's
+    `$defs/based_on`): what the build is made from, as facts with URLs, the Caselaw Access
+    Project (CC0 1.0) and CourtListener's bulk data (Public Domain Mark 1.0, Free Law Project).
+    stare-builder writes `stare::license::index_based_on()`. No licence terms or legal
+    conclusions go in it.
 
 `crates/stare-site/tests/agent_files.rs` validates an exported `reporters.json` against its
 schema and `openapi.json` against the OpenAPI 3.1 schema (vendored in `tests/fixtures/`), and

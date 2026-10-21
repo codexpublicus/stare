@@ -29,7 +29,8 @@
     },
     "sources": {
       "type": "array",
-      "description": "The upstream datasets some of the map's fields come from, each with the commit used, its licence and copyright notice as its LICENSE file gives them, and the fields taken from it. reporters-db (Free Law Project) is the source of the names, variations and editions; a few entries come instead from citare's own supplement to it (citare's data/reporters-local.json).",
+      "description": "Every source of the map's names, variations and editions, one entry each, with the commit used, its licence, what it contributes and the fields it contributes to. reporters-db (Free Law Project) is the source of most of them, under its BSD 2-Clause licence, with its LICENSE file and copyright line. citare (Codex Publicus) is the source of the rest, from its own supplement to reporters-db (data/reporters-local.json), under the project's terms, CC BY-NC-ND 4.0 with stare.pub as the source. Rows don't say which source they come from.",
+      "minItems": 1,
       "items": { "$ref": "#/$defs/source" }
     },
     "generated_from": {
@@ -154,32 +155,51 @@
   "$defs": {
     "source": {
       "type": "object",
-      "required": ["name", "publisher", "url", "commit", "license", "copyright", "fields"],
+      "required": ["name", "publisher", "url", "commit", "license", "contributes", "fields"],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string", "description": "The upstream's name (reporters-db)." },
+        "name": { "type": "string", "description": "The source's name (reporters-db, citare)." },
         "publisher": { "type": "string" },
         "url": { "type": "string", "format": "uri", "description": "Its repository." },
-        "commit": { "type": ["string", "null"], "description": "The upstream commit the citare data bundle was built from, as the bundle records it; the same as generated_from.reporters_db_commit for reporters-db. null when the bundle doesn't record it." },
+        "commit": { "type": ["string", "null"], "description": "The source's commit: for an upstream, the one the citare data bundle was built from, as the bundle records it (the same as generated_from.reporters_db_commit for reporters-db); for citare, the one stare was built with. null when it isn't recorded." },
         "license": {
-          "type": "object",
-          "required": ["id", "name", "url", "text"],
-          "additionalProperties": false,
-          "properties": {
-            "id": { "type": "string", "description": "The SPDX identifier the upstream declares (BSD-2-Clause)." },
-            "name": { "type": "string" },
-            "url": { "type": "string", "format": "uri" },
-            "text": { "type": "string", "description": "The upstream's LICENSE file at that commit, verbatim: the copyright notice, the licence's conditions and its disclaimer." }
-          }
+          "description": "An upstream's licence, with its LICENSE file in `text`, or the project's own, CC BY-NC-ND 4.0 with stare.pub as the `source`, the same shape as the file's `license`.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["id", "name", "url", "text"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string", "description": "The SPDX identifier the upstream declares (BSD-2-Clause)." },
+                "name": { "type": "string" },
+                "url": { "type": "string", "format": "uri" },
+                "text": { "type": "string", "description": "The upstream's LICENSE file at that commit, verbatim: the copyright notice, the licence's conditions and its disclaimer." }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["id", "name", "url", "source"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string", "description": "The SPDX identifier (CC-BY-NC-ND-4.0)." },
+                "name": { "type": "string" },
+                "url": { "type": "string", "format": "uri" },
+                "source": { "type": "string", "format": "uri", "description": "Where the data comes from: https://stare.pub, the authoritative copy." }
+              }
+            }
+          ]
         },
-        "copyright": { "type": "string", "description": "The copyright line of the upstream's LICENSE file." },
+        "copyright": { "type": "string", "description": "The copyright line of an upstream's LICENSE file; present when `license` has `text`." },
+        "contributes": { "type": "string", "minLength": 1, "description": "What the source contributes to the file, in prose." },
         "fields": {
           "type": "array",
           "minItems": 1,
           "items": { "type": "string" },
-          "description": "The fields of this file taken from the upstream: `abbreviations (keys)` is the names of `abbreviations`, not the slugs they map to; `reporters.*.names` is every reporter's `names`."
+          "description": "The fields of this file the source contributes to; several sources can contribute to one field. `abbreviations (keys)` is the names of `abbreviations`, not the slugs they map to; `reporters.*.names` is every reporter's `names`."
         }
-      }
+      },
+      "if": { "properties": { "license": { "required": ["text"] } } },
+      "then": { "required": ["copyright"] }
     },
     "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" }
   }

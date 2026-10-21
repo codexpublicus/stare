@@ -21,8 +21,8 @@ enum Commands {
     /// zopfli, as citare-data-<hash>.bin.gz, where <hash> is the uncompressed
     /// bundle's (the one stare-wasm loads; the site serves it from
     /// /data/citare/v1/), and its sidecar, citare-data-<hash>.json: the
-    /// bundle's licence and the reporters-db and courts-db sections with their
-    /// licences and notices. Removes any other citare-data-* file there and
+    /// bundle's licence and its sources, one entry each: reporters-db and
+    /// courts-db with their licences and notices, and citare's own supplements. Removes any other citare-data-* file there and
     /// prints the bundle's path.
     ExportCitareData {
         /// Output directory, created if missing
@@ -157,5 +157,6 @@ mod tests {
         assert_eq!(json["license"]["url"], stare::license::CC_BY_NC_ND.url);
         assert_eq!(json["sources"][0]["name"], "reporters-db");
         assert_eq!(json["sources"][1]["name"], "courts-db");
+        assert_eq!(json["sources"][2]["name"], "citare");
     }
 }

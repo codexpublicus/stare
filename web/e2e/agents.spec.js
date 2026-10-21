@@ -23,8 +23,10 @@ test('/reporters.json maps abbreviations to slugs, with volumes and URL template
   expect(map.generated_from.citare_data).toMatch(/^citare-data-[0-9a-f]{16}\.bin$/);
   expect(map.license.url).toBe('https://creativecommons.org/licenses/by-nc-nd/4.0/');
   expect(map.license.source).toBe('https://stare.pub');
-  // The reporters-db fields name reporters-db, its commit, licence and notice (D65).
-  expect(map.sources.map((s) => s.name)).toEqual(['reporters-db']);
+  // One entry per source (D65, D67): reporters-db with its commit, licence and notice,
+  // and citare's own supplement under the map's own licence.
+  expect(map.sources.map((s) => s.name)).toEqual(['reporters-db', 'citare']);
+  expect(map.sources[1].license).toEqual(map.license);
   expect(map.sources[0].commit).toBe(map.generated_from.reporters_db_commit);
   expect(map.sources[0].license.id).toBe('BSD-2-Clause');
   expect(map.sources[0].license.text).toContain('Copyright (c) 2014, Free Law Project');
@@ -42,7 +44,8 @@ test('the citare data bundle\'s sidecar is served as JSON next to it, with its l
   expect(`/data/citare/v1/${sidecar.file}`).toBe(data.url);
   expect(sidecar.sha256).toBe(data.sha256);
   expect(sidecar.license.url).toBe('https://creativecommons.org/licenses/by-nc-nd/4.0/');
-  expect(sidecar.sources.map((s) => s.name)).toEqual(['reporters-db', 'courts-db']);
+  expect(sidecar.sources.map((s) => s.name)).toEqual(['reporters-db', 'courts-db', 'citare']);
+  expect(sidecar.sources[2].license).toEqual(sidecar.license);
   expect(sidecar.sources[1].license.text).toContain('Copyright (c) 2020, Free Law Project');
 });
 

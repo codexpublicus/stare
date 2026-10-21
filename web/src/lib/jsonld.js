@@ -3,7 +3,7 @@
 // <script type="application/ld+json"> by components/JsonLd.astro. The figures
 // come from collection.json, like every other figure on the site.
 import { casesLabel, collection } from './collection.js';
-import { CC0, CC_BY_NC_ND, COURTS_DB, FREE_LAW_PROJECT, PUBLIC_DOMAIN_MARK, REPORTERS_DB, SOURCE } from './license.js';
+import { CC0, CC_BY_NC_ND, CITARE, COURTS_DB, FREE_LAW_PROJECT, PUBLIC_DOMAIN_MARK, REPORTERS_DB, SOURCE } from './license.js';
 
 export const SITE = 'https://stare.pub';
 
@@ -53,6 +53,17 @@ const upstream = (u) => ({
   creator: FREE_LAW_PROJECT,
 });
 
+// citare's own supplements to reporters-db (data/reporters-local.json and
+// data/laws-local.json), the project's, under CC BY-NC-ND (D67).
+const citareSupplements = {
+  '@type': 'Dataset',
+  name: 'citare’s supplements to reporters-db',
+  url: CITARE.url,
+  license: CITARE.license.url,
+  creditText,
+  creator: publisher,
+};
+
 // CourtListener's bulk data, which CourtListener marks with the Public Domain Mark
 // ("free of known copyright restrictions"). The CourtListener records stare.pub will
 // publish carry the same mark, crediting CourtListener (D65).
@@ -68,7 +79,7 @@ const courtListenerDataset = {
 // republishes under CAP's CC0 terms, and the citation index, the reporter map and
 // the citare data bundle the project produces, under CC BY-NC-ND. The reporter map
 // and the bundle name reporters-db (and the bundle courts-db) as what they are
-// based on, with their licence (D65). The CourtListener records aren't published
+// based on, with their licence (D65), and citare's own supplements (D67). The CourtListener records aren't published
 // yet and aren't a part.
 function parts() {
   return [
@@ -138,14 +149,15 @@ function parts() {
       name: 'stare.pub reporter map',
       description:
         'Reporter abbreviations to the slugs the index and case files use, with volume ranges and URL templates. ' +
-        'The names, variations and editions come from Free Law Project’s reporters-db under its BSD 2-Clause licence, ' +
-        'and the file’s `sources` gives reporters-db’s commit, licence and copyright notice.',
+        'Most of the names, variations and editions come from Free Law Project’s reporters-db under its BSD 2-Clause licence, ' +
+        'and the rest from citare’s own supplement to it. The file’s `sources` lists both, with what each contributes, ' +
+        'and gives reporters-db’s commit, licence and copyright notice.',
       url: `${SITE}/reporters.json`,
       license: CC_BY_NC_ND.url,
       creditText,
       creator: publisher,
       publisher,
-      isBasedOn: [upstream(REPORTERS_DB)],
+      isBasedOn: [upstream(REPORTERS_DB), citareSupplements],
       distribution: [
         {
           '@type': 'DataDownload',
@@ -164,14 +176,14 @@ function parts() {
       description:
         'The reporter, edition, law, journal and court tables the site’s citation finder loads, one binary file ' +
         'at https://stare.pub/data/citare/v1/citare-data-<hash>.bin.gz. Its sidecar, citare-data-<hash>.json ' +
-        'next to it, gives its licence and, for the sections built from Free Law Project’s reporters-db and ' +
-        'courts-db, their commits, BSD 2-Clause licence and copyright notices.',
+        'next to it, gives its licence and its sources: Free Law Project’s reporters-db and courts-db, with their ' +
+        'commits, BSD 2-Clause licence and copyright notices, and citare’s own supplements to reporters-db.',
       url: `${SITE}/data/citare/v1/`,
       license: CC_BY_NC_ND.url,
       creditText,
       creator: publisher,
       publisher,
-      isBasedOn: [upstream(REPORTERS_DB), upstream(COURTS_DB)],
+      isBasedOn: [upstream(REPORTERS_DB), upstream(COURTS_DB), citareSupplements],
     },
   ];
 }

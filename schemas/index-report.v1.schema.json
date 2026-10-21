@@ -15,6 +15,7 @@
   "properties": {
     "format": { "const": 1 },
     "license": { "$ref": "#/$defs/license", "description": "The licence the report, and the build it describes, are published under: CC BY-NC-ND 4.0 with stare.pub as the source. Absent from reports written before it was added." },
+    "based_on": { "$ref": "#/$defs/based_on", "description": "What the build is made from. Absent from reports written before it was added." },
     "version": { "$ref": "#/$defs/data_version" },
     "generated_at": { "$ref": "#/$defs/timestamp", "description": "When build-report wrote this report." },
     "build": {
@@ -89,6 +90,32 @@
     }
   },
   "$defs": {
+    "based_on": {
+      "type": "array",
+      "description": "The datasets an index build is made from, as facts: each one's name, publisher, URL, and the licence or mark it states for its data. Provenance only; the file's own terms are in `license`. stare writes the Caselaw Access Project (CC0 1.0) and CourtListener's bulk data (Public Domain Mark 1.0, Free Law Project) here (stare::license::index_based_on).",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "url", "license"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "description": "The dataset (Caselaw Access Project, CourtListener bulk data)." },
+          "publisher": { "type": "string", "description": "Who publishes it (Free Law Project), when stated." },
+          "url": { "type": "string", "format": "uri" },
+          "license": {
+            "type": "object",
+            "description": "The licence or mark the dataset states for its data, by SPDX identifier, name and URL.",
+            "required": ["id", "name", "url"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "description": "The SPDX identifier (CC0-1.0, CC-PDM-1.0)." },
+              "name": { "type": "string" },
+              "url": { "type": "string", "format": "uri" }
+            }
+          }
+        }
+      }
+    },
     "license": {
       "type": "object",
       "description": "A licence as stare.pub's files state it (the same shape as reporters.json's `license`).",

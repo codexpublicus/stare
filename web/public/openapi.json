@@ -385,6 +385,28 @@
               "url": { "type": "string" },
               "source": { "type": "string" }
             }
+          },
+          "based_on": {
+            "type": "array",
+            "description": "What the build is made from, as facts: the Caselaw Access Project (CC0 1.0) and CourtListener's bulk data (Public Domain Mark 1.0, Free Law Project), each with its URL and the licence or mark it states for its data. Absent from manifests written before it was added.",
+            "items": {
+              "type": "object",
+              "required": ["name", "url", "license"],
+              "properties": {
+                "name": { "type": "string" },
+                "publisher": { "type": "string" },
+                "url": { "type": "string" },
+                "license": {
+                  "type": "object",
+                  "required": ["id", "name", "url"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "name": { "type": "string" },
+                    "url": { "type": "string" }
+                  }
+                }
+              }
+            }
           }
         }
       }
