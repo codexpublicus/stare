@@ -12,6 +12,7 @@ import {
   citationsFromRust,
   citeCategory,
   citedGroupHtml,
+  citedForms,
   citedListHtml,
   filterTokens,
   groupCitations,
@@ -104,11 +105,63 @@ describe('one entry per cited case', () => {
     assert.doesNotMatch(html, /Refers to/, 'the short forms have no entries of their own');
   });
 
+  test('each form the case is cited in has its own count of places (D72)', async () => {
+    const { groups } = await run(text, detected, cases);
+    assert.deepEqual(citedForms(groups[1]).map(f => [f.label ?? f.member.raw, f.count]), [
+      ['138 U.S. 529', 1],
+      ['Id.', 2],
+      ['a short cite', 1],
+    ]);
+    assert.deepEqual(citedForms(groups[0]).map(f => [f.label ?? f.member.raw, f.count]), [['31 A.2d 647', 1], ['supra', 1]]);
+    const html = citedGroupHtml(groups[1], () => '#');
+    assert.match(html, />138 U\.S\. 529<\/a> <span class="cited-form-count" title="1 place cites it in this form">\(1×\)<\/span>/);
+    assert.match(html, /<div class="cited-also" title="Id\." data-cite-kind="id">Also cited as Id\. <span class="cited-form-count" title="2 places cite it in this form">\(2×\)<\/span><\/div>/);
+    assert.match(html, /<div class="cited-also" title="138 U\.S\. at 531" data-cite-kind="short">Also cited as a short cite <span class="cited-form-count"[^>]*>\(1×\)<\/span><\/div>/);
+  });
+
+  test('the short forms fold into one line for each kind, Id., supra and short cites (D81)', async () => {
+    const t = 'Barney v. Oelrichs, 138 U.S. 529 (1891). Id. at 533. Barney, 138 U.S. at 531. '
+      + 'Barney, supra, at 532. id. at 534. Barney, 138 U.S. at 535. Barney, 138 U.S. at 531. Id. at 536.';
+    const b = cite(t, '138 U.S. 529', BARNEY);
+    const short = (raw, type, pin, nth = 0) => cite(t, raw, { type, pin, antecedent: b }, nth);
+    const det = [
+      b,
+      short('Id.', 'IdCitation', '533'),
+      short('138 U.S. at 531', 'ShortCaseCitation', '531'),
+      short('supra', 'SupraCitation', '532'),
+      short('id.', 'IdCitation', '534'),
+      short('138 U.S. at 535', 'ShortCaseCitation', '535'),
+      short('138 U.S. at 531', 'ShortCaseCitation', '531', 1),
+      short('Id.', 'IdCitation', '536', 1),
+    ];
+    const { groups } = await run(t, det, cases);
+    assert.equal(groups.length, 1);
+    // The case's own count is unchanged: every place, one each.
+    assert.equal(groups[0].count, 8);
+    assert.deepEqual(citedForms(groups[0]).map(f => [f.kind ?? null, f.label ?? f.member.raw, f.texts ?? null, f.count]), [
+      [null, '138 U.S. 529', null, 1],
+      ['id', 'Id.', ['Id.', 'id.'], 3],
+      ['supra', 'supra', ['supra'], 1],
+      ['short', 'a short cite', ['138 U.S. at 531', '138 U.S. at 535'], 3],
+    ]);
+    const html = citedGroupHtml(groups[0], () => '#');
+    assert.deepEqual([...html.matchAll(/<div class="cited-also"[^>]*>([^<]*)<span[^>]*>([^<]*)<\/span><\/div>/g)].map(m => m[1] + m[2]), [
+      'Also cited as Id. (3×)',
+      'Also cited as supra (1×)',
+      'Also cited as a short cite (3×)',
+    ]);
+    assert.match(html, /title="138 U\.S\. at 531; 138 U\.S\. at 535" data-cite-kind="short"/);
+    assert.match(html, /aria-label="Show where the text cites 138 U\.S\. 529: 8 places"/);
+  });
+
   test('a case cited once has a count of one', async () => {
     const t = 'See Barney v. Oelrichs, 138 U.S. 529 (1891).';
     const { groups } = await run(t, [cite(t, '138 U.S. 529', BARNEY)], cases);
     assert.equal(groups.length, 1);
-    assert.match(citedGroupHtml(groups[0], () => '#'), /aria-label="Show where the text cites 138 U\.S\. 529: 1 place"/);
+    const html = citedGroupHtml(groups[0], () => '#');
+    assert.match(html, /aria-label="Show where the text cites 138 U\.S\. 529: 1 place"/);
+    // One form: the case's count is the form's, so the form has none of its own.
+    assert.doesNotMatch(html, /cited-form-count|cited-also/);
   });
 });
 
@@ -127,9 +180,32 @@ describe('what goes in one entry', () => {
     // The parallel run is one place, the Id. another (#198).
     assert.equal(groups[0].count, 2);
     // No case starts at the other's page in a volume stare.pub holds, so it
-    // resolves through its partner (#160), and says so.
-    assert.match(citedGroupHtml(groups[0], () => '#'),
-      /<div class="cited-also">Also cited as 123 Ill\. 2d 45 <span class="cited-also-note">Reported at 524 N\.E\.2d 1, inferred from the citing text<\/span><\/div>/);
+    // resolves through its partner (#160), and says so. Each form has its own
+    // count: the run once for each printing, and the Id. where it appears.
+    const html1 = citedGroupHtml(groups[0], () => '#');
+    assert.match(html1, /<a class="cited-case-link"[^>]*>524 N\.E\.2d 1<\/a> <span class="cited-form-count"[^>]*>\(1×\)<\/span>/);
+    assert.match(html1,
+      /<div class="cited-also">Also cited as 123 Ill\. 2d 45 <span class="cited-form-count"[^>]*>\(1×\)<\/span> <span class="cited-also-note">Reported at 524 N\.E\.2d 1, inferred from the citing text<\/span><\/div>/);
+    assert.match(html1, /<div class="cited-also" title="Id\." data-cite-kind="id">Also cited as Id\. <span class="cited-form-count" title="1 place cites it in this form">\(1×\)<\/span><\/div>/);
+  });
+
+  test('a run of short cites, one to each printing, is one place of the short cites (D81)', async () => {
+    const text = 'People v. Smith, 123 Ill. 2d 45, 524 N.E.2d 1 (1988). Smith, 123 Ill. 2d at 50, 524 N.E.2d at 7.';
+    const first = cite(text, '123 Ill. 2d 45', { slug: 'ill-2d', volume: 123, page: '45', reporter: 'Ill. 2d', caseName: 'People v. Smith' });
+    const second = cite(text, '524 N.E.2d 1', { slug: 'ne2d', volume: 524, page: '1', reporter: 'N.E.2d', caseName: 'People v. Smith', parallelTo: '123 Ill. 2d 45' });
+    const { groups } = await run(text, [
+      first,
+      second,
+      cite(text, '123 Ill. 2d at 50', { type: 'ShortCaseCitation', pin: '50', antecedent: first }),
+      cite(text, '524 N.E.2d at 7', { type: 'ShortCaseCitation', pin: '7', antecedent: second, parallelTo: '123 Ill. 2d at 50' }),
+    ], { 'ne2d/524/1': true });
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].count, 2);
+    assert.deepEqual(citedForms(groups[0]).map(f => [f.label ?? f.member.raw, f.count]), [
+      ['524 N.E.2d 1', 1],
+      ['123 Ill. 2d 45', 1],
+      ['a short cite', 1],
+    ]);
   });
 
   test('two citations that open the same case meet, an alias among them, and keep its label', async () => {
@@ -145,7 +221,7 @@ describe('what goes in one entry', () => {
     assert.equal(nwEntry.via, 'cl:8077312');
     // Listed under 128 Neb. 783, the alias keeps its label.
     assert.match(citedGroupHtml(groups[0], () => '#'),
-      /Also cited as 260 N\.W\. 287 <span class="cited-also-note">Resolved through CourtListener&#39;s citation metadata<\/span>/);
+      /Also cited as 260 N\.W\. 287 <span class="cited-form-count"[^>]*>\(1×\)<\/span> <span class="cited-also-note">Resolved through CourtListener&#39;s citation metadata<\/span>/);
   });
 
   test('an alias shown as the entry still says where its link came from', async () => {

@@ -173,7 +173,14 @@ in the text that cite it. `stare::cited::group` gathers the citations that resol
 case (its printings, a reprint resolved through its partner, an alias, and the short forms
 that refer to any of them), falls back to the citation's reporter, volume and page for one
 that resolves to nothing, and keeps the members of a run flagged "needs review" apart. A
-parallel run is one place, and each short form one more. `stare check` calls it directly,
+parallel run is one place, and each short form one more. A case cited in more than one
+form lists each form with its own count of places (`entry_counts`; D72): a run counts once
+for each of its printings, and a short form where it appears. On the site (`citedForms`),
+full citations with the same text are one form, and the short forms fold into one "Also
+cited as" line for each kind (D81): `Id.`, `supra`, and "a short cite" (`ShortCaseCitation`
+and `ReferenceCitation`, such as `303 Conn. at 850`), each with its count of places (a
+place two of its short forms share counts once) and their texts in its title. The CLI keeps a line for each
+short form, since each has its own status and antecedent. `stare check` calls it directly,
 and the site's `groupCitations` through the WASM export `group_citations`. The text's
 citations carry the place as `data-cite-place`, and `citenav.js` steps through places,
 highlighting a run's printings together; `~c=` still numbers every marked citation. The

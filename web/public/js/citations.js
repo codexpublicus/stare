@@ -895,9 +895,12 @@ export function orderCitedCases(citations) {
  * `caseHref(c)` gives the stare.pub link for a citation it holds; that link
  * opens in a new tab with `caseRel` (pass '' for none).
  */
-export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
+export function citedCaseHtml(c, caseHref, caseRel = 'noopener', formCount = null) {
   if (isSectionReference(c)) return '';
   const raw = escapeHtml(c.raw);
+  // The places that cite its case in this form, for a case cited in several
+  // (citedGroupHtml); it follows the form, wherever the form is a link.
+  const countHtml = formCount == null ? '' : ` ${formCountHtml(formCount)}`;
   // A short form's entry stands for every occurrence with its key, whose
   // pins differ, so the sidebar names the antecedent without a pin.
   const refers = refersTo(c, null);
@@ -906,7 +909,7 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
   if (c.noAntecedent) {
     return `<div class="cited-case${wrap}">
           <span class="cited-status none">&#8211;</span>
-          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
+          <span class="cited-case-unresolved">${raw}</span>${countHtml}${refersHtml}
         </div>`;
   }
   if (c.resolvable) {
@@ -920,20 +923,20 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
     const reviewHtml = review ? `\n          <span class="cited-lookup cited-review">${escapeHtml(review)}</span>` : '';
     return `<div class="cited-case${via || review ? ' cited-case-lookup' : wrap}">
           <span class="cited-status ok">&#10003;</span>
-          <a class="cited-case-link" href="${escapeHtml(caseHref(c))}" target="_blank"${rel}>${raw}</a>${refersHtml}${viaHtml}${reviewHtml}
+          <a class="cited-case-link" href="${escapeHtml(caseHref(c))}" target="_blank"${rel}>${raw}</a>${countHtml}${refersHtml}${viaHtml}${reviewHtml}
         </div>`;
   }
   const externalUrl = safeExternalUrl(c.externalUrl);
   if (externalUrl) {
     return `<div class="cited-case${wrap}">
           <span class="cited-status ext">&#8599;</span>
-          <a class="cited-case-link" href="${escapeHtml(externalUrl)}" ${OUTBOUND}>${raw}</a>${refersHtml}
+          <a class="cited-case-link" href="${escapeHtml(externalUrl)}" ${OUTBOUND}>${raw}</a>${countHtml}${refersHtml}
         </div>`;
   }
   if (isStatute(c)) {
     return `<div class="cited-case cited-case-lookup">
           <span class="cited-status statute">&#167;</span>
-          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
+          <span class="cited-case-unresolved">${raw}</span>${countHtml}${refersHtml}
           <span class="cited-lookup cited-miss">${escapeHtml(STATUTE_NOTE)}</span>
         </div>`;
   }
@@ -941,7 +944,7 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
   if (unknown) {
     return `<div class="cited-case cited-case-lookup">
           <span class="cited-status unknown">?</span>
-          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
+          <span class="cited-case-unresolved">${raw}</span>${countHtml}${refersHtml}
           <span class="cited-lookup cited-miss">${escapeHtml(unknown)}</span>
         </div>`;
   }
@@ -949,7 +952,7 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
   if (miss) {
     return `<div class="cited-case cited-case-lookup">
           <span class="cited-status no">&#10007;</span>
-          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
+          <span class="cited-case-unresolved">${raw}</span>${countHtml}${refersHtml}
           <span class="cited-lookup cited-miss">${escapeHtml(miss)}</span>
         </div>`;
   }
@@ -960,13 +963,13 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
       ` <a class="cited-lookup-link" href="${escapeHtml(l.url)}" ${OUTBOUND}>or ${escapeHtml(LOOKUP_SOURCES[l.source])}</a>`).join('');
     return `<div class="cited-case cited-case-lookup">
           <span class="cited-status lookup">&#8599;</span>
-          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
+          <span class="cited-case-unresolved">${raw}</span>${countHtml}${refersHtml}
           <span class="cited-lookup"><a class="cited-lookup-link" href="${escapeHtml(first.url)}" ${OUTBOUND}>${escapeHtml(lookupLabel(first))}</a>${more}</span>
         </div>`;
   }
   return `<div class="cited-case${wrap}">
           <span class="cited-status no">&#10007;</span>
-          <span class="cited-case-unresolved">${raw}</span>${refersHtml}
+          <span class="cited-case-unresolved">${raw}</span>${countHtml}${refersHtml}
         </div>`;
 }
 
@@ -1070,7 +1073,10 @@ export function matchesFilter(search, tokens) {
  * without `detected`); `search` the filter's text for it (every citation
  * form, the reporters, and the case names the text gives); and `category`
  * citeCategory of the primary. Every entry also gets `group`, its group's
- * id, which the text's citations carry as `data-cite-group`.
+ * id, which the text's citations carry as `data-cite-group`, and `formCount`,
+ * the places that cite the case in its form: a parallel run once for each of
+ * its printings, a short form where it appears (null without `detected`),
+ * and `formPlaces`, those places' ids.
  */
 export function groupCitations(detected, checked, group = groupByCase) {
   const keyOf = (c) => c.key ?? c.raw;
@@ -1085,8 +1091,19 @@ export function groupCitations(detected, checked, group = groupByCase) {
   const out = group({ entries: entries.map(c => groupEntry(c, fullKeys)), places });
 
   const groups = out.groups.map((g, i) => ({ id: `g${i}`, members: g.members.map(j => entries[j]), count: g.count }));
-  entries.forEach((c, j) => { c.group = groups[out.entries[j]].id; });
-  (detected || []).forEach((c, i) => { c.place = out.places[i] ?? null; });
+  entries.forEach((c, j) => {
+    c.group = groups[out.entries[j]].id;
+    c.formCount = detected ? out.entry_counts[j] : null;
+  });
+  // Each entry's places, so a form that folds several entries (citedForms)
+  // counts a place they share once.
+  const entryOfKey = new Map(entries.map(c => [keyOf(c), c]));
+  entries.forEach((c) => { c.formPlaces = detected ? [] : null; });
+  (detected || []).forEach((c, i) => {
+    c.place = out.places[i] ?? null;
+    const e = entryOfKey.get(places[i].key);
+    if (e && c.place != null && !e.formPlaces.includes(c.place)) e.formPlaces.push(c.place);
+  });
 
   const groupOfKey = new Map(entries.map(c => [keyOf(c), c.group]));
   const names = new Map();
@@ -1140,26 +1157,80 @@ function citedForm(c) {
   return slug && page !== null ? `${slug}/${c.volume}/${page}` : null;
 }
 
+// A form's count of places in the text: `(2×)`.
+function formCountHtml(n) {
+  return `<span class="cited-form-count" title="${n} ${n === 1 ? 'place cites' : 'places cite'} it in this form">(${n}×)</span>`;
+}
+
+// The kinds of short form a cited case's entry folds its short forms into
+// (D81), by citare's type, in the order they're listed: an `Id.`, a `supra`,
+// and a short cite (`303 Conn. at 850`, or a reference by the case's name).
+const SHORT_FORM_KINDS = [
+  { kind: 'id', label: 'Id.', types: ['IdCitation'] },
+  { kind: 'supra', label: 'supra', types: ['SupraCitation'] },
+  { kind: 'short', label: 'a short cite', types: ['ShortCaseCitation', 'ReferenceCitation'] },
+];
+
+/**
+ * The forms a cited case's entry lists (D72, D81): the primary citation, then
+ * its other full citations (a parallel citation, another reporter that opens
+ * the same case), each once by its text, as `{ member, count }`; then its
+ * short forms folded into one form per kind (SHORT_FORM_KINDS), as `{ kind,
+ * label, texts, member, count }`, `texts` the short forms' own texts. `count`
+ * is the places that cite the case in that form (its members' `formPlaces`,
+ * a place they share once), null without counts. A short form with the primary's text (a group
+ * of short forms alone) counts with the primary.
+ */
+export function citedForms(g) {
+  const forms = new Map();
+  const add = (id, m, extra) => {
+    const f = forms.get(id);
+    if (!f) forms.set(id, { ...extra, member: m, count: m.formCount ?? null, places: new Set(m.formPlaces ?? []), seen: new Set([m]) });
+    else if (!f.seen.has(m)) {
+      f.seen.add(m);
+      for (const p of m.formPlaces ?? []) f.places.add(p);
+      // A place two of its entries share counts once (a run of two short cites).
+      f.count = f.count != null && m.formCount != null ? (m.formPlaces ? f.places.size : f.count + m.formCount) : null;
+      if (f.texts && !f.texts.includes(m.raw)) f.texts.push(m.raw);
+    }
+  };
+  if (g.primary) add(`raw:${g.primary.raw}`, g.primary, {});
+  for (const m of g.members.filter(m => !isShortForm(m))) add(`raw:${m.raw}`, m, {});
+  for (const k of SHORT_FORM_KINDS) {
+    for (const m of g.members.filter(m => isShortForm(m) && k.types.includes(m.type))) {
+      if (m.raw === g.primary?.raw) add(`raw:${m.raw}`, m, {});
+      else add(`kind:${k.kind}`, m, { kind: k.kind, label: k.label, texts: [m.raw] });
+    }
+  }
+  return [...forms.values()].map(({ seen, places, ...f }) => f);
+}
+
 /**
  * One cited case's list entry: the primary citation's entry (citedCaseHtml,
- * with its status, link and labels unchanged), the case's other full
- * citations, and, when the text cites it, a control that shows where, with
- * the count and the previous and next controls citenav.js drives. '' for a
- * group with no entry (citedCaseHtml's '').
+ * with its status, link and labels unchanged), the case's other forms, and,
+ * when the text cites it, a control that shows where, with the count and the
+ * previous and next controls citenav.js drives. A case cited in more than one
+ * form gives each form its own count of places (citedForms). '' for a group
+ * with no entry (citedCaseHtml's '').
  */
 export function citedGroupHtml(g, caseHref, caseRel = 'noopener') {
-  const inner = citedCaseHtml(g.primary, caseHref, caseRel);
+  const forms = citedForms(g);
+  const counted = forms.length > 1;
+  const countOf = (f) => (counted && f.count != null ? f.count : null);
+  const inner = citedCaseHtml(g.primary, caseHref, caseRel, countOf(forms[0]));
   if (!inner) return '';
-  // The case's other full citations (a parallel citation, another reporter
-  // that opens the same case), each with the label or note its own entry
-  // would have: where an alias came from, a miss in a held volume, an index
-  // that couldn't be read.
-  const seen = new Set([g.primary.raw]);
-  const also = g.members
-    .filter(m => !isShortForm(m) && !seen.has(m.raw) && seen.add(m.raw))
-    .map((m) => {
-      const note = (m.resolvable && (viaLabel(m.via) || partnerLabel(m))) || lookupFailed(m) || heldVolumeMiss(m) || '';
-      return `\n        <div class="cited-also">Also cited as ${escapeHtml(m.raw)}${note ? ` <span class="cited-also-note">${escapeHtml(note)}</span>` : ''}</div>`;
+  // Each other form: a full citation with the label or note its own entry
+  // would have (where an alias came from, a miss in a held volume, an index
+  // that couldn't be read), or one kind of short form, which names the short
+  // forms' own texts in its title (D81).
+  const also = forms.slice(1)
+    .map((f) => {
+      const m = f.member;
+      const full = !f.kind && !isShortForm(m);
+      const note = full ? (m.resolvable && (viaLabel(m.via) || partnerLabel(m))) || lookupFailed(m) || heldVolumeMiss(m) || '' : '';
+      const n = countOf(f);
+      const title = f.kind ? ` title="${escapeHtml(f.texts.join('; '))}" data-cite-kind="${f.kind}"` : '';
+      return `\n        <div class="cited-also"${title}>Also cited as ${escapeHtml(f.label ?? m.raw)}${n == null ? '' : ` ${formCountHtml(n)}`}${note ? ` <span class="cited-also-note">${escapeHtml(note)}</span>` : ''}</div>`;
     })
     .join('');
   const raw = escapeHtml(g.primary.raw);
