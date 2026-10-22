@@ -2,6 +2,13 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
+## v2026.10.22.3 - 2026-10-22
+
+### Features
+
+- cite: count each form of a cited case, folding short forms into one line per kind
+- web: credit CourtListener as a source and state what stare.pub adds
+
 ## v2026.10.22.2 - 2026-10-22
 
 ### Features
