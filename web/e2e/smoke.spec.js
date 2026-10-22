@@ -926,6 +926,12 @@ test.describe('the unified per-volume index', () => {
   });
 });
 
+// With the live index, whichever links a reprint to its official printing (a
+// CourtListener alias since v2026.10.22, or the citing text), the reprint is listed with
+// it, cited once in its own form (D72).
+const EITHER = (raw, official) => new RegExp(`^Also cited as ${raw.replace(/\./g, '\\.')} \\(1×\\) `
+  + `(?:Resolved through CourtListener's citation metadata|Reported at ${official.replace(/\./g, '\\.')}, inferred from the citing text)$`);
+
 test.describe('parallel citations (#160)', () => {
   // Takes `volume` of `slug` out of the live manifest, as if stare.pub held nothing of
   // it, so only the citing text links that printing to its partner. Since v2026.10.22
@@ -984,17 +990,13 @@ test.describe('parallel citations (#160)', () => {
     await expect(e.locator('.cited-count')).toHaveText('1×');
   });
 
-  // With the live index, whichever links the printings: each opens the same case.
-  const EITHER = (raw, official) => new RegExp(`^Also cited as ${raw.replace(/\./g, '\\.')} `
-    + `(?:Resolved through CourtListener's citation metadata|Reported at ${official.replace(/\./g, '\\.')}, inferred from the citing text)$`);
-
   test('with the live index, both printings of a parallel run open one case', async ({ page }) => {
     await page.goto('/check');
     await page.fill('#check-input', 'Murray v. Hurst, 163 Md. 481, 163 A. 183 (1932).');
     await page.click('#check-btn');
 
     await expect(page.locator('#check-cite-list .cited-entry')).toHaveCount(1);
-    await expect(page.locator('#check-cite-list .cited-case')).toHaveText('✓ 163 Md. 481');
+    await expect(page.locator('#check-cite-list .cited-case')).toHaveText('✓ 163 Md. 481 (1×)');
     await expect(page.locator('#check-cite-list .cited-also')).toHaveText(EITHER('163 A. 183', '163 Md. 481'));
     await expect(page.locator('#check-rendered a.cite-review')).toHaveCount(0);
     const reprint = page.locator('#check-rendered a.cite-link', { hasText: '163 A. 183' });
@@ -1087,7 +1089,7 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await expect(e.locator('.cited-count')).toHaveText('1×');
     // Each printing is a form of its own, cited at that one place (D72).
     await expect(e.locator('.cited-case .cited-form-count')).toHaveText('(1×)');
-    await expect(e.locator('.cited-also')).toHaveText('Also cited as 808 A.2d 1132 (1×) Reported at 261 Conn. 941, inferred from the citing text');
+    await expect(e.locator('.cited-also')).toHaveText(EITHER('808 A.2d 1132', '261 Conn. 941'));
     await e.locator('.cited-show').click();
     await expect(page.locator('#reader .cite-place')).toHaveText(['261 Conn. 941', '808 A.2d 1132']);
     const place = page.locator('#reader .cite-place-current');
@@ -1098,6 +1100,13 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     // Opening the cited case stays the entry's main action.
     await expect(e.locator('a.cited-case-link')).toHaveAttribute('href', /#conn\/261\/941$/);
     await expect(page).toHaveURL(/#a3d\/138-2\/1012-01~c=\d+$/);
+    // The reprint is grouped with 261 Conn. 941 by the case it opens (#208), and opens it on its own.
+    const reprint = page.locator('#reader a.cite-link', { hasText: '808 A.2d 1132' });
+    await expect(reprint).toHaveAttribute('data-cite-group', await e.getAttribute('data-cite-group'));
+    const href = await reprint.getAttribute('href');
+    await page.goto('/');
+    await page.goto(`/${href}`);
+    await expect(page).toHaveURL(/#conn\/261\/941-01$/);
   });
 
   test('a case cited several times, with supra, Id. and a footnote: every place, in order', async ({ page }) => {
