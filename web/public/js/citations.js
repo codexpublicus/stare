@@ -158,14 +158,22 @@ export async function checkAvailability(slug, volume, manifest = null) {
 
 /**
  * The label for a link that came through an alias, from its `via`: "Resolved
- * through CourtListener's citation metadata" for `cl:<cluster>`. The aliases come
+ * through CourtListener's citation metadata" for `cl:<cluster>`, and "Resolved as
+ * the U.S. Reports under its reporter's name" for a nominative alias. The aliases come
  * from CourtListener's `citations` table (publisher, scraper and import data), a
  * third party's metadata; nothing here calls such a link verified.
  */
 export function viaLabel(via) {
   if (!via) return '';
+  if (via === VIA_NOMINATIVE) return "Resolved as the U.S. Reports under its reporter's name";
   return /^cl:\d+$/.test(via) ? "Resolved through CourtListener's citation metadata" : `Resolved through ${via}`;
 }
+
+/**
+ * The `via` of a nominative alias (stare-builder#32): U.S. Reports volumes 1 to 90
+ * filed under the early reporter's name and volume (`22 Wall. 238` is `89 U.S. 238`).
+ */
+export const VIA_NOMINATIVE = 'nominative:us';
 
 /**
  * The note above a case reached through an alias (#151): "Cited as nw 260 287.

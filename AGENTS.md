@@ -92,7 +92,10 @@ One gzipped text file per volume as cited, for every source (`docs/plans/courtli
   with trailing `key=value` fields; `via=cl:<cluster>` says it came from CourtListener's
   `citations` table (publisher, scraper and import metadata, never eyecite, never
   `html_with_citations` or the citation-map): `287,cap,neb/128/0783-01,via=cl:8077312`
-  in `n-w/260.idx.gz`. A page's own CAP cases sort before its aliases, and aliases before
+  in `n-w/260.idx.gz`. `via=nominative:us` (stare-builder#32) files a case in U.S. Reports
+  volumes 1 to 90 under its early reporter's name and volume as well (`wall/22.idx.gz`:
+  `238,cap,us/89/0238-01,via=nominative:us`), labelled "Resolved as the U.S. Reports under
+  its reporter's name". A page's own CAP cases sort before its aliases, and aliases before
   `cl` lines, so CAP's case wins (#160). Readers label a link that came through one
   "Resolved through CourtListener's citation metadata" and never call it verified. CAP
   case files can hold a comma (`11, 12-01`) or `=` (`1265=1275-01`), so fields are parsed

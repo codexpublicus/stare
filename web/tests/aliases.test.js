@@ -162,6 +162,7 @@ describe('display', () => {
     assert.equal(viaLabel(null), '');
     assert.equal(viaLabel('human:3'), 'Resolved through human:3');
     assert.doesNotMatch(viaLabel('cl:1'), /verif/i);
+    assert.equal(viaLabel('nominative:us'), "Resolved as the U.S. Reports under its reporter's name");
   });
 
   test('the cited-cases entry links here and says where the link came from', async () => {
@@ -190,5 +191,12 @@ describe('display', () => {
       '<div class="reader-alias" role="note">Cited as n-w 260 287. Resolved through CourtListener&#39;s citation metadata (cluster 8077312).</div>',
     );
     assert.equal(aliasNoteHtml(null), '');
+  });
+
+  test('a nominative alias says it is the U.S. Reports under the reporter\'s name', () => {
+    assert.equal(
+      aliasNoteHtml({ via: 'nominative:us', reporter: 'wall', volume: '22', page: 238 }),
+      '<div class="reader-alias" role="note">Cited as wall 22 238. Resolved as the U.S. Reports under its reporter&#39;s name.</div>',
+    );
   });
 });

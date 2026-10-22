@@ -41,6 +41,11 @@
 //! 287,cap,neb/128/0783-01,via=cl:8077312
 //! ```
 //!
+//! `via=nominative:us` is a nominative alias (stare-builder#32): U.S. Reports volumes 1 to
+//! 90 are the early reporters' volumes (Dall., Cranch, Wheat., Pet., How., Black, Wall.)
+//! renumbered, and the index files each case under its reporter's name and volume too:
+//! `238,cap,us/89/0238-01,via=nominative:us` in `wall/22.idx.gz`.
+//!
 //! `via=cl:<cluster>` is CourtListener's `citations` table, the cluster's own reporter
 //! citations from publisher, scraper and import data. It's a third party's metadata, not
 //! an eyecite detection and not a human check, so a reader labels the link with its
@@ -153,11 +158,22 @@ pub fn via_cluster(via: &str) -> Option<u64> {
 /// CourtListener's citation metadata (cluster 8077312)". Never "verified": only a human
 /// check is that.
 pub fn via_label(via: &str) -> String {
+    if via == VIA_NOMINATIVE {
+        return NOMINATIVE_LABEL.to_string();
+    }
     match via_cluster(via) {
         Some(id) => format!("Resolved through CourtListener's citation metadata (cluster {id})"),
         None => format!("Resolved through {via}"),
     }
 }
+
+/// The `via` of a nominative alias (stare-builder#32): a case in U.S. Reports volumes 1
+/// to 90 filed under the early reporter's own name and volume (`22 Wall. 238` is `89 U.S.
+/// 238`). The concordance is the Supreme Court's, so the label states it as fact.
+pub const VIA_NOMINATIVE: &str = "nominative:us";
+
+/// How a reader labels a link through a nominative alias.
+pub const NOMINATIVE_LABEL: &str = "Resolved as the U.S. Reports under its reporter's name";
 
 /// Whether a tag could be a source: lowercase ASCII letters.
 fn is_tag(s: &str) -> bool {
@@ -856,6 +872,11 @@ mod tests {
         );
         assert!(!label.to_lowercase().contains("verif"));
         assert_eq!(via_label("human:7"), "Resolved through human:7");
+        assert_eq!(
+            via_label("nominative:us"),
+            "Resolved as the U.S. Reports under its reporter's name"
+        );
+        assert_eq!(via_cluster("nominative:us"), None);
     }
 
     #[test]
