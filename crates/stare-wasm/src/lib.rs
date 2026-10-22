@@ -167,8 +167,9 @@ pub fn reconcile_parallels(printings: &str) -> Result<String, JsError> {
 /// Cited cases (#198): `stare::cited::group`, which `stare check` uses too, for the
 /// site's `groupCitations`. Takes JSON `{ entries, places }`: entries
 /// `{ key, case, citation, antecedent, review }`, places `{ key, parallel_of }` in text
-/// order. Returns `{ groups, entries, places }`: each group `{ members, count }`, each
-/// entry's group, and each place's citing place (null for a key that is no entry's).
+/// order. Returns `{ groups, entries, places, entry_counts }`: each group
+/// `{ members, count }`, each entry's group, each place's citing place (null for a key
+/// that is no entry's), and each entry's own count of citing places.
 /// Throws on JSON of another shape.
 #[wasm_bindgen]
 pub fn group_citations(input: &str) -> Result<String, JsError> {
