@@ -1047,6 +1047,10 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     const reprint = await placeIds(all.filter({ hasText: /^37 A\.3d 700$/ }));
     await expect(e.locator('.cited-also', { hasText: /^Also cited as 37 A\.3d 700 / }).locator('.cited-form-count'))
       .toHaveText(`(${reprint.length}×)`);
+    // Its short forms are one line for each kind, with the kind's own count (D81).
+    await expect(e.locator('.cited-also[data-cite-kind="supra"]')).toHaveText('Also cited as supra (1×)');
+    const idPlaces = await placeIds(all.filter({ hasText: /^id\./i }));
+    await expect(e.locator('.cited-also[data-cite-kind="id"]')).toHaveText(`Also cited as Id. (${idPlaces.length}×)`);
     // Full citations, a supra and an Id., and some in a footnote.
     await expect(all.filter({ hasText: /^supra/ })).toHaveCount(1);
     await expect(all.filter({ hasText: /^Id\./ })).not.toHaveCount(0);
@@ -1074,6 +1078,33 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     const note = await last.first().evaluate((el) => el.closest('.reader-footnote').dataset.footnote);
     const cited = (await last.allTextContents()).map((t) => t.trim()).join(', ');
     await expect(live(page)).toHaveText(`${m} of ${m}: ${cited}, in footnote ${note}`);
+  });
+
+  // 314 Conn. 303 is cited 85 times, most of them in short forms: a dozen pin cites,
+  // Id.s to either printing, and supra. They fold into one line for each kind (D81),
+  // and stepping through still goes to every place.
+  test('a case cited in many short forms: one line for each kind, every place still stepped through', async ({ page }) => {
+    await page.goto(BROOKS);
+    await done(page);
+    const e = entry(page, '314 Conn. 303');
+    const all = await places(page, e);
+    const m = (await placeIds(all)).length;
+    await expect(e.locator('.cited-count')).toHaveText(`${m}×`);
+    const kinds = e.locator('.cited-also[data-cite-kind]');
+    await expect(kinds).toHaveCount(3);
+    expect(await kinds.evaluateAll((els) => els.map((el) => el.dataset.citeKind))).toEqual(['id', 'supra', 'short']);
+    await expect(kinds.nth(0)).toHaveText(/^Also cited as Id\. \(\d+×\)$/);
+    await expect(kinds.nth(1)).toHaveText(/^Also cited as supra \(\d+×\)$/);
+    await expect(kinds.nth(2)).toHaveText(/^Also cited as a short cite \(\d+×\)$/);
+    await expect(kinds.nth(2)).toHaveAttribute('title', /314 Conn\. at 312/);
+    // The kinds' counts add up to the places the short forms cite it at.
+    const counts = (await kinds.locator('.cited-form-count').allTextContents()).map((t) => Number(t.match(/\d+/)[0]));
+    const short = await placeIds(all.and(page.locator('[data-cite-form="short"]')));
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(short.length);
+    await e.locator('.cited-show').click();
+    await expect(e.locator('.cited-pos')).toHaveText(`1 of ${m}`);
+    await e.locator('.cited-prev').click();
+    await expect(e.locator('.cited-pos')).toHaveText(`${m} of ${m}`);
   });
 
   test('[ and ] step through the places from the keyboard', async ({ page }) => {

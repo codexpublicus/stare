@@ -1075,7 +1075,8 @@ export function matchesFilter(search, tokens) {
  * citeCategory of the primary. Every entry also gets `group`, its group's
  * id, which the text's citations carry as `data-cite-group`, and `formCount`,
  * the places that cite the case in its form: a parallel run once for each of
- * its printings, a short form where it appears (null without `detected`).
+ * its printings, a short form where it appears (null without `detected`),
+ * and `formPlaces`, those places' ids.
  */
 export function groupCitations(detected, checked, group = groupByCase) {
   const keyOf = (c) => c.key ?? c.raw;
@@ -1094,7 +1095,15 @@ export function groupCitations(detected, checked, group = groupByCase) {
     c.group = groups[out.entries[j]].id;
     c.formCount = detected ? out.entry_counts[j] : null;
   });
-  (detected || []).forEach((c, i) => { c.place = out.places[i] ?? null; });
+  // Each entry's places, so a form that folds several entries (citedForms)
+  // counts a place they share once.
+  const entryOfKey = new Map(entries.map(c => [keyOf(c), c]));
+  entries.forEach((c) => { c.formPlaces = detected ? [] : null; });
+  (detected || []).forEach((c, i) => {
+    c.place = out.places[i] ?? null;
+    const e = entryOfKey.get(places[i].key);
+    if (e && c.place != null && !e.formPlaces.includes(c.place)) e.formPlaces.push(c.place);
+  });
 
   const groupOfKey = new Map(entries.map(c => [keyOf(c), c.group]));
   const names = new Map();
@@ -1153,28 +1162,47 @@ function formCountHtml(n) {
   return `<span class="cited-form-count" title="${n} ${n === 1 ? 'place cites' : 'places cite'} it in this form">(${n}×)</span>`;
 }
 
+// The kinds of short form a cited case's entry folds its short forms into
+// (D81), by citare's type, in the order they're listed: an `Id.`, a `supra`,
+// and a short cite (`303 Conn. at 850`, or a reference by the case's name).
+const SHORT_FORM_KINDS = [
+  { kind: 'id', label: 'Id.', types: ['IdCitation'] },
+  { kind: 'supra', label: 'supra', types: ['SupraCitation'] },
+  { kind: 'short', label: 'a short cite', types: ['ShortCaseCitation', 'ReferenceCitation'] },
+];
+
 /**
- * The forms a cited case's entry lists (D72): the primary citation, then its
- * other full citations (a parallel citation, another reporter that opens the
- * same case), then the short forms that refer to it (`Id.`, `supra`, `303
- * Conn. at 850`), each once by its text, as `{ member, count }`. `count` is
- * the places that cite the case in that form (the members' `formCount`
- * summed, since an `Id.` to each of a run's printings is one form), null
- * without counts.
+ * The forms a cited case's entry lists (D72, D81): the primary citation, then
+ * its other full citations (a parallel citation, another reporter that opens
+ * the same case), each once by its text, as `{ member, count }`; then its
+ * short forms folded into one form per kind (SHORT_FORM_KINDS), as `{ kind,
+ * label, texts, member, count }`, `texts` the short forms' own texts. `count`
+ * is the places that cite the case in that form (its members' `formPlaces`,
+ * a place they share once), null without counts. A short form with the primary's text (a group
+ * of short forms alone) counts with the primary.
  */
 export function citedForms(g) {
   const forms = new Map();
-  const ordered = [g.primary, ...g.members.filter(m => !isShortForm(m)), ...g.members.filter(isShortForm)];
-  for (const m of ordered) {
-    if (!m) continue;
-    const f = forms.get(m.raw);
-    if (!f) forms.set(m.raw, { member: m, count: m.formCount ?? null, seen: new Set([m]) });
+  const add = (id, m, extra) => {
+    const f = forms.get(id);
+    if (!f) forms.set(id, { ...extra, member: m, count: m.formCount ?? null, places: new Set(m.formPlaces ?? []), seen: new Set([m]) });
     else if (!f.seen.has(m)) {
       f.seen.add(m);
-      if (f.count != null && m.formCount != null) f.count += m.formCount;
+      for (const p of m.formPlaces ?? []) f.places.add(p);
+      // A place two of its entries share counts once (a run of two short cites).
+      f.count = f.count != null && m.formCount != null ? (m.formPlaces ? f.places.size : f.count + m.formCount) : null;
+      if (f.texts && !f.texts.includes(m.raw)) f.texts.push(m.raw);
+    }
+  };
+  if (g.primary) add(`raw:${g.primary.raw}`, g.primary, {});
+  for (const m of g.members.filter(m => !isShortForm(m))) add(`raw:${m.raw}`, m, {});
+  for (const k of SHORT_FORM_KINDS) {
+    for (const m of g.members.filter(m => isShortForm(m) && k.types.includes(m.type))) {
+      if (m.raw === g.primary?.raw) add(`raw:${m.raw}`, m, {});
+      else add(`kind:${k.kind}`, m, { kind: k.kind, label: k.label, texts: [m.raw] });
     }
   }
-  return [...forms.values()].map(({ member, count }) => ({ member, count }));
+  return [...forms.values()].map(({ seen, places, ...f }) => f);
 }
 
 /**
@@ -1191,16 +1219,18 @@ export function citedGroupHtml(g, caseHref, caseRel = 'noopener') {
   const countOf = (f) => (counted && f.count != null ? f.count : null);
   const inner = citedCaseHtml(g.primary, caseHref, caseRel, countOf(forms[0]));
   if (!inner) return '';
-  // Each other form, a full citation with the label or note its own entry
-  // would have: where an alias came from, a miss in a held volume, an index
-  // that couldn't be read.
+  // Each other form: a full citation with the label or note its own entry
+  // would have (where an alias came from, a miss in a held volume, an index
+  // that couldn't be read), or one kind of short form, which names the short
+  // forms' own texts in its title (D81).
   const also = forms.slice(1)
     .map((f) => {
       const m = f.member;
-      const full = !isShortForm(m);
+      const full = !f.kind && !isShortForm(m);
       const note = full ? (m.resolvable && (viaLabel(m.via) || partnerLabel(m))) || lookupFailed(m) || heldVolumeMiss(m) || '' : '';
       const n = countOf(f);
-      return `\n        <div class="cited-also">Also cited as ${escapeHtml(m.raw)}${n == null ? '' : ` ${formCountHtml(n)}`}${note ? ` <span class="cited-also-note">${escapeHtml(note)}</span>` : ''}</div>`;
+      const title = f.kind ? ` title="${escapeHtml(f.texts.join('; '))}" data-cite-kind="${f.kind}"` : '';
+      return `\n        <div class="cited-also"${title}>Also cited as ${escapeHtml(f.label ?? m.raw)}${n == null ? '' : ` ${formCountHtml(n)}`}${note ? ` <span class="cited-also-note">${escapeHtml(note)}</span>` : ''}</div>`;
     })
     .join('');
   const raw = escapeHtml(g.primary.raw);

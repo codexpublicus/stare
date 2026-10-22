@@ -108,7 +108,7 @@ describe('a member stare.pub doesn\'t hold', () => {
       /Also cited as 260 N\.W\. 287 <span class="cited-form-count"[^>]*>\(1×\)<\/span> <span class="cited-also-note">Reported at 128 Neb\. 783, inferred from the citing text<\/span>/);
     // One case, cited at two places: the run, and the Id. (#198). Each form
     // counts its own: the run once for each printing, the Id. once (D72).
-    assert.deepEqual(citedForms(groups[0]).map(f => [f.member.raw, f.count]),
+    assert.deepEqual(citedForms(groups[0]).map(f => [f.label ?? f.member.raw, f.count]),
       [['128 Neb. 783', 1], ['260 N.W. 287', 1], ['Id.', 1]]);
     assert.equal(groups[0].count, 2);
     assert.equal(checked.length, 3);
