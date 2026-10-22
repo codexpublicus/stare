@@ -268,10 +268,10 @@ test('/check lists the citations citare finds', async ({ page }) => {
   // Resolvable citations first, as links to the case viewer; then the
   // statute, linked to its text. "Id." resolves through Barney, the
   // citation before it (#120), and is listed with it, one entry per
-  // cited case (#159).
+  // cited case (#159). Cited in two forms, each has its own count (D72).
   await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
     '✓ 31 A.2d 647',
-    '✓ 138 U.S. 529',
+    '✓ 138 U.S. 529 (1×)',
     '↗ 42 U.S.C. § 1983',
   ]);
   const links = page.locator('#check-cite-list a.cited-case-link');
@@ -279,6 +279,7 @@ test('/check lists the citations citare finds', async ({ page }) => {
   await expect(links.nth(1)).toHaveAttribute('href', '/#us/138/529-01');
   await expect(links.nth(2)).toHaveAttribute('href', 'https://www.law.cornell.edu/uscode/text/42/1983');
   await expect(page.locator('#check-cite-list .cited-entry', { hasText: '138 U.S. 529' }).locator('.cited-count')).toHaveText('2×');
+  await expect(page.locator('#check-cite-list .cited-also')).toHaveText('Also cited as Id. (1×)');
   await expect(page.locator('#check-rendered a.cite-link', { hasText: 'Id.' }))
     .toHaveAttribute('title', 'Refers to 138 U.S. 529, at 533');
 });
@@ -575,11 +576,14 @@ test.describe('an index file that fails to load (#144)', () => {
     await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ cited cases? found/);
 
     // It is listed under its parallel citation, 314 Conn. 303, which the opinion
-    // gives first (#159), with its own note; its Id.s are unchecked with it, and are places of
-    // that one entry.
+    // gives first (#159), with its own note and its own count of places (D72); its Id.s
+    // are unchecked with it, and are places of that one entry.
     const entries = page.locator('#sidebar .cited-entry', { hasText: '101 A.3d 249' });
     await expect(entries).toHaveCount(1);
-    await expect(entries.locator('.cited-also')).toHaveText(`Also cited as 101 A.3d 249 ${UNKNOWN('A.3d', 101)}`);
+    const form = entries.locator('.cited-also', { hasText: /^Also cited as 101 A\.3d 249 / });
+    await expect(form).toHaveCount(1);
+    await expect(form.locator('.cited-form-count')).toHaveText(/^\(\d+×\)$/);
+    await expect(form.locator('.cited-also-note')).toHaveText(UNKNOWN('A.3d', 101));
     await expect(entries.locator('a', { hasText: '101 A.3d 249' })).toHaveCount(0);
     const group = await entries.getAttribute('data-cite-group');
     const ids = page.locator('#reader .cite-unknown[data-cite-form="short"]');
@@ -901,9 +905,9 @@ test.describe('the unified per-volume index', () => {
 
     await expect(page.locator('#check-summary')).toHaveText('1 cited case found (1 resolvable)');
     await expect(page.locator('#check-cite-list .cited-entry')).toHaveCount(1);
-    await expect(page.locator('#check-cite-list .cited-case')).toHaveText('✓ 128 Neb. 783');
+    await expect(page.locator('#check-cite-list .cited-case')).toHaveText('✓ 128 Neb. 783 (1×)');
     await expect(page.locator('#check-cite-list .cited-also')).toHaveText(
-      "Also cited as 260 N.W. 287 Resolved through CourtListener's citation metadata");
+      "Also cited as 260 N.W. 287 (1×) Resolved through CourtListener's citation metadata");
     await expect(page.locator('#check-rendered [data-partner]')).toHaveCount(0);
   });
 });
@@ -920,9 +924,9 @@ test.describe('parallel citations (#160)', () => {
 
     await expect(page.locator('#check-summary')).toHaveText('1 cited case found (1 resolvable)');
     await expect(page.locator('#check-cite-list .cited-entry')).toHaveCount(1);
-    await expect(page.locator('#check-cite-list .cited-case')).toHaveText('✓ 163 Md. 481');
+    await expect(page.locator('#check-cite-list .cited-case')).toHaveText('✓ 163 Md. 481 (1×)');
     await expect(page.locator('#check-cite-list .cited-also')).toHaveText(
-      'Also cited as 163 A. 183 Reported at 163 Md. 481, inferred from the citing text');
+      'Also cited as 163 A. 183 (1×) Reported at 163 Md. 481, inferred from the citing text');
     const reprint = page.locator('#check-rendered a.cite-link[data-partner="163 Md. 481"]');
     await expect(reprint).toHaveText('163 A. 183');
     await expect(reprint).toHaveAttribute('href', '#md/163/481');
@@ -941,7 +945,7 @@ test.describe('parallel citations (#160)', () => {
     await expect(reprint).toHaveAttribute('href', '#neb/128/783');
     await expect(reprint).toHaveAttribute('title', '260 N.W. 287. Reported at 128 Neb. 783, inferred from the citing text');
     const e = page.locator('#sidebar .cited-entry', { has: page.locator('.cited-case', { hasText: '128 Neb. 783' }) });
-    await expect(e.locator('.cited-also')).toHaveText('Also cited as 260 N.W. 287 Reported at 128 Neb. 783, inferred from the citing text');
+    await expect(e.locator('.cited-also')).toHaveText('Also cited as 260 N.W. 287 (1×) Reported at 128 Neb. 783, inferred from the citing text');
     // Cited once, in two printings: one place (#198).
     await expect(e.locator('.cited-count')).toHaveText('1×');
   });
@@ -1012,6 +1016,9 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await done(page);
     const e = entry(page, '261 Conn. 941');
     await expect(e.locator('.cited-count')).toHaveText('1×');
+    // Each printing is a form of its own, cited at that one place (D72).
+    await expect(e.locator('.cited-case .cited-form-count')).toHaveText('(1×)');
+    await expect(e.locator('.cited-also')).toHaveText('Also cited as 808 A.2d 1132 (1×) Reported at 261 Conn. 941, inferred from the citing text');
     await e.locator('.cited-show').click();
     await expect(page.locator('#reader .cite-place')).toHaveText(['261 Conn. 941', '808 A.2d 1132']);
     const place = page.locator('#reader .cite-place-current');
@@ -1034,6 +1041,12 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     const at = (n) => all.and(page.locator(`[data-cite-place="${ids[n]}"]`));
     expect(m).toBeGreaterThanOrEqual(5);
     await expect(e.locator('.cited-count')).toHaveText(`${m}×`);
+    // Each form counts the places that cite the case in it, a run once (D72).
+    const official = await placeIds(all.filter({ hasText: /^303 Conn\. 845$/ }));
+    await expect(e.locator('.cited-case .cited-form-count')).toHaveText(`(${official.length}×)`);
+    const reprint = await placeIds(all.filter({ hasText: /^37 A\.3d 700$/ }));
+    await expect(e.locator('.cited-also', { hasText: /^Also cited as 37 A\.3d 700 / }).locator('.cited-form-count'))
+      .toHaveText(`(${reprint.length}×)`);
     // Full citations, a supra and an Id., and some in a footnote.
     await expect(all.filter({ hasText: /^supra/ })).toHaveCount(1);
     await expect(all.filter({ hasText: /^Id\./ })).not.toHaveCount(0);
@@ -1135,7 +1148,7 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await expect(shown).toHaveText(['✓ 31 A.2d 647']);
     await expect(count).toHaveText('1 of 3');
     await filter.fill('OELRICHS');
-    await expect(shown).toHaveText(['✓ 138 U.S. 529']);
+    await expect(shown).toHaveText(['✓ 138 U.S. 529 (1×)']);
     await filter.fill('usc 1983');
     await expect(shown).toHaveText(['↗ 42 U.S.C. § 1983']);
     await filter.fill('nothing like it');
@@ -1160,6 +1173,8 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await page.click('#check-btn');
     const e = page.locator('#check-cite-list .cited-entry', { hasText: '138 U.S. 529' });
     await expect(e.locator('.cited-count')).toHaveText('2×');
+    await expect(e.locator('.cited-case')).toHaveText('✓ 138 U.S. 529 (1×)');
+    await expect(e.locator('.cited-also')).toHaveText('Also cited as Id. (1×)');
     await e.getByRole('button', { name: /^Show where the text cites 138 U\.S\. 529/ }).focus();
     await page.keyboard.press(']');
     await expect(page.locator('#check-rendered .cite-place-current')).toHaveText('138 U.S. 529');
@@ -1195,8 +1210,8 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     const VIA = "Resolved through CourtListener's citation metadata";
     const e = page.locator('#check-cite-list .cited-entry');
     await expect(e).toHaveCount(1);
-    await expect(e.locator('.cited-case')).toHaveText('✓ 128 Neb. 783');
-    await expect(e.locator('.cited-also')).toHaveText(`Also cited as 260 N.W. 287 ${VIA}`);
+    await expect(e.locator('.cited-case')).toHaveText('✓ 128 Neb. 783 (1×)');
+    await expect(e.locator('.cited-also')).toHaveText(`Also cited as 260 N.W. 287 (1×) ${VIA}`);
     await expect(e).not.toContainText(/verified/i);
     await expect(e.locator('.cited-count')).toHaveText('2×');
     await e.locator('.cited-show').click();
