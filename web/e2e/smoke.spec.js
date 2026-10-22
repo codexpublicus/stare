@@ -284,11 +284,12 @@ test('/check lists the citations citare finds', async ({ page }) => {
 });
 
 test('/check links out only for volumes and statutes stare.pub does not hold', async ({ page }) => {
-  // Axon (2023) is past CAP's last volumes of the U.S. Reports, so the
-  // index can't have it; the Minnesota statute links to the revisor. A.2d
+  // U.S. Reports volume 999 is decades past any printed, so no source the index
+  // takes can hold it (598 U.S. 175 was the example until CourtListener's
+  // volumes reached the index); the Minnesota statute links to the revisor. A.2d
   // 31 is indexed and its last case starts at page 894, so 31 A.2d 950 is a
   // miss in a held volume: a neutral note, and no outside link.
-  const text = 'See Axon Enterprise, Inc. v. FTC, 598 U.S. 175 (2023); Minn. Stat. § 609.185; Doe v. Roe, 31 A.2d 950 (1943).';
+  const text = 'See Doe v. Roe, 999 U.S. 175 (2099); Minn. Stat. § 609.185; Doe v. Roe, 31 A.2d 950 (1943).';
 
   // Links only: the page itself must make no request to either site.
   const outside = [];
@@ -305,7 +306,7 @@ test('/check links out only for volumes and statutes stare.pub does not hold', a
   await expect(page.locator('#check-summary')).toHaveText('2 cited cases found (0 resolvable), 1 statute');
   await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
     '↗ Minn. Stat. § 609.185',
-    '↗ 598 U.S. 175 Not in stare.pub: may be at CourtListener or Google Scholar',
+    '↗ 999 U.S. 175 Not in stare.pub: may be at CourtListener or Google Scholar',
     '✗ 31 A.2d 950 No case found at this page in A.2d vol. 31',
   ]);
   await expect(page.locator('#check-cite-list .cited-case', { hasText: '31 A.2d 950' }).locator('a')).toHaveCount(0);
@@ -317,17 +318,30 @@ test('/check links out only for volumes and statutes stare.pub does not hold', a
   await expect(statute).toHaveAttribute('rel', 'noopener noreferrer');
 
   const courtListener = page.getByRole('link', { name: 'Not in stare.pub: may be at CourtListener' });
-  await expect(courtListener).toHaveAttribute('href', 'https://www.courtlistener.com/c/U.S./598/175/');
+  await expect(courtListener).toHaveAttribute('href', 'https://www.courtlistener.com/c/U.S./999/175/');
   await expect(courtListener).toHaveAttribute('target', '_blank');
   await expect(courtListener).toHaveAttribute('rel', 'noopener noreferrer');
 
   // In the text, the citation itself links out, styled apart from stare.pub's own links.
   const inline = page.locator('#check-rendered a.cite-lookup');
-  await expect(inline).toHaveText('598 U.S. 175');
-  await expect(inline).toHaveAttribute('href', 'https://www.courtlistener.com/c/U.S./598/175/');
-  await expect(page.locator('#check-rendered a.cite-link', { hasText: '598 U.S. 175' })).toHaveCount(0);
+  await expect(inline).toHaveText('999 U.S. 175');
+  await expect(inline).toHaveAttribute('href', 'https://www.courtlistener.com/c/U.S./999/175/');
+  await expect(page.locator('#check-rendered a.cite-link', { hasText: '999 U.S. 175' })).toHaveCount(0);
 
   expect(outside).toEqual([]);
+});
+
+test('a U.S. Reports volume past CAP\'s resolves through CourtListener: 598 U.S. 175 opens Axon', async ({ page }) => {
+  await page.goto('/check');
+  await page.fill('#check-input', 'See Axon Enterprise, Inc. v. FTC, 598 U.S. 175 (2023).');
+  await page.click('#check-btn');
+
+  await expect(page.locator('#check-cite-list .cited-case')).toHaveText('✓ 598 U.S. 175');
+  await expect(page.locator('#check-rendered a.cite-lookup')).toHaveCount(0);
+  const link = page.locator('#check-cite-list a.cited-case-link');
+  await expect(link).toHaveAttribute('href', /^\/#us\/598\/175(?:-\d+)?$/);
+  await page.goto(await link.getAttribute('href'));
+  await expect(page.locator('#topbar-case')).toHaveText('Axon Enterprise, Inc. v. FTC');
 });
 
 test('/check tells statutes from cases, and leaves bare section references alone', async ({ page }) => {
@@ -909,7 +923,26 @@ test.describe('the unified per-volume index', () => {
 });
 
 test.describe('parallel citations (#160)', () => {
+  // Takes `volume` of `slug` out of the live manifest, as if stare.pub held nothing of
+  // it, so only the citing text links that printing to its partner. Since v2026.10.22
+  // CourtListener's citation metadata links 163 A. 183 and 260 N.W. 287 to their
+  // official printings, and that alias wins over the inference (D35 on #160).
+  async function withoutVolume(page, slug, volume) {
+    await page.route('https://idx.stare.pub/manifest.json', async (route) => {
+      const manifest = await (await route.fetch()).json();
+      for (const lists of [manifest.reporters, manifest.aliases]) {
+        if (lists?.[slug]) lists[slug] = lists[slug].filter((v) => v !== volume);
+      }
+      await route.fulfill({
+        headers: { 'access-control-allow-origin': '*', 'cache-control': 'no-cache' },
+        contentType: 'application/json',
+        body: JSON.stringify(manifest),
+      });
+    });
+  }
+
   test('a printing stare.pub doesn\'t hold resolves through the one it does, labelled as inferred', async ({ page }) => {
+    await withoutVolume(page, 'a', '163');
     const outside = [];
     page.on('request', (req) => {
       if (/courtlistener|google/.test(new URL(req.url()).hostname)) outside.push(req.url());
@@ -934,6 +967,7 @@ test.describe('parallel citations (#160)', () => {
   // The issue's example: Ray v. Bruce cites several decisions in an official
   // reporter stare.pub holds and a regional one it doesn't.
   test('in a case, a reprint links to the printing stare.pub holds', async ({ page }) => {
+    await withoutVolume(page, 'n-w', '260');
     await page.goto('/#a2d/31/693-01');
     await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ cited cases? found/);
     const reprint = page.locator('#reader a.cite-link[data-partner="128 Neb. 783"]');
@@ -944,6 +978,41 @@ test.describe('parallel citations (#160)', () => {
     await expect(e.locator('.cited-also')).toHaveText('Also cited as 260 N.W. 287 Reported at 128 Neb. 783, inferred from the citing text');
     // Cited once, in two printings: one place (#198).
     await expect(e.locator('.cited-count')).toHaveText('1×');
+  });
+
+  // With the live index, whichever links the printings: each opens the same case.
+  const EITHER = (raw, official) => new RegExp(`^Also cited as ${raw.replace(/\./g, '\\.')} `
+    + `(?:Resolved through CourtListener's citation metadata|Reported at ${official.replace(/\./g, '\\.')}, inferred from the citing text)$`);
+
+  test('with the live index, both printings of a parallel run open one case', async ({ page }) => {
+    await page.goto('/check');
+    await page.fill('#check-input', 'Murray v. Hurst, 163 Md. 481, 163 A. 183 (1932).');
+    await page.click('#check-btn');
+
+    await expect(page.locator('#check-cite-list .cited-entry')).toHaveCount(1);
+    await expect(page.locator('#check-cite-list .cited-case')).toHaveText('✓ 163 Md. 481');
+    await expect(page.locator('#check-cite-list .cited-also')).toHaveText(EITHER('163 A. 183', '163 Md. 481'));
+    await expect(page.locator('#check-rendered a.cite-review')).toHaveCount(0);
+    const reprint = page.locator('#check-rendered a.cite-link', { hasText: '163 A. 183' });
+    await page.goto(`/${await reprint.getAttribute('href')}`);
+    await expect(page).toHaveURL(/#md\/163\/481-01$/);
+    await expect(page.locator('#topbar-case')).toHaveText('Murray v. Hurst');
+  });
+
+  test('with the live index, Ray v. Bruce\'s reprint is listed with, and opens, the case it reprints', async ({ page }) => {
+    await page.goto('/#a2d/31/693-01');
+    await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ cited cases? found/);
+    const e = page.locator('#sidebar .cited-entry', { has: page.locator('.cited-case', { hasText: '128 Neb. 783' }) });
+    await expect(e.locator('.cited-also')).toHaveText(EITHER('260 N.W. 287', '128 Neb. 783'));
+    await expect(e.locator('.cited-count')).toHaveText('1×');
+    // Grouped with 128 Neb. 783 by the case it opens (#208), and opening it on its own.
+    const reprint = page.locator('#reader a.cite-link', { hasText: '260 N.W. 287' });
+    await expect(reprint).toHaveAttribute('data-cite-group', await e.getAttribute('data-cite-group'));
+    const href = await reprint.getAttribute('href');
+    await page.goto('/');
+    await page.goto(`/${href}`);
+    await expect(page).toHaveURL(/#neb\/128\/783-01$/);
+    await expect(page.locator('#topbar-case')).toHaveText(/Pettegrew/);
   });
 
   test('printings that open different cases are both shown, flagged for review', async ({ page }) => {
