@@ -86,7 +86,7 @@ function citationStatusParts(caseData, detectedCitations, citationStatus, groups
     const cases = groups || groupCitations(null, detectedCitations);
     listHtml = citedListHtml(cases, caseHref);
     totalCites = cases.length;
-    statusText = citationSummary(detectedCitations);
+    statusText = citationSummary(cases);
   } else {
     listHtml = (caseData.cites_to || [])
       .map(c => {

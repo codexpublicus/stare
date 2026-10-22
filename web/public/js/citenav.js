@@ -7,15 +7,19 @@
 // - An entry's "in text" control goes to the case's first place in the text
 //   and highlights every place; then its previous and next controls, or `[`
 //   and `]` while focus is in the entry, step through them, with an `n of m`
-//   position announced through an aria-live region. A short form is marked
-//   apart from a full citation (`data-cite-form="short"`).
+//   position announced through an aria-live region. A place is where the text
+//   cites the case (#198): the printings of a parallel run (`261 Conn. 941,
+//   808 A.2d 1132`) share a `data-cite-place` and are one place, highlighted
+//   together. A short form is marked apart from a full citation
+//   (`data-cite-form="short"`).
 // - Hovering or focusing a citation in the text highlights its entry.
 // - The filter box narrows the list as the reader types, by case name, any
 //   citation form or reporter, ignoring case and punctuation; status chips
 //   narrow it by citeCategory. Escape clears it.
 //
-// Every place is numbered in text order (`data-cite-n`, from 1), the number
-// the case viewer's `~c=` fragment names (router.js).
+// Every marked citation is numbered in text order (`data-cite-n`, from 1),
+// the number the case viewer's `~c=` fragment names (router.js); going to one
+// goes to the place it is part of.
 
 import { CITE_CATEGORIES, filterTokens, matchesFilter } from './citations.js';
 
@@ -33,14 +37,26 @@ export function attachCiteNav({ list, text, onMove = null }) {
   const ac = new AbortController();
   const on = (el, type, fn) => el.addEventListener(type, fn, { signal: ac.signal });
 
-  const places = [...text.querySelectorAll('[data-cite-group]')];
+  const marked = [...text.querySelectorAll('[data-cite-group]')];
+  // Each group's places in text order, a place being the citations that share a
+  // `data-cite-place` (one alone without it).
   const byGroup = new Map();
-  places.forEach((el, i) => {
+  const placeOf = new Map();
+  marked.forEach((el, i) => {
     el.dataset.citeN = String(i + 1);
     const g = el.dataset.citeGroup;
     if (!byGroup.has(g)) byGroup.set(g, []);
-    byGroup.get(g).push(el);
+    const places = byGroup.get(g);
+    const id = el.dataset.citePlace;
+    let place = id !== undefined ? places.find(p => p.id === id) : null;
+    if (!place) {
+      place = { id, els: [] };
+      places.push(place);
+    }
+    place.els.push(el);
+    placeOf.set(el, place);
   });
+  const elsOf = (group) => (byGroup.get(group) || []).flatMap(p => p.els);
 
   const entries = [...list.querySelectorAll('.cited-entry')];
   const entryOf = new Map(entries.map(e => [e.dataset.citeGroup, e]));
@@ -68,7 +84,7 @@ export function attachCiteNav({ list, text, onMove = null }) {
 
   function clearActive() {
     if (!active) return;
-    for (const el of byGroup.get(active.group) || []) el.classList.remove(PLACE, CURRENT);
+    for (const el of elsOf(active.group)) el.classList.remove(PLACE, CURRENT);
     const e = entryOf.get(active.group);
     if (e) {
       e.classList.remove('cited-entry-active');
@@ -78,26 +94,29 @@ export function attachCiteNav({ list, text, onMove = null }) {
     active = null;
   }
 
-  function describe(el, n, m) {
+  function describe(place, n, m) {
+    const [el] = place.els;
     const short = el.dataset.citeForm === 'short' ? ' (short form)' : '';
     const note = el.closest('.reader-footnote')?.dataset.footnote;
     const where = note !== undefined ? `, in footnote ${note}` : '';
-    return `${n} of ${m}: ${el.textContent.trim()}${short}${where}`;
+    const cited = place.els.map(e => e.textContent.trim()).join(', ');
+    return `${n} of ${m}: ${cited}${short}${where}`;
   }
 
   function activate(group, index) {
-    const els = byGroup.get(group);
-    if (!els?.length) return false;
-    const i = ((index % els.length) + els.length) % els.length;
+    const places = byGroup.get(group);
+    if (!places?.length) return false;
+    const i = ((index % places.length) + places.length) % places.length;
     if (active?.group !== group) {
       clearActive();
-      for (const el of els) el.classList.add(PLACE);
+      for (const el of elsOf(group)) el.classList.add(PLACE);
     } else {
-      els[active.index]?.classList.remove(CURRENT);
+      for (const el of places[active.index]?.els || []) el.classList.remove(CURRENT);
     }
     active = { group, index: i };
-    const el = els[i];
-    el.classList.add(CURRENT);
+    const place = places[i];
+    for (const el of place.els) el.classList.add(CURRENT);
+    const el = place.els[0];
     el.scrollIntoView({ block: 'center' });
     const e = entryOf.get(group);
     if (e) {
@@ -105,9 +124,9 @@ export function attachCiteNav({ list, text, onMove = null }) {
       const step = e.querySelector('.cited-step');
       if (step) step.hidden = false;
       const pos = e.querySelector('.cited-pos');
-      if (pos) pos.textContent = `${i + 1} of ${els.length}`;
+      if (pos) pos.textContent = `${i + 1} of ${places.length}`;
     }
-    live.textContent = describe(el, i + 1, els.length);
+    live.textContent = describe(place, i + 1, places.length);
     onMove?.(Number(el.dataset.citeN));
     return true;
   }
@@ -172,10 +191,10 @@ export function attachCiteNav({ list, text, onMove = null }) {
 
   return {
     goTo(n) {
-      const el = places[n - 1];
+      const el = marked[n - 1];
       if (!el) return false;
       const g = el.dataset.citeGroup;
-      return activate(g, byGroup.get(g).indexOf(el));
+      return activate(g, byGroup.get(g).indexOf(placeOf.get(el)));
     },
     destroy() {
       ac.abort();

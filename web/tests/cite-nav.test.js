@@ -78,15 +78,15 @@ describe('one entry per cited case', () => {
   test('marks each place in the text with its case, and short forms as such', async () => {
     const { html, groups } = await run(text, detected, cases);
     const [g0, g1] = groups.map(g => g.id);
-    const places = [...html.matchAll(/<a data-cite-group="(g\d+)"( data-cite-form="short")? class="cite-link"[^>]*>([^<]*)<\/a>/g)]
-      .map(m => [m[1], !!m[2], m[3]]);
+    const places = [...html.matchAll(/<a data-cite-group="(g\d+)" data-cite-place="(\d+)"( data-cite-form="short")? class="cite-link"[^>]*>([^<]*)<\/a>/g)]
+      .map(m => [m[1], Number(m[2]), !!m[3], m[4]]);
     assert.deepEqual(places, [
-      [g0, false, '31 A.2d 647'],
-      [g1, false, '138 U.S. 529'],
-      [g1, true, 'Id.'],
-      [g0, true, 'supra'],
-      [g1, true, '138 U.S. at 531'],
-      [g1, true, 'Id.'],
+      [g0, 0, false, '31 A.2d 647'],
+      [g1, 1, false, '138 U.S. 529'],
+      [g1, 2, true, 'Id.'],
+      [g0, 3, true, 'supra'],
+      [g1, 4, true, '138 U.S. at 531'],
+      [g1, 5, true, 'Id.'],
     ]);
   });
 
@@ -117,11 +117,15 @@ describe('what goes in one entry', () => {
     const text = 'People v. Smith, 123 Ill. 2d 45, 524 N.E.2d 1 (1988). Id. at 3.';
     const first = cite(text, '123 Ill. 2d 45', { slug: 'ill-2d', volume: 123, page: '45', reporter: 'Ill. 2d', caseName: 'People v. Smith' });
     const second = cite(text, '524 N.E.2d 1', { slug: 'ne2d', volume: 524, page: '1', reporter: 'N.E.2d', caseName: 'People v. Smith', parallelTo: '123 Ill. 2d 45' });
-    const { groups } = await run(text, [first, second, cite(text, 'Id.', { type: 'IdCitation', pin: '3', antecedent: second })],
+    const { groups, html } = await run(text, [first, second, cite(text, 'Id.', { type: 'IdCitation', pin: '3', antecedent: second })],
       { 'ne2d/524/1': true });
+    // The two printings are one place in the text, highlighted together.
+    assert.deepEqual([...html.matchAll(/data-cite-place="(\d+)"[^>]*>([^<]*)</g)].map(m => [m[1], m[2]]),
+      [['0', '123 Ill. 2d 45'], ['0', '524 N.E.2d 1'], ['2', 'Id.']]);
     assert.equal(groups.length, 1);
     assert.equal(groups[0].primary.raw, '524 N.E.2d 1', 'the one stare.pub holds is shown');
-    assert.equal(groups[0].count, 3);
+    // The parallel run is one place, the Id. another (#198).
+    assert.equal(groups[0].count, 2);
     // No case starts at the other's page in a volume stare.pub holds, so it
     // resolves through its partner (#160), and says so.
     assert.match(citedGroupHtml(groups[0], () => '#'),
@@ -171,13 +175,11 @@ describe('what goes in one entry', () => {
     ]);
   });
 
-  test('#160 can merge two entries by key', () => {
-    const a = { raw: '1 A.2d 1', key: '1 A.2d 1', type: 'FullCaseCitation' };
-    const b = { raw: '2 B. 2', key: '2 B. 2', type: 'FullCaseCitation' };
-    assert.equal(groupCitations(null, [a, b]).length, 2);
-    const merged = groupCitations(null, [a, b], [['1 A.2d 1', '2 B. 2']]);
-    assert.equal(merged.length, 1);
-    assert.equal(merged[0].count, null, 'no count without the detected citations');
+  test('spellings of one unresolved citation are one entry; another citation is not (#198)', () => {
+    const miss = (raw, page) => ({ raw, key: raw, type: 'FullCaseCitation', slug: 'a2d', volume: 31, page, volumeHeld: true });
+    const groups = groupCitations(null, [miss('31 A.2d 950', '950'), miss('31 A. 2d 950', '950'), miss('31 A.2d 951', '951')]);
+    assert.deepEqual(groups.map(g => g.members.map(m => m.raw)), [['31 A.2d 950', '31 A. 2d 950'], ['31 A.2d 951']]);
+    assert.equal(groups[0].count, null, 'no count without the detected citations');
   });
 
   test('without counts an entry has no step controls', () => {

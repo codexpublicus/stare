@@ -1,10 +1,13 @@
 // The stare WASM in Node, for tests: the module `mise run build-wasm` (or CI's
 // "Build stare-wasm" step, which runs before the JS tests) writes to
 // web/public/wasm. The site loads it through wasm.js, from '/wasm/', which
-// Node can't fetch; tests hand these functions to the code under test instead.
+// Node can't fetch; tests hand these functions to the code under test instead, and
+// importing this hands the module to groupCitations.
 // Nothing here loads citare's data bundle, so detect_citations isn't usable.
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+
+import { useWasm } from '../public/js/citations.js';
 
 const glueUrl = new URL('../public/wasm/stare_wasm.js', import.meta.url);
 const wasmUrl = new URL('../public/wasm/stare_wasm_bg.wasm', import.meta.url);
@@ -15,6 +18,8 @@ if (!existsSync(fileURLToPath(wasmUrl))) {
 
 export const wasm = await import(glueUrl.href);
 wasm.initSync({ module: readFileSync(wasmUrl) });
+// groupCitations groups through the WASM the site has loaded by then (#198).
+useWasm(wasm);
 
 /** reconcileParallels (web/public/js/citations.js) on this module. */
 export async function reconcile(printings) {

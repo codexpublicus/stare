@@ -11,8 +11,10 @@ import {
   readAs,
   renderTextHtml,
 } from '../public/js/citations.js';
+// groupCitations groups through the stare WASM (#198).
+import './wasm-node.js';
 
-const withoutPlaces = (html) => html.replace(/ data-cite-(?:group|form)="[^"]*"/g, '');
+const withoutPlaces = (html) => html.replace(/ data-cite-(?:group|place|form)="[^"]*"/g, '');
 
 const TEXT = 'Troop A Riding Academy v. Miller, 127 Ohio 545 (1934). Id. at 547.';
 

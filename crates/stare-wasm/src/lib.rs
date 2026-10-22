@@ -164,6 +164,20 @@ pub fn reconcile_parallels(printings: &str) -> Result<String, JsError> {
         .map_err(|e| JsError::new(&e.to_string()))
 }
 
+/// Cited cases (#198): `stare::cited::group`, which `stare check` uses too, for the
+/// site's `groupCitations`. Takes JSON `{ entries, places }`: entries
+/// `{ key, case, citation, antecedent, review }`, places `{ key, parallel_of }` in text
+/// order. Returns `{ groups, entries, places }`: each group `{ members, count }`, each
+/// entry's group, and each place's citing place (null for a key that is no entry's).
+/// Throws on JSON of another shape.
+#[wasm_bindgen]
+pub fn group_citations(input: &str) -> Result<String, JsError> {
+    let input: stare::cited::Input =
+        serde_json::from_str(input).map_err(|e| JsError::new(&e.to_string()))?;
+    serde_json::to_string(&stare::cited::group(&input.entries, &input.places))
+        .map_err(|e| JsError::new(&e.to_string()))
+}
+
 /// List all case filenames in a zip. Returns a JSON array of strings.
 #[wasm_bindgen]
 pub fn list_cases(zip_bytes: &[u8]) -> Result<String, JsError> {

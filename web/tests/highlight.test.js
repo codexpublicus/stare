@@ -8,6 +8,8 @@ import {
   renderTextHtml,
 } from '../public/js/citations.js';
 import { codePointOffset, fakeDetect } from './fake-detect.js';
+// groupCitations groups through the stare WASM (#198).
+import './wasm-node.js';
 
 // Citation info as processCitations produces it, keyed by raw string.
 const RESOLVABLE = { slug: 'us', volume: 123, page: '456', resolvable: true, externalUrl: null };

@@ -1028,6 +1028,8 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
     // don't.
     let mut seen = std::collections::HashSet::new();
     let mut citations = Vec::new();
+    let mut cited = Vec::new();
+    let mut primary_rank = Vec::new();
     for c in &detected {
         // A bare `§` citare can't tie to a code names nothing to look up,
         // and the site neither lists nor counts it.
@@ -1055,6 +1057,18 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
         let partner = partner.filter(|_| status == CheckStatus::FoundPartner);
         let conflicts = own.map(|v| v.conflicts.clone()).unwrap_or_default();
         let target = check_target(c);
+        let resolvable = matches!(
+            status,
+            CheckStatus::Found | CheckStatus::FoundAlias | CheckStatus::FoundPartner
+        );
+        // The case it resolves to (#198): the one its parallel run agrees on (#204), else
+        // the page's first.
+        let case = (resolvable && !c.is_short_form())
+            .then(|| {
+                own.and_then(|v| v.case.clone())
+                    .or_else(|| check_cases(src, c).into_iter().next())
+            })
+            .flatten();
         citations.push(serde_json::json!({
             "raw": c.matched_text, "type": c.citation_type,
             "reporter": target.as_ref().and_then(|t| t.reporter),
@@ -1064,10 +1078,8 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             "pin": c.pin,
             "antecedent": antecedent,
             "status": status.as_str(),
-            "resolvable": matches!(
-                status,
-                CheckStatus::Found | CheckStatus::FoundAlias | CheckStatus::FoundPartner
-            ),
+            "resolvable": resolvable,
+            "case": case,
             "via": via,
             "partner": partner,
             "conflicts": conflicts,
@@ -1076,14 +1088,63 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
                 .filter(|_| status == CheckStatus::External),
             "case_links": target.as_ref().map(|t| t.case_links).unwrap_or(&[]),
         }));
+        cited.push(cited_entry(c, status, case, !conflicts.is_empty()));
+        // The entry a cited case is listed by: a run's preferred printing, an official
+        // reporter's printing found on its own, one found on its own, one found
+        // through its partner, any full citation, in that order.
+        primary_rank.push(match status {
+            _ if c.is_short_form() => 5,
+            _ if own.is_some_and(|v| v.preferred) => 0,
+            CheckStatus::Found | CheckStatus::FoundAlias if c.official => 1,
+            CheckStatus::Found | CheckStatus::FoundAlias => 2,
+            CheckStatus::FoundPartner => 3,
+            _ => 4,
+        });
     }
-    let resolvable_count = citations
+    // Every entry belongs to the full citation it refers to, when that is listed.
+    let full: std::collections::HashSet<String> = cited
         .iter()
-        .filter(|c| c["resolvable"].as_bool().unwrap_or(false))
+        .zip(&primary_rank)
+        .filter(|(_, &rank)| rank < 5)
+        .map(|(e, _)| e.key.clone())
+        .collect();
+    for e in &mut cited {
+        if e.antecedent.as_ref().is_some_and(|a| !full.contains(a)) {
+            e.antecedent = None;
+        }
+    }
+    let places: Vec<stare::cited::Place> = detected
+        .iter()
+        .map(|c| stare::cited::Place {
+            key: cited_key(c),
+            parallel_of: c.parallel_of,
+        })
+        .collect();
+    let grouping = stare::cited::group(&cited, &places);
+    for (c, g) in citations.iter_mut().zip(&grouping.entries) {
+        c["group"] = serde_json::json!(g);
+    }
+    let primaries: Vec<usize> = grouping
+        .groups
+        .iter()
+        .map(|g| {
+            *g.members
+                .iter()
+                .min_by_key(|&&i| primary_rank[i])
+                .unwrap_or(&g.members[0])
+        })
+        .collect();
+    let is_statute =
+        |c: &serde_json::Value| matches!(c["status"].as_str(), Some("statute" | "external"));
+    let statute_count = primaries
+        .iter()
+        .filter(|&&i| is_statute(&citations[i]))
         .count();
-    let statute_count = citations
+    let resolvable_count = primaries
         .iter()
-        .filter(|c| matches!(c["status"].as_str(), Some("statute" | "external")))
+        .filter(|&&i| {
+            !is_statute(&citations[i]) && citations[i]["resolvable"].as_bool() == Some(true)
+        })
         .count();
     // Each parallel run whose citations open different cases, once.
     let review_count = parallels
@@ -1101,69 +1162,146 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             n => format!(", {n} need review"),
         };
         println!(
-            "Found {} case citations ({} resolvable), {} statutes{}\n",
-            citations.len() - statute_count,
+            "Found {} cited cases ({} resolvable), {} statutes{}\n",
+            primaries.len() - statute_count,
             resolvable_count,
             statute_count,
             review
         );
-        for c in &citations {
-            let status = c["status"].as_str().unwrap_or("");
-            let mark = match status {
-                "found" | "found_alias" | "found_partner" => "✓",
-                "external" | "not_held" => "↗",
-                "no_antecedent" => "·",
-                _ => "✗",
-            };
-            print!("  {} {}", mark, c["raw"].as_str().unwrap_or(""));
-            if let Some(a) = c["antecedent"].as_str() {
-                print!("  (refers to {}", a);
-                if let Some(pin) = c["pin"].as_str() {
-                    print!(", at {}", pin);
-                }
-                print!(")");
+        // Resolvable cases first, as the site lists them.
+        let mut order: Vec<usize> = (0..primaries.len()).collect();
+        order.sort_by_key(|&g| {
+            let c = &citations[primaries[g]];
+            match (c["resolvable"].as_bool(), c["status"].as_str()) {
+                (Some(true), _) => 0,
+                (_, Some("external")) => 1,
+                (_, Some("not_held")) => 2,
+                (_, Some("statute")) => 3,
+                _ => 4,
             }
-            match status {
-                "external" => print!("  → {}", c["external_url"].as_str().unwrap_or("")),
-                "held_miss" => print!(
-                    "  → no case found at this page in {} vol. {}",
-                    c["reporter"].as_str().or(c["slug"].as_str()).unwrap_or(""),
-                    c["volume"]
-                ),
-                "found_alias" => {
-                    if let Some(via) = c["via"].as_str() {
-                        print!("  ({})", stare::idx::via_label(via));
-                    }
-                }
-                "found_partner" => {
-                    if let Some(partner) = c["partner"].as_str() {
-                        print!("  (reported at {partner}, inferred from the citing text)");
-                    }
-                }
-                "statute" => print!("  (statute; no free source linked yet)"),
-                // Nothing checks that the case is there (citare#39).
-                "not_held" => {
-                    if let Some(url) = c["case_links"][0]["url"].as_str() {
-                        print!("  → not in stare.pub, may be at {}", url);
-                    }
-                }
-                "no_antecedent" => {
-                    print!("  (refers to an earlier citation that couldn't be identified)")
-                }
-                _ => {}
+        });
+        for g in order {
+            let primary = primaries[g];
+            print!("  ");
+            print_checked(&citations[primary]);
+            match grouping.groups[g].count {
+                0 | 1 => println!(),
+                n => println!("  ({n}× in the text)"),
             }
-            if let Some(others) = c["conflicts"].as_array().filter(|o| !o.is_empty()) {
-                let others: Vec<&str> = others.iter().filter_map(|o| o.as_str()).collect();
-                print!(
-                    "  (cited in parallel with {}, which {} a different case; needs review)",
-                    others.join(" and "),
-                    if others.len() > 1 { "open" } else { "opens" }
-                );
+            for &i in grouping.groups[g].members.iter().filter(|&&i| i != primary) {
+                print!("      ");
+                print_checked(&citations[i]);
+                println!();
             }
-            println!();
         }
     }
     Ok(())
+}
+
+// The key `stare check` lists a citation under: its string, and a short form's
+// antecedent's.
+fn cited_key(c: &stare::cite::DetectedCitation) -> String {
+    match &c.antecedent {
+        Some(a) => format!("{}\u{2192}{}", c.matched_text, a.matched_text),
+        None => c.matched_text.clone(),
+    }
+}
+
+/// What [`stare::cited::group`] reads of a listed citation: the case it resolves to, else
+/// its normalized citation, the full citation a short form refers to, and whether it
+/// needs review.
+fn cited_entry(
+    c: &stare::cite::DetectedCitation,
+    status: CheckStatus,
+    case: Option<String>,
+    review: bool,
+) -> stare::cited::Cited {
+    let key = cited_key(c);
+    if c.is_short_form() {
+        // A pinned `Id.` to a statute is another section, with a status of its own.
+        let own = status == CheckStatus::Statute && c.pin.is_some();
+        let antecedent = c
+            .antecedent
+            .as_ref()
+            .filter(|_| !own)
+            .map(|a| a.matched_text.clone());
+        return stare::cited::Cited {
+            key,
+            antecedent,
+            ..Default::default()
+        };
+    }
+    let citation = case.is_none().then(|| {
+        let t = check_target(c)?;
+        if t.law || t.external_url.is_some() {
+            return None;
+        }
+        let page = stare::idx::page_text(&cited_page(t.page?)?);
+        Some(format!("{}/{}/{}", t.slug?, t.volume?, page))
+    });
+    stare::cited::Cited {
+        key,
+        case,
+        citation: citation.flatten(),
+        antecedent: None,
+        review,
+    }
+}
+
+/// One listed citation's line in `stare check`, without the newline.
+fn print_checked(c: &serde_json::Value) {
+    let status = c["status"].as_str().unwrap_or("");
+    let mark = match status {
+        "found" | "found_alias" | "found_partner" => "✓",
+        "external" | "not_held" => "↗",
+        "no_antecedent" => "·",
+        _ => "✗",
+    };
+    print!("{} {}", mark, c["raw"].as_str().unwrap_or(""));
+    if let Some(a) = c["antecedent"].as_str() {
+        print!("  (refers to {}", a);
+        if let Some(pin) = c["pin"].as_str() {
+            print!(", at {}", pin);
+        }
+        print!(")");
+    }
+    match status {
+        "external" => print!("  → {}", c["external_url"].as_str().unwrap_or("")),
+        "held_miss" => print!(
+            "  → no case found at this page in {} vol. {}",
+            c["reporter"].as_str().or(c["slug"].as_str()).unwrap_or(""),
+            c["volume"]
+        ),
+        "found_alias" => {
+            if let Some(via) = c["via"].as_str() {
+                print!("  ({})", stare::idx::via_label(via));
+            }
+        }
+        "found_partner" => {
+            if let Some(partner) = c["partner"].as_str() {
+                print!("  (reported at {partner}, inferred from the citing text)");
+            }
+        }
+        "statute" => print!("  (statute; no free source linked yet)"),
+        // Nothing checks that the case is there (citare#39).
+        "not_held" => {
+            if let Some(url) = c["case_links"][0]["url"].as_str() {
+                print!("  → not in stare.pub, may be at {}", url);
+            }
+        }
+        "no_antecedent" => {
+            print!("  (refers to an earlier citation that couldn't be identified)")
+        }
+        _ => {}
+    }
+    if let Some(others) = c["conflicts"].as_array().filter(|o| !o.is_empty()) {
+        let others: Vec<&str> = others.iter().filter_map(|o| o.as_str()).collect();
+        print!(
+            "  (cited in parallel with {}, which {} a different case; needs review)",
+            others.join(" and "),
+            if others.len() > 1 { "open" } else { "opens" }
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1729,6 +1867,63 @@ mod tests {
         let alone = stare::cite::detect_citations("See 128 Neb. 783. See 260 N.W. 287.");
         let v = reconcile_parallels(&alone, |_| unreachable!(), |_| unreachable!());
         assert!(v.is_empty());
+    }
+
+    /// #198 in `stare check`: one entry per cited case, its printings, its short forms and
+    /// spellings of an unresolved citation together, counted by the places that cite it.
+    #[test]
+    fn check_groups_citations_by_case() {
+        let detected = stare::cite::detect_citations(
+            "Pettegrew v. Pettegrew, 128 Neb. 783, 260 N.W. 287 (1935). \
+             See Barney v. Oelrichs, 138 U.S. 529 (1891). Id. at 533. \
+             See 31 A.2d 950; 31 A. 2d 950.",
+        );
+        let mut seen = std::collections::HashSet::new();
+        let entries: Vec<stare::cited::Cited> = detected
+            .iter()
+            .filter(|c| seen.insert(cited_key(c)))
+            .map(|c| match c.matched_text.as_str() {
+                "128 Neb. 783" => {
+                    cited_entry(c, CheckStatus::Found, Some("neb/128/783".into()), false)
+                }
+                "260 N.W. 287" => cited_entry(
+                    c,
+                    CheckStatus::FoundPartner,
+                    Some("neb/128/783".into()),
+                    false,
+                ),
+                "138 U.S. 529" => {
+                    cited_entry(c, CheckStatus::Found, Some("us/138/529".into()), false)
+                }
+                "Id." => cited_entry(c, CheckStatus::Found, None, false),
+                _ => cited_entry(c, CheckStatus::HeldMiss, None, false),
+            })
+            .collect();
+        let places: Vec<stare::cited::Place> = detected
+            .iter()
+            .map(|c| stare::cited::Place {
+                key: cited_key(c),
+                parallel_of: c.parallel_of,
+            })
+            .collect();
+        let g = stare::cited::group(&entries, &places);
+        let listed: Vec<(Vec<&str>, usize)> = g
+            .groups
+            .iter()
+            .map(|g| {
+                let keys = g.members.iter().map(|&i| entries[i].key.as_str());
+                (keys.collect(), g.count)
+            })
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                (vec!["128 Neb. 783", "260 N.W. 287"], 1),
+                (vec!["138 U.S. 529", "Id.\u{2192}138 U.S. 529"], 2),
+                (vec!["31 A.2d 950", "31 A. 2d 950"], 2),
+            ]
+        );
+        assert_eq!(entries[4].citation.as_deref(), Some("a2d/31/950"));
     }
 
     #[test]

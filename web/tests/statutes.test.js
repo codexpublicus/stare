@@ -14,6 +14,7 @@ import {
   citationCounts,
   citationSummary,
   citedCaseHtml,
+  groupCitations,
   isSectionReference,
   isStatute,
   orderCitedCases,
@@ -21,10 +22,12 @@ import {
   refersTo,
   renderTextHtml,
 } from '../public/js/citations.js';
+// groupCitations groups through the stare WASM (#198).
+import './wasm-node.js';
 
 // The place-in-the-text attributes (#159) are tested in cite-nav.test.js;
 // these tests read the rest of the markup.
-const withoutPlaces = (html) => html.replace(/ data-cite-(?:group|form)="[^"]*"/g, '');
+const withoutPlaces = (html) => html.replace(/ data-cite-(?:group|place|form)="[^"]*"/g, '');
 
 // A detected citation in the shape detectCitations returns, located in
 // `text` by its raw string, the first at or after `from`.
@@ -146,14 +149,15 @@ describe('bare section references', () => {
 describe('counts', () => {
   test('separate cases from statutes, leave out section references', async () => {
     const { unique } = await render();
-    assert.deepEqual(citationCounts(unique), { cases: 2, resolvable: 1, statutes: 3, other: 1, review: 0 });
-    assert.equal(citationSummary(unique), '2 case citations found (1 resolvable), 3 statutes, 1 other');
+    const groups = groupCitations(null, unique);
+    assert.deepEqual(citationCounts(groups), { cases: 2, resolvable: 1, statutes: 3, other: 1, review: 0 });
+    assert.equal(citationSummary(groups), '2 cited cases found (1 resolvable), 3 statutes, 1 other');
   });
 
   test('say only what there is', () => {
-    assert.equal(citationSummary([{ raw: '138 U.S. 529', type: 'FullCaseCitation', resolvable: true }]),
-      '1 case citation found (1 resolvable)');
-    assert.equal(citationSummary([]), '0 case citations found (0 resolvable)');
+    assert.equal(citationSummary(groupCitations(null, [{ raw: '138 U.S. 529', type: 'FullCaseCitation', resolvable: true }])),
+      '1 cited case found (1 resolvable)');
+    assert.equal(citationSummary([]), '0 cited cases found (0 resolvable)');
   });
 });
 

@@ -32,7 +32,7 @@ describe('the WASM export reconcile_parallels', () => {
   }
 });
 
-const withoutPlaces = (html) => html.replace(/ data-cite-(?:group|form)="[^"]*"/g, '');
+const withoutPlaces = (html) => html.replace(/ data-cite-(?:group|place|form)="[^"]*"/g, '');
 
 // A detected citation in the shape detectCitations returns, located in `text` by its
 // raw string.
@@ -105,7 +105,10 @@ describe('a member stare.pub doesn\'t hold', () => {
     assert.equal(groups[0].category, 'held');
     assert.match(citedGroupHtml(groups[0], (c) => `#${c.slug}/${c.volume}/${c.page}`),
       /Also cited as 260 N\.W\. 287 <span class="cited-also-note">Reported at 128 Neb\. 783, inferred from the citing text<\/span>/);
-    assert.equal(citationSummary(checked), '3 case citations found (3 resolvable)');
+    // One case, cited at two places: the run, and the Id. (#198).
+    assert.equal(groups[0].count, 2);
+    assert.equal(checked.length, 3);
+    assert.equal(citationSummary(groups), '1 cited case found (1 resolvable)');
   });
 
   test('without a partner in the text, it still links out', async () => {
@@ -169,7 +172,10 @@ describe('members that open different cases', () => {
       /^<a class="cite-link cite-review" href="#pa\/345\/1"[^>]*title="345 Pa\. 1\. Cited in parallel with 31 A\.2d 650, which opens a different case; needs review"/);
     assert.match(citedGroupHtml(groups[1], () => '#'),
       /<span class="cited-lookup cited-review">Cited in parallel with 345 Pa\. 1, which opens a different case; needs review<\/span>/);
-    assert.equal(citationSummary(checked), '3 case citations found (2 resolvable), 1 needs review');
+    assert.equal(checked.length, 3);
+    assert.equal(citationSummary(groups), '3 cited cases found (2 resolvable), 1 needs review');
+    // Each case flagged counts the run's place once.
+    assert.deepEqual(groups.map(g => g.count), [1, 1, 1]);
     assert.equal(citeCategory(checked[0]), 'review');
   });
 

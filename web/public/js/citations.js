@@ -98,7 +98,7 @@ function fromRust(c) {
  * these offsets.
  */
 export async function detectCitations(text) {
-  const w = await loadWasm();
+  const w = useWasm(await loadWasm());
   return citationsFromRust(JSON.parse(w.detect_citations(text)));
 }
 
@@ -114,8 +114,31 @@ export async function detectCitations(text) {
  * load.
  */
 export async function reconcileParallels(printings) {
-  const w = await loadWasm();
+  const w = useWasm(await loadWasm());
   return JSON.parse(w.reconcile_parallels(JSON.stringify(printings)));
+}
+
+// The stare WASM once loaded, for groupCitations, which is synchronous: anything that
+// groups has detected or reconciled citations through the WASM first.
+let loadedWasm = null;
+
+/**
+ * Remember the loaded stare WASM module `w` for groupCitations, and return it. The
+ * site's own loads call it; tests, which load the module in Node, hand it in.
+ */
+export function useWasm(w) {
+  loadedWasm = w;
+  return w;
+}
+
+/**
+ * Cited cases (#198): `stare::cited::group`, which `stare check` uses too, through
+ * the WASM. `input` is `{ entries, places }` (see groupCitations); returns
+ * `{ groups, entries, places }`. Throws if the WASM isn't loaded.
+ */
+export function groupByCase(input) {
+  if (!loadedWasm) throw new Error('groupCitations needs the stare WASM loaded first');
+  return JSON.parse(loadedWasm.group_citations(JSON.stringify(input)));
 }
 
 /** The WASM's `detect_citations` output, parsed, as detectCitations returns it. */
@@ -596,7 +619,7 @@ export function conflictNote(c) {
  *   short form's raw string and antecedent), with availability (`slug`,
  *   `resolvable`) resolved; the sidebar's list.
  * - `occurrencesByOpinion`: for each opinion in `casebody.opinions`, in
- *   order, every detected occurrence as `{ raw, key, pin, start, end }`,
+ *   order, every detected occurrence as `{ raw, key, pin, start, end, place }`,
  *   where `start`/`end` are code point offsets into that opinion's `text`.
  *   The reader highlights from these, looking each `key` up in `unique`.
  * - `groups`: groupCitations' cited cases, one per case, for the lists.
@@ -612,21 +635,28 @@ export async function processCitations(
   reconcile = reconcileParallels,
 ) {
   const allCites = [];
-  const occurrencesByOpinion = [];
+  const byOpinion = [];
 
   for (const op of caseData.casebody?.opinions || []) {
     const detected = await detect(op.text);
     allCites.push(...detected);
-    occurrencesByOpinion.push(detected.map(c => occurrence(c)));
+    byOpinion.push(detected);
   }
 
   const unique = await checkCitations(allCites, check, pageCheck, reconcile);
-  return { unique, occurrencesByOpinion, groups: groupCitations(allCites, unique) };
+  // Grouping numbers each citation's place in the text, which the occurrences carry.
+  const groups = groupCitations(allCites, unique);
+  const occurrencesByOpinion = byOpinion.map(detected => detected.map(c => occurrence(c)));
+  return { unique, occurrencesByOpinion, groups };
 }
 
-/** One detected citation as the renderers place it: `{ raw, key, pin, start, end }`. */
+/**
+ * One detected citation as the renderers place it: `{ raw, key, pin, start, end,
+ * place }`, `place` the citing place groupCitations numbered it with (#198: the
+ * printings of a parallel run share one), or null before grouping.
+ */
 export function occurrence(c) {
-  return { raw: c.raw, key: citationKey(c), pin: c.pin || null, start: c.start, end: c.end };
+  return { raw: c.raw, key: citationKey(c), pin: c.pin || null, start: c.start, end: c.end, place: c.place ?? null };
 }
 
 // ---------------------------------------------------------------------------
@@ -767,14 +797,16 @@ export function refersTo(info, pin = info?.pin) {
  * first page) and says what it refers to in its title. A pin page is
  * linked as `@1023` after the case, which the case view scrolls to.
  */
-function citationHtml(raw, inner, info, pin = info.pin) {
+function citationHtml(raw, inner, info, pin = info.pin, place = null) {
   const html = citationElementHtml(raw, inner, info, pin);
   // Its place among the cited case's appearances (#159): the group it is
-  // listed under, and whether it is a short form, which the highlight marks
-  // apart from a full citation.
+  // listed under, the citing place it is part of (#198: a parallel run's
+  // printings are one), and whether it is a short form, which the highlight
+  // marks apart from a full citation.
   if (!info.group || isSectionReference(info)) return html;
   const form = isShortForm(info) ? ' data-cite-form="short"' : '';
-  return html.replace(/^<(a|span) /, `<$1 data-cite-group="${escapeHtml(info.group)}"${form} `);
+  const at = place != null ? ` data-cite-place="${escapeHtml(String(place))}"` : '';
+  return html.replace(/^<(a|span) /, `<$1 data-cite-group="${escapeHtml(info.group)}"${at}${form} `);
 }
 
 function citationElementHtml(raw, inner, info, pin) {
@@ -1003,96 +1035,52 @@ export function matchesFilter(search, tokens) {
 }
 
 /**
- * The cited cases in a text: checkCitations' entries (`checked`) gathered
- * one group per case, in order of first appearance. A group holds every
- * full citation of the case, a parallel citation of it among them (citare's
- * reading of `123 Ill. 2d 45, 524 N.E.2d 1`, the detected citation's
- * `parallelTo`), any other citation that opens the same case
- * (caseIdentity), and the short forms whose antecedent is one of those
- * (`Id.`, `supra`, short cites). A short form to a statute with a pin of its
- * own (`Id. § 1985`) is a different section and stays apart, as does one
- * with no antecedent. Bare section references aren't grouped.
+ * The cited cases in a text (#159, #198): checkCitations' entries (`checked`)
+ * gathered one group per case, in order of first appearance, by
+ * `stare::cited::group` (groupByCase, the WASM's, unless a test injects one). A
+ * group holds every citation that resolves to one case (caseIdentity): its
+ * printings, a parallel citation resolved through its partner, an alias; the
+ * members of a parallel run (citare's reading of `123 Ill. 2d 45, 524 N.E.2d 1`,
+ * the detected citation's `parallelTo`) unless reconciliation flagged them for
+ * review, which stay apart; and the short forms whose antecedent is one of those
+ * (`Id.`, `supra`, short cites). A citation that resolves to nothing groups by its
+ * reporter, volume and page, so spellings of it meet. A short form to a statute
+ * with a pin of its own (`Id. § 1985`) is a different section and stays apart, as
+ * does one with no antecedent. Bare section references aren't grouped.
  *
  * `detected` is every detected citation (detectCitations' output, across
- * opinions), for the parallels and the count; null leaves both out.
- * `sameCase` is more `[a, b]` pairs of entry keys (a full citation's key is
- * its raw string) to put in one group; parallel-citation reconciliation
- * (#160) adds its pairs here, and the groups merge with no other change.
+ * opinions), for the parallels and the count; null leaves both out. Each gets
+ * `place`, its citing place in the text: the printings of a parallel run share
+ * one, which the text's citations carry as `data-cite-place`.
  *
  * Each group is `{ id, members, primary, count, search, category }`: `id`
- * is `g0`, `g1`, ...; `members` its entries in order; `primary` the one
- * the list shows (the first that stare.pub holds, else the first full
- * citation, else the first entry); `count` how many places in the text cite
- * it (null without `detected`); `search` the filter's text for it (every
- * citation form, the reporters, and the case names the text gives); and
- * `category` citeCategory of the primary. Every entry also gets `group`,
- * its group's id, which the text's citations carry as `data-cite-group`.
+ * is `g0`, `g1`, ...; `members` its entries in order; `primary` the one the
+ * list shows (a parallel run's preferred printing, else an official
+ * reporter's that stare.pub holds, else the first it holds, else the first
+ * full citation, else the first entry); `count` how many places in the text
+ * cite it, a parallel run one place and each short form one more (null
+ * without `detected`); `search` the filter's text for it (every citation
+ * form, the reporters, and the case names the text gives); and `category`
+ * citeCategory of the primary. Every entry also gets `group`, its group's
+ * id, which the text's citations carry as `data-cite-group`.
  */
-export function groupCitations(detected, checked, sameCase = []) {
-  const parent = new Map();
-  const add = (x) => { if (!parent.has(x)) parent.set(x, x); return x; };
-  const find = (x) => {
-    add(x);
-    while (parent.get(x) !== x) {
-      parent.set(x, parent.get(parent.get(x)));
-      x = parent.get(x);
-    }
-    return x;
-  };
-  const union = (a, b) => {
-    const [ra, rb] = [find(a), find(b)];
-    if (ra !== rb) parent.set(rb, ra);
-  };
+export function groupCitations(detected, checked, group = groupByCase) {
   const keyOf = (c) => c.key ?? c.raw;
   const entries = (checked || []).filter(c => !isSectionReference(c));
   const fullKeys = new Set(entries.filter(c => !isShortForm(c)).map(keyOf));
-  const conflicting = new Set(entries.filter(c => c.conflicts?.length).map(keyOf));
+  const lastAt = new Map();
+  const places = (detected || []).map((c, i) => {
+    const parallelOf = c.parallelTo && lastAt.has(c.parallelTo) ? lastAt.get(c.parallelTo) : null;
+    lastAt.set(c.raw, i);
+    return { key: citationKey(c), parallel_of: parallelOf };
+  });
+  const out = group({ entries: entries.map(c => groupEntry(c, fullKeys)), places });
 
-  for (const c of entries) {
-    const key = keyOf(c);
-    add(`k:${key}`);
-    if (isShortForm(c)) {
-      // A short form joins its antecedent's case unless its status is its
-      // own (inheritStatus: a pinned short form of a linked statute).
-      const own = safeExternalUrl(c.antecedent?.externalUrl) && c.pin;
-      if (c.antecedent && !own && fullKeys.has(c.antecedent.raw)) union(`k:${c.antecedent.raw}`, `k:${key}`);
-      continue;
-    }
-    const id = caseIdentity(c);
-    if (id) union(`case:${id}`, `k:${key}`);
-  }
-  for (const c of detected || []) {
-    // Parallel citations that open different cases stay apart (#160): the
-    // index overrides citare's reading of the text.
-    if (c.parallelTo && fullKeys.has(c.raw) && fullKeys.has(c.parallelTo)
-      && !conflicting.has(c.raw) && !conflicting.has(c.parallelTo)) union(`k:${c.parallelTo}`, `k:${c.raw}`);
-  }
-  for (const [a, b] of sameCase || []) {
-    if (parent.has(`k:${a}`) && parent.has(`k:${b}`)) union(`k:${a}`, `k:${b}`);
-  }
-
-  const byRoot = new Map();
-  const groups = [];
-  for (const c of entries) {
-    const root = find(`k:${keyOf(c)}`);
-    if (!byRoot.has(root)) {
-      const g = { id: `g${groups.length}`, members: [] };
-      byRoot.set(root, g);
-      groups.push(g);
-    }
-    const g = byRoot.get(root);
-    g.members.push(c);
-    c.group = g.id;
-  }
+  const groups = out.groups.map((g, i) => ({ id: `g${i}`, members: g.members.map(j => entries[j]), count: g.count }));
+  entries.forEach((c, j) => { c.group = groups[out.entries[j]].id; });
+  (detected || []).forEach((c, i) => { c.place = out.places[i] ?? null; });
 
   const groupOfKey = new Map(entries.map(c => [keyOf(c), c.group]));
-  const counts = new Map();
-  if (detected) {
-    for (const c of detected) {
-      const g = groupOfKey.get(citationKey(c));
-      if (g) counts.set(g, (counts.get(g) || 0) + 1);
-    }
-  }
   const names = new Map();
   for (const c of detected || []) {
     if (c.caseName && fullKeys.has(c.raw)) {
@@ -1104,11 +1092,13 @@ export function groupCitations(detected, checked, sameCase = []) {
 
   for (const g of groups) {
     const full = g.members.filter(m => !isShortForm(m));
-    // A parallel run's preferred printing (#160), else a citation stare.pub
-    // holds on its own, else one resolved through its partner.
-    g.primary = full.find(m => m.preferred) || full.find(m => m.resolvable && !m.partner)
+    const own = (m) => m.resolvable && !m.partner;
+    // A parallel run's preferred printing (#160), else the official reporter's
+    // printing stare.pub holds on its own, else any it holds on its own, else one
+    // resolved through its partner.
+    g.primary = full.find(m => m.preferred) || full.find(m => own(m) && m.official) || full.find(own)
       || full.find(m => m.resolvable) || full[0] || g.members[0];
-    g.count = detected ? counts.get(g.id) || 0 : null;
+    if (!detected) g.count = null;
     g.category = citeCategory(g.primary);
     const words = [];
     for (const m of g.members) {
@@ -1118,6 +1108,28 @@ export function groupCitations(detected, checked, sameCase = []) {
     g.search = searchText([...new Set(words.filter(Boolean))].join(' '));
   }
   return groups;
+}
+
+// One entry as stare::cited::group reads it: `{ key, case, citation, antecedent, review }`.
+function groupEntry(c, fullKeys) {
+  const key = c.key ?? c.raw;
+  if (isShortForm(c)) {
+    // A short form joins its antecedent's case unless its status is its own
+    // (inheritStatus: a pinned short form of a linked statute).
+    const own = safeExternalUrl(c.antecedent?.externalUrl) && c.pin;
+    const antecedent = c.antecedent && !own && fullKeys.has(c.antecedent.raw) ? c.antecedent.raw : null;
+    return { key, case: null, citation: null, antecedent, review: false };
+  }
+  const id = caseIdentity(c);
+  return { key, case: id, citation: id ? null : citedForm(c), antecedent: null, review: Boolean(c.conflicts?.length) };
+}
+
+// A case citation that doesn't resolve, normalized (`a2d/31/950`), or null.
+function citedForm(c) {
+  if (isStatute(c) || c.externalUrl || c.volume == null || !c.page) return null;
+  const slug = c.slug || (c.reporter ? guessSlug(c.reporter) : null);
+  const page = citedPage(c.page);
+  return slug && page !== null ? `${slug}/${c.volume}/${page}` : null;
 }
 
 /**
@@ -1169,20 +1181,22 @@ export function citedListHtml(groups, caseHref, caseRel = 'noopener') {
 }
 
 /**
- * Counts for a list of checked citations (checkCitations' entries), with
- * statutes apart from cases: `{ cases, resolvable, statutes, other,
- * review }`. `cases` counts case citations and short forms that don't
- * refer to a statute, `resolvable` those of them stare.pub holds (one
- * resolved through its parallel partner among them, #160), `statutes`
- * statutes and regulations, linked or not, and `other` anything else
- * citare names (law reviews). `review` counts the parallel runs whose
- * citations open different cases. Bare section references aren't counted.
+ * Counts for the cited cases in a list (groupCitations' groups, #198), with
+ * statutes apart from cases: `{ cases, resolvable, statutes, other, review }`.
+ * `cases` counts the cases cited, by full citation or short form,
+ * `resolvable` those stare.pub opens (one resolved through its parallel
+ * partner among them, #160), `statutes` statutes and regulations, linked or
+ * not, and `other` anything else citare names (law reviews); each by its
+ * group's primary citation. `review` counts the parallel runs whose citations
+ * open different cases. Bare section references aren't counted.
  */
-export function citationCounts(citations) {
+export function citationCounts(groups) {
   const n = { cases: 0, resolvable: 0, statutes: 0, other: 0, review: 0 };
-  n.review = new Set((citations || []).filter(c => c.conflicts?.length).map(c => c.conflictRun ?? c.raw)).size;
-  for (const c of citations || []) {
-    if (isSectionReference(c)) continue;
+  const members = (groups || []).flatMap(g => g.members || []);
+  n.review = new Set(members.filter(c => c.conflicts?.length).map(c => c.conflictRun ?? c.raw)).size;
+  for (const g of groups || []) {
+    const c = g.primary;
+    if (!c || isSectionReference(c)) continue;
     if (isStatute(c) || safeExternalUrl(c.externalUrl)) n.statutes++;
     else if (c.type === 'FullJournalCitation') n.other++;
     else {
@@ -1196,13 +1210,13 @@ export function citationCounts(citations) {
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 /**
- * "3 case citations found (2 resolvable), 1 statute, 1 needs review", from
- * citationCounts; the statute, other and review parts only when there are
- * any.
+ * "3 cited cases found (2 resolvable), 1 statute, 1 needs review", from
+ * citationCounts over groupCitations' groups; the statute, other and review
+ * parts only when there are any.
  */
-export function citationSummary(citations) {
-  const n = citationCounts(citations);
-  let text = `${plural(n.cases, 'case citation', 'case citations')} found (${n.resolvable} resolvable)`;
+export function citationSummary(groups) {
+  const n = citationCounts(groups);
+  let text = `${plural(n.cases, 'cited case', 'cited cases')} found (${n.resolvable} resolvable)`;
   if (n.statutes) text += `, ${plural(n.statutes, 'statute', 'statutes')}`;
   if (n.other) text += `, ${n.other} other`;
   if (n.review) text += `, ${n.review} ${n.review === 1 ? 'needs' : 'need'} review`;
@@ -1240,7 +1254,7 @@ export function renderParagraphHtml(text, paragraphStart, occurrences, citationM
     const from = utf16At[o.start];
     const to = utf16At[o.end];
     html += formatPlain(text.slice(utf16At[cursor], from));
-    html += citationHtml(o.raw, formatPlain(text.slice(from, to)), citationMap.get(o.key ?? o.raw), o.pin);
+    html += citationHtml(o.raw, formatPlain(text.slice(from, to)), citationMap.get(o.key ?? o.raw), o.pin, o.place);
     cursor = o.end;
   }
   html += formatPlain(text.slice(utf16At[cursor]));

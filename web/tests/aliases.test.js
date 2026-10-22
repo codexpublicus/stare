@@ -8,10 +8,12 @@ import assert from 'node:assert/strict';
 
 import {
   ALIASES_ONLY, aliasNoteHtml, caseLookupLinks, checkAvailability, checkCitation, checkPage,
-  citationCounts, citedCaseHtml, heldVolumeMiss, inheritStatus, pageResult, renderTextHtml, viaLabel,
+  citationCounts, citedCaseHtml, groupCitations, heldVolumeMiss, inheritStatus, pageResult, renderTextHtml, viaLabel,
 } from '../public/js/citations.js';
 import { idxEntries } from '../public/js/idx.js';
 import { hasAliasVolume, holdsVolume, normalizeManifest } from '../public/js/manifest.js';
+// groupCitations groups through the stare WASM (#198).
+import './wasm-node.js';
 
 const H1 = '0f3a9c2e7b1d4a65';
 
@@ -115,7 +117,7 @@ describe('checkCitation with aliases', () => {
     assert.equal(info.via, 'cl:8077312');
     assert.deepEqual(info.aliasOf, { slug: 'neb', folder: '128', caseFile: '0783-01' });
     assert.deepEqual(caseLookupLinks(info), []);
-    assert.equal(citationCounts([info]).resolvable, 1);
+    assert.equal(citationCounts(groupCitations(null, [info])).resolvable, 1);
   });
 
   test('a miss there is a volume stare.pub doesn\'t hold, linked out', async () => {
