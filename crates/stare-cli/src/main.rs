@@ -1121,8 +1121,13 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
         })
         .collect();
     let grouping = stare::cited::group(&cited, &places);
-    for (c, g) in citations.iter_mut().zip(&grouping.entries) {
+    for ((c, g), n) in citations
+        .iter_mut()
+        .zip(&grouping.entries)
+        .zip(&grouping.entry_counts)
+    {
         c["group"] = serde_json::json!(g);
+        c["count"] = serde_json::json!(n);
     }
     let primaries: Vec<usize> = grouping
         .groups
@@ -1182,15 +1187,18 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
         });
         for g in order {
             let primary = primaries[g];
+            let members = &grouping.groups[g].members;
+            // Each form's own places, when the case was cited in more than one.
+            let form_count = |i: usize| (members.len() > 1).then(|| grouping.entry_counts[i]);
             print!("  ");
-            print_checked(&citations[primary]);
+            print_checked(&citations[primary], form_count(primary));
             match grouping.groups[g].count {
                 0 | 1 => println!(),
                 n => println!("  ({n}× in the text)"),
             }
-            for &i in grouping.groups[g].members.iter().filter(|&&i| i != primary) {
+            for &i in members.iter().filter(|&&i| i != primary) {
                 print!("      ");
-                print_checked(&citations[i]);
+                print_checked(&citations[i], form_count(i));
                 println!();
             }
         }
@@ -1248,8 +1256,9 @@ fn cited_entry(
     }
 }
 
-/// One listed citation's line in `stare check`, without the newline.
-fn print_checked(c: &serde_json::Value) {
+/// One listed citation's line in `stare check`, without the newline: with `form_count`,
+/// the places that cite its case in this form (`261 Conn. 941 (1×)`).
+fn print_checked(c: &serde_json::Value, form_count: Option<usize>) {
     let status = c["status"].as_str().unwrap_or("");
     let mark = match status {
         "found" | "found_alias" | "found_partner" => "✓",
@@ -1258,6 +1267,9 @@ fn print_checked(c: &serde_json::Value) {
         _ => "✗",
     };
     print!("{} {}", mark, c["raw"].as_str().unwrap_or(""));
+    if let Some(n) = form_count {
+        print!(" ({n}×)");
+    }
     if let Some(a) = c["antecedent"].as_str() {
         print!("  (refers to {}", a);
         if let Some(pin) = c["pin"].as_str() {
@@ -1924,6 +1936,8 @@ mod tests {
             ]
         );
         assert_eq!(entries[4].citation.as_deref(), Some("a2d/31/950"));
+        // Each form's own places: the run once for each printing.
+        assert_eq!(g.entry_counts, [1, 1, 1, 1, 1, 1]);
     }
 
     #[test]

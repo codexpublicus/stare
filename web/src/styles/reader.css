@@ -128,13 +128,14 @@
 .cite-place.cite-place-current { background: var(--status-text); color: var(--bg); box-shadow: 0 0 0 2px var(--status-text); }
 .cite-place[data-cite-form="short"].cite-place-current { background: transparent; color: var(--status-text); outline: 2px solid var(--status-text); box-shadow: none; }
 
-/* One cited case in a list: its citation's entry, its other citations, and
+/* One cited case in a list: its citation's entry, its other forms, and
    the controls that go to where the text cites it. */
 .cited-entry { padding: 2px 4px; margin: 0 -4px; border-radius: 4px; }
 .cited-entry > .cited-case { border-top: 0; }
 .cited-entry.cited-entry-hover, .cited-entry.cited-entry-active { background: var(--status-bg); }
 .cited-also { padding: 0 0 4px 20px; font-size: 12px; color: var(--text-secondary); }
 .cited-also-note::before { content: "· "; }
+.cited-form-count { font-size: 12px; font-weight: normal; color: var(--text-secondary); font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
 .cited-nav { display: flex; align-items: center; gap: 6px; padding: 0 0 6px 20px; font-size: 12px; color: var(--text-secondary); }
 .cited-nav button { font: inherit; color: var(--link); background: none; border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; cursor: pointer; }
 .cited-nav button:hover { border-color: var(--link); }

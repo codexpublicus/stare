@@ -14,7 +14,9 @@
 //! as a run) is one entry, and doesn't join the second run's other case to the first.
 //!
 //! A group's count is the places in the text that cite it: a parallel run is one place,
-//! and each short form one more.
+//! and each short form one more. Each entry has a count of its own, the places that cite
+//! the case in that form: a run counts once for each of its printings, and a short form
+//! where it appears.
 //!
 //! This is the only implementation: `stare check` calls [`group`] directly, and the site
 //! through the WASM export `group_citations` (`crates/stare-wasm`).
@@ -77,6 +79,9 @@ pub struct Grouping {
     /// first citation (its own index outside a run); None for a place whose key is no
     /// entry's.
     pub places: Vec<Option<usize>>,
+    /// Each entry's own count: the citing places with a citation in its form, a parallel
+    /// run once.
+    pub entry_counts: Vec<usize>,
 }
 
 /// The WASM export's input: `{ entries, places }`.
@@ -168,6 +173,8 @@ pub fn group(entries: &[Cited], places: &[Place]) -> Grouping {
     let mut heads: Vec<usize> = Vec::with_capacity(places.len());
     let mut out = Vec::with_capacity(places.len());
     let mut counted: Vec<(usize, usize)> = Vec::new();
+    let mut entry_counts = vec![0; n];
+    let mut entry_counted: Vec<(usize, usize)> = Vec::new();
     for (p, place) in places.iter().enumerate() {
         let head = match place.parallel_of.filter(|&q| q < p) {
             Some(q) if entry_of(&places[q]).is_some() => heads[q],
@@ -179,6 +186,10 @@ pub fn group(entries: &[Cited], places: &[Place]) -> Grouping {
             continue;
         };
         out.push(Some(head));
+        if !entry_counted.contains(&(e, head)) {
+            entry_counted.push((e, head));
+            entry_counts[e] += 1;
+        }
         let g = entry_group[e];
         if !counted.contains(&(g, head)) {
             counted.push((g, head));
@@ -190,6 +201,7 @@ pub fn group(entries: &[Cited], places: &[Place]) -> Grouping {
         groups,
         entries: entry_group,
         places: out,
+        entry_counts,
     }
 }
 
@@ -250,6 +262,7 @@ mod tests {
         assert_eq!(members(&g), [vec![0, 1, 2, 3, 4]]);
         assert_eq!(counts(&g), [3]);
         assert_eq!(g.places, [Some(0), Some(0), Some(0), Some(3), Some(4)]);
+        assert_eq!(g.entry_counts, [1, 1, 1, 1, 1]);
     }
 
     /// `cert. denied, 261 Conn. 941, 808 A.2d 1132` (Brooks v. Powers): two printings,
@@ -268,6 +281,7 @@ mod tests {
         let g = group(&entries, &places);
         assert_eq!(members(&g), [vec![0, 1]]);
         assert_eq!(counts(&g), [1]);
+        assert_eq!(g.entry_counts, [1, 1]);
     }
 
     /// A run where nothing resolves is still one decision as citare reads it.
@@ -376,6 +390,35 @@ mod tests {
         let g = group(&entries, &places);
         assert_eq!(members(&g), [vec![0, 1], vec![2]]);
         assert_eq!(counts(&g), [2, 1]);
+        // `70 App.D.C. 262` is cited at both runs.
+        assert_eq!(g.entry_counts, [2, 1, 1]);
+    }
+
+    /// 303 Conn. 845 in Brooks v. Powers: a run cited twice, then the official printing
+    /// alone, an `Id.` and a short cite twice. Each form counts its own places; the run
+    /// counts once for each printing.
+    #[test]
+    fn each_form_counts_its_own_places() {
+        let entries = [
+            full("303 Conn. 845", Some("conn/303/845")),
+            full("37 A.3d 700", Some("conn/303/845")),
+            short("Id.→303 Conn. 845", "303 Conn. 845"),
+            short("303 Conn. at 850→303 Conn. 845", "303 Conn. 845"),
+        ];
+        let places = [
+            place("303 Conn. 845", None),
+            place("37 A.3d 700", Some(0)),
+            place("Id.→303 Conn. 845", None),
+            place("303 Conn. 845", None),
+            place("37 A.3d 700", Some(3)),
+            place("303 Conn. 845", None),
+            place("303 Conn. at 850→303 Conn. 845", None),
+            place("303 Conn. at 850→303 Conn. 845", None),
+        ];
+        let g = group(&entries, &places);
+        assert_eq!(members(&g), [vec![0, 1, 2, 3]]);
+        assert_eq!(counts(&g), [6]);
+        assert_eq!(g.entry_counts, [3, 2, 1, 2]);
     }
 
     #[test]
@@ -383,5 +426,6 @@ mod tests {
         assert_eq!(group(&[], &[]), Grouping::default());
         let g = group(&[full("1 A.2d 1", None)], &[]);
         assert_eq!(counts(&g), [0]);
+        assert_eq!(g.entry_counts, [0]);
     }
 }
