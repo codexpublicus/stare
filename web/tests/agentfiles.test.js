@@ -58,15 +58,20 @@ describe('JSON-LD', () => {
       assert.equal(part.creditText, 'stare.pub (https://stare.pub)');
     }
     // The reporter map is based on reporters-db, the citare bundle on reporters-db
-    // and courts-db, each with its BSD 2-Clause licence and copyright notice (D65).
+    // and courts-db, each with its BSD 2-Clause licence and copyright notice (D65),
+    // and both on citare's own supplements, under CC BY-NC-ND (D67).
     const upstreams = (part) => part.isBasedOn.map((u) => [u.url, u.license, u.copyrightNotice, u.creator.name]);
+    const supplements = ['https://github.com/codexpublicus/citare', CC_BY_NC_ND.url, undefined, 'Codex Publicus'];
     assert.deepEqual(upstreams(reporters), [
       ['https://github.com/freelawproject/reporters-db', BSD_2_CLAUSE.url, 'Copyright (c) 2014, Free Law Project', 'Free Law Project'],
+      supplements,
     ]);
     assert.deepEqual(upstreams(citare), [
       ['https://github.com/freelawproject/reporters-db', BSD_2_CLAUSE.url, 'Copyright (c) 2014, Free Law Project', 'Free Law Project'],
       ['https://github.com/freelawproject/courts-db', BSD_2_CLAUSE.url, 'Copyright (c) 2020, Free Law Project', 'Free Law Project'],
+      supplements,
     ]);
+    assert.equal(reporters.isBasedOn[1].creditText, 'stare.pub (https://stare.pub)');
     // The bundle's name changes with its content, so its part has no fixed download.
     assert.equal(citare.distribution, undefined);
     assert.match(citare.description, /citare-data-<hash>\.json/);
@@ -145,11 +150,12 @@ describe('licences', () => {
     }
   });
 
-  test('llms.txt and /data name reporters-db, courts-db and the Public Domain Mark for the CourtListener records', () => {
+  test('llms.txt and /data name reporters-db, courts-db, citare and the Public Domain Mark for the CourtListener records', () => {
     for (const text of [read('../public/llms.txt'), read('../src/pages/data.astro')]) {
       for (const url of [
         'https://github.com/freelawproject/reporters-db',
         'https://github.com/freelawproject/courts-db',
+        'https://github.com/codexpublicus/citare',
         BSD_2_CLAUSE.url,
         PUBLIC_DOMAIN_MARK.url,
         'citare-data-',

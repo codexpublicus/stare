@@ -10,6 +10,10 @@
 // sources of the reporter map's names, variations and editions and of the citare
 // data bundle), and the Public Domain Mark CourtListener puts on its bulk data, for
 // the CourtListener records, crediting CourtListener.
+//
+// The owner's ruling D67 makes that a list of every source: some names, variations
+// and editions come from citare's own supplements to reporters-db, which are the
+// project's, under CC BY-NC-ND with stare.pub as the source (CITARE).
 
 export const SOURCE = 'https://stare.pub';
 
@@ -53,4 +57,10 @@ export const COURTS_DB = {
   url: 'https://github.com/freelawproject/courts-db',
   license: BSD_2_CLAUSE,
   copyright: 'Copyright (c) 2020, Free Law Project',
+};
+
+export const CITARE = {
+  name: 'citare',
+  url: 'https://github.com/codexpublicus/citare',
+  license: CC_BY_NC_ND,
 };

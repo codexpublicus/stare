@@ -45,6 +45,18 @@ pub const REPORTERS_DB_FIELDS: &[&str] = &[
     "reporters.*.editions",
 ];
 
+/// What reporters-db contributes to the map (D67).
+pub const REPORTERS_DB_CONTRIBUTES: &str =
+    "Most reporter names, variations and editions, from reporters-db's reporters.json by way of citare's data bundle.";
+
+/// The fields of the map citare's own supplement to reporters-db contributes to: the
+/// reporters, editions and variations its `data/reporters-local.json` adds.
+pub const CITARE_FIELDS: &[&str] = REPORTERS_DB_FIELDS;
+
+/// What citare's supplement contributes to the map (D67).
+pub const CITARE_CONTRIBUTES: &str =
+    "The reporters, editions and variations reporters-db doesn't have, from citare's own supplement to it, data/reporters-local.json.";
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReporterMap {
     #[serde(rename = "$schema")]
@@ -53,8 +65,10 @@ pub struct ReporterMap {
     /// The map's licence, CC BY-NC-ND 4.0 ([`crate::license`]), for everything in it
     /// that [`ReporterMap::sources`] doesn't name.
     pub license: License,
-    /// The upstream data some of the map's fields come from, with its licence and
-    /// copyright notice (D65): reporters-db, for [`REPORTERS_DB_FIELDS`].
+    /// Every source of the map's fields that aren't the project's alone, one entry
+    /// each, with its licence and what it contributes (D65, D67): reporters-db, with
+    /// its licence and copyright notice, and citare's own supplement to it, under the
+    /// project's terms. Both contribute to [`REPORTERS_DB_FIELDS`].
     pub sources: Vec<Source>,
     pub generated_from: GeneratedFrom,
     pub urls: Urls,
@@ -196,11 +210,21 @@ pub fn from_citare(manifest: Option<&Manifest>, citare_data: &str) -> ReporterMa
     let mut map = build(&editions, &variations, manifest);
     map.generated_from.citare_data = citare_data.to_string();
     map.generated_from.reporters_db_commit = data.meta("reporters_db_commit").map(str::to_string);
-    map.sources = vec![crate::license::REPORTERS_DB.source(
-        map.generated_from.reporters_db_commit.as_deref(),
-        REPORTERS_DB_FIELDS,
-    )];
+    map.sources = sources(map.generated_from.reporters_db_commit.as_deref());
     map
+}
+
+/// The map's `sources` (D65, D67): reporters-db at `reporters_db_commit`, then
+/// citare's own supplement to it.
+pub fn sources(reporters_db_commit: Option<&str>) -> Vec<Source> {
+    vec![
+        crate::license::REPORTERS_DB.source(
+            reporters_db_commit,
+            REPORTERS_DB_CONTRIBUTES,
+            REPORTERS_DB_FIELDS,
+        ),
+        crate::license::citare(CITARE_CONTRIBUTES, CITARE_FIELDS),
+    ]
 }
 
 /// The map from an edition table, its variations and an index manifest.
@@ -282,7 +306,7 @@ pub fn build(
         schema: crate::schemas::REPORTERS_V1_ID.to_string(),
         format: FORMAT,
         license: crate::license::CC_BY_NC_ND,
-        sources: vec![crate::license::REPORTERS_DB.source(None, REPORTERS_DB_FIELDS)],
+        sources: sources(None),
         generated_from: GeneratedFrom {
             citare_data: String::new(),
             reporters_db_commit: None,
@@ -423,14 +447,25 @@ mod tests {
         // A variation reporters-db lists for the Atlantic Reporter, Second Series.
         assert!(map.reporters["a2d"].variations.iter().any(|v| v == "A. 2d"));
         assert!(map.generated_from.reporters_db_commit.is_some());
-        // The reporters-db fields name reporters-db, at the commit the bundle records.
-        assert_eq!(map.sources.len(), 1);
+        // One entry per source (D67): reporters-db, at the commit the bundle records,
+        // then citare's own supplement, under the project's terms.
+        assert_eq!(map.sources.len(), 2);
         let source = &map.sources[0];
         assert_eq!(source.name, "reporters-db");
         assert_eq!(source.commit, map.generated_from.reporters_db_commit);
         assert_eq!(source.license.id, "BSD-2-Clause");
-        assert_eq!(source.license.text, crate::license::REPORTERS_DB.text);
+        assert_eq!(source.license.text, Some(crate::license::REPORTERS_DB.text));
         assert_eq!(source.fields, REPORTERS_DB_FIELDS);
+        let citare = &map.sources[1];
+        assert_eq!(citare.name, "citare");
+        assert_eq!(
+            citare.commit.as_deref(),
+            Some(crate::license::CITARE_COMMIT)
+        );
+        assert_eq!(citare.license.id, crate::license::CC_BY_NC_ND.id);
+        assert_eq!(citare.license.source, Some(crate::license::SOURCE));
+        assert_eq!(citare.license.text, None);
+        assert_eq!(citare.fields, CITARE_FIELDS);
         // Every abbreviation names slugs the map lists.
         for slugs in map.abbreviations.values() {
             for s in slugs {

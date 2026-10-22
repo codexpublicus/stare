@@ -78,9 +78,11 @@ fn reporters_json_matches_its_schema() {
     let bundle = stare::data::file_name(stare::data::embedded());
     assert_eq!(map["generated_from"]["citare_data"], json!(bundle));
 
-    // The reporters-db fields name reporters-db, its commit, licence and notice (D65).
+    // One entry per source of the names, variations and editions (D65, D67):
+    // reporters-db with its commit, licence and notice, then citare's own supplement
+    // under the project's terms.
     let sources = map["sources"].as_array().unwrap();
-    assert_eq!(sources.len(), 1);
+    assert_eq!(sources.len(), 2);
     let rdb = &sources[0];
     assert_eq!(rdb["name"], "reporters-db");
     assert_eq!(rdb["url"], "https://github.com/freelawproject/reporters-db");
@@ -88,15 +90,33 @@ fn reporters_json_matches_its_schema() {
     assert_eq!(rdb["license"]["id"], "BSD-2-Clause");
     assert_eq!(rdb["license"]["text"], stare::license::REPORTERS_DB.text);
     assert_eq!(rdb["copyright"], "Copyright (c) 2014, Free Law Project");
+    let fields = json!([
+        "abbreviations (keys)",
+        "reporters.*.names",
+        "reporters.*.variations",
+        "reporters.*.editions"
+    ]);
+    assert_eq!(rdb["fields"], fields);
+    assert!(rdb["contributes"]
+        .as_str()
+        .unwrap()
+        .contains("reporters-db"));
+    let citare = &sources[1];
+    assert_eq!(citare["name"], "citare");
+    assert_eq!(citare["publisher"], "Codex Publicus");
+    assert_eq!(citare["url"], "https://github.com/codexpublicus/citare");
+    assert_eq!(citare["commit"], stare::license::CITARE_COMMIT);
     assert_eq!(
-        rdb["fields"],
-        json!([
-            "abbreviations (keys)",
-            "reporters.*.names",
-            "reporters.*.variations",
-            "reporters.*.editions"
-        ])
+        citare["license"],
+        serde_json::to_value(stare::license::CC_BY_NC_ND).unwrap()
     );
+    assert_eq!(citare["license"], map["license"]);
+    assert!(citare.get("copyright").is_none());
+    assert!(citare["contributes"]
+        .as_str()
+        .unwrap()
+        .contains("data/reporters-local.json"));
+    assert_eq!(citare["fields"], fields);
 }
 
 #[test]
@@ -116,14 +136,34 @@ fn the_schema_rejects_what_it_should() {
         ("/sources/0/fields", json!([])),
         ("/sources/0/license/text", json!(null)),
         ("/sources/0/commit", json!(1)),
+        ("/sources/0/contributes", json!("")),
+        ("/sources/0/license/source", json!("https://stare.pub")),
+        ("/sources/1/license/source", json!(null)),
+        ("/sources/1/license/text", json!("x")),
+        ("/sources/1/fields", json!([])),
+        ("/sources", json!([])),
     ] {
         let mut map = good.clone();
-        *map.pointer_mut(pointer).unwrap() = bad.clone();
+        match map.pointer_mut(pointer) {
+            Some(v) => *v = bad.clone(),
+            // A key the entry doesn't have: add it.
+            None => {
+                let (parent, key) = pointer.rsplit_once('/').unwrap();
+                map.pointer_mut(parent).unwrap()[key] = bad.clone();
+            }
+        }
         assert!(
             !errors(&schema, &map).is_empty(),
             "{pointer} = {bad} passed"
         );
     }
+    // An upstream entry needs its copyright line; citare's has none to give.
+    let mut map = good.clone();
+    map["sources"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("copyright");
+    assert!(!errors(&schema, &map).is_empty(), "no copyright passed");
     let mut map = good.clone();
     map.as_object_mut().unwrap().remove("sources");
     assert!(!errors(&schema, &map).is_empty(), "no sources passed");
@@ -324,7 +364,7 @@ fn export_citare_sidecar(dir: &Path) -> Value {
 }
 
 #[test]
-fn the_citare_data_sidecar_attributes_reporters_db_and_courts_db() {
+fn the_citare_data_sidecar_attributes_reporters_db_courts_db_and_citare() {
     let dir = tempfile::tempdir().unwrap();
     let sidecar = export_citare_sidecar(dir.path());
     let bundle = stare::data::file_name(stare::data::embedded());
@@ -335,7 +375,7 @@ fn the_citare_data_sidecar_attributes_reporters_db_and_courts_db() {
         .iter()
         .map(|s| s["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["reporters-db", "courts-db"]);
+    assert_eq!(names, ["reporters-db", "courts-db", "citare"]);
     assert_eq!(
         sources[0]["license"]["text"],
         stare::license::REPORTERS_DB.text
@@ -349,6 +389,22 @@ fn the_citare_data_sidecar_attributes_reporters_db_and_courts_db() {
         "Copyright (c) 2020, Free Law Project"
     );
     assert_eq!(sources[1]["fields"], json!(["section 9, court keys"]));
+    // citare's own supplements, under the bundle's own licence (D67).
+    assert_eq!(sources[2]["license"], sidecar["license"]);
+    assert_eq!(sources[2]["commit"], stare::license::CITARE_COMMIT);
+    assert_eq!(sources[2]["fields"], sources[0]["fields"]);
+    let contributes = sources[2]["contributes"].as_str().unwrap();
+    assert!(
+        contributes.contains("data/reporters-local.json"),
+        "{contributes}"
+    );
+    assert!(
+        contributes.contains("data/laws-local.json"),
+        "{contributes}"
+    );
+    for source in sources {
+        assert!(!source["contributes"].as_str().unwrap().is_empty());
+    }
     // The same reporters-db commit reporters.json names.
     let map = export_reporters(dir.path());
     assert_eq!(sources[0]["commit"], map["sources"][0]["commit"]);
@@ -372,10 +428,11 @@ fn walk(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// The index build's files on idx.stare.pub state their licence (D65): the build
-/// report and the report history accept a `license` of the shape reporters.json's has,
-/// CC BY-NC-ND 4.0 with stare.pub as the source, and reports from before it, without
-/// one. The fixtures are the published v2026.10.18 report, trimmed to one reporter and
+/// The index build's files on idx.stare.pub state their licence (D65) and what they are
+/// built from (D67): the build report and the report history accept a `license` of the
+/// shape reporters.json's has, CC BY-NC-ND 4.0 with stare.pub as the source, and a
+/// `based_on` naming the Caselaw Access Project and CourtListener, and reports from
+/// before them, without either. The fixtures are the published v2026.10.18 report, trimmed to one reporter and
 /// three volumes, and the history as published.
 #[test]
 fn the_index_report_and_history_schemas_take_a_license() {
@@ -401,31 +458,44 @@ fn the_index_report_and_history_schemas_take_a_license() {
     };
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let license = serde_json::to_value(stare::license::CC_BY_NC_ND).unwrap();
+    let based_on = serde_json::to_value(stare::license::index_based_on()).unwrap();
 
     let mut report = read_json(&fixtures.join("index-report-v2026.10.18.json"));
     assert_eq!(errors(&report_schema, &report), Vec::<String>::new());
     report["license"] = license.clone();
+    assert_eq!(errors(&report_schema, &report), Vec::<String>::new());
+    report["based_on"] = based_on.clone();
     assert_eq!(errors(&report_schema, &report), Vec::<String>::new());
 
     let mut history = read_json(&fixtures.join("reports-index-v2026.10.18.json"));
     assert_eq!(history_errors(&history), Vec::<String>::new());
     history["license"] = license.clone();
     assert_eq!(history_errors(&history), Vec::<String>::new());
+    history["based_on"] = based_on.clone();
+    assert_eq!(history_errors(&history), Vec::<String>::new());
 
     for (pointer, bad) in [
         ("/license/url", json!(1)),
         ("/license/source", json!(null)),
         ("/license/extra", json!("x")),
+        ("/based_on", json!([])),
+        ("/based_on", json!({})),
+        ("/based_on/0/url", json!(null)),
+        ("/based_on/1/license/url", json!(1)),
+        ("/based_on/1/license/text", json!("x")),
+        ("/based_on/0/terms", json!("x")),
     ] {
         let mut r = report.clone();
         let mut h = history.clone();
-        match r.pointer_mut(pointer) {
-            Some(v) => *v = bad.clone(),
-            None => r["license"]["extra"] = bad.clone(),
-        }
-        match h.pointer_mut(pointer) {
-            Some(v) => *v = bad.clone(),
-            None => h["license"]["extra"] = bad.clone(),
+        for doc in [&mut r, &mut h] {
+            match doc.pointer_mut(pointer) {
+                Some(v) => *v = bad.clone(),
+                // A key the object doesn't have: add it.
+                None => {
+                    let (parent, key) = pointer.rsplit_once('/').unwrap();
+                    doc.pointer_mut(parent).unwrap()[key] = bad.clone();
+                }
+            }
         }
         assert!(
             !errors(&report_schema, &r).is_empty(),

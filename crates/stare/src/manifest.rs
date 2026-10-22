@@ -66,6 +66,12 @@
 //! ([`crate::license::CC_BY_NC_ND`], #161, D65). Readers don't need it; manifests written
 //! before it have none.
 //!
+//! `based_on`, when present, says what the build is made from (D67): the Caselaw Access
+//! Project's data and CourtListener's bulk data, each with its URL and the licence or
+//! mark it states for itself ([`crate::license::index_based_on`]). It is provenance,
+//! not terms; stare-builder's `build-manifest` writes it, and manifests written before
+//! it have none.
+//!
 //! The legacy format (format 1, everything before it) is the bare reporter map with
 //! integer volumes, `{"a2d": [1, 2, 31]}`. It can't name split volumes, so reading it,
 //! [`Manifest::candidates`] guesses `<volume>-2`, the folder name every second part in
@@ -111,6 +117,9 @@ pub struct Manifest {
     /// The licence the build's files are published under (format 2 only; absent from
     /// manifests written before it).
     pub license: Option<crate::license::Stated>,
+    /// What the build is made from (format 2 only; empty for manifests written before
+    /// it).
+    pub based_on: Vec<crate::license::BasedOn>,
     /// Read from the legacy format, which can't describe split volumes.
     pub legacy: bool,
 }
@@ -137,6 +146,8 @@ struct Format2 {
     aliases: BTreeMap<String, Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     license: Option<crate::license::Stated>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    based_on: Vec<crate::license::BasedOn>,
 }
 
 /// Whether `s` can name a volume folder: an ASCII digit first, then digits, lowercase
@@ -263,6 +274,7 @@ impl Manifest {
                 idx: f.idx,
                 aliases: f.aliases,
                 license: f.license,
+                based_on: f.based_on,
                 legacy: false,
             };
             m.normalize()?;
@@ -336,6 +348,7 @@ impl Manifest {
             idx: self.idx,
             aliases: self.aliases.clone(),
             license: self.license.clone(),
+            based_on: self.based_on.clone(),
         };
         Ok(serde_json::to_string_pretty(&f)?)
     }
@@ -703,6 +716,23 @@ mod tests {
             raw["license"],
             serde_json::to_value(crate::license::CC_BY_NC_ND).unwrap()
         );
+        assert_eq!(Manifest::parse(json.as_bytes()).unwrap(), m);
+    }
+
+    #[test]
+    fn reads_and_round_trips_based_on() {
+        let mut m = a3d();
+        assert!(m.based_on.is_empty());
+        let raw: serde_json::Value = serde_json::from_str(&m.to_json().unwrap()).unwrap();
+        assert!(raw.get("based_on").is_none());
+        m.based_on = crate::license::index_based_on();
+        let json = m.to_json().unwrap();
+        let raw: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            raw["based_on"],
+            serde_json::to_value(crate::license::index_based_on()).unwrap()
+        );
+        assert_eq!(raw["based_on"][0]["url"], "https://case.law/");
         assert_eq!(Manifest::parse(json.as_bytes()).unwrap(), m);
     }
 
