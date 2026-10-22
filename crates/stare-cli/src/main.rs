@@ -880,19 +880,30 @@ fn check_status(src: &Sources, c: &stare::cite::DetectedCitation) -> CheckStatus
     }
 }
 
-/// The case a citation that is found opens, as [`stare::parallel::case_at`] and
-/// [`stare::parallel::alias_case`] name it, so a parallel citation through an alias and
-/// the citation it is an alias of meet. The index files it reads are cached by then.
-fn check_case(src: &Sources, c: &stare::cite::DetectedCitation) -> Option<String> {
-    let t = check_target(c)?;
-    let page = cited_page(t.page?)?;
-    let (slug, volume) = (t.slug?, t.volume?.to_string());
+/// Every case at the page of a citation that is found, the one a reader opens first, as
+/// [`stare::parallel::page_cases`] names them (#204), so a parallel citation through an
+/// alias and the citation it is an alias of meet, even at a page several cases start
+/// on. Without the unified index, the page's first case alone. The index files it
+/// reads are cached by then.
+fn check_cases(src: &Sources, c: &stare::cite::DetectedCitation) -> Vec<String> {
+    let Some(t) = check_target(c) else {
+        return Vec::new();
+    };
+    let (Some(page), Some(slug), Some(volume)) = (
+        t.page.and_then(cited_page),
+        t.slug,
+        t.volume.map(|v| v.to_string()),
+    ) else {
+        return Vec::new();
+    };
     if let Ok(Some(entries)) = idx_entries(src, &slug, &volume, &page) {
-        if let Some((reporter, folder, file)) = entries.first().and_then(|e| e.alias_target()) {
-            return Some(stare::parallel::alias_case(reporter, folder, file));
+        let entries: Vec<&stare::idx::Entry> = entries.iter().collect();
+        let cases = stare::parallel::page_cases(&slug, &volume, &page, &entries);
+        if !cases.is_empty() {
+            return cases;
         }
     }
-    Some(stare::parallel::case_at(&slug, &volume, &page))
+    vec![stare::parallel::case_at(&slug, &volume, &page)]
 }
 
 /// What reconciling the text's parallel runs (#160) says of a citation, by its raw string.
@@ -904,14 +915,18 @@ struct ParallelVerdict {
     conflicts: Vec<String>,
     /// The raw string of the first citation of its run, when it has conflicts.
     run: Option<String>,
+    /// The case its run agrees on, which it opens (#204).
+    case: Option<String>,
+    /// Whether it is the printing its run shows by default (R3).
+    preferred: bool,
 }
 
 /// [`stare::parallel::reconcile`] over the full case citations in `detected`, with
-/// `status` and `case` looking each up, gathered by raw string.
+/// `status` and `cases` looking each up (every case at its page), gathered by raw string.
 fn reconcile_parallels(
     detected: &[stare::cite::DetectedCitation],
     mut status: impl FnMut(&stare::cite::DetectedCitation) -> CheckStatus,
-    mut case: impl FnMut(&stare::cite::DetectedCitation) -> Option<String>,
+    mut cases: impl FnMut(&stare::cite::DetectedCitation) -> Vec<String>,
 ) -> std::collections::HashMap<String, ParallelVerdict> {
     use stare::parallel::{Lookup, Printing};
     let mut out: std::collections::HashMap<String, ParallelVerdict> = Default::default();
@@ -942,9 +957,9 @@ fn reconcile_parallels(
     }
     for (p, c) in printings.iter_mut().zip(&members) {
         p.lookup = match status(c) {
-            CheckStatus::Found | CheckStatus::FoundAlias => match case(c) {
-                Some(case) => Lookup::Found { case },
-                None => Lookup::Unknown,
+            CheckStatus::Found | CheckStatus::FoundAlias => match cases(c) {
+                cases if cases.is_empty() => Lookup::Unknown,
+                cases => Lookup::Found { cases },
             },
             CheckStatus::HeldMiss => Lookup::HeldMiss,
             CheckStatus::NotHeld => Lookup::NotHeld,
@@ -969,6 +984,10 @@ fn reconcile_parallels(
         if !v.conflicts.is_empty() {
             entry.run = Some(members[printings[i].run].matched_text.clone());
         }
+        if entry.case.is_none() {
+            entry.case = v.case.clone();
+        }
+        entry.preferred |= v.preferred;
     }
     out
 }
@@ -1001,7 +1020,7 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
                 .entry(c.matched_text.clone())
                 .or_insert_with(|| check_status(src, c))
         },
-        |c| check_case(src, c),
+        |c| check_cases(src, c),
     );
 
     // One entry per citation and antecedent: every `Id.` that refers to
@@ -1682,7 +1701,7 @@ mod tests {
             "128 Neb. 783" | "345 Pa. 1" | "31 A.2d 650" => CheckStatus::Found,
             _ => CheckStatus::NotHeld,
         };
-        let case = |c: &stare::cite::DetectedCitation| Some(c.matched_text.clone());
+        let case = |c: &stare::cite::DetectedCitation| vec![c.matched_text.clone()];
         let v = reconcile_parallels(&detected, found, case);
         assert_eq!(v["260 N.W. 287"].partner.as_deref(), Some("128 Neb. 783"));
         assert!(v["128 Neb. 783"].partner.is_none());
@@ -1690,6 +1709,22 @@ mod tests {
         assert_eq!(v["31 A.2d 650"].conflicts, ["345 Pa. 1"]);
         assert_eq!(v["31 A.2d 650"].run.as_deref(), Some("345 Pa. 1"));
         assert!(v.get("99 N.W. 1").is_none_or(|v| v.partner.is_none()));
+        assert_eq!(v["260 N.W. 287"].case.as_deref(), Some("128 Neb. 783"));
+        assert!(v["128 Neb. 783"].preferred);
+
+        // #204: the reprint's page holds two decisions, and the second is the one its
+        // partner opens. The two agree on it.
+        let found = |c: &stare::cite::DetectedCitation| match c.matched_text.as_str() {
+            "128 Neb. 783" | "260 N.W. 287" => CheckStatus::Found,
+            _ => CheckStatus::NotHeld,
+        };
+        let cases = |c: &stare::cite::DetectedCitation| match c.matched_text.as_str() {
+            "260 N.W. 287" => vec!["iowa/219/500".to_string(), "neb/128/783".to_string()],
+            _ => vec!["neb/128/783".to_string()],
+        };
+        let v = reconcile_parallels(&detected, found, cases);
+        assert!(v["260 N.W. 287"].conflicts.is_empty());
+        assert_eq!(v["260 N.W. 287"].case.as_deref(), Some("neb/128/783"));
         // Without a parallel run there is nothing to look up.
         let alone = stare::cite::detect_citations("See 128 Neb. 783. See 260 N.W. 287.");
         let v = reconcile_parallels(&alone, |_| unreachable!(), |_| unreachable!());

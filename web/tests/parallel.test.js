@@ -15,6 +15,7 @@ import {
   citeCategory,
   groupCitations,
   occurrence,
+  pageResult,
   renderTextHtml,
 } from '../public/js/citations.js';
 import { reconcile } from './wasm-node.js';
@@ -176,5 +177,58 @@ describe('members that open different cases', () => {
     const { entry, html } = await check(text, [pa, a2d, nw], opts);
     assert.equal(entry('99 N.W. 1').resolvable, false);
     assert.match(tagFor(html, '99 N.W. 1'), /^<a class="cite-lookup"/);
+  });
+});
+
+// #204: where several decisions start at a page, a member is compared against every one
+// of them, and opens the one its run shares.
+describe('a page several decisions start on', () => {
+  const VIA = (n) => `cl:${n}`;
+  const alias = (reporter, folder, caseFile, n) => ({ page: '287', source: 'cap', reporter, folder, case_file: caseFile, via: VIA(n) });
+  const own = (page, caseFile) => ({ page, source: 'cap', case_file: caseFile });
+
+  test('a reprint whose partner is the second decision there resolves to it, not flagged', async () => {
+    const text = 'Pettegrew v. Pettegrew, 128 Neb. 783, 260 N.W. 287 (1935). Id. at 790.';
+    const neb = cite(text, '128 Neb. 783', NEB);
+    const nw = cite(text, '260 N.W. 287', { ...NW, parallelTo: '128 Neb. 783' });
+    const id = cite(text, 'Id.', { type: 'IdCitation', pin: '790', antecedent: nw });
+    const atNw = pageResult(
+      [alias('iowa', '219', '0500-01', 1), alias('neb', '128', '0783-01', 8077312)], 'n-w', 260, '287');
+    const { groups, html, entry } = await check(text, [neb, nw, id],
+      { held: ['neb/128', 'n-w/260'], cases: { 'neb/128/783': true, 'n-w/260/287': atNw } });
+    assert.equal(entry('260 N.W. 287').conflicts, undefined);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].primary.raw, '128 Neb. 783');
+    // It opens the Nebraska case, through the alias that names it, with that alias's label.
+    assert.match(tagFor(html, '260 N.W. 287'),
+      /^<a class="cite-link" href="#neb\/128\/783" [^>]*data-via="cl:8077312" title="260 N\.W\. 287\. Resolved through CourtListener&#39;s citation metadata"/);
+    assert.match(tagFor(html, 'Id.'), /href="#neb\/128\/783@790"/);
+  });
+
+  test('the official page\'s second decision, when it is the one the run shares', async () => {
+    const text = 'Ray v. Bruce, 163 Md. 481, 163 A. 183 (1932).';
+    const md = cite(text, '163 Md. 481', { slug: 'md', volume: 163, page: '481', reporter: 'Md.', official: true });
+    const a = cite(text, '163 A. 183', { slug: 'a', volume: 163, page: '183', reporter: 'A.', parallelTo: '163 Md. 481' });
+    const atMd = pageResult([own('481', '0481-01'), own('481', '0481-02')], 'md', 163, '481');
+    const atA = pageResult([{ ...alias('md', '163', '0481-02', 42), page: '183' }], 'a', 163, '183');
+    const { groups, html, entry } = await check(text, [md, a],
+      { held: ['md/163', 'a/163'], cases: { 'md/163/481': atMd, 'a/163/183': atA } });
+    assert.equal(entry('163 Md. 481').conflicts, undefined);
+    assert.equal(entry('163 Md. 481').seq, 2);
+    assert.equal(groups.length, 1);
+    assert.match(tagFor(html, '163 Md. 481'), /^<a class="cite-link" href="#md\/163\/481-02"/);
+    assert.match(citedGroupHtml(groups[0], (c) => `#${c.slug}/${c.volume}/${c.page}`), /Also cited as 163 A\. 183/);
+  });
+
+  test('pages with no decision in common are still flagged', async () => {
+    const text = 'Smith v. Jones, 345 Pa. 1, 31 A.2d 650 (1943).';
+    const pa = cite(text, '345 Pa. 1', { slug: 'pa', volume: 345, page: '1', reporter: 'Pa.', official: true });
+    const a2d = cite(text, '31 A.2d 650', { slug: 'a2d', volume: 31, page: '650', reporter: 'A.2d', parallelTo: '345 Pa. 1' });
+    const atPa = pageResult([own('1', '0001-01'), own('1', '0001-02')], 'pa', 345, '1');
+    const atA2d = pageResult([own('650', '0650-01'), own('650', '0650-02')], 'a2d', 31, '650');
+    const { groups, entry } = await check(text, [pa, a2d],
+      { held: ['pa/345', 'a2d/31'], cases: { 'pa/345/1': atPa, 'a2d/31/650': atA2d } });
+    assert.deepEqual(entry('345 Pa. 1').conflicts, ['31 A.2d 650']);
+    assert.equal(groups.length, 2);
   });
 });

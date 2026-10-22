@@ -155,7 +155,10 @@ preferred printing is the official reporter's (`DetectedCitation::official`: a s
 the U.S. Reports) when stare.pub holds it. The rules are one function,
 `stare::parallel::reconcile`, tested on `crates/stare/tests/fixtures/parallel-reconcile.json`:
 `stare check` calls it directly, and the site's `checkCitations` through the WASM export
-`reconcile_parallels` (#185). A data alias (`via=cl:`) still wins: it resolves the member on
+`reconcile_parallels` (#185). A member found at a page several cases start on is looked up
+as every one of them (`stare::parallel::page_cases`, `pageCases` in `citations.js`), and
+members are consistent when they share a case (#204): they open that one, which can be the
+page's second (`#md/163/481-02`). A data alias (`via=cl:`) still wins: it resolves the member on
 its own, with its own label. The JS tests load the built WASM (`web/tests/wasm-node.js`) for
 these rules, so CI builds it before running them, and `mise run test-js` runs `build-wasm`
 first.

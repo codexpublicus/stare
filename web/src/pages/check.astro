@@ -103,7 +103,7 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 		</div>
 
 		<script is:inline type="module">
-			import { detectCitations, checkCitations, occurrence, escapeHtml, renderTextHtml, citedListHtml, groupCitations, citationSummary } from '/js/citations.js';
+			import { detectCitations, checkCitations, occurrence, escapeHtml, renderTextHtml, citedListHtml, groupCitations, citationSummary, seqSuffix } from '/js/citations.js';
 			import { attachCiteNav } from '/js/citenav.js';
 			import { preloadWasm, WasmLoadError } from '/js/wasm.js';
 			import { showWasmProgress } from '/js/wasmbar.js';
@@ -168,7 +168,7 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 					// Held here, then statutes linked to their text, then cases
 					// to look for elsewhere (CourtListener, Google Scholar), then
 					// statutes with no link, then the rest.
-					const caseHref = (c) => `/#${c.slug}/${c.volume}/${c.page}-01`;
+					const caseHref = (c) => `/#${c.slug}/${c.volume}/${c.page}${seqSuffix(c.seq) || '-01'}`;
 					citeList.innerHTML = citedListHtml(groups, caseHref, '');
 
 					results.classList.add('visible');

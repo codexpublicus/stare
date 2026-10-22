@@ -150,10 +150,12 @@ pub fn detect_citations(text: &str) -> Result<String, JsError> {
 
 /// Parallel-citation reconciliation (#160, D35): `stare::parallel::reconcile`, the
 /// rules `stare check` applies, for the site's `checkCitations`. Takes a JSON array of
-/// printings, `{ run, official, lookup }`, `lookup` being `{ status: "found", case }`,
-/// `{ status: "held_miss" }`, `{ status: "not_held" }` or `{ status: "unknown" }`.
-/// Returns a JSON array of one `{ partner, conflicts, preferred }` per printing, in
-/// order, `partner` an index or null. Throws on JSON that isn't a list of printings.
+/// printings, `{ run, official, lookup }`, `lookup` being `{ status: "found", cases }`
+/// (every case at the page, #204), `{ status: "held_miss" }`, `{ status: "not_held" }`
+/// or `{ status: "unknown" }`. Returns a JSON array of one
+/// `{ partner, conflicts, preferred, case }` per printing, in order, `partner` an index
+/// or null and `case` the case a run that agrees opens, or null. Throws on JSON that
+/// isn't a list of printings.
 #[wasm_bindgen]
 pub fn reconcile_parallels(printings: &str) -> Result<String, JsError> {
     let printings: Vec<stare::parallel::Printing> =

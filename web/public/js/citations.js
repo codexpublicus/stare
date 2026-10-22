@@ -184,15 +184,74 @@ export function aliasNoteHtml(alias) {
  * What a page's index entries (CAP's own first, then aliases, then CourtListener's
  * records) say: false for none; true when the first is a case of the volume's own;
  * for an alias, `{ via, target: { slug, folder, caseFile } }`, the case it names.
+ * Given the page as looked up (`slug`, `volume`, `page`), a page several cases start
+ * on (#204) answers with an object for its first case too (`via` and `target` null
+ * for the volume's own), with `cases`, pageCases' list of them.
  */
-export function pageResult(entries) {
+export function pageResult(entries, slug = null, volume = null, page = null) {
   if (!entries.length) return false;
   const first = entries[0];
-  if (first.source !== 'cap' || !first.reporter) return true;
+  const cases = slug ? pageCases(slug, volume, page, entries) : [];
+  const several = cases.length > 1 ? { cases } : {};
+  if (first.source !== 'cap' || !first.reporter) {
+    return cases.length > 1 ? { via: null, target: null, ...several } : true;
+  }
   return {
     via: first.via || null,
     target: { slug: first.reporter, folder: first.folder, caseFile: first.case_file },
+    ...several,
   };
+}
+
+// The sequence a case file ends with (`0647-02` is 2), else 1.
+function fileSeq(caseFile) {
+  const m = /-(\d+)$/.exec(String(caseFile || ''));
+  return m ? Math.max(parseInt(m[1], 10), 1) : 1;
+}
+
+// The case an alias's target names, as caseIdentity names it, or null.
+function aliasIdentity(target) {
+  const file = String(target?.caseFile || '');
+  const page = filePage(file);
+  if (!target?.slug || page === null) return null;
+  const seq = fileSeq(file);
+  const volume = String(target.folder || '').replace(/-\d+$/, '');
+  return `${target.slug}/${volume}/${page}${seq > 1 ? `-${seq}` : ''}`;
+}
+
+/**
+ * Every case that starts at `page` of `volume` (as cited) of `slug`, from the page's
+ * index entries (#204), as `stare::parallel::page_cases` lists them: the volume's own
+ * CAP cases, then the cases aliases name, then, on a page with neither, each
+ * CourtListener record. Each is `{ id, slug, volume, page, seq, aliasOf, via }`: `id`
+ * as caseIdentity names the case, and the rest the fields a citation that opens it
+ * links with. The first is the case a reader opens at the page.
+ */
+export function pageCases(slug, volume, page, entries) {
+  const cited = String(volume);
+  const at = `${slug}/${cited.replace(/-\d+$/, '')}/${citedPage(page)}`;
+  const cases = [];
+  const push = (c) => { if (c.id && !cases.some(x => x.id === c.id)) cases.push(c); };
+  const own = (seq) => ({
+    id: seq > 1 ? `${at}-${seq}` : at, slug, volume: cited, page, seq: seq > 1 ? seq : null, aliasOf: null, via: null,
+  });
+  let cap = false;
+  for (const e of entries || []) {
+    if (e.source !== 'cap') continue;
+    cap = true;
+    if (e.reporter) {
+      const target = { slug: e.reporter, folder: e.folder, caseFile: e.case_file };
+      const seq = fileSeq(e.case_file);
+      push({
+        id: aliasIdentity(target), slug: e.reporter, volume: e.folder, page: String(filePage(e.case_file)),
+        seq: seq > 1 ? seq : null, aliasOf: target, via: e.via || null,
+      });
+    } else {
+      push(own(fileSeq(e.case_file)));
+    }
+  }
+  if (!cap) (entries || []).filter(e => e.source === 'cl').forEach((_, i) => push(own(i + 1)));
+  return cases;
 }
 
 // A volume folder's .multi text, or null when it has none (a 404).
@@ -248,7 +307,7 @@ async function pageFound(slug, volume, page, deps) {
   const m = deps.manifest || await loadManifest();
   if (hasIdx(m)) {
     const entries = await (deps.idxEntries || idxEntries)(slug, cited, p);
-    if (entries) return pageResult(entries);
+    if (entries) return pageResult(entries, slug, cited, page);
   }
   return capHasPage(slug, cited, p, m, deps);
 }
@@ -291,6 +350,10 @@ async function capHasPage(slug, cited, p, m, deps) {
  * - `via`, `aliasOf`: for a citation that resolves through an alias (#151),
  *   where the alias came from (`cl:8077312`) and the case it names
  *   (`{ slug, folder, caseFile }`); null otherwise
+ * - `seq`: the case's sequence at its page when it isn't the first (#204), else
+ *   null
+ * - `pageCases`: for a page several cases start on (#204), pageCases' list of
+ *   them, which parallel-citation reconciliation compares; else null
  *
  * A volume whose index has only aliases (ALIASES_ONLY) isn't held: a hit
  * resolves, and a miss or a failed check is a volume stare.pub doesn't hold.
@@ -305,7 +368,7 @@ export async function checkCitation(c, check = checkAvailability, pageCheck = ch
     const a = c.antecedent ? await checkCitation(c.antecedent, check, pageCheck) : null;
     return inheritStatus(c, a);
   }
-  const none = { ...c, key: citationKey(c), slug: null, volumeHeld: false, resolvable: false, via: null, aliasOf: null };
+  const none = { ...c, key: citationKey(c), slug: null, volumeHeld: false, resolvable: false, via: null, aliasOf: null, seq: null, pageCases: null };
   // A statute is never looked up in the case index, so it never links
   // into stare.pub or picks up a page pin there.
   if (c.externalUrl || isStatute(c)) return none;
@@ -322,7 +385,9 @@ export async function checkCitation(c, check = checkAvailability, pageCheck = ch
   }
   const found = await pageCheck(slug, c.volume, c.page);
   const alias = found && typeof found === 'object' ? found : null;
-  const aliasFields = { via: alias?.via || null, aliasOf: alias?.target || null };
+  const aliasFields = {
+    via: alias?.via || null, aliasOf: alias?.target || null, seq: null, pageCases: alias?.cases || null,
+  };
   if (held === ALIASES_ONLY) {
     if (!found) return { ...none, slug: cited ? slug : null };
     return { ...c, key: citationKey(c), slug, volumeHeld: false, resolvable: true, ...aliasFields };
@@ -355,7 +420,7 @@ export function citationKey(c) {
  * text only without a pin: `Id. § 1985` is a different section.
  */
 export function inheritStatus(c, a) {
-  const own = { ...c, key: citationKey(c), page: null, slug: null, volumeHeld: false, resolvable: false, externalUrl: null, law: a?.law || null, caseLinks: [], via: null, aliasOf: null };
+  const own = { ...c, key: citationKey(c), page: null, slug: null, volumeHeld: false, resolvable: false, externalUrl: null, law: a?.law || null, caseLinks: [], via: null, aliasOf: null, seq: null };
   if (!a) return { ...own, noAntecedent: true };
   if (safeExternalUrl(a.externalUrl) && c.pin) return own;
   return {
@@ -373,6 +438,7 @@ export function inheritStatus(c, a) {
     caseLinks: a.caseLinks,
     via: a.via || null,
     aliasOf: a.aliasOf || null,
+    seq: a.seq || null,
     partner: a.partner || null,
   };
 }
@@ -402,11 +468,14 @@ export async function checkCitations(
   return applyParallels(citations, await Promise.all(entries.values()), reconcile);
 }
 
-// What the index says of a checked full citation, for reconcileParallels.
+// What the index says of a checked full citation, for reconcileParallels: every
+// case at its page (#204), the one it opens first.
 function parallelLookup(c) {
   if (c.resolvable) {
     const id = caseIdentity(c);
-    return id ? { status: 'found', case: id } : { status: 'unknown' };
+    if (!id) return { status: 'unknown' };
+    const others = (c.pageCases || []).map(x => x.id).filter(x => x && x !== id);
+    return { status: 'found', cases: [id, ...others] };
   }
   if (c.pageUnknown || !c.page || !c.volume || c.externalUrl || isStatute(c)) return { status: 'unknown' };
   return { status: c.volumeHeld ? 'held_miss' : 'not_held' };
@@ -450,7 +519,8 @@ export async function applyParallels(detected, checked, reconcile = reconcilePar
     run: m.run, official: m.official, lookup: parallelLookup(entryOf(m)),
   })));
   const changed = new Map();
-  const update = (raw, fields) => changed.set(raw, { ...(changed.get(raw) || byKey.get(raw)), ...fields });
+  const current = (raw) => changed.get(raw) || byKey.get(raw);
+  const update = (raw, fields) => changed.set(raw, { ...current(raw), ...fields });
   verdicts.forEach((v, i) => {
     const m = members[i];
     if (v.conflicts.length) {
@@ -458,10 +528,20 @@ export async function applyParallels(detected, checked, reconcile = reconcilePar
       update(m.raw, { conflicts: [...new Set(others)], conflictRun: members[m.run].raw });
     }
     if (v.preferred) update(m.raw, { preferred: true });
-    if (v.partner !== null && !(changed.get(m.raw) || entryOf(m)).resolvable) {
-      const p = entryOf(members[v.partner]);
+    // A member that resolves opens the case its run agrees on, which at a page several
+    // cases start on can be other than the first (#204).
+    const e = current(m.raw);
+    if (v.case && e.resolvable && !e.partner && caseIdentity(e) !== v.case) {
+      const to = (e.pageCases || []).find(x => x.id === v.case);
+      if (to) update(m.raw, { slug: to.slug, volume: to.volume, page: to.page, seq: to.seq, aliasOf: to.aliasOf, via: to.via });
+    }
+  });
+  verdicts.forEach((v, i) => {
+    const m = members[i];
+    if (v.partner !== null && !current(m.raw).resolvable) {
+      const p = current(members[v.partner].raw);
       update(m.raw, {
-        resolvable: true, pageUnknown: false, slug: p.slug, volume: p.volume, page: p.page,
+        resolvable: true, pageUnknown: false, slug: p.slug, volume: p.volume, page: p.page, seq: p.seq || null,
         via: null, aliasOf: p.aliasOf || null, partner: p.raw,
       });
     }
@@ -470,8 +550,16 @@ export async function applyParallels(detected, checked, reconcile = reconcilePar
   return checked.map((c) => {
     if (!isShortForm(c)) return changed.get(c.key ?? c.raw) || c;
     const a = c.antecedent && changed.get(c.antecedent.raw);
-    return a && a.partner ? inheritStatus(c, a) : c;
+    return a ? inheritStatus(c, a) : c;
   });
+}
+
+/**
+ * The hash suffix for a case after the first at its page (#204): `-02` for `seq` 2,
+ * as the reader's links name it; '' for the first, which the page alone opens.
+ */
+export function seqSuffix(seq) {
+  return seq > 1 ? `-${String(seq).padStart(2, '0')}` : '';
 }
 
 /**
@@ -715,7 +803,7 @@ function citationElementHtml(raw, inner, info, pin) {
     const viaAttr = info.via ? ` data-via="${escapeHtml(info.via)}"` : '';
     const partnerAttr = info.partner ? ` data-partner="${escapeHtml(info.partner)}"` : '';
     const review = info.conflicts?.length ? ' cite-review' : '';
-    return `<a class="cite-link${review}" href="#${slug}/${volume}/${segment}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr}${viaAttr}${partnerAttr} title="${escapeHtml(title)}">${inner}</a>`;
+    return `<a class="cite-link${review}" href="#${slug}/${volume}/${segment}${seqSuffix(info.seq)}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr}${viaAttr}${partnerAttr} title="${escapeHtml(title)}">${inner}</a>`;
   }
   if (isStatute(info)) {
     return `<span class="cite-statute" title="${titled(STATUTE_NOTE)}">${inner}</span>`;
@@ -856,16 +944,10 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener') {
  */
 export function caseIdentity(c) {
   if (!c?.resolvable || isShortForm(c)) return null;
-  if (c.aliasOf) {
-    const file = String(c.aliasOf.caseFile || '');
-    const page = filePage(file);
-    if (!c.aliasOf.slug || page === null) return null;
-    const seq = parseInt(file.slice(file.lastIndexOf('-') + 1), 10) || 1;
-    const volume = String(c.aliasOf.folder || '').replace(/-\d+$/, '');
-    return `${c.aliasOf.slug}/${volume}/${page}${seq > 1 ? `-${seq}` : ''}`;
-  }
+  if (c.aliasOf) return aliasIdentity(c.aliasOf);
   if (!c.slug || c.volume == null || c.page == null) return null;
-  return `${c.slug}/${String(c.volume).replace(/-\d+$/, '')}/${citedPage(c.page)}`;
+  const seq = c.seq > 1 ? `-${c.seq}` : '';
+  return `${c.slug}/${String(c.volume).replace(/-\d+$/, '')}/${citedPage(c.page)}${seq}`;
 }
 
 /**
@@ -1203,7 +1285,9 @@ export async function fetchCasePreview(slug, volume, page, resolveFn) {
 
   const promise = (async () => {
     try {
-      const result = await resolveFn(slug, volume, citedPage(page), () => {});
+      // A case after the first at its page (#204) is named by its sequence (`-02`).
+      const seq = /-(\d+)(?:@\d+)?$/.exec(String(page))?.[1];
+      const result = await resolveFn(slug, volume, citedPage(page), () => {}, seq ? parseInt(seq, 10) : null);
       const c = result.caseData;
       return {
         name: c.name_abbreviation,

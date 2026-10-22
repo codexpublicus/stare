@@ -1,4 +1,4 @@
-import { citationSummary, citedListHtml, groupCitations, renderTextHtml } from './citations.js';
+import { citationSummary, citedListHtml, groupCitations, renderTextHtml, seqSuffix } from './citations.js';
 import { blockedLineHtml, isClRecord, sourceLineHtml } from './cl.js';
 import { insertPageMarkers } from './pages.js';
 import { pdfUrl as volumePdfUrl } from './sources.js';
@@ -82,7 +82,7 @@ function citationStatusParts(caseData, detectedCitations, citationStatus, groups
     // listed or counted. Only http(s) URLs are ever linked.
     // One entry per cited case (#159), with its full citations, short forms
     // and parallel citations together.
-    const caseHref = (c) => `${window.location.pathname}#${c.slug}/${c.volume}/${c.page}`;
+    const caseHref = (c) => `${window.location.pathname}#${c.slug}/${c.volume}/${c.page}${seqSuffix(c.seq)}`;
     const cases = groups || groupCitations(null, detectedCitations);
     listHtml = citedListHtml(cases, caseHref);
     totalCites = cases.length;

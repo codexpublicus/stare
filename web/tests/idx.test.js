@@ -155,7 +155,11 @@ describe('the page check with the unified index', () => {
 
   test('reads the .idx.gz and never a .bin', async () => {
     const log = [];
-    assert.equal(await checkPage('a3d', 250, '100', deps(log)), true);
+    // Two CourtListener records start at 100: the first opens, and both are
+    // listed for parallel-citation reconciliation (#204).
+    const at100 = await checkPage('a3d', 250, '100', deps(log));
+    assert.deepEqual([at100.via, at100.target], [null, null]);
+    assert.deepEqual(at100.cases.map((c) => [c.id, c.seq]), [['a3d/250/100', null], ['a3d/250/100-2', 2]]);
     assert.equal(await checkPage('a3d', 250, '101', deps(log)), false);
     assert.equal(await checkPage('a3d', 300, '901', deps(log)), true);
     assert.ok(log.every((l) => l.startsWith('idx ')), log.join());
