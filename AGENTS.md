@@ -245,6 +245,10 @@ wasm-opt, which made the compressed module larger. Measured 2026-10-03 (gzip -9,
 | the same bundle with zopfli, as served | | 123,748 | |
 | main before citare v0.7.1, 2026-10-20 | 1,808,632 | 656,368 | 478,918 |
 | citare v0.7.1 (its bundle is v0.7.0's, `citare-data-0d5ed0510f1b34b4.bin`) | 1,811,049 | 656,082 | 479,319 |
+| main before citare v0.7.2, 2026-10-22 | 1,854,644 | 667,204 | 494,449 |
+| citare v0.7.2 | 1,858,787 | 668,148 | 495,198 |
+| its bundle, `citare-data-8058901af64a1aff.bin` | 454,062 | 133,306 | 106,908 |
+| the same bundle with zopfli, as served | | 124,108 | |
 
 The Worker compresses on the fly, less tightly than brotli 11. Bytes on the wire, same day:
 
@@ -492,7 +496,10 @@ Everything an agent uses is a static file; nothing runs per request (the owner's
   build needs idx.stare.pub to be up, and the `site-wasm` artifact carries the file to the
   release like the bundle. Its volumes are a snapshot; the live manifest stays the authority.
   The format is `schemas/reporters.v1.schema.json` (`stare::schemas::REPORTERS_V1`); change
-  the schema, the module and `FORMAT` together.
+  the schema, the module and `FORMAT` together. A slug citare stops assigning stays in
+  `reporters` for one site release with `replaced_by`, the slug that took its editions, and
+  no names (`reporters::REPLACED`, D78): `p-r-r` and `cai-r` since citare v0.7.2, replaced by
+  `pr` and `cai` (citare#105). Drop them from `REPLACED` after the next site release.
 - **`/openapi.json`** (`web/public/openapi.json`) is hand-written OpenAPI 3.1 for the static
   GETs: the idx manifest, per-volume `.idx.gz` and its parts, the build reports, the CAP zips
   and the site's own files, each with its content type and Cache-Control as served. GET only,

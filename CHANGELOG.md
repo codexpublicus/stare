@@ -2,6 +2,13 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
+## v2026.10.22.2 - 2026-10-22
+
+### Features
+
+- idx: label nominative aliases as the U.S. Reports
+- cite: count citations by the case they resolve to, comparing parallels against every case at a page
+
 ## v2026.10.22.1 - 2026-10-22
 
 ### Features
