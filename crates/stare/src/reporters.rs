@@ -57,6 +57,13 @@ pub const CITARE_FIELDS: &[&str] = REPORTERS_DB_FIELDS;
 pub const CITARE_CONTRIBUTES: &str =
     "The reporters, editions and variations reporters-db doesn't have, from citare's own supplement to it, data/reporters-local.json.";
 
+/// Slugs citare no longer assigns, each with the slug that took its editions. The map
+/// keeps an entry for each, with `replaced_by` and no names, for one site release
+/// after the citare release that dropped it, so an agent holding the old slug finds
+/// the new one; the next release removes it. citare v0.7.2 (citare#105, ruling D78)
+/// folded `P.R.R.` into CAP's `pr` and `Cai. R.` into CAP's `cai`.
+pub const REPLACED: &[(&str, &str)] = &[("cai-r", "cai"), ("p-r-r", "pr")];
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReporterMap {
     #[serde(rename = "$schema")]
@@ -136,6 +143,10 @@ pub struct Reporter {
     /// The volume folders the index holds, or `None` when it holds none: a citation
     /// into the reporter then links out.
     pub volumes: Option<Volumes>,
+    /// The slug that replaced this one, for a slug citare no longer assigns
+    /// ([`REPLACED`]); absent otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replaced_by: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -208,6 +219,7 @@ pub fn from_citare(manifest: Option<&Manifest>, citare_data: &str) -> ReporterMa
         })
         .collect();
     let mut map = build(&editions, &variations, manifest);
+    replace(&mut map, REPLACED);
     map.generated_from.citare_data = citare_data.to_string();
     map.generated_from.reporters_db_commit = data.meta("reporters_db_commit").map(str::to_string);
     map.sources = sources(map.generated_from.reporters_db_commit.as_deref());
@@ -322,6 +334,21 @@ pub fn build(
             .map(|(k, v)| (k, v.into_iter().collect()))
             .collect(),
         reporters,
+    }
+}
+
+/// Adds an entry for each replaced slug, `(old, new)`, saying it was replaced by `new`.
+/// A slug citare still assigns (one with names) keeps its entry as it is, and so does
+/// one whose replacement isn't in the map, since neither was replaced.
+pub fn replace(map: &mut ReporterMap, replaced: &[(&str, &str)]) {
+    for &(old, new) in replaced {
+        if !map.reporters.contains_key(new) {
+            continue;
+        }
+        let r = map.reporters.entry(old.to_string()).or_default();
+        if r.names.is_empty() {
+            r.replaced_by = Some(new.to_string());
+        }
     }
 }
 
@@ -466,11 +493,51 @@ mod tests {
         assert_eq!(citare.license.source, Some(crate::license::SOURCE));
         assert_eq!(citare.license.text, None);
         assert_eq!(citare.fields, CITARE_FIELDS);
-        // Every abbreviation names slugs the map lists.
+        // Every abbreviation names slugs the map lists, and none a replaced one.
         for slugs in map.abbreviations.values() {
             for s in slugs {
                 assert!(map.reporters.contains_key(s), "{s}");
+                assert_eq!(map.reporters[s].replaced_by, None, "{s}");
             }
         }
+        // citare v0.7.2 (citare#105, D78) folded P.R.R. into pr and Cai. R. into cai;
+        // the old slugs stay for one release, saying so.
+        assert_eq!(map.abbreviations["P.R.R."], vec!["pr"]);
+        assert_eq!(map.abbreviations["Cai. R."], vec!["cai"]);
+        for (old, new) in REPLACED {
+            let r = &map.reporters[*old];
+            assert_eq!(r.replaced_by.as_deref(), Some(*new), "{old}");
+            assert!(r.names.is_empty() && r.editions.is_empty(), "{old}");
+            let to = &map.reporters[*new];
+            assert_eq!(to.replaced_by, None, "{new}");
+            assert!(!to.names.is_empty(), "{new}");
+        }
+    }
+
+    #[test]
+    fn a_replaced_slug_keeps_an_entry_naming_its_replacement() {
+        let editions = vec![
+            edition("P.R.", "Puerto Rico Reports", Some("pr"), true),
+            edition("P.R.R.", "Puerto Rico Reports", Some("pr"), true),
+            edition("A.2d", "Atlantic Reporter", Some("a2d"), true),
+        ];
+        let mut map = build(&editions, &[], None);
+        replace(
+            &mut map,
+            &[("p-r-r", "pr"), ("a2d", "pr"), ("gone", "nowhere")],
+        );
+        let old = &map.reporters["p-r-r"];
+        assert_eq!(old.replaced_by.as_deref(), Some("pr"));
+        assert!(old.names.is_empty() && old.variations.is_empty() && old.editions.is_empty());
+        assert!(!old.cap);
+        assert_eq!(old.volumes, None);
+        assert_eq!(map.reporters["pr"].replaced_by, None);
+        // A slug citare still assigns isn't replaced, nor one whose replacement
+        // the map doesn't list.
+        assert_eq!(map.reporters["a2d"].replaced_by, None);
+        assert!(!map.reporters.contains_key("gone"));
+        let json = serde_json::to_value(&map).unwrap();
+        assert_eq!(json["reporters"]["p-r-r"]["replaced_by"], "pr");
+        assert!(json["reporters"]["pr"].get("replaced_by").is_none());
     }
 }

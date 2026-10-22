@@ -18,6 +18,11 @@ test('/reporters.json maps abbreviations to slugs, with volumes and URL template
   expect(map.abbreviations['A. 2d']).toEqual(['a2d']);
   expect(map.reporters.a2d.cap).toBe(true);
   expect(map.reporters.a2d.volumes.first).toBe('31');
+  // citare v0.7.2 folded P.R.R. into pr and Cai. R. into cai (citare#105, D78); the
+  // old slugs stay for one release, naming their replacement.
+  expect(map.abbreviations['P.R.R.']).toEqual(['pr']);
+  expect(map.reporters['p-r-r'].replaced_by).toBe('pr');
+  expect(map.reporters['cai-r'].replaced_by).toBe('cai');
   expect(map.urls.index).toBe('https://idx.stare.pub/{base}{slug}/{volume}.idx.gz');
   expect(map.generated_from.index_build.version).toMatch(/^v\d{4}\.\d{2}\.\d{2}/);
   expect(map.generated_from.citare_data).toMatch(/^citare-data-[0-9a-f]{16}\.bin$/);

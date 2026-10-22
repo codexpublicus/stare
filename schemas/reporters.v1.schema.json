@@ -92,7 +92,7 @@
     },
     "reporters": {
       "type": "object",
-      "description": "Slug to what it holds and how it is cited. Lists every slug citare assigns and every slug the index holds.",
+      "description": "Slug to what it holds and how it is cited. Lists every slug citare assigns and every slug the index holds, and, for one site release after citare stops assigning a slug, that slug with `replaced_by`.",
       "propertyNames": { "$ref": "#/$defs/slug" },
       "additionalProperties": {
         "type": "object",
@@ -102,7 +102,7 @@
           "names": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "The canonical abbreviations of the editions filed under this slug (A.2d). Empty for a slug the index holds that citare has no edition for."
+            "description": "The canonical abbreviations of the editions filed under this slug (A.2d). Empty for a slug the index holds that citare has no edition for, and for a replaced slug."
           },
           "variations": {
             "type": "array",
@@ -147,6 +147,10 @@
                 }
               }
             ]
+          },
+          "replaced_by": {
+            "$ref": "#/$defs/slug",
+            "description": "Present only on a slug citare no longer assigns: the slug its editions are filed under now (p-r-r is replaced by pr, cai-r by cai, since citare v0.7.2). The entry has no names, variations or editions, no abbreviation maps to it, and it is kept for one site release, then removed."
           }
         }
       }

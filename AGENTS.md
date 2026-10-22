@@ -489,7 +489,10 @@ Everything an agent uses is a static file; nothing runs per request (the owner's
   build needs idx.stare.pub to be up, and the `site-wasm` artifact carries the file to the
   release like the bundle. Its volumes are a snapshot; the live manifest stays the authority.
   The format is `schemas/reporters.v1.schema.json` (`stare::schemas::REPORTERS_V1`); change
-  the schema, the module and `FORMAT` together.
+  the schema, the module and `FORMAT` together. A slug citare stops assigning stays in
+  `reporters` for one site release with `replaced_by`, the slug that took its editions, and
+  no names (`reporters::REPLACED`, D78): `p-r-r` and `cai-r` since citare v0.7.2, replaced by
+  `pr` and `cai` (citare#105). Drop them from `REPLACED` after the next site release.
 - **`/openapi.json`** (`web/public/openapi.json`) is hand-written OpenAPI 3.1 for the static
   GETs: the idx manifest, per-volume `.idx.gz` and its parts, the build reports, the CAP zips
   and the site's own files, each with its content type and Cache-Control as served. GET only,
