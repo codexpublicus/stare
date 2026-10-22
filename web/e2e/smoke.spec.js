@@ -1099,9 +1099,10 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await expect(entry(page, '303 Conn. 845')).toHaveClass(/\bcited-entry-active\b/);
     await expect(page).toHaveURL(new RegExp(`~c=${n}$`));
 
-    // Another place of the same case, without reloading it.
+    // Another place, without reloading the case. The text's first citation opens a
+    // parallel run, whose printings are one place (#198), current together.
     await page.evaluate(() => { window.location.hash = window.location.hash.replace(/~c=\d+$/, '~c=1'); });
-    await expect(page.locator('#reader .cite-place-current')).toHaveAttribute('data-cite-n', '1');
+    await expect(page.locator('#reader .cite-place-current').first()).toHaveAttribute('data-cite-n', '1');
   });
 
   test('hovering or focusing a citation in the text highlights its entry', async ({ page }) => {
