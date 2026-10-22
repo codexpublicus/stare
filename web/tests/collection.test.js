@@ -43,6 +43,14 @@ describe('collection.json', () => {
     assert.ok(collection.first_year < collection.last_year);
     assert.match(collection.as_of, /^\d{4}-\d{2}-\d{2}$/);
   });
+
+  test('has the CourtListener records the live index points at', () => {
+    const cl = collection.courtlistener;
+    assert.match(cl.index_version, /^v\d{4}\.\d{2}\.\d{2}(?:\.\d+)?$/);
+    assert.match(cl.export, /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(Number.isInteger(cl.records) && cl.records > 0);
+    assert.ok(cl.source);
+  });
 });
 
 describe('formatMillions', () => {

@@ -194,8 +194,13 @@ Cases CAP doesn't hold come from CourtListener's bulk data
 URL); `<hash>` is the first 16 hex digits of its SHA-256. The unified index's `cl` lines
 point at them; the site and the CLI fetch the record and render it like a CAP case with a
 source line, and no page scans or PDF. `cl.rs` and `sources.js` are the only places that
-build record paths. Nothing is published yet; the e2e tests serve a hand-made record
-(`crates/stare/tests/fixtures/cl-record.json`) through routes.
+build record paths. Index v2026.10.22 is the first live build with them: 900,342 records
+from CourtListener's 2026-09-30 export, at `data.stare.pub/cl/c/` (the exports under
+`data.stare.pub/cl/exports/` are not served, 403, and nothing links them). The e2e tests that
+need a fixed case serve a hand-made record (`crates/stare/tests/fixtures/cl-record.json`)
+through routes. The site credits CourtListener on /about, /data, `llms.txt`, `openapi.json`,
+the `/data` JSON-LD and the README (#206), with the record count, the export date and the
+index version from `web/src/data/collection.json`'s `courtlistener`.
 
 ### Index builds and publishing
 
@@ -404,9 +409,10 @@ credits Codex Publicus and lokkju and shows the build: on a release, the CalVer 
 to `/updates#<tag>`; on any other build (PR previews, the main preview, local), `preview` and
 the commit date. It never shows a commit SHA; the SHA is only in a `data-commit` attribute.
 The values come from `PUBLIC_RELEASE`, `PUBLIC_COMMIT` and `PUBLIC_BUILD_DATE`. It also shows
-the live index's data version from the manifest's `version` (`Index v2026.10.18`), read in the
-browser by `web/public/js/dataversion.js`, and the manifest's Last-Modified date for a manifest
-without one.
+the live index's data version from the manifest's `version`, and the sources its `based_on`
+names (`Index v2026.10.22 · Sources: Caselaw Access Project, CourtListener bulk data`), read in
+the browser by `web/public/js/dataversion.js`, and the manifest's Last-Modified date for a
+manifest without a version.
 
 `CHANGELOG.md` is rendered at build time three ways: every release on `/updates` (each with
 an anchor named for its tag), the latest three on /about's "What's new", and the Atom feed
@@ -505,10 +511,10 @@ Everything an agent uses is a static file; nothing runs per request (the owner's
   no names (`reporters::REPLACED`, D78): `p-r-r` and `cai-r` since citare v0.7.2, replaced by
   `pr` and `cai` (citare#105). Drop them from `REPLACED` after the next site release.
 - **`/openapi.json`** (`web/public/openapi.json`) is hand-written OpenAPI 3.1 for the static
-  GETs: the idx manifest, per-volume `.idx.gz` and its parts, the build reports, the CAP zips
-  and the site's own files, each with its content type and Cache-Control as served. GET only,
-  no query parameters, no request bodies. Update it with any change to a published path or
-  header. CourtListener records stay out until stare-builder publishes them.
+  GETs: the idx manifest, per-volume `.idx.gz` and its parts, the build reports, the CAP zips,
+  the CourtListener records (`getClRecord`) and the site's own files, each with its content
+  type and Cache-Control as served. GET only, no query parameters, no request bodies. Update it
+  with any change to a published path or header.
 - **`/schemas/<file>`**: `src/pages/schemas/[name].json.js` publishes `schemas/*.schema.json`
   at the URL each `$id` names, and fails the build if one doesn't match.
 - **JSON-LD**: a `WebSite` on `/` and a `Dataset` on `/data` (`src/lib/jsonld.js`,
@@ -548,7 +554,7 @@ Everything an agent uses is a static file; nothing runs per request (the owner's
     data (`PUBLIC_DOMAIN_MARK`), in `license`, and `attribution`: CourtListener, Free Law
     Project, and the export date (`COURTLISTENER`; `CaseJson::license`/`attribution`).
     stare-builder's record writer adds both. The JSON-LD's CourtListener `isBasedOn` states the
-    mark; the records aren't a part until they're published.
+    mark, and the records are their own part (`#courtlistener-records`) under it.
   - The index manifest (`Manifest::license`), build reports and `reports/index.json` take a
     `license` (CC BY-NC-ND, stare.pub as the source) that stare-builder writes; the report
     schemas accept it, and files from before it have none.
@@ -575,10 +581,11 @@ CourtListener records, a new data build rather than a site change.
   old Pages project is deleted by #41). CI deploys it when a release PR merges (#60), so
   production is the latest `vYYYY.MM.DD.N` release tag, and `main` can be ahead of it.
 - **Live**: `idx.stare.pub` (R2 bucket `stare-pub-idx`) serves the citation index files. The
-  live build is the one the root `manifest.json`'s `version` names; at the 2026-10-20 doc review
-  that was `v2026.10.18`, the unified `.idx.gz` index (`idx: 1`) with `.bin`/`.multi` beside it,
-  40,622 volume folders under 401 slugs and 6,920,598 cases, all from CAP. No CourtListener
-  records or `via=cl:` aliases are published yet.
+  live build is the one the root `manifest.json`'s `version` names; on 2026-10-22 that was
+  `v2026.10.22`, the unified `.idx.gz` index (`idx: 1`) with `.bin`/`.multi` beside it: CAP's
+  40,622 volume folders under 401 slugs and 6,920,598 cases, plus 1,101,715 `cl` lines into
+  the 900,342 CourtListener records (export 2026-09-30) and `via=cl:` aliases, with 589 slugs in
+  `reporters` and its `based_on` naming CAP and CourtListener's bulk data.
 - **Zips**: the site and the CLI fetch case zips from `https://data.stare.pub/cap/<reporter>/<volume>.zip`
   (our copy, #27). Tars, `.tar.csv` and the volume PDF link still point at static.case.law.
 - **Mirror**: complete. TrueNAS `mega/codexpublicus/cap-mirror` holds 40,622 zips and 39,964

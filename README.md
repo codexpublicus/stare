@@ -11,7 +11,9 @@ Pulumi stack `organization/codexpublicus-infra/prod`.
 
 ## What is this?
 
-A system for resolving legal citations (like `31 A.2d 647`) to full case text and original scanned PDFs, with no backend server. Everything is static files on Cloudflare R2, fetched with plain GETs: the index manifest, the volume's index file and the volume's case zip.
+A system for resolving legal citations (like `31 A.2d 647`) to full case text and original scanned PDFs, with no backend server. Everything is static files on Cloudflare R2, fetched with plain GETs: the index manifest, the volume's index file and the volume's case zip or the case's CourtListener record.
+
+stare.pub aggregates published case law from the Caselaw Access Project and CourtListener, and produces it as static, self-hostable data: the citation index, case records, the reporter map and schemas, served from plain files anyone can mirror, with no account, key or per-request server. Agents and tools use it through the static files, a local CLI and a local MCP server (#162) rather than a hosted API.
 
 Primary use case: LLM citation validation. An MCP server or local tool takes a citation and returns the case text, so an AI can verify that a cited case actually exists and says what was claimed.
 
@@ -21,6 +23,14 @@ Built on the [Harvard Caselaw Access Project](https://case.law/) dataset:
 - **6.9 million cases** (6,920,598) decided from 1658 to 2020
 - **40,622 reporter volumes** with scanned page images and ALTO OCR, all of them in the live index
 - CAP's case files are CC0 1.0; see Licences below
+
+And on [CourtListener](https://www.courtlistener.com/)'s [bulk data](https://www.courtlistener.com/help/api/bulk-data/), from Free Law Project:
+- **900,342 case records** for cases CAP doesn't hold, from the export of 2026-09-30, at
+  `data.stare.pub/cl/c/<cluster_id>/<hash>.json.gz` and named by the index's `cl` lines
+  (index v2026.10.22)
+- parallel citations from CourtListener's citation table, as `via=cl:<cluster>` aliases in the index
+- each record states its terms: the Public Domain Mark 1.0 in `license`, and CourtListener,
+  Free Law Project and the export date in `attribution`
 
 ## Architecture
 
@@ -69,7 +79,7 @@ retried up to three times.
 - [x] Mirror static.case.law (complete 2026-09-29: 40,622 zips, 39,964 tars, `.tar.csv` files and PDFs)
 - [x] Citation index (idx.stare.pub; the live build is the one `manifest.json`'s `version` names)
 - [x] Website (stare.pub), with the brief checker at stare.pub/check
-- [ ] CourtListener records for cases CAP doesn't hold (not published yet)
+- [x] CourtListener records for cases CAP doesn't hold, and its parallel citations (index v2026.10.22)
 - [ ] DuckLake database
 - [ ] RoaringBuckets search index
 - [ ] MCP server (`stare mcp`, #162)
@@ -94,4 +104,6 @@ The code is PolyForm Shield 1.0.0 (the `license` in each crate's `Cargo.toml`).
 The Caselaw Access Project case files on `data.stare.pub/cap/` are CC0 1.0, the terms CAP
 published them under. Everything else the project produces (the citation index, the manifest
 and build reports, the reporter map, the OpenAPI document and schemas, the case pages and the
-site's other data) is CC BY-NC-ND 4.0, crediting stare.pub (https://stare.pub).
+site's other data) is CC BY-NC-ND 4.0, crediting stare.pub (https://stare.pub). Each CourtListener
+record on `data.stare.pub/cl/c/` carries the Public Domain Mark 1.0 CourtListener puts on its bulk
+data, and credits CourtListener (Free Law Project) and the export it came from.

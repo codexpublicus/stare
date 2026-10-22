@@ -4,7 +4,7 @@
     "title": "stare.pub static files",
     "version": "1",
     "summary": "The static files behind stare.pub, for resolving U.S. case law citations with plain GETs.",
-    "description": "Every path here is a static file on object storage or the site's static assets. Nothing computes a response: there are no query parameters, no keys and no server-side search. Resolving a citation is three GETs: the index manifest (`getManifest`), the volume's index (`getVolumeIndex`), and the case file it names (`getCapVolumeZip`). `https://stare.pub/llms.txt` has the recipe in prose, and `https://stare.pub/reporters.json` (`getReporterMap`) maps a reporter abbreviation to the slug the paths use.\n\nThe hosts: `idx.stare.pub` serves the citation index, `data.stare.pub` the case files, and `stare.pub` the site and the files describing the rest. Files under `v/<version>/` on the index host and the case files never change once published. Only the root manifest and the report history change, when an index build goes live.\n\nCORS: `idx.stare.pub` and `data.stare.pub` send `Access-Control-Allow-Origin` only to stare.pub and its previews, so a browser page on another origin can't read them. A client that isn't a browser page isn't affected.\n\nLicences: the Caselaw Access Project case files on `data.stare.pub/cap/` are CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/), under the terms CAP published them with. Everything else the project produces, including the citation index, the index manifest and build reports, the reporter map, this document and the schemas, is CC BY-NC-ND 4.0 (https://creativecommons.org/licenses/by-nc-nd/4.0/), with stare.pub (https://stare.pub) as the source. The reporter map's names, variations and editions come from Free Law Project's reporters-db (https://github.com/freelawproject/reporters-db), and the citare data bundle's reporter and court tables from reporters-db and courts-db (https://github.com/freelawproject/courts-db); those parts are under their BSD 2-Clause licence, which reporters.json's `sources` and the bundle's sidecar (`/data/citare/v1/citare-data-<hash>.json`) give with each source's commit and copyright notice. The CourtListener records under `data.stare.pub/cl/` aren't published yet; each will carry, in `license`, the Public Domain Mark 1.0 (https://creativecommons.org/publicdomain/mark/1.0/) CourtListener puts on its bulk data, and in `attribution` credit CourtListener (Free Law Project) and the export it came from. The index manifest, build reports and report history state their licence in `license` from the first index build written with it. `info.license` is this document's.",
+    "description": "Every path here is a static file on object storage or the site's static assets. Nothing computes a response: there are no query parameters, no keys and no server-side search. Resolving a citation is three GETs: the index manifest (`getManifest`), the volume's index (`getVolumeIndex`), and the case file it names (`getCapVolumeZip` for a Caselaw Access Project case, `getClRecord` for a CourtListener record). `https://stare.pub/llms.txt` has the recipe in prose, and `https://stare.pub/reporters.json` (`getReporterMap`) maps a reporter abbreviation to the slug the paths use.\n\nstare.pub aggregates published case law from the Caselaw Access Project and CourtListener (Free Law Project) and produces it as static, self-hostable data; the index manifest's `based_on` names the sources a build is made from.\n\nThe hosts: `idx.stare.pub` serves the citation index, `data.stare.pub` the case files, and `stare.pub` the site and the files describing the rest. Files under `v/<version>/` on the index host and the case files never change once published. Only the root manifest and the report history change, when an index build goes live.\n\nCORS: `idx.stare.pub` and `data.stare.pub` send `Access-Control-Allow-Origin` only to stare.pub and its previews, so a browser page on another origin can't read them. A client that isn't a browser page isn't affected.\n\nLicences: the Caselaw Access Project case files on `data.stare.pub/cap/` are CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/), under the terms CAP published them with. Everything else the project produces, including the citation index, the index manifest and build reports, the reporter map, this document and the schemas, is CC BY-NC-ND 4.0 (https://creativecommons.org/licenses/by-nc-nd/4.0/), with stare.pub (https://stare.pub) as the source. The reporter map's names, variations and editions come from Free Law Project's reporters-db (https://github.com/freelawproject/reporters-db), and the citare data bundle's reporter and court tables from reporters-db and courts-db (https://github.com/freelawproject/courts-db); those parts are under their BSD 2-Clause licence, which reporters.json's `sources` and the bundle's sidecar (`/data/citare/v1/citare-data-<hash>.json`) give with each source's commit and copyright notice. Each CourtListener record under `data.stare.pub/cl/c/` carries, in `license`, the Public Domain Mark 1.0 (https://creativecommons.org/publicdomain/mark/1.0/) CourtListener puts on its bulk data, and in `attribution` credit to CourtListener (Free Law Project) and the export it came from. The index manifest, build reports and report history state their licence in `license` from the first index build written with it. `info.license` is this document's.",
     "license": { "name": "CC BY-NC-ND 4.0", "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/" },
     "contact": { "name": "Codex Publicus", "email": "info@codexpublicus.org", "url": "https://stare.pub/about/" }
   },
@@ -63,7 +63,7 @@
         "operationId": "getVolumeIndex",
         "tags": ["index"],
         "summary": "A volume's citation index (part 0)",
-        "description": "Gzipped UTF-8 text, served as `application/gzip` with no `Content-Encoding`, so the client gunzips it. One line per case: `page,source,ref`.\n\n- `page`: the case's first page, a number or a page label lowercased (`xxix`).\n- `source` `cap`: `ref` is the case file in the volume's zip (`0647-01`, read as `json/0647-01.json`). A ref with a folder (`138-2/1012-01`) is in that folder's zip. A ref with a reporter (`neb/128/0783-01`) is a case in another volume, followed by `key=value` fields; `via=cl:<cluster>` means CourtListener's citation metadata linked it; `via=nominative:us` means it is a U.S. Reports volume 1 to 90 case filed under its early reporter's name and volume (`22 Wall. 238` is `89 U.S. 238`). Parse the fields from the end of the line, since case files can hold commas.\n- `source` `cl`: `ref` is `<cluster_id>/<hash>`, a CourtListener record on data.stare.pub (none are published yet).\n\nLines that share a page are in order; the first is the case cited. Skip blank lines, lines starting with `#`, and sources you don't know. A volume split past 1,000 lines starts with `#parts,<first page of part 1>,<first page of part 2>,...`; a page at or past part n's first page is in part n (`getVolumeIndexPart`).\n\nThe volume is the number as cited, never a split folder's name (`138`, not `138-2`). A volume the manifest doesn't list returns 404.",
+        "description": "Gzipped UTF-8 text, served as `application/gzip` with no `Content-Encoding`, so the client gunzips it. One line per case: `page,source,ref`.\n\n- `page`: the case's first page, a number or a page label lowercased (`xxix`).\n- `source` `cap`: `ref` is the case file in the volume's zip (`0647-01`, read as `json/0647-01.json`). A ref with a folder (`138-2/1012-01`) is in that folder's zip. A ref with a reporter (`neb/128/0783-01`) is a case in another volume, followed by `key=value` fields; `via=cl:<cluster>` means CourtListener's citation metadata linked it; `via=nominative:us` means it is a U.S. Reports volume 1 to 90 case filed under its early reporter's name and volume (`22 Wall. 238` is `89 U.S. 238`). Parse the fields from the end of the line, since case files can hold commas.\n- `source` `cl`: `ref` is `<cluster_id>/<hash>`, a CourtListener record on data.stare.pub (`getClRecord`).\n\nLines that share a page are in order; the first is the case cited. Skip blank lines, lines starting with `#`, and sources you don't know. A volume split past 1,000 lines starts with `#parts,<first page of part 1>,<first page of part 2>,...`; a page at or past part n's first page is in part n (`getVolumeIndexPart`).\n\nThe volume is the number as cited, never a split folder's name (`138`, not `138-2`). A volume the manifest doesn't list returns 404.",
         "responses": {
           "200": {
             "description": "The gzipped index",
@@ -182,6 +182,44 @@
               "Content-Range": { "schema": { "type": "string" }, "description": "The bytes sent and the zip's size, `bytes 0-99/422856`." }
             },
             "content": { "application/zip": { "schema": { "type": "string", "contentMediaType": "application/zip" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/cl/c/{cluster_id}/{hash}.json.gz": {
+      "servers": [{ "url": "https://data.stare.pub" }],
+      "parameters": [
+        {
+          "name": "cluster_id",
+          "in": "path",
+          "required": true,
+          "description": "CourtListener's cluster id, the first half of a `cl` line's ref.",
+          "schema": { "type": "string", "pattern": "^[0-9]+$" },
+          "example": "4893133"
+        },
+        {
+          "name": "hash",
+          "in": "path",
+          "required": true,
+          "description": "The first 16 hex digits of the record's SHA-256, the second half of a `cl` line's ref.",
+          "schema": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+          "example": "62f253f296600fb7"
+        }
+      ],
+      "get": {
+        "operationId": "getClRecord",
+        "tags": ["cases"],
+        "summary": "A CourtListener record",
+        "description": "One case from CourtListener's bulk data, for a case the Caselaw Access Project doesn't hold. Gzipped JSON, served as `application/gzip` with no `Content-Encoding`, so the client gunzips it. The JSON has a CAP case's shape (`name`, `name_abbreviation`, `decision_date`, `citations`, `court`, `jurisdiction`, and `casebody.opinions` with each opinion's type, author and text) plus `source`: `name` `courtlistener`, the export date, CourtListener's ids (cluster, docket, opinions), the docket number, the precedential status and the case's URL on CourtListener. `license` is the Public Domain Mark 1.0 CourtListener puts on its bulk data, and `attribution` names CourtListener, its publisher Free Law Project, and the export. No page scans. The index's `cl` lines name these files; a record never changes once published.",
+        "responses": {
+          "200": {
+            "description": "The gzipped record",
+            "headers": {
+              "Cache-Control": { "$ref": "#/components/headers/CacheImmutable" },
+              "ETag": { "$ref": "#/components/headers/ETag" }
+            },
+            "content": { "application/gzip": { "schema": { "type": "string", "contentMediaType": "application/gzip" } } }
           },
           "404": { "$ref": "#/components/responses/NotFound" }
         }

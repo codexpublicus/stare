@@ -8,7 +8,7 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 
 import { test as base, expect } from '@playwright/test';
 
-import { casesLabel, yearRange } from '../src/lib/collection.js';
+import { casesLabel, courtListener, yearRange } from '../src/lib/collection.js';
 import { isAllowed, parseLlmsTxt, parseRobots } from '../src/lib/crawlfiles.js';
 import { parseSitemap } from '../src/lib/sitemap.js';
 
@@ -1366,4 +1366,50 @@ test('/llms.txt is served as UTF-8 text in llmstxt.org\'s shape', async ({ reque
   const { title, sections } = parseLlmsTxt(await response.text());
   expect(title).toBe('stare.pub');
   expect(sections.map((s) => s.name)).toContain('Resolving a citation');
+});
+
+test.describe('CourtListener credited as a source (#206)', () => {
+  const PDM = 'https://creativecommons.org/publicdomain/mark/1.0/';
+
+  test('/about names CourtListener beside CAP, with its terms and the export the index uses', async ({ page }) => {
+    await page.goto('/about');
+    const main = page.locator('.page');
+    await expect(main.locator('a[href="https://www.courtlistener.com/"]').first()).toBeVisible();
+    await expect(main.locator('a[href="https://www.courtlistener.com/help/api/bulk-data/"]').first()).toBeVisible();
+    await expect(main.locator(`a[href="${PDM}"]`).first()).toBeVisible();
+    await expect(main).toContainText(`CourtListener's export of ${courtListener.export}`);
+    await expect(main).toContainText('static data you can host yourself');
+  });
+
+  test('/data describes the CourtListener records, the cl lines and the aliases, and no export files', async ({ page }) => {
+    await page.goto('/data');
+    await expect(page.locator('#sources')).toBeVisible();
+    await expect(page.locator('#files')).toBeVisible();
+    const main = page.locator('.page');
+    await expect(main).toContainText('1,cl,4893133/62f253f296600fb7');
+    await expect(main).toContainText('via=cl:8077312');
+    await expect(main).toContainText(`${courtListener.records.toLocaleString('en-US')} of them`);
+    await expect(main.locator('a[href^="https://data.stare.pub/cl/c/"]')).toHaveCount(1);
+    expect(await page.content()).not.toContain('/cl/exports');
+  });
+
+  test('the footer lists the sources the live index manifest names', async ({ page, request }) => {
+    const manifest = await (await request.get('https://idx.stare.pub/manifest.json')).json();
+    const names = (manifest.based_on ?? []).map((s) => s.name);
+    expect(names.some((n) => n.includes('CourtListener'))).toBe(true);
+    await page.goto('/about');
+    await expect(page.locator('footer [data-site-data-line]')).toHaveText(`Index ${manifest.version} · Sources: ${names.join(', ')}`);
+  });
+
+  test('1 F.4th 1, a case only CourtListener has, opens from its live record with the source line', async ({ page }) => {
+    const record = page.waitForResponse((r) => r.url() === 'https://data.stare.pub/cl/c/4893133/62f253f296600fb7.json.gz');
+    await page.goto('/');
+    await page.fill('#landing-input', '1 F.4th 1');
+    await page.click('#landing-btn');
+    expect((await record).status()).toBe(200);
+    await expect(page.locator('#topbar-case')).toHaveText('Alexander Khochinsky v. Republic of Poland');
+    const source = page.locator('#reader .reader-source');
+    await expect(source).toContainText("From CourtListener's bulk data, export 2026-09-30");
+    await expect(source.locator('a')).toHaveAttribute('href', 'https://www.courtlistener.com/opinion/4893133/alexander-khochinsky-v-republic-of-poland/');
+  });
 });

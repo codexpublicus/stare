@@ -4,6 +4,12 @@
   "indexed_volumes": 40622,
   "first_year": 1658,
   "last_year": 2020,
-  "source": "Counted from the Codex Publicus mirror of static.case.law: one metadata/CasesMetadata.json entry per case (and one json/ file) in each of the 40,622 volume zips listed in VolumesMetadata.json, with decision years from decision_date. indexed_volumes is the count of volume folders in idx.stare.pub/manifest.json (build v2026.10.18, checked 2026-10-20), whose report counts the same 6,920,598 cases. See codexpublicus/stare#92.",
-  "as_of": "2026-10-20"
+  "source": "Counted from the Codex Publicus mirror of static.case.law: one metadata/CasesMetadata.json entry per case (and one json/ file) in each of the 40,622 volume zips listed in VolumesMetadata.json, with decision years from decision_date. indexed_volumes is the manifest's `volumes` in idx.stare.pub/manifest.json (build v2026.10.22, checked 2026-10-22), the CAP volume folders, whose report counts the same 6,920,598 cases. See codexpublicus/stare#92.",
+  "courtlistener": {
+    "index_version": "v2026.10.22",
+    "export": "2026-09-30",
+    "records": 900342,
+    "source": "From idx.stare.pub/v/v2026.10.22/report.json, checked 2026-10-22: `idx.cl_input.export` and `idx.cl_input.records`, the CourtListener records the build took from that export, published under data.stare.pub/cl/c/. 17,232 of them (`records_without_lines`) have no `cl` line in this build."
+  },
+  "as_of": "2026-10-22"
 }

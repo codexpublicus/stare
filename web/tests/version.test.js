@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildInfo, buildLine } from '../src/lib/version.js';
-import { formatDataLine, loadDataLine, MANIFEST_URL } from '../public/js/dataversion.js';
+import { basedOnNames, formatDataLine, loadDataLine, MANIFEST_URL } from '../public/js/dataversion.js';
 
 const SHA = '7c42187aa0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5';
 
@@ -66,6 +66,37 @@ describe('formatDataLine', () => {
   test('returns null with nothing usable', () => {
     assert.equal(formatDataLine(null, null), null);
     assert.equal(formatDataLine({}, 'garbage'), null);
+  });
+});
+
+describe('the sources behind the index', () => {
+  // As idx.stare.pub/manifest.json has had them since v2026.10.22.
+  const BASED_ON = [
+    { name: 'Caselaw Access Project', url: 'https://case.law/', license: { id: 'CC0-1.0' } },
+    { name: 'CourtListener bulk data', publisher: 'Free Law Project', url: 'https://www.courtlistener.com/help/api/bulk-data/', license: { id: 'CC-PDM-1.0' } },
+  ];
+
+  test('the data line names the sources the manifest\'s based_on lists, in order', () => {
+    assert.equal(
+      formatDataLine({ version: 'v2026.10.22', based_on: BASED_ON }, null),
+      'Index v2026.10.22 · Sources: Caselaw Access Project, CourtListener bulk data',
+    );
+    assert.equal(
+      formatDataLine({ version: 'v2026.10.22', based_on: [...BASED_ON, { name: 'Another source' }] }, null),
+      'Index v2026.10.22 · Sources: Caselaw Access Project, CourtListener bulk data, Another source',
+    );
+    assert.equal(formatDataLine({ version: 'v2026.10.22', based_on: [BASED_ON[0]] }, null), 'Index v2026.10.22 · Sources: Caselaw Access Project');
+  });
+
+  test('a manifest without based_on, or with unusable entries, shows the version alone', () => {
+    assert.equal(formatDataLine({ version: 'v2026.10.18' }, null), 'Index v2026.10.18');
+    assert.deepEqual(basedOnNames({ based_on: 'CAP' }), []);
+    assert.deepEqual(basedOnNames({ based_on: [null, 7, { name: '' }, { name: 3 }, { url: 'x' }, { name: 'x'.repeat(101) }] }), []);
+    assert.equal(formatDataLine({ version: 'v2026.10.18', based_on: [{ name: ' ' }] }, null), 'Index v2026.10.18');
+  });
+
+  test('no version and no date is still no line, whatever based_on says', () => {
+    assert.equal(formatDataLine({ based_on: BASED_ON }, null), null);
   });
 });
 
