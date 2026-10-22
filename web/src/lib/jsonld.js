@@ -233,7 +233,8 @@ export function dataset() {
     inLanguage: 'en-US',
     keywords: ['case law', 'legal citations', 'United States', 'court opinions', 'Caselaw Access Project', 'CourtListener'],
     spatialCoverage: { '@type': 'Place', name: 'United States' },
-    temporalCoverage: `${collection.first_year}/${collection.last_year}`,
+    // Open-ended (schema.org's "1658/.."), so it doesn't go stale as the sources grow.
+    temporalCoverage: `${collection.first_year}/..`,
     creator: publisher,
     publisher,
     isPartOf: { '@id': `${SITE}/#website` },

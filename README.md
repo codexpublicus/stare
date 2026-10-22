@@ -13,7 +13,7 @@ Pulumi stack `organization/codexpublicus-infra/prod`.
 
 A system for resolving legal citations (like `31 A.2d 647`) to full case text and original scanned PDFs, with no backend server. Everything is static files on Cloudflare R2, fetched with plain GETs: the index manifest, the volume's index file and the volume's case zip or the case's CourtListener record.
 
-stare.pub aggregates published case law from the Caselaw Access Project, CourtListener and other open sources, and produces it as static, self-hostable data: the citation index, case records, the reporter map and schemas, served from plain files anyone can mirror, with no account, key, rate gate or per-request server. Agents and tools use it through the static files, a local CLI and a local MCP server (#162) rather than a hosted API, so usage scales without a gate.
+stare.pub aggregates published case law from the Caselaw Access Project and CourtListener, and produces it as static, self-hostable data: the citation index, case records, the reporter map and schemas, served from plain files anyone can mirror, with no account, key or per-request server. Agents and tools use it through the static files, a local CLI and a local MCP server (#162) rather than a hosted API.
 
 Primary use case: LLM citation validation. An MCP server or local tool takes a citation and returns the case text, so an AI can verify that a cited case actually exists and says what was claimed.
 
