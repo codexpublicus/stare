@@ -2,7 +2,20 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
-## v2026.10.18.2 - 2026-10-18
+## v2026.10.22.1 - 2026-10-22
+
+### Features
+
+- static agent files: reporters.json, openapi.json, JSON Schemas and JSON-LD
+- state the data licences in stare.pub's machine-readable files
+- attribute reporters-db, courts-db and CourtListener in published data
+- list every source in published attribution and add based_on provenance
+
+### Fixes
+
+- web: keep every case at one /c/ path and allow the curated set by name
+
+## v2026.10.20.1 - 2026-10-20
 
 ### Features
 
