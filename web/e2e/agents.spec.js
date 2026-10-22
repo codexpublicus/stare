@@ -92,6 +92,7 @@ test('/ has WebSite JSON-LD and /data has Dataset JSON-LD', async ({ page }) => 
     'https://creativecommons.org/licenses/by-nc-nd/4.0/',
     'https://creativecommons.org/licenses/by-nc-nd/4.0/',
     'https://creativecommons.org/licenses/by-nc-nd/4.0/',
+    'https://creativecommons.org/publicdomain/mark/1.0/',
     'https://creativecommons.org/publicdomain/zero/1.0/',
   ]);
   const cl = data.isBasedOn.find((x) => x.url.includes('courtlistener'));
@@ -103,4 +104,10 @@ test('/llms.txt links the agent files', async ({ request }) => {
   for (const url of ['https://stare.pub/reporters.json', 'https://stare.pub/openapi.json']) {
     expect(text).toContain(url);
   }
+  // The CourtListener records are live (index v2026.10.22); the example record it links resolves.
+  expect(text).not.toContain("aren't published yet");
+  const record = text.match(/https:\/\/data\.stare\.pub\/cl\/c\/\d+\/[0-9a-f]{16}\.json\.gz/)[0];
+  const response = await request.get(record);
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-type']).toBe('application/gzip');
 });

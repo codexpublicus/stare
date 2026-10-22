@@ -1,27 +1,29 @@
 # stare.pub
 
-> stare.pub resolves U.S. case law citations to the full text of the case. It holds the Harvard Caselaw Access Project (CAP) corpus, 6.9 million cases from 1658 to 2020, and is adding CourtListener's records for cases CAP doesn't have. Everything is static files: the site, the citation index and the case text. There is no API, no key and no server to call; resolving a citation is two or three plain HTTPS GETs.
+> stare.pub resolves U.S. case law citations to the full text of the case. It aggregates published case law from the Harvard Caselaw Access Project (CAP), 6.9 million cases from 1658 to 2020, and from CourtListener (Free Law Project), whose records cover cases CAP doesn't have, and produces it as static, self-hostable data: the citation index, the case records, the reporter map and the schemas. There is no API, no account, no key and no server to call; resolving a citation is two or three plain HTTPS GETs, and the same files work from a mirror.
 
 ## Resolving a citation
 
 1. Split the citation into volume, reporter and first page: `31 A.2d 647` is volume `31`, reporter `A.2d`, page `647`.
 2. Turn the reporter into its slug, the directory name the files use: CAP's slug for the reporter where CAP has it, otherwise one made from the reporter's name. `A.2d` is `a2d`, `F. Supp. 2d` is `f-supp-2d`, `Cal. App. 4th` is `cal-app-4th`, `U.S.` is `us`, `NY Slip Op` is `ny-slip-op`. The keys of the manifest's `reporters` object are every slug there is. [reporters.json](https://stare.pub/reporters.json) maps every reporter abbreviation and variation citare knows (`A.2d`, `A. 2d`, `N.W.`) to its slugs, with the volumes each slug held at the last site build and templates for the URLs in the steps below. When citare stops assigning a slug, the map keeps its entry for one site release with `replaced_by`, the slug its editions moved to, and no names; no abbreviation maps to it. `p-r-r` is now `pr` and `cai-r` is now `cai`.
 3. GET `https://idx.stare.pub/manifest.json`. It's JSON, cached for 60 seconds, and names the live index build:
-   - `reporters`: slug → the volume folders held. A volume missing here isn't in the corpus.
+   - `reporters`: slug → the volume folders held, from every source. `aliases`: slug → the volumes whose index file has only aliases (below). A volume in neither isn't in the index.
    - `parts`: slug → volume → `[{volume, first_page, last_page}]`, for the volumes CAP split over two or three folders (`a3d` volume `138` is folders `138` and `138-2`). Use the folder whose page range holds the page; the ranges can overlap, so try each.
-   - `base`: where this build's index files are, relative to the manifest (`v/v2026.10.18/`). Without it they're at the root.
+   - `base`: where this build's index files are, relative to the manifest (`v/v2026.10.22/`). Without it they're at the root.
+   - `based_on`: the sources the build is made from, each with its URL and licence: the Caselaw Access Project and CourtListener's bulk data.
    - `idx`: `1` when the build has the unified text index below. Without it, skip to step 5.
 4. With `idx` 1, GET `https://idx.stare.pub/<base><slug>/<volume>.idx.gz`. It's served as `application/gzip` with no `Content-Encoding`, so gunzip it yourself. Each line is `page,source,ref`:
    - `page` is a case's first page, lowercased for page labels (`xxix`).
    - `source` `cap`: `ref` is the case file in the volume zip (`0647-01`). A ref with a folder (`138-2/1012-01`) is in that folder's zip. Fetch `https://data.stare.pub/cap/<slug>/<folder>.zip` and read `json/<ref>.json` from it.
-   - `source` `cl`: `ref` is `<cluster_id>/<hash>`. GET `https://data.stare.pub/cl/c/<cluster_id>/<hash>.json.gz`, served gzipped like the index.
+   - `source` `cl`: `ref` is `<cluster_id>/<hash>`, a CourtListener record. GET `https://data.stare.pub/cl/c/<cluster_id>/<hash>.json.gz`, served gzipped like the index: `1,cl,4893133/62f253f296600fb7` in `f-4th/1.idx.gz` is `https://data.stare.pub/cl/c/4893133/62f253f296600fb7.json.gz`.
+   - An alias is a `cap` line whose ref names a case in another volume, `<slug>/<folder>/<file>`, followed by `key=value` fields; parse those from the end of the line, since case files can hold commas. `via=cl:<cluster>` means CourtListener's citation table links the two citations (`287,cap,neb/128/0783-01,via=cl:8077312` in `n-w/260.idx.gz`: 260 N.W. 287 is 128 Neb. 783), and `via=nominative:us` files a U.S. Reports case under its early reporter's name. Fetch the case it names. A volume whose file has only aliases is listed in the manifest's `aliases`, not `reporters`.
    - Several lines can share a page; the first is the case cited, and a `cl` line on a page that has a `cap` line is the same decision from another source.
    - A large volume is split into parts: part 0 then starts with `#parts,<first page of part 1>,<first page of part 2>,...`, and part n is `<slug>/<volume>.<n>.idx.gz`. Skip blank lines and other `#` lines.
 5. Without `idx`, GET the volume zip, `https://data.stare.pub/cap/<slug>/<folder>.zip`, and read `metadata/CasesMetadata.json`: an array with one object per case, each with `first_page`, `last_page` and `file_name`. The case is `json/<file_name>.json` in the same zip.
 
 The index keys cases by first page. For a pin cite (`31 A.2d 647, 648`), look up the first page.
 
-A case's JSON has `name`, `name_abbreviation`, `decision_date`, `citations`, `court`, `jurisdiction` and `casebody`, whose `opinions` each have `type`, `author` and `text`. A CourtListener record has the same shape plus a `source` block naming CourtListener, its ids and the case's URL there. CAP's own ids and CourtListener's overlap, so key a case on its source and id, never the id alone.
+A case's JSON has `name`, `name_abbreviation`, `decision_date`, `citations`, `court`, `jurisdiction` and `casebody`, whose `opinions` each have `type`, `author` and `text`. A CourtListener record has the same shape plus a `source` block naming CourtListener, the export date, its ids, the docket number, the precedential status and the case's URL there, and it states its own terms in `license` and `attribution` (see Licences). CourtListener records have no page scans. CAP's own ids and CourtListener's overlap, so key a case on its source and id, never the id alone.
 
 Index files under `v/<version>/` and the case files never change once published; cache them as long as you like. Only `manifest.json` changes, when a new build goes live.
 
@@ -30,7 +32,7 @@ Index files under `v/<version>/` and the case files never change once published;
 - [stare.pub](https://stare.pub/): look up a citation; the case viewer opens a case at `https://stare.pub/#<slug>/<volume>/<page>`, such as `https://stare.pub/#a2d/31/647`
 - [Brief checker](https://stare.pub/check/): paste a brief and check every citation in it
 - [About](https://stare.pub/about/): what stare is, where the data comes from and what's new
-- [Data](https://stare.pub/data/): the index builds and their counts
+- [Data](https://stare.pub/data/): the sources, the index and case files, and every index build's counts
 - [Updates](https://stare.pub/updates/): every site release ([Atom feed](https://stare.pub/updates.xml))
 
 ## Files
@@ -38,6 +40,7 @@ Index files under `v/<version>/` and the case files never change once published;
 - [Index manifest](https://idx.stare.pub/manifest.json): the live build, its reporters and volumes
 - [Index build reports](https://idx.stare.pub/reports/index.json): every published build's totals
 - [Example case zip](https://data.stare.pub/cap/a2d/31.zip): volume 31 of the Atlantic Reporter, Second Series
+- [Example CourtListener record](https://data.stare.pub/cl/c/4893133/62f253f296600fb7.json.gz): 1 F.4th 1, gzipped JSON
 - [Reporter map](https://stare.pub/reporters.json): abbreviations to slugs, volume ranges and URL templates, generated from citare's data and the index manifest at each site build; its JSON Schema is [reporters.v1.schema.json](https://stare.pub/schemas/reporters.v1.schema.json)
 - [OpenAPI description](https://stare.pub/openapi.json): every static GET above as OpenAPI 3.1, with content types and cache headers, for frameworks that build tools from OpenAPI. It describes files, not an API: nothing computes a response
 
@@ -47,8 +50,8 @@ Index files under `v/<version>/` and the case files never change once published;
 - Everything else the project produces is [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/): the citation index, the index manifest and build reports, the reporter map, the OpenAPI document and the JSON Schemas, the case pages and the site's other data. Credit stare.pub (https://stare.pub), the authoritative source.
 - Most of the reporter map's names, variations and editions come from Free Law Project's [reporters-db](https://github.com/freelawproject/reporters-db), under its [BSD 2-Clause](https://spdx.org/licenses/BSD-2-Clause.html) licence (Copyright (c) 2014, Free Law Project); the rest come from [citare](https://github.com/codexpublicus/citare)'s own supplement to reporters-db (`data/reporters-local.json`), under CC BY-NC-ND. reporters.json's `sources` is a list with one entry per source: its commit, licence (with the licence text for reporters-db), what it contributes and the fields it contributes to. Rows aren't marked by source. CC BY-NC-ND covers the rest of the file.
 - The citare data bundle (`https://stare.pub/data/citare/v1/citare-data-<hash>.bin.gz`) is CC BY-NC-ND, except the sections built from reporters-db and from Free Law Project's [courts-db](https://github.com/freelawproject/courts-db) (BSD 2-Clause, Copyright (c) 2020, Free Law Project). citare's own supplements (`data/reporters-local.json` and `data/laws-local.json`) add to the same sections under CC BY-NC-ND. The bundle is binary, so its sidecar, `citare-data-<hash>.json` next to it, states this, with one `sources` entry for each of reporters-db, courts-db and citare: its commit, licence (and licence text, for the BSD sources), what it contributes and its sections.
-- The CourtListener records under `data.stare.pub/cl/` aren't published yet. When they are, each record carries the [Public Domain Mark 1.0](https://creativecommons.org/publicdomain/mark/1.0/) that CourtListener puts on its bulk data, in `license`, and credits CourtListener (Free Law Project) and the export it came from, in `attribution`.
-- The JSON files say which applies: `license` in reporters.json and the citare bundle's sidecar (and in the index manifest, build reports and report history on idx.stare.pub, from the first index build written with it), `info.license` in openapi.json, `x-license` in each schema. The `/data` page's JSON-LD gives each part of the dataset its own `license`, and `isBasedOn` names reporters-db, courts-db and citare with theirs.
+- Each CourtListener record under `data.stare.pub/cl/c/` carries, in `license`, the [Public Domain Mark 1.0](https://creativecommons.org/publicdomain/mark/1.0/) that CourtListener puts on its bulk data, and in `attribution`, credit to CourtListener, its publisher Free Law Project, and the export it came from, with CourtListener's URL.
+- The JSON files say which applies: `license` in reporters.json, the citare bundle's sidecar and each CourtListener record (and in the index manifest, build reports and report history on idx.stare.pub, from the first index build written with it), `info.license` in openapi.json, `x-license` in each schema. The `/data` page's JSON-LD gives each part of the dataset its own `license`, and `isBasedOn` names the Caselaw Access Project, CourtListener's bulk data, reporters-db, courts-db and citare with theirs.
 - The index manifest, build reports and report history can also carry `based_on`, a list of what the build is made from: the [Caselaw Access Project](https://case.law/) data (CC0 1.0) and [CourtListener's bulk data](https://www.courtlistener.com/help/api/bulk-data/) (Public Domain Mark 1.0, Free Law Project), each with its URL. It's provenance, not terms; `license` gives the file's own.
 
 ## Local tools

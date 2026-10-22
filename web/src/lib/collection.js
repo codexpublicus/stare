@@ -27,3 +27,7 @@ export const casesLabel = `${formatMillions(collection.cases)} cases`;
 
 // "1658–2020"
 export const yearRange = `${collection.first_year}–${collection.last_year}`;
+
+// The CourtListener records the live index points at: the index build, the
+// CourtListener export it was built from, and how many records it has.
+export const courtListener = collection.courtlistener;

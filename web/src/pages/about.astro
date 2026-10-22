@@ -1,7 +1,7 @@
 ---
 import SiteFooter from '../components/SiteFooter.astro';
 import { parseChangelog } from '../lib/changelog.js';
-import { collection, casesLabel, formatCount } from '../lib/collection.js';
+import { collection, casesLabel, courtListener, formatCount } from '../lib/collection.js';
 import changelog from '../../../CHANGELOG.md?raw';
 import '../styles/theme.css';
 import '../styles/layout.css';
@@ -16,9 +16,9 @@ const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<title>About · stare.pub</title>
 		<link rel="alternate" type="application/atom+xml" title="stare.pub updates" href="/updates.xml" />
-		<meta name="description" content={`stare.pub resolves U.S. case citations to full text and original scans, from the Codex Publicus copy of the Caselaw Access Project: ${casesLabel}.`} />
+		<meta name="description" content={`stare.pub resolves U.S. case citations to full text and original scans, from the Codex Publicus copy of the Caselaw Access Project (${casesLabel}) and CourtListener's bulk data.`} />
 		<meta property="og:title" content="About §tare.pub" />
-		<meta property="og:description" content={`U.S. case citations to full text and original scans: ${casesLabel} from the Caselaw Access Project, preserved by Codex Publicus.`} />
+		<meta property="og:description" content={`U.S. case citations to full text and original scans: ${casesLabel} from the Caselaw Access Project, preserved by Codex Publicus, and more from CourtListener.`} />
 		<meta property="og:type" content="website" />
 		<meta property="og:url" content="https://stare.pub/about" />
 		<meta property="og:image" content="https://stare.pub/og-image.png" />
@@ -37,18 +37,20 @@ const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
 			<h1>About stare.pub</h1>
 			<p><strong>stare.pub</strong> resolves U.S. case citations to the full text of the decision and to the original scanned pages of the reporter it was printed in. Type <em>31 A.2d 647</em> and you get the opinion. It's a <a href="https://codexpublicus.org" target="_blank" rel="noopener">Codex Publicus</a> project, built by <a href="https://x.com/lokkju" target="_blank" rel="noopener">lokkju</a>.</p>
 			<p>Everything runs in your browser. The site, the citation index and the case data are all static files: there's no server doing work on your behalf, no database, and no API to go down. There's no account to create and nothing to sign up for.</p>
+			<p>stare.pub aggregates published case law from the Caselaw Access Project, CourtListener and other open sources, and produces it as static data you can host yourself: the citation index, the case records, the reporter map and the schemas, served as plain files anyone can mirror, with no account, key, rate gate or per-request server. Agents and tools use those same files with plain GETs, or through tools that run on their own machine (the <code>stare</code> command line tool, in alpha, and a planned local MCP server) rather than a hosted API, so use can grow without anyone gating it. <a href="/llms.txt">llms.txt</a> has the recipe, and <a href="/data">the data page</a> describes the files.</p>
 			<p>Published case law is the law. Reading it shouldn't depend on a subscription, or on any one institution's continued goodwill and funding.</p>
 
 			<h2>The data</h2>
-			<p>The cases come from the <a href="https://case.law/" target="_blank" rel="noopener">Caselaw Access Project</a> (CAP). Between 2013 and 2018 the Harvard Law School Library scanned its collection of American case reporters: {formatCount(collection.volumes)} volumes holding {casesLabel}, decided between {collection.first_year} and {collection.last_year}. The case data is public domain.</p>
+			<p>Most of the cases come from the <a href="https://case.law/" target="_blank" rel="noopener">Caselaw Access Project</a> (CAP). Between 2013 and 2018 the Harvard Law School Library scanned its collection of American case reporters: {formatCount(collection.volumes)} volumes holding {casesLabel}, decided between {collection.first_year} and {collection.last_year}. The case data is public domain.</p>
 			<p>Ravel Law paid for the scanning in exchange for a period of exclusive commercial use, which passed to LexisNexis when it bought Ravel in 2017 and ran until March 2024. When it ended, Harvard published the whole corpus as bulk files at <a href="https://static.case.law/" target="_blank" rel="noopener">static.case.law</a>, and on September 1, 2024 it retired the CAP website and its API. The bulk files are still up. Nobody has said for how long.</p>
 			<p>Codex Publicus holds a complete copy of that release, all 10.4 TB of it: the case text, the page scans, the OCR and the metadata. stare.pub reads its case text from that copy.</p>
+			<p>The rest come from <a href="https://www.courtlistener.com/" target="_blank" rel="noopener">CourtListener</a>, the case law archive run by the <a href="https://free.law/" target="_blank" rel="noopener">Free Law Project</a>. From CourtListener's <a href="https://www.courtlistener.com/help/api/bulk-data/" target="_blank" rel="noopener">bulk data</a> stare.pub takes the opinions and metadata of cases CAP doesn't hold, including the decisions after CAP's last volumes, and the parallel citations CourtListener records, so a citation to one reporter finds the same decision printed in another. CourtListener marks its bulk data with the <a href="https://creativecommons.org/publicdomain/mark/1.0/" target="_blank" rel="noopener">Public Domain Mark 1.0</a>, "free of known copyright restrictions." The live index, {courtListener.index_version}, is built from CourtListener's export of {courtListener.export}, and data.stare.pub serves {formatCount(courtListener.records)} case records from it. Each record names CourtListener and Free Law Project as its source, and the case view links the opinion on CourtListener. Those cases have text and metadata but no page scans.</p>
 
 			<h2>How it works</h2>
 			<p>When you look up a citation, your browser:</p>
 			<ul>
 				<li>fetches the volume's citation index, a gzipped text file usually under 2 KB, which says which case starts on which page;</li>
-				<li>fetches the volume's case data, a zip of typically 1.5 MB, from the Codex Publicus copy at data.stare.pub;</li>
+				<li>fetches the volume's case data, a zip of typically 1.5 MB, from the Codex Publicus copy at data.stare.pub, or for a case from CourtListener, that one case's record, a single gzipped JSON file;</li>
 				<li>unpacks and renders the case itself, using a WebAssembly build of the same Rust code the <code>stare</code> command line tool runs;</li>
 				<li>caches both files, so later lookups in that volume don't download them again.</li>
 			</ul>
@@ -61,6 +63,7 @@ const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
 				<li><strong>The index.</strong> {formatCount(collection.indexed_volumes)} volumes are indexed and resolve today.</li>
 				<li><strong>Citation detection.</strong> citare, a Rust citation parser I wrote, finds the citations in every case you read and in anything you paste into the brief checker, including plain forms like 31 A.2d 647.</li>
 				<li><strong>Our own case text.</strong> Case data is served from the Codex Publicus copy, not from static.case.law.</li>
+				<li><strong>CourtListener.</strong> {formatCount(courtListener.records)} records of cases CAP doesn't hold, from CourtListener's export of {courtListener.export}, are published, and the index points their citations at them; CourtListener's parallel citations link a case's other printings to it.</li>
 			</ul>
 			<p>In progress:</p>
 			<ul>
@@ -108,7 +111,8 @@ const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
 
 			<h2>Built on</h2>
 			<ul>
-				<li><strong><a href="https://case.law/" target="_blank" rel="noopener">Caselaw Access Project</a></strong>: every case on this site, scanned and transcribed by the Harvard Law School Library and its <a href="https://lil.law.harvard.edu/" target="_blank" rel="noopener">Library Innovation Lab</a>. The case law is public domain (CC0).</li>
+				<li><strong><a href="https://case.law/" target="_blank" rel="noopener">Caselaw Access Project</a></strong>: most of the cases on this site and every page scan, scanned and transcribed by the Harvard Law School Library and its <a href="https://lil.law.harvard.edu/" target="_blank" rel="noopener">Library Innovation Lab</a>. The case law is public domain (CC0).</li>
+				<li><strong><a href="https://www.courtlistener.com/" target="_blank" rel="noopener">CourtListener</a></strong>: the cases CAP doesn't hold and parallel citations, from the <a href="https://free.law/" target="_blank" rel="noopener">Free Law Project</a>'s <a href="https://www.courtlistener.com/help/api/bulk-data/" target="_blank" rel="noopener">bulk data</a>, which it marks with the <a href="https://creativecommons.org/publicdomain/mark/1.0/" target="_blank" rel="noopener">Public Domain Mark 1.0</a>.</li>
 				<li><strong>citare</strong>: the citation parser behind the reader and the brief checker, written in Rust and compiled to WebAssembly. It's a Codex Publicus project, inspired by the <a href="https://free.law/" target="_blank" rel="noopener">Free Law Project</a>'s eyecite, and it uses their reporters-db for its reporter data.</li>
 				<li><strong><a href="https://www.oasis-open.org/committees/legaldocml/" target="_blank" rel="noopener">Akoma Ntoso</a></strong>: the OASIS standard for legal documents, which the structured case text will follow.</li>
 				<li><strong>PDF/A</strong>: the ISO archival PDF standard the per-volume PDFs are built to.</li>

@@ -2,7 +2,7 @@
 // and a Dataset on /data, built at build time and embedded as
 // <script type="application/ld+json"> by components/JsonLd.astro. The figures
 // come from collection.json, like every other figure on the site.
-import { casesLabel, collection } from './collection.js';
+import { casesLabel, collection, courtListener, formatCount } from './collection.js';
 import { CC0, CC_BY_NC_ND, CITARE, COURTS_DB, FREE_LAW_PROJECT, PUBLIC_DOMAIN_MARK, REPORTERS_DB, SOURCE } from './license.js';
 
 export const SITE = 'https://stare.pub';
@@ -65,8 +65,8 @@ const citareSupplements = {
 };
 
 // CourtListener's bulk data, which CourtListener marks with the Public Domain Mark
-// ("free of known copyright restrictions"). The CourtListener records stare.pub will
-// publish carry the same mark, crediting CourtListener (D65).
+// ("free of known copyright restrictions"). The CourtListener records stare.pub
+// publishes carry the same mark, crediting CourtListener (D65).
 const courtListenerDataset = {
   '@type': 'Dataset',
   name: 'CourtListener bulk data',
@@ -76,11 +76,11 @@ const courtListenerDataset = {
 };
 
 // The Dataset's parts, one per licence (#161): the CAP case files stare.pub
-// republishes under CAP's CC0 terms, and the citation index, the reporter map and
+// republishes under CAP's CC0 terms, the CourtListener records under the Public
+// Domain Mark each record states, and the citation index, the reporter map and
 // the citare data bundle the project produces, under CC BY-NC-ND. The reporter map
 // and the bundle name reporters-db (and the bundle courts-db) as what they are
-// based on, with their licence (D65), and citare's own supplements (D67). The CourtListener records aren't published
-// yet and aren't a part.
+// based on, with their licence (D65), and citare's own supplements (D67).
 function parts() {
   return [
     {
@@ -107,11 +107,37 @@ function parts() {
     },
     {
       '@type': 'Dataset',
+      '@id': `${SITE}/data/#courtlistener-records`,
+      name: 'CourtListener records',
+      description:
+        `${formatCount(courtListener.records)} case records from CourtListener’s bulk data (export of ${courtListener.export}), ` +
+        'for cases the Caselaw Access Project doesn’t hold: one gzipped JSON file per case, in the CAP case shape ' +
+        'plus a source block with CourtListener’s ids and URL. Each record states the Public Domain Mark 1.0 in its ' +
+        '`license` and credits CourtListener, Free Law Project and the export in its `attribution`.',
+      url: 'https://data.stare.pub/cl/c/',
+      license: PUBLIC_DOMAIN_MARK.url,
+      creditText: 'CourtListener (Free Law Project)',
+      isBasedOn: courtListenerDataset,
+      publisher,
+      distribution: [
+        {
+          '@type': 'DataDownload',
+          name: 'A CourtListener record (1 F.4th 1)',
+          description: 'One file per case at https://data.stare.pub/cl/c/<cluster_id>/<hash>.json.gz, named by the index’s cl lines.',
+          contentUrl: 'https://data.stare.pub/cl/c/4893133/62f253f296600fb7.json.gz',
+          encodingFormat: 'application/gzip',
+          license: PUBLIC_DOMAIN_MARK.url,
+        },
+      ],
+    },
+    {
+      '@type': 'Dataset',
       '@id': `${SITE}/data/#citation-index`,
       name: 'stare.pub citation index',
       description:
         'The citation index stare.pub builds over the case files: one gzipped file per reporter volume ' +
-        'mapping first pages to case files, the manifest naming the live build, and every build’s report.',
+        'mapping first pages to CAP case files and CourtListener records, with parallel citations from ' +
+        'CourtListener’s citation table as aliases, the manifest naming the live build, and every build’s report.',
       url: `${SITE}/data/`,
       license: CC_BY_NC_ND.url,
       creditText,
@@ -137,7 +163,7 @@ function parts() {
           '@type': 'DataDownload',
           name: 'A volume’s citation index (Atlantic Reporter, Second Series, volume 31)',
           description: 'One file per volume at https://idx.stare.pub/<base><slug>/<volume>.idx.gz; lines are page,source,ref.',
-          contentUrl: 'https://idx.stare.pub/v/v2026.10.18/a2d/31.idx.gz',
+          contentUrl: `https://idx.stare.pub/v/${courtListener.index_version}/a2d/31.idx.gz`,
           encodingFormat: 'application/gzip',
           license: CC_BY_NC_ND.url,
         },
@@ -196,14 +222,16 @@ export function dataset() {
     '@id': `${SITE}/data/#dataset`,
     name: 'stare.pub U.S. case law citation index and case text',
     description:
-      `A citation index over U.S. case law, ${casesLabel} from the Harvard Caselaw Access Project, ` +
-      'with the case text, published as static files: one gzipped index file per reporter volume ' +
-      'mapping first pages to case files, and the volumes’ case files as zips. The case files are CC0 1.0, ' +
-      'under CAP’s terms; the index and the reporter map are CC BY-NC-ND 4.0, with stare.pub as the source.',
+      `A citation index over U.S. case law, ${casesLabel} from the Harvard Caselaw Access Project and ` +
+      `${formatCount(courtListener.records)} case records from CourtListener’s bulk data, with the case text, ` +
+      'published as static files: one gzipped index file per reporter volume mapping first pages to cases, ' +
+      'the CAP volumes’ case files as zips, and one gzipped JSON file per CourtListener record. The CAP case ' +
+      'files are CC0 1.0, under CAP’s terms; each CourtListener record states the Public Domain Mark 1.0 ' +
+      'CourtListener puts on its bulk data; the index and the reporter map are CC BY-NC-ND 4.0, with stare.pub as the source.',
     url: `${SITE}/data/`,
     isAccessibleForFree: true,
     inLanguage: 'en-US',
-    keywords: ['case law', 'legal citations', 'United States', 'court opinions', 'Caselaw Access Project'],
+    keywords: ['case law', 'legal citations', 'United States', 'court opinions', 'Caselaw Access Project', 'CourtListener'],
     spatialCoverage: { '@type': 'Place', name: 'United States' },
     temporalCoverage: `${collection.first_year}/${collection.last_year}`,
     creator: publisher,
