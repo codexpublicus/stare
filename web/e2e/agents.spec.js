@@ -113,7 +113,8 @@ test('/llms.txt links the agent files', async ({ request }) => {
     expect(text).toContain(url);
   }
   // The CourtListener records are live (index v2026.10.22); the example record it links resolves.
-  expect(text).not.toContain("aren't published yet");
+  // Case pages are still unpublished, and llms.txt says so; only the records' claim must go.
+  expect(text).not.toMatch(/CourtListener records[^\n]*aren't published yet/);
   const record = text.match(/https:\/\/data\.stare\.pub\/cl\/c\/\d+\/[0-9a-f]{16}\.json\.gz/)[0];
   const response = await request.get(record);
   expect(response.status()).toBe(200);
