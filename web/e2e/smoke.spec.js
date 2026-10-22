@@ -116,14 +116,14 @@ test('/check fetches the bundle alongside the WASM and keeps it cached across a 
   expect((await fetched).status()).toBe(200);
   await page.fill('#check-input', 'See Barney v. Oelrichs, 138 U.S. 529 (1891).');
   await page.click('#check-btn');
-  await expect(page.locator('#check-summary')).toHaveText('1 case citation found (1 resolvable)');
+  await expect(page.locator('#check-summary')).toHaveText('1 cited case found (1 resolvable)');
 
   // On the next visit the bundle comes from the browser's cache: no bytes
   // transferred and no revalidation.
   await page.reload();
   await page.fill('#check-input', 'See Barney v. Oelrichs, 138 U.S. 529 (1891).');
   await page.click('#check-btn');
-  await expect(page.locator('#check-summary')).toHaveText('1 case citation found (1 resolvable)');
+  await expect(page.locator('#check-summary')).toHaveText('1 cited case found (1 resolvable)');
   const entry = await page.evaluate((url) => {
     const e = performance.getEntriesByType('resource').find((r) => new URL(r.name).pathname === url);
     return e && { transferSize: e.transferSize, decodedBodySize: e.decodedBodySize };
@@ -144,7 +144,7 @@ base('/check reports a failed bundle load and retries it', async ({ page }) => {
   failing = false;
   await alert.getByRole('button', { name: 'Retry' }).click();
   await expect(alert).toHaveCount(0);
-  await expect(page.locator('#check-summary')).toHaveText('1 case citation found (1 resolvable)');
+  await expect(page.locator('#check-summary')).toHaveText('1 cited case found (1 resolvable)');
 });
 
 for (const path of ['/', '/check']) {
@@ -208,7 +208,7 @@ test('/check shows a loading bar while the WASM loads, then the results', async 
   release();
   await expect(bar).toHaveCount(0);
   await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
-  await expect(page.locator('#check-summary')).toHaveText('1 case citation found (1 resolvable)');
+  await expect(page.locator('#check-summary')).toHaveText('1 cited case found (1 resolvable)');
 });
 
 test('the case view shows a loading bar while the WASM loads, then the case', async ({ page }) => {
@@ -240,7 +240,7 @@ base('/check reports a failed WASM load and retries it', async ({ page }) => {
   await expect(alert).toHaveCount(0);
   // The retry reruns the check.
   await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
-  await expect(page.locator('#check-summary')).toHaveText('1 case citation found (1 resolvable)');
+  await expect(page.locator('#check-summary')).toHaveText('1 cited case found (1 resolvable)');
 });
 
 test('/check lists the citations citare finds', async ({ page }) => {
@@ -264,7 +264,7 @@ test('/check lists the citations citare finds', async ({ page }) => {
   await expect(page.locator('#check-status')).not.toHaveClass(/check-error/);
   // Resolvability comes from idx.stare.pub's manifest; a2d/31 and us/138
   // are both indexed. The statute is counted apart from the cases.
-  await expect(page.locator('#check-summary')).toHaveText('3 case citations found (3 resolvable), 1 statute');
+  await expect(page.locator('#check-summary')).toHaveText('2 cited cases found (2 resolvable), 1 statute');
   // Resolvable citations first, as links to the case viewer; then the
   // statute, linked to its text. "Id." resolves through Barney, the
   // citation before it (#120), and is listed with it, one entry per
@@ -302,7 +302,7 @@ test('/check links out only for volumes and statutes stare.pub does not hold', a
   await page.click('#check-btn');
 
   await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
-  await expect(page.locator('#check-summary')).toHaveText('2 case citations found (0 resolvable), 1 statute');
+  await expect(page.locator('#check-summary')).toHaveText('2 cited cases found (0 resolvable), 1 statute');
   await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
     '↗ Minn. Stat. § 609.185',
     '↗ 598 U.S. 175 Not in stare.pub: may be at CourtListener or Google Scholar',
@@ -347,7 +347,7 @@ test('/check tells statutes from cases, and leaves bare section references alone
   await page.click('#check-btn');
 
   await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
-  await expect(page.locator('#check-summary')).toHaveText('0 case citations found (0 resolvable), 2 statutes');
+  await expect(page.locator('#check-summary')).toHaveText('0 cited cases found (0 resolvable), 2 statutes');
   await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
     '↗ N.C.G.S. § 1-289',
     '§ General Statutes § 52-584 Statute; no free source linked yet',
@@ -375,7 +375,7 @@ test('/check survives a multibyte character at the case-name scan boundary', asy
 
   await expect(page.locator('#check-results')).toHaveClass(/\bvisible\b/);
   await expect(page.locator('#check-status')).not.toHaveClass(/check-error/);
-  await expect(page.locator('#check-summary')).toHaveText(/^1 case citation found/);
+  await expect(page.locator('#check-summary')).toHaveText(/^1 cited case found/);
   await expect(page.locator('#check-rendered').locator('.cite-link, .cite-unresolved')).toHaveText([
     '547 So.2d 1034',
   ]);
@@ -399,7 +399,7 @@ test('/#a2d/31/647-01 resolves through idx.stare.pub and renders the case', asyn
   await expect(page.locator('#reader .reader-title')).toHaveText("D'Elia & Marks Co. v. Lyon");
   await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
   // The sidebar's citation pass finished without its error state.
-  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?(, \d+ needs? review)?$/);
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ cited cases? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?(, \d+ needs? review)?$/);
   const manifest = await (await page.request.get('https://idx.stare.pub/manifest.json')).json();
   if (manifest.idx !== 1) {
     expect(bins.length).toBeGreaterThan(0);
@@ -434,7 +434,7 @@ test('short cites and Id.s in a case link to their antecedent\'s case (#120)', a
   // State starts at page 1023, where the short cite used to link.
   await page.goto('/#p3d/440/1078-01');
   await expect(page.locator('#reader .reader-title')).toContainText('McCallister');
-  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?(, \d+ needs? review)?$/);
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ cited cases? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?(, \d+ needs? review)?$/);
 
   const roe = page.locator('#reader a.cite-link', { hasText: '997 P.2d at 1023' });
   await expect(roe).toHaveAttribute('href', '#p2d/997/1021@1023');
@@ -461,7 +461,7 @@ test('a pin cite opens the cited case at the pin page (#124)', async ({ page }) 
   // In McCallister v. State, "997 P.2d at 1023" refers to Roe v. Board of
   // County Commissioners, 997 P.2d 1021; the link opens Roe at page 1023.
   await page.goto('/#p3d/440/1078-01');
-  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?(, \d+ needs? review)?$/);
+  await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ cited cases? found \(\d+ resolvable\)(, \d+ statutes?)?(, \d+ other)?(, \d+ needs? review)?$/);
   const roe = page.locator('#reader a.cite-link', { hasText: '997 P.2d at 1023' });
   const [popup] = await Promise.all([page.waitForEvent('popup'), roe.click()]);
 
@@ -572,7 +572,7 @@ test.describe('an index file that fails to load (#144)', () => {
     const tries = await failBin(page, '/a3d/101.bin');
     await page.goto('/#a3d/138-2/1012-01');
     await expect(page.locator('#topbar-case')).toHaveText('Brooks v. Powers');
-    await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found/);
+    await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ cited cases? found/);
 
     // It is listed under its parallel citation, 314 Conn. 303, which the opinion
     // gives first (#159), with its own note; its Id.s are unchecked with it, and are places of
@@ -601,7 +601,7 @@ test.describe('an index file that fails to load (#144)', () => {
     await page.fill('#check-input', "See D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (1943).");
     await page.click('#check-btn');
 
-    await expect(page.locator('#check-summary')).toHaveText('1 case citation found (0 resolvable)');
+    await expect(page.locator('#check-summary')).toHaveText('1 cited case found (0 resolvable)');
     await expect(page.locator('#check-cite-list .cited-case')).toHaveText([`? 31 A.2d 647 ${UNKNOWN('A.2d', 31)}`]);
     await expect(page.locator('#check-cite-list a')).toHaveCount(0);
     await expect(page.locator('#check-rendered .cite-unknown')).toHaveAttribute('title', UNKNOWN('A.2d', 31));
@@ -719,7 +719,7 @@ test.describe('the unified per-volume index', () => {
     await page.goto('/#a2d/31/647-01');
     await expect(page.locator('#topbar-case')).toHaveText("D'Elia & Marks Co. v. Lyon");
     await expect(page.locator('#reader .reader-source')).toHaveCount(0);
-    await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found \(\d+ resolvable\)/);
+    await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ cited cases? found \(\d+ resolvable\)/);
     expect(seen.idx.some((u) => u.endsWith('/a2d/31.idx.gz'))).toBe(true);
     expect(seen.bins).toEqual([]);
   });
@@ -747,7 +747,7 @@ test.describe('the unified per-volume index', () => {
     await expect(source.locator('a')).toHaveAttribute('rel', 'noopener noreferrer');
     await expect(page.locator('#reader .reader-author')).toHaveText(['Saylor', 'Wecht']);
     // Its citations are found and linked like a CAP case's.
-    await expect(page.locator('#sidebar [role="status"]')).toHaveText('1 case citation found (1 resolvable)');
+    await expect(page.locator('#sidebar [role="status"]')).toHaveText('1 cited case found (1 resolvable)');
     await expect(page.locator('#reader a.cite-link', { hasText: '31 A.2d 647' })).toHaveAttribute('href', '#a2d/31/647');
     // No scans and no volume PDF for a record.
     await expect(page.locator('#tab-pages')).toBeHidden();
@@ -821,7 +821,7 @@ test.describe('the unified per-volume index', () => {
       await fail(page, '/a2d/31.idx.gz');
       await page.goto('/#a3d/250/100-01');
       await expect(page.locator('#topbar-case')).toHaveText('Smith v. Jones');
-      await expect(page.locator('#sidebar [role="status"]')).toHaveText('1 case citation found (0 resolvable)');
+      await expect(page.locator('#sidebar [role="status"]')).toHaveText('1 cited case found (0 resolvable)');
       await expect(page.locator('#sidebar .cited-case')).toHaveText(
         ["? 31 A.2d 647 Couldn't reach the index for A.2d vol. 31; reload to try again"]);
       await expect(page.locator('#sidebar .cited-case a')).toHaveCount(0);
@@ -837,7 +837,7 @@ test.describe('the unified per-volume index', () => {
       await page.fill('#check-input', 'See Smith v. Jones, 250 A.3d 100 (Pa. 2021).');
       await page.click('#check-btn');
 
-      await expect(page.locator('#check-summary')).toHaveText('1 case citation found (0 resolvable)');
+      await expect(page.locator('#check-summary')).toHaveText('1 cited case found (0 resolvable)');
       await expect(page.locator('#check-cite-list .cited-case')).toHaveText(
         ["? 250 A.3d 100 Couldn't reach the index for A.3d vol. 250; reload to try again"]);
       await expect(page.locator('#check-cite-list a')).toHaveCount(0);
@@ -867,7 +867,7 @@ test.describe('the unified per-volume index', () => {
       'Pettegrew v. Pettegrew, 260 N.W. 287 (Neb. 1935); Roe v. Doe, 260 N.W. 288 (Neb. 1935); Brooks v. Powers, 31 A.2d 648.');
     await page.click('#check-btn');
 
-    await expect(page.locator('#check-summary')).toHaveText('3 case citations found (2 resolvable)');
+    await expect(page.locator('#check-summary')).toHaveText('3 cited cases found (2 resolvable)');
     const VIA = "Resolved through CourtListener's citation metadata";
     const entry = (raw) => page.locator('#check-cite-list .cited-case', { hasText: raw });
     await expect(entry('260 N.W. 287')).toHaveText(`✓ 260 N.W. 287 ${VIA}`);
@@ -884,7 +884,7 @@ test.describe('the unified per-volume index', () => {
     await page.fill('#check-input', 'See Smith v. Jones, 250 A.3d 100 (Pa. 2021); Doe v. Roe, 250 A.3d 101 (Pa. 2021).');
     await page.click('#check-btn');
 
-    await expect(page.locator('#check-summary')).toHaveText('2 case citations found (1 resolvable)');
+    await expect(page.locator('#check-summary')).toHaveText('2 cited cases found (1 resolvable)');
     await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
       '✓ 250 A.3d 100',
       '✗ 250 A.3d 101 No case found at this page in A.3d vol. 250',
@@ -899,7 +899,7 @@ test.describe('the unified per-volume index', () => {
     await page.fill('#check-input', 'Pettegrew v. Pettegrew, 260 N.W. 287, 128 Neb. 783 (1935).');
     await page.click('#check-btn');
 
-    await expect(page.locator('#check-summary')).toHaveText('2 case citations found (2 resolvable)');
+    await expect(page.locator('#check-summary')).toHaveText('1 cited case found (1 resolvable)');
     await expect(page.locator('#check-cite-list .cited-entry')).toHaveCount(1);
     await expect(page.locator('#check-cite-list .cited-case')).toHaveText('✓ 128 Neb. 783');
     await expect(page.locator('#check-cite-list .cited-also')).toHaveText(
@@ -918,7 +918,7 @@ test.describe('parallel citations (#160)', () => {
     await page.fill('#check-input', 'Murray v. Hurst, 163 Md. 481, 163 A. 183 (1932).');
     await page.click('#check-btn');
 
-    await expect(page.locator('#check-summary')).toHaveText('2 case citations found (2 resolvable)');
+    await expect(page.locator('#check-summary')).toHaveText('1 cited case found (1 resolvable)');
     await expect(page.locator('#check-cite-list .cited-entry')).toHaveCount(1);
     await expect(page.locator('#check-cite-list .cited-case')).toHaveText('✓ 163 Md. 481');
     await expect(page.locator('#check-cite-list .cited-also')).toHaveText(
@@ -935,14 +935,15 @@ test.describe('parallel citations (#160)', () => {
   // reporter stare.pub holds and a regional one it doesn't.
   test('in a case, a reprint links to the printing stare.pub holds', async ({ page }) => {
     await page.goto('/#a2d/31/693-01');
-    await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found/);
+    await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ cited cases? found/);
     const reprint = page.locator('#reader a.cite-link[data-partner="128 Neb. 783"]');
     await expect(reprint).toHaveText('260 N.W. 287');
     await expect(reprint).toHaveAttribute('href', '#neb/128/783');
     await expect(reprint).toHaveAttribute('title', '260 N.W. 287. Reported at 128 Neb. 783, inferred from the citing text');
     const e = page.locator('#sidebar .cited-entry', { has: page.locator('.cited-case', { hasText: '128 Neb. 783' }) });
     await expect(e.locator('.cited-also')).toHaveText('Also cited as 260 N.W. 287 Reported at 128 Neb. 783, inferred from the citing text');
-    await expect(e.locator('.cited-count')).toHaveText('2×');
+    // Cited once, in two printings: one place (#198).
+    await expect(e.locator('.cited-count')).toHaveText('1×');
   });
 
   test('printings that open different cases are both shown, flagged for review', async ({ page }) => {
@@ -950,7 +951,7 @@ test.describe('parallel citations (#160)', () => {
     await page.fill('#check-input', 'Smith v. Jones, 128 Neb. 783, 31 A.2d 647 (1935). See 42 U.S.C. § 1983.');
     await page.click('#check-btn');
 
-    await expect(page.locator('#check-summary')).toHaveText('2 case citations found (2 resolvable), 1 statute, 1 needs review');
+    await expect(page.locator('#check-summary')).toHaveText('2 cited cases found (2 resolvable), 1 statute, 1 needs review');
     const NOTE = (other) => `Cited in parallel with ${other}, which opens a different case; needs review`;
     await expect(page.locator('#check-cite-list .cited-case')).toHaveText([
       `✓ 128 Neb. 783 ${NOTE('31 A.2d 647')}`,
@@ -993,28 +994,31 @@ test.describe('/data before the first index report', () => {
 
 test.describe('from a cited case to where the text cites it (#159)', () => {
   const BROOKS = '/#a3d/138-2/1012-01';
-  const done = (page) => expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ case citations? found/);
+  const done = (page) => expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ cited cases? found/);
   // The sidebar entry whose own citation is `raw`.
   const entry = (page, raw) => page.locator('#sidebar .cited-entry', {
     has: page.locator('.cited-case', { hasText: raw }),
   });
   const places = async (page, e) => page.locator(`#reader [data-cite-group="${await e.getAttribute('data-cite-group')}"]`);
+  // The places among a group's citations: a parallel run's printings share one (#198).
+  const placeIds = async (all) => [...new Set(await all.evaluateAll((els) => els.map((el) => el.dataset.citePlace)))];
   const live = (page) => page.locator('#sidebar .cited-live[aria-live="polite"]');
 
   // `cert. denied, 261 Conn. 941, 808 A.2d 1132`: one decision cited once, in two
-  // reporters, which citare v0.7.0 reads as one parallel run (citare#84).
-  test('a case cited once, in two reporters: the control goes to its first place and highlights both', async ({ page }) => {
+  // reporters, which citare v0.7.0 reads as one parallel run (citare#84). That is one
+  // place in the text (#198).
+  test('a case cited once, in two reporters: one place, both printings highlighted', async ({ page }) => {
     await page.goto(BROOKS);
     await done(page);
     const e = entry(page, '261 Conn. 941');
-    await expect(e.locator('.cited-count')).toHaveText('2×');
+    await expect(e.locator('.cited-count')).toHaveText('1×');
     await e.locator('.cited-show').click();
     await expect(page.locator('#reader .cite-place')).toHaveText(['261 Conn. 941', '808 A.2d 1132']);
     const place = page.locator('#reader .cite-place-current');
-    await expect(place).toHaveText('261 Conn. 941');
-    await expect(place).toBeInViewport();
-    await expect(e.locator('.cited-pos')).toHaveText('1 of 2');
-    await expect(live(page)).toHaveText('1 of 2: 261 Conn. 941');
+    await expect(place).toHaveText(['261 Conn. 941', '808 A.2d 1132']);
+    await expect(place.first()).toBeInViewport();
+    await expect(e.locator('.cited-pos')).toHaveText('1 of 1');
+    await expect(live(page)).toHaveText('1 of 1: 261 Conn. 941, 808 A.2d 1132');
     // Opening the cited case stays the entry's main action.
     await expect(e.locator('a.cited-case-link')).toHaveAttribute('href', /#conn\/261\/941$/);
     await expect(page).toHaveURL(/#a3d\/138-2\/1012-01~c=\d+$/);
@@ -1025,7 +1029,9 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await done(page);
     const e = entry(page, '303 Conn. 845');
     const all = await places(page, e);
-    const m = await all.count();
+    const ids = await placeIds(all);
+    const m = ids.length;
+    const at = (n) => all.and(page.locator(`[data-cite-place="${ids[n]}"]`));
     expect(m).toBeGreaterThanOrEqual(5);
     await expect(e.locator('.cited-count')).toHaveText(`${m}×`);
     // Full citations, a supra and an Id., and some in a footnote.
@@ -1039,20 +1045,22 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
 
     await e.locator('.cited-show').click();
     // The first place, with all of them highlighted.
-    await expect(page.locator('#reader .cite-place')).toHaveCount(m);
+    await expect(page.locator('#reader .cite-place')).toHaveCount(await all.count());
     await expect(all.first()).toHaveClass(/\bcite-place-current\b/);
     await expect(e.locator('.cited-pos')).toHaveText(`1 of ${m}`);
     // Next goes to the second; previous from the first wraps to the last,
     // which is in the footnote.
     await e.locator('.cited-next').click();
-    await expect(all.nth(1)).toHaveClass(/\bcite-place-current\b/);
+    await expect(at(1).first()).toHaveClass(/\bcite-place-current\b/);
     await expect(e.locator('.cited-pos')).toHaveText(`2 of ${m}`);
     await e.locator('.cited-prev').click();
     await e.locator('.cited-prev').click();
-    await expect(all.last()).toHaveClass(/\bcite-place-current\b/);
-    await expect(all.last()).toBeInViewport();
-    const note = await all.last().evaluate((el) => el.closest('.reader-footnote').dataset.footnote);
-    await expect(live(page)).toHaveText(`${m} of ${m}: ${(await all.last().textContent()).trim()}, in footnote ${note}`);
+    const last = at(m - 1);
+    await expect(last.first()).toHaveClass(/\bcite-place-current\b/);
+    await expect(last.first()).toBeInViewport();
+    const note = await last.first().evaluate((el) => el.closest('.reader-footnote').dataset.footnote);
+    const cited = (await last.allTextContents()).map((t) => t.trim()).join(', ');
+    await expect(live(page)).toHaveText(`${m} of ${m}: ${cited}, in footnote ${note}`);
   });
 
   test('[ and ] step through the places from the keyboard', async ({ page }) => {
@@ -1060,7 +1068,8 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await done(page);
     const e = entry(page, '303 Conn. 845');
     const all = await places(page, e);
-    const m = await all.count();
+    const ids = await placeIds(all);
+    const m = ids.length;
     await e.locator('.cited-show').focus();
     await page.keyboard.press(']');
     await expect(all.first()).toHaveClass(/\bcite-place-current\b/);
@@ -1068,7 +1077,8 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await expect(e.locator('.cited-pos')).toHaveText(`2 of ${m}`);
     await page.keyboard.press('[');
     await expect(e.locator('.cited-pos')).toHaveText(`1 of ${m}`);
-    await expect(live(page)).toHaveText(`1 of ${m}: 303 Conn. 845`);
+    const first = (await all.and(page.locator(`[data-cite-place="${ids[0]}"]`)).allTextContents()).map((t) => t.trim());
+    await expect(live(page)).toHaveText(`1 of ${m}: ${first.join(', ')}`);
     await expect(e.locator('.cited-show')).toBeFocused();
   });
 
@@ -1089,9 +1099,10 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await expect(entry(page, '303 Conn. 845')).toHaveClass(/\bcited-entry-active\b/);
     await expect(page).toHaveURL(new RegExp(`~c=${n}$`));
 
-    // Another place of the same case, without reloading it.
+    // Another place, without reloading the case. The text's first citation opens a
+    // parallel run, whose printings are one place (#198), current together.
     await page.evaluate(() => { window.location.hash = window.location.hash.replace(/~c=\d+$/, '~c=1'); });
-    await expect(page.locator('#reader .cite-place-current')).toHaveAttribute('data-cite-n', '1');
+    await expect(page.locator('#reader .cite-place-current').first()).toHaveAttribute('data-cite-n', '1');
   });
 
   test('hovering or focusing a citation in the text highlights its entry', async ({ page }) => {
@@ -1115,7 +1126,7 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await page.goto('/check');
     await page.fill('#check-input', text);
     await page.click('#check-btn');
-    await expect(page.locator('#check-summary')).toHaveText('3 case citations found (3 resolvable), 1 statute');
+    await expect(page.locator('#check-summary')).toHaveText('2 cited cases found (2 resolvable), 1 statute');
 
     const filter = page.getByRole('searchbox', { name: 'Filter cited cases' });
     const shown = page.locator('#check-cite-list .cited-entry:visible .cited-case');
@@ -1179,7 +1190,7 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await page.goto('/check');
     await page.fill('#check-input', 'Pettegrew v. Pettegrew, 128 Neb. 783 (1935). See also 260 N.W. 287.');
     await page.click('#check-btn');
-    await expect(page.locator('#check-summary')).toHaveText('2 case citations found (2 resolvable)');
+    await expect(page.locator('#check-summary')).toHaveText('1 cited case found (1 resolvable)');
 
     const VIA = "Resolved through CourtListener's citation metadata";
     const e = page.locator('#check-cite-list .cited-entry');

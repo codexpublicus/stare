@@ -18,10 +18,12 @@ import {
 } from '../public/js/citations.js';
 import { idxEntries } from '../public/js/idx.js';
 import { normalizeManifest } from '../public/js/manifest.js';
+// groupCitations groups through the stare WASM (#198).
+import './wasm-node.js';
 
 // The place-in-the-text attributes (#159) are tested in cite-nav.test.js;
 // these tests read the rest of the markup.
-const withoutPlaces = (html) => html.replace(/ data-cite-(?:group|form)="[^"]*"/g, '');
+const withoutPlaces = (html) => html.replace(/ data-cite-(?:group|place|form)="[^"]*"/g, '');
 
 const FIXTURES = new URL('../../crates/stare/tests/fixtures/', import.meta.url);
 const BIN_138 = readFileSync(new URL('a3d-138.bin', FIXTURES));

@@ -3,7 +3,9 @@
     "Parallel-citation reconciliation (#160): each vector's printings and the verdicts",
     "stare::parallel::reconcile gives for them (the site calls it through the WASM).",
     "`run` is the index of the first citation of the parallel run a printing is in (its own",
-    "index when it starts one or is in none); `lookup` is what the index says of it."
+    "index when it starts one or is in none); `lookup` is what the index says of it, a found",
+    "one with every case that starts at its page, the first the one a reader opens (#204).",
+    "A verdict's `case` is the case a run that agrees opens, which its members share."
   ],
   "vectors": [
     {
@@ -14,7 +16,9 @@
           "official": true,
           "lookup": {
             "status": "found",
-            "case": "neb/128/783"
+            "cases": [
+              "neb/128/783"
+            ]
           }
         },
         {
@@ -29,12 +33,14 @@
         {
           "partner": null,
           "conflicts": [],
-          "preferred": true
+          "preferred": true,
+          "case": "neb/128/783"
         },
         {
           "partner": 0,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": "neb/128/783"
         }
       ]
     },
@@ -46,7 +52,9 @@
           "official": true,
           "lookup": {
             "status": "found",
-            "case": "pa-super/150/1"
+            "cases": [
+              "pa-super/150/1"
+            ]
           }
         },
         {
@@ -61,12 +69,14 @@
         {
           "partner": null,
           "conflicts": [],
-          "preferred": true
+          "preferred": true,
+          "case": "pa-super/150/1"
         },
         {
           "partner": 0,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": "pa-super/150/1"
         }
       ]
     },
@@ -85,7 +95,9 @@
           "official": true,
           "lookup": {
             "status": "found",
-            "case": "neb/128/783"
+            "cases": [
+              "neb/128/783"
+            ]
           }
         }
       ],
@@ -93,12 +105,14 @@
         {
           "partner": 1,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": "neb/128/783"
         },
         {
           "partner": null,
           "conflicts": [],
-          "preferred": true
+          "preferred": true,
+          "case": "neb/128/783"
         }
       ]
     },
@@ -110,7 +124,9 @@
           "official": true,
           "lookup": {
             "status": "found",
-            "case": "neb/128/783"
+            "cases": [
+              "neb/128/783"
+            ]
           }
         },
         {
@@ -118,7 +134,9 @@
           "official": false,
           "lookup": {
             "status": "found",
-            "case": "neb/128/783"
+            "cases": [
+              "neb/128/783"
+            ]
           }
         }
       ],
@@ -126,12 +144,14 @@
         {
           "partner": null,
           "conflicts": [],
-          "preferred": true
+          "preferred": true,
+          "case": "neb/128/783"
         },
         {
           "partner": null,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": "neb/128/783"
         }
       ]
     },
@@ -143,7 +163,9 @@
           "official": false,
           "lookup": {
             "status": "found",
-            "case": "neb/128/783"
+            "cases": [
+              "neb/128/783"
+            ]
           }
         },
         {
@@ -151,7 +173,9 @@
           "official": true,
           "lookup": {
             "status": "found",
-            "case": "neb/128/783"
+            "cases": [
+              "neb/128/783"
+            ]
           }
         }
       ],
@@ -159,12 +183,14 @@
         {
           "partner": null,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": "neb/128/783"
         },
         {
           "partner": null,
           "conflicts": [],
-          "preferred": true
+          "preferred": true,
+          "case": "neb/128/783"
         }
       ]
     },
@@ -183,7 +209,9 @@
           "official": false,
           "lookup": {
             "status": "found",
-            "case": "f-supp/392/1023"
+            "cases": [
+              "f-supp/392/1023"
+            ]
           }
         },
         {
@@ -191,7 +219,9 @@
           "official": false,
           "lookup": {
             "status": "found",
-            "case": "f-supp/392/1023"
+            "cases": [
+              "f-supp/392/1023"
+            ]
           }
         }
       ],
@@ -199,17 +229,20 @@
         {
           "partner": 1,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": "f-supp/392/1023"
         },
         {
           "partner": null,
           "conflicts": [],
-          "preferred": true
+          "preferred": true,
+          "case": "f-supp/392/1023"
         },
         {
           "partner": null,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": "f-supp/392/1023"
         }
       ]
     },
@@ -221,7 +254,9 @@
           "official": true,
           "lookup": {
             "status": "found",
-            "case": "us/410/113"
+            "cases": [
+              "us/410/113"
+            ]
           }
         },
         {
@@ -243,17 +278,20 @@
         {
           "partner": null,
           "conflicts": [],
-          "preferred": true
+          "preferred": true,
+          "case": "us/410/113"
         },
         {
           "partner": 0,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": "us/410/113"
         },
         {
           "partner": 0,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": "us/410/113"
         }
       ]
     },
@@ -265,7 +303,9 @@
           "official": false,
           "lookup": {
             "status": "found",
-            "case": "a2d/31/650"
+            "cases": [
+              "a2d/31/650"
+            ]
           }
         },
         {
@@ -273,7 +313,9 @@
           "official": false,
           "lookup": {
             "status": "found",
-            "case": "pa/345/1"
+            "cases": [
+              "pa/345/1"
+            ]
           }
         },
         {
@@ -290,19 +332,22 @@
           "conflicts": [
             1
           ],
-          "preferred": false
+          "preferred": false,
+          "case": null
         },
         {
           "partner": null,
           "conflicts": [
             0
           ],
-          "preferred": false
+          "preferred": false,
+          "case": null
         },
         {
           "partner": null,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": null
         }
       ]
     },
@@ -314,7 +359,9 @@
           "official": false,
           "lookup": {
             "status": "found",
-            "case": "x/1/1"
+            "cases": [
+              "x/1/1"
+            ]
           }
         },
         {
@@ -322,7 +369,9 @@
           "official": false,
           "lookup": {
             "status": "found",
-            "case": "x/1/1"
+            "cases": [
+              "x/1/1"
+            ]
           }
         },
         {
@@ -330,7 +379,9 @@
           "official": false,
           "lookup": {
             "status": "found",
-            "case": "y/2/2"
+            "cases": [
+              "y/2/2"
+            ]
           }
         }
       ],
@@ -340,14 +391,16 @@
           "conflicts": [
             2
           ],
-          "preferred": false
+          "preferred": false,
+          "case": null
         },
         {
           "partner": null,
           "conflicts": [
             2
           ],
-          "preferred": false
+          "preferred": false,
+          "case": null
         },
         {
           "partner": null,
@@ -355,7 +408,8 @@
             0,
             1
           ],
-          "preferred": false
+          "preferred": false,
+          "case": null
         }
       ]
     },
@@ -381,12 +435,14 @@
         {
           "partner": null,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": null
         },
         {
           "partner": null,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": null
         }
       ]
     },
@@ -398,7 +454,9 @@
           "official": true,
           "lookup": {
             "status": "found",
-            "case": "neb/128/783"
+            "cases": [
+              "neb/128/783"
+            ]
           }
         },
         {
@@ -413,12 +471,14 @@
         {
           "partner": null,
           "conflicts": [],
-          "preferred": true
+          "preferred": true,
+          "case": "neb/128/783"
         },
         {
           "partner": null,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": null
         }
       ]
     },
@@ -430,7 +490,9 @@
           "official": true,
           "lookup": {
             "status": "found",
-            "case": "neb/128/783"
+            "cases": [
+              "neb/128/783"
+            ]
           }
         },
         {
@@ -459,22 +521,334 @@
         {
           "partner": null,
           "conflicts": [],
-          "preferred": true
+          "preferred": true,
+          "case": "neb/128/783"
         },
         {
           "partner": 0,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": "neb/128/783"
         },
         {
           "partner": null,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": null
         },
         {
           "partner": null,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": null
+        }
+      ]
+    },
+    {
+      "name": "a reprint's page holds several decisions, its partner the second (#204)",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "neb/128/783"
+            ]
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "iowa/219/500",
+              "neb/128/783"
+            ]
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true,
+          "case": "neb/128/783"
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false,
+          "case": "neb/128/783"
+        }
+      ]
+    },
+    {
+      "name": "the official page holds several decisions; the run shares its second (#204)",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "md/163/481",
+              "md/163/481-2"
+            ]
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "md/163/481-2"
+            ]
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true,
+          "case": "md/163/481-2"
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false,
+          "case": "md/163/481-2"
+        }
+      ]
+    },
+    {
+      "name": "a member stare.pub doesn't hold resolves to the case the others share at a shared page (#204)",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "md/163/481",
+              "md/163/481-2"
+            ]
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "md/163/481-2"
+            ]
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "not_held"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true,
+          "case": "md/163/481-2"
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false,
+          "case": "md/163/481-2"
+        },
+        {
+          "partner": 0,
+          "conflicts": [],
+          "preferred": false,
+          "case": "md/163/481-2"
+        }
+      ]
+    },
+    {
+      "name": "shared pages with no case in common: flagged (#204)",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "neb/128/783",
+              "neb/128/783-2"
+            ]
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "n-w/260/287",
+              "n-w/260/287-2"
+            ]
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [
+            1
+          ],
+          "preferred": false,
+          "case": null
+        },
+        {
+          "partner": null,
+          "conflicts": [
+            0
+          ],
+          "preferred": false,
+          "case": null
+        }
+      ]
+    },
+    {
+      "name": "three members, one sharing no case with the other two (#204)",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "neb/128/783"
+            ]
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "iowa/219/500",
+              "neb/128/783"
+            ]
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "a2d/31/647"
+            ]
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [
+            2
+          ],
+          "preferred": false,
+          "case": null
+        },
+        {
+          "partner": null,
+          "conflicts": [
+            2
+          ],
+          "preferred": false,
+          "case": null
+        },
+        {
+          "partner": null,
+          "conflicts": [
+            0,
+            1
+          ],
+          "preferred": false,
+          "case": null
+        }
+      ]
+    },
+    {
+      "name": "three members that each share a case with the others, none common to all (#204)",
+      "printings": [
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "x/1/1",
+              "y/1/1"
+            ]
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "y/1/1",
+              "z/1/1"
+            ]
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "x/1/1",
+              "z/1/1"
+            ]
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [
+            1,
+            2
+          ],
+          "preferred": false,
+          "case": null
+        },
+        {
+          "partner": null,
+          "conflicts": [
+            0,
+            2
+          ],
+          "preferred": false,
+          "case": null
+        },
+        {
+          "partner": null,
+          "conflicts": [
+            0,
+            1
+          ],
+          "preferred": false,
+          "case": null
         }
       ]
     },
@@ -486,7 +860,9 @@
           "official": true,
           "lookup": {
             "status": "found",
-            "case": "us/410/113"
+            "cases": [
+              "us/410/113"
+            ]
           }
         },
         {
@@ -501,12 +877,14 @@
         {
           "partner": null,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": null
         },
         {
           "partner": null,
           "conflicts": [],
-          "preferred": false
+          "preferred": false,
+          "case": null
         }
       ]
     }

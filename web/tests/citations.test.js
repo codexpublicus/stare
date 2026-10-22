@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { detectCitations, processCitations } from '../public/js/citations.js';
 import { WasmLoadError } from '../public/js/wasm.js';
 import { codePointOffset, fakeDetect } from './fake-detect.js';
+// groupCitations groups through the stare WASM (#198).
+import './wasm-node.js';
 
 describe('codePointOffset (test fixture)', () => {
   test('astral character before the target shifts the code point offset', () => {
@@ -103,10 +105,10 @@ describe('processCitations', () => {
     assert.equal(unique.length, 2);
     assert.deepEqual(occurrencesByOpinion, [
       [
-        { raw: '123 U.S. 456', key: '123 U.S. 456', pin: null, start: 4, end: 16 },
-        { raw: '123 U.S. 456', key: '123 U.S. 456', pin: null, start: 25, end: 37 },
+        { raw: '123 U.S. 456', key: '123 U.S. 456', pin: null, start: 4, end: 16, place: 0 },
+        { raw: '123 U.S. 456', key: '123 U.S. 456', pin: null, start: 25, end: 37, place: 1 },
       ],
-      [{ raw: '78 N.E.2d 90', key: '78 N.E.2d 90', pin: null, start: 2, end: 14 }],
+      [{ raw: '78 N.E.2d 90', key: '78 N.E.2d 90', pin: null, start: 2, end: 14, place: 2 }],
     ]);
   });
 });

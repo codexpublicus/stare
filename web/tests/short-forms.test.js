@@ -12,10 +12,12 @@ import {
   processCitations,
   renderTextHtml,
 } from '../public/js/citations.js';
+// groupCitations groups through the stare WASM (#198).
+import './wasm-node.js';
 
 // The place-in-the-text attributes (#159) are tested in cite-nav.test.js;
 // these tests read the rest of the markup.
-const withoutPlaces = (html) => html.replace(/ data-cite-(?:group|form)="[^"]*"/g, '');
+const withoutPlaces = (html) => html.replace(/ data-cite-(?:group|place|form)="[^"]*"/g, '');
 
 // A detected citation in the shape detectCitations returns, located in
 // `text` by its raw string (the nth occurrence).

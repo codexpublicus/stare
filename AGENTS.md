@@ -158,10 +158,26 @@ preferred printing is the official reporter's (`DetectedCitation::official`: a s
 the U.S. Reports) when stare.pub holds it. The rules are one function,
 `stare::parallel::reconcile`, tested on `crates/stare/tests/fixtures/parallel-reconcile.json`:
 `stare check` calls it directly, and the site's `checkCitations` through the WASM export
-`reconcile_parallels` (#185). A data alias (`via=cl:`) still wins: it resolves the member on
+`reconcile_parallels` (#185). A member found at a page several cases start on is looked up
+as every one of them (`stare::parallel::page_cases`, `pageCases` in `citations.js`), and
+members are consistent when they share a case (#204): they open that one, which can be the
+page's second (`#md/163/481-02`). A data alias (`via=cl:`) still wins: it resolves the member on
 its own, with its own label. The JS tests load the built WASM (`web/tests/wasm-node.js`) for
 these rules, so CI builds it before running them, and `mise run test-js` runs `build-wasm`
 first.
+
+### Cited cases (#159, #198, `crates/stare/src/cited.rs`)
+
+The sidebar, /check and `stare check` list one entry per cited case and count the places
+in the text that cite it. `stare::cited::group` gathers the citations that resolve to one
+case (its printings, a reprint resolved through its partner, an alias, and the short forms
+that refer to any of them), falls back to the citation's reporter, volume and page for one
+that resolves to nothing, and keeps the members of a run flagged "needs review" apart. A
+parallel run is one place, and each short form one more. `stare check` calls it directly,
+and the site's `groupCitations` through the WASM export `group_citations`. The text's
+citations carry the place as `data-cite-place`, and `citenav.js` steps through places,
+highlighting a run's printings together; `~c=` still numbers every marked citation. The
+summaries count cited cases ("2 cited cases found (2 resolvable), 1 statute").
 
 ### CourtListener records (`crates/stare/src/cl.rs`, `web/public/js/cl.js`)
 

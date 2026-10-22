@@ -150,15 +150,31 @@ pub fn detect_citations(text: &str) -> Result<String, JsError> {
 
 /// Parallel-citation reconciliation (#160, D35): `stare::parallel::reconcile`, the
 /// rules `stare check` applies, for the site's `checkCitations`. Takes a JSON array of
-/// printings, `{ run, official, lookup }`, `lookup` being `{ status: "found", case }`,
-/// `{ status: "held_miss" }`, `{ status: "not_held" }` or `{ status: "unknown" }`.
-/// Returns a JSON array of one `{ partner, conflicts, preferred }` per printing, in
-/// order, `partner` an index or null. Throws on JSON that isn't a list of printings.
+/// printings, `{ run, official, lookup }`, `lookup` being `{ status: "found", cases }`
+/// (every case at the page, #204), `{ status: "held_miss" }`, `{ status: "not_held" }`
+/// or `{ status: "unknown" }`. Returns a JSON array of one
+/// `{ partner, conflicts, preferred, case }` per printing, in order, `partner` an index
+/// or null and `case` the case a run that agrees opens, or null. Throws on JSON that
+/// isn't a list of printings.
 #[wasm_bindgen]
 pub fn reconcile_parallels(printings: &str) -> Result<String, JsError> {
     let printings: Vec<stare::parallel::Printing> =
         serde_json::from_str(printings).map_err(|e| JsError::new(&e.to_string()))?;
     serde_json::to_string(&stare::parallel::reconcile(&printings))
+        .map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Cited cases (#198): `stare::cited::group`, which `stare check` uses too, for the
+/// site's `groupCitations`. Takes JSON `{ entries, places }`: entries
+/// `{ key, case, citation, antecedent, review }`, places `{ key, parallel_of }` in text
+/// order. Returns `{ groups, entries, places }`: each group `{ members, count }`, each
+/// entry's group, and each place's citing place (null for a key that is no entry's).
+/// Throws on JSON of another shape.
+#[wasm_bindgen]
+pub fn group_citations(input: &str) -> Result<String, JsError> {
+    let input: stare::cited::Input =
+        serde_json::from_str(input).map_err(|e| JsError::new(&e.to_string()))?;
+    serde_json::to_string(&stare::cited::group(&input.entries, &input.places))
         .map_err(|e| JsError::new(&e.to_string()))
 }
 
