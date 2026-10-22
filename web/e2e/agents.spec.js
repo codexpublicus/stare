@@ -17,7 +17,15 @@ test('/reporters.json maps abbreviations to slugs, with volumes and URL template
   expect(map.abbreviations['A.2d']).toEqual(['a2d']);
   expect(map.abbreviations['A. 2d']).toEqual(['a2d']);
   expect(map.reporters.a2d.cap).toBe(true);
-  expect(map.reporters.a2d.volumes.first).toBe('31');
+  // `volumes` is what the index build the map names held (reporters.v1's schema): every
+  // source's volumes, CourtListener-only ones included, so since v2026.10.22 A.2d starts
+  // at 1, ahead of CAP's first, 31. Checked against that build's own manifest.
+  const { version, base } = map.generated_from.index_build;
+  const build = await (await request.get(`https://idx.stare.pub/${base}manifest.json`)).json();
+  expect(build.version).toBe(version);
+  const held = build.reporters.a2d;
+  expect(held).toContain('31');
+  expect(map.reporters.a2d.volumes).toMatchObject({ count: held.length, first: held[0], last: held.at(-1) });
   // citare v0.7.2 folded P.R.R. into pr and Cai. R. into cai (citare#105, D78); the
   // old slugs stay for one release, naming their replacement.
   expect(map.abbreviations['P.R.R.']).toEqual(['pr']);
