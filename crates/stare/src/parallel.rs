@@ -70,6 +70,12 @@ pub struct Verdict {
     /// doesn't agree.
     #[serde(default)]
     pub case: Option<String>,
+    /// When the members share more than one case (two printings of a table of
+    /// decisions, each with several cases at its page), every one of them, `case` first:
+    /// the run alone doesn't say which it means, and the citing text's case name may
+    /// ([`crate::byname`], #212). Empty otherwise.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tied: Vec<String>,
 }
 
 /// The verdict for each of `printings`, in order.
@@ -121,12 +127,15 @@ pub fn reconcile(printings: &[Printing]) -> Vec<Verdict> {
             .map(|&(i, _)| i)
             .find(|&i| printings[i].official)
             .unwrap_or(first);
-        // The preferred printing's first case that every resolving member shares.
-        let case = found
+        // The cases every resolving member shares, in the preferred printing's order;
+        // the run opens the first.
+        let common: Vec<String> = found
             .iter()
             .find(|&&(i, _)| i == preferred)
-            .and_then(|(_, cases)| cases.iter().find(|c| shared(c)))
-            .cloned();
+            .map(|(_, cases)| cases.iter().filter(|c| shared(c)).cloned().collect())
+            .unwrap_or_default();
+        let case = common.first().cloned();
+        let tied = if common.len() > 1 { common } else { Vec::new() };
         verdicts[preferred].preferred = true;
         for &i in members {
             match printings[i].lookup {
@@ -135,6 +144,7 @@ pub fn reconcile(printings: &[Printing]) -> Vec<Verdict> {
                 Lookup::Unknown => continue,
             }
             verdicts[i].case = case.clone();
+            verdicts[i].tied = tied.clone();
         }
     }
     verdicts
@@ -148,6 +158,35 @@ pub fn reconcile(printings: &[Printing]) -> Vec<Verdict> {
 /// CourtListener line is an alias for it and adds none. The first is the case a
 /// reader opens at the page.
 pub fn page_cases(slug: &str, volume: &str, page: &PageKey, entries: &[&Entry]) -> Vec<String> {
+    page_case_refs(slug, volume, page, entries)
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect()
+}
+
+/// Where a case at a page is read from, for its name (#212).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "source", rename_all = "snake_case")]
+pub enum CaseRef {
+    /// `case_file` (`0941-02`) in `<reporter>/<folder>.zip`.
+    Cap {
+        reporter: String,
+        folder: String,
+        case_file: String,
+    },
+    /// A CourtListener record.
+    Cl { cluster_id: u64, hash: String },
+}
+
+/// [`page_cases`] with where each case is read from: the volume's own CAP cases from
+/// their folder's zip (the volume as cited, or the folder the line names), an alias's
+/// from its reporter and folder, and CourtListener's records.
+pub fn page_case_refs(
+    slug: &str,
+    volume: &str,
+    page: &PageKey,
+    entries: &[&Entry],
+) -> Vec<(String, CaseRef)> {
     let at = case_at(slug, volume, page);
     let numbered = |seq: u32| {
         if seq > 1 {
@@ -156,26 +195,43 @@ pub fn page_cases(slug: &str, volume: &str, page: &PageKey, entries: &[&Entry]) 
             at.clone()
         }
     };
-    let mut cases: Vec<String> = Vec::new();
-    let mut push = |c: String| {
-        if !cases.contains(&c) {
-            cases.push(c);
+    let mut cases: Vec<(String, CaseRef)> = Vec::new();
+    let mut push = |c: String, r: CaseRef| {
+        if !cases.iter().any(|(id, _)| *id == c) {
+            cases.push((c, r));
         }
+    };
+    let cap_ref = |reporter: &str, folder: &str, file: &str| CaseRef::Cap {
+        reporter: reporter.to_string(),
+        folder: folder.to_string(),
+        case_file: file.to_string(),
     };
     let mut cap = false;
     for e in entries {
         if let Some((reporter, folder, file)) = e.alias_target() {
             cap = true;
-            push(alias_case(reporter, folder, file));
-        } else if let Some((_, file)) = e.cap_case() {
+            push(
+                alias_case(reporter, folder, file),
+                cap_ref(reporter, folder, file),
+            );
+        } else if let Some((folder, file)) = e.cap_case() {
             cap = true;
-            push(numbered(file_seq(file)));
+            push(
+                numbered(file_seq(file)),
+                cap_ref(slug, folder.unwrap_or(volume), file),
+            );
         }
     }
     if !cap {
-        let records = entries.iter().filter(|e| e.cl_record().is_some()).count();
-        for n in 1..=records {
-            push(numbered(n as u32));
+        let records = entries.iter().filter_map(|e| e.cl_record());
+        for (n, (cluster_id, hash)) in records.enumerate() {
+            push(
+                numbered(n as u32 + 1),
+                CaseRef::Cl {
+                    cluster_id,
+                    hash: hash.to_string(),
+                },
+            );
         }
     }
     cases

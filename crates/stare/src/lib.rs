@@ -1,4 +1,5 @@
 pub mod alto;
+pub mod byname;
 pub mod case;
 pub mod cite;
 pub mod cited;
@@ -12,6 +13,7 @@ pub mod manifest;
 pub mod parallel;
 pub mod reporters;
 pub mod schemas;
+pub mod ziprange;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod resolve;

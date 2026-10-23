@@ -906,6 +906,246 @@ fn check_cases(src: &Sources, c: &stare::cite::DetectedCitation) -> Vec<String> 
     vec![stare::parallel::case_at(&slug, &volume, &page)]
 }
 
+/// [`check_cases`] with where each case is read from, for its name (#212); empty
+/// without the unified index.
+fn check_case_refs(
+    src: &Sources,
+    c: &stare::cite::DetectedCitation,
+) -> Vec<(String, stare::parallel::CaseRef)> {
+    let Some(t) = check_target(c) else {
+        return Vec::new();
+    };
+    let (Some(page), Some(slug), Some(volume)) = (
+        t.page.and_then(cited_page),
+        t.slug,
+        t.volume.map(|v| v.to_string()),
+    ) else {
+        return Vec::new();
+    };
+    match idx_entries(src, &slug, &volume, &page) {
+        Ok(Some(entries)) => {
+            let entries: Vec<&stare::idx::Entry> = entries.iter().collect();
+            stare::parallel::page_case_refs(&slug, &volume, &page, &entries)
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The `via` of the alias at a citation's page that names `case`, if one does.
+fn check_case_via(src: &Sources, c: &stare::cite::DetectedCitation, case: &str) -> Option<String> {
+    let t = check_target(c)?;
+    let entries = idx_entries(
+        src,
+        t.slug.as_deref()?,
+        &t.volume?.to_string(),
+        &cited_page(t.page?)?,
+    )
+    .ok()
+    .flatten()?;
+    entries.into_iter().find_map(|e| {
+        let (reporter, folder, file) = e.alias_target()?;
+        (stare::parallel::alias_case(reporter, folder, file) == case)
+            .then_some(e.via)
+            .flatten()
+    })
+}
+
+/// How a citation's case was picked by the citing text's case name (#212).
+#[derive(Debug, Clone)]
+struct ByName {
+    /// The case it opens.
+    case: String,
+    /// How many cases it was picked among.
+    among: usize,
+    /// Whether those were the cases its parallel citations share, not every case at
+    /// its page.
+    shared: bool,
+}
+
+impl ByName {
+    /// "matched by case name among the 3 cases on this page", as the site says it.
+    fn note(&self) -> String {
+        if self.shared {
+            format!(
+                "matched by case name among the {} cases its parallel citations share",
+                self.among
+            )
+        } else {
+            format!(
+                "matched by case name among the {} cases on this page",
+                self.among
+            )
+        }
+    }
+}
+
+/// For each full case citation found at a page several cases start on, with nothing
+/// else to say which it means (no alias names one, and its parallel citations, if any,
+/// share more than one), the case its name in the citing text picks
+/// ([`stare::byname::pick`]), by raw string. A citation no one case matches clearly
+/// isn't in it, and opens the page's first case as before.
+fn names_pick(
+    src: &Sources,
+    detected: &[stare::cite::DetectedCitation],
+    parallels: &std::collections::HashMap<String, ParallelVerdict>,
+) -> std::collections::HashMap<String, ByName> {
+    let mut out = std::collections::HashMap::new();
+    let mut reader = NameReader::default();
+    for c in detected {
+        if c.citation_type != "FullCaseCitation" || out.contains_key(&c.matched_text) {
+            continue;
+        }
+        let Some(name) = c.case_name.as_deref().or(c.history_name.as_deref()) else {
+            continue;
+        };
+        if !matches!(
+            check_status(src, c),
+            CheckStatus::Found | CheckStatus::FoundAlias
+        ) {
+            continue;
+        }
+        let refs = check_case_refs(src, c);
+        let verdict = parallels.get(&c.matched_text);
+        let (open, shared): (Vec<String>, bool) = match verdict {
+            Some(v) if !v.conflicts.is_empty() => continue,
+            Some(v) if v.case.is_some() => (v.tied.clone(), true),
+            _ => (refs.iter().map(|(id, _)| id.clone()).collect(), false),
+        };
+        if open.len() < 2 {
+            continue;
+        }
+        let candidates: Vec<stare::byname::Candidate> = refs
+            .iter()
+            .filter(|(id, _)| open.contains(id))
+            .map(|(id, r)| match reader.names(src, r) {
+                Some(names) => names.candidate(id),
+                None => stare::byname::Candidate {
+                    id: id.clone(),
+                    ..Default::default()
+                },
+            })
+            .collect();
+        if let Some(case) = stare::byname::pick(&candidates, name, c.year) {
+            out.insert(
+                c.matched_text.clone(),
+                ByName {
+                    case: case.to_string(),
+                    among: open.len(),
+                    shared,
+                },
+            );
+        }
+    }
+    out
+}
+
+/// Reads the names of cases at a page: a CAP case's JSON from its volume's zip (the
+/// zip when it is cached or the data source is a directory, else by range requests,
+/// [`stare::ziprange`]), or a CourtListener record. Each zip's directory is read once.
+#[derive(Default)]
+struct NameReader {
+    directories: std::collections::HashMap<String, Option<Vec<stare::ziprange::Entry>>>,
+}
+
+impl NameReader {
+    fn names(
+        &mut self,
+        src: &Sources,
+        r: &stare::parallel::CaseRef,
+    ) -> Option<stare::byname::CaseNames> {
+        use stare::parallel::CaseRef;
+        match r {
+            CaseRef::Cl { cluster_id, hash } => {
+                let bytes = fetch_record(src, *cluster_id, hash).ok()?;
+                let case = stare::cl::decode_record(&bytes).ok()?;
+                Some(stare::byname::CaseNames {
+                    name: Some(case.name),
+                    name_abbreviation: Some(case.name_abbreviation),
+                    decision_date: Some(case.decision_date),
+                })
+            }
+            CaseRef::Cap {
+                reporter,
+                folder,
+                case_file,
+            } => {
+                let file = format!("json/{case_file}.json");
+                let key = format!("{reporter}/{folder}/{file}");
+                if let Some(bytes) = config::cache_get("zips", &key) {
+                    return stare::byname::CaseNames::parse(&bytes).ok();
+                }
+                let zip_key = format!("{reporter}/{folder}.zip");
+                let bytes = if config::cache_get("zips", &zip_key).is_some()
+                    || !Sources::is_url(&src.data)
+                {
+                    let zip = fetch_zip(src, reporter, folder).ok()?;
+                    stare::case::extract_file_from_zip(&zip, &file)
+                        .ok()?
+                        .into_bytes()
+                } else {
+                    let url = format!("{}/{}", src.data, zip_key);
+                    let entries = self
+                        .directories
+                        .entry(zip_key)
+                        .or_insert_with(|| zip_directory(&url).ok())
+                        .as_ref()?;
+                    let entry = entries.iter().find(|e| e.name == file)?;
+                    let range = format!("bytes={}-{}", entry.start, entry.end.saturating_sub(1));
+                    let (bytes, start) = fetch_range(&url, &range).ok()?;
+                    stare::ziprange::entry(&bytes, start, entry).ok()?
+                };
+                let _ = config::cache_set("zips", &key, &bytes);
+                stare::byname::CaseNames::parse(&bytes).ok()
+            }
+        }
+    }
+}
+
+/// A zip's central directory by range requests: its tail, and the bytes before it
+/// when the directory starts earlier.
+fn zip_directory(url: &str) -> Result<Vec<stare::ziprange::Entry>> {
+    use stare::ziprange::{directory, Directory, TAIL};
+    let (tail, start) = fetch_range(url, &format!("bytes=-{TAIL}"))?;
+    match directory(&tail, start)? {
+        Directory::Entries(entries) => Ok(entries),
+        Directory::Need(from) => {
+            let (bytes, start) = fetch_range(url, &format!("bytes={from}-"))?;
+            match directory(&bytes, start)? {
+                Directory::Entries(entries) => Ok(entries),
+                Directory::Need(_) => bail!("no central directory in {}", url),
+            }
+        }
+    }
+}
+
+/// The bytes of `url` that `range` (a Range header, `bytes=-65536`) asks for, and the
+/// offset they start at.
+fn fetch_range(url: &str, range: &str) -> Result<(Vec<u8>, u64)> {
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("stare/0.1.0 (case law tool; github.com/codexpublicus/stare)")
+        .build()?;
+    let response =
+        stare_cli::http::send_with_retry(|| client.get(url).header(reqwest::header::RANGE, range))
+            .with_context(|| format!("failed to fetch {}", url))?;
+    let status = response.status();
+    if status == reqwest::StatusCode::OK {
+        // A server that ignores Range sends the whole file.
+        return Ok((response.bytes()?.to_vec(), 0));
+    }
+    if status != reqwest::StatusCode::PARTIAL_CONTENT {
+        bail!("HTTP {} fetching {} ({})", status, url, range);
+    }
+    let from = response
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("bytes "))
+        .and_then(|v| v.split('-').next())
+        .and_then(|v| v.parse::<u64>().ok())
+        .with_context(|| format!("no Content-Range fetching {}", url))?;
+    Ok((response.bytes()?.to_vec(), from))
+}
+
 /// What reconciling the text's parallel runs (#160) says of a citation, by its raw string.
 #[derive(Default)]
 struct ParallelVerdict {
@@ -917,6 +1157,8 @@ struct ParallelVerdict {
     run: Option<String>,
     /// The case its run agrees on, which it opens (#204).
     case: Option<String>,
+    /// When its run's printings share more than one case, all of them (#212).
+    tied: Vec<String>,
     /// Whether it is the printing its run shows by default (R3).
     preferred: bool,
 }
@@ -986,6 +1228,7 @@ fn reconcile_parallels(
         }
         if entry.case.is_none() {
             entry.case = v.case.clone();
+            entry.tied = v.tied.clone();
         }
         entry.preferred |= v.preferred;
     }
@@ -1022,6 +1265,8 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
         },
         |c| check_cases(src, c),
     );
+    // The case the citing text's name picks at a shared page (#212).
+    let picked = names_pick(src, &detected, &parallels);
 
     // One entry per citation and antecedent: every `Id.` that refers to
     // the same case shares one, and `Id.`s that refer to different cases
@@ -1041,7 +1286,7 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             continue;
         }
         let mut status = check_status(src, c);
-        let via = (status == CheckStatus::FoundAlias)
+        let mut via = (status == CheckStatus::FoundAlias)
             .then(|| check_via(src, c))
             .flatten();
         // A full citation's own verdict, or a short form's antecedent's partner.
@@ -1061,14 +1306,25 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             status,
             CheckStatus::Found | CheckStatus::FoundAlias | CheckStatus::FoundPartner
         );
-        // The case it resolves to (#198): the one its parallel run agrees on (#204), else
+        // The case it resolves to (#198): the one its name picks at a shared page (#212),
+        // or its partner's name does, else the one its parallel run agrees on (#204), else
         // the page's first.
+        let by_name = (!c.is_short_form())
+            .then(|| picked.get(&c.matched_text))
+            .flatten();
         let case = (resolvable && !c.is_short_form())
             .then(|| {
-                own.and_then(|v| v.case.clone())
+                by_name
+                    .or_else(|| partner.as_ref().and_then(|p| picked.get(p)))
+                    .map(|b| b.case.clone())
+                    .or_else(|| own.and_then(|v| v.case.clone()))
                     .or_else(|| check_cases(src, c).into_iter().next())
             })
             .flatten();
+        // At a page with several aliases, the alias that names the case it opens.
+        if let (Some(_), Some(case)) = (&via, &case) {
+            via = check_case_via(src, c, case).or(via);
+        }
         citations.push(serde_json::json!({
             "raw": c.matched_text, "type": c.citation_type,
             "reporter": target.as_ref().and_then(|t| t.reporter),
@@ -1082,6 +1338,9 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             "case": case,
             "via": via,
             "partner": partner,
+            "by_name": by_name.filter(|_| resolvable).map(|b| serde_json::json!({
+                "among": b.among, "shared": b.shared, "note": b.note(),
+            })),
             "conflicts": conflicts,
             "needs_review": !conflicts.is_empty(),
             "external_url": target.as_ref().and_then(|t| t.external_url)
@@ -1305,6 +1564,9 @@ fn print_checked(c: &serde_json::Value, form_count: Option<usize>) {
             print!("  (refers to an earlier citation that couldn't be identified)")
         }
         _ => {}
+    }
+    if let Some(note) = c["by_name"]["note"].as_str() {
+        print!("  ({note})");
     }
     if let Some(others) = c["conflicts"].as_array().filter(|o| !o.is_empty()) {
         let others: Vec<&str> = others.iter().filter_map(|o| o.as_str()).collect();
@@ -1840,6 +2102,50 @@ mod tests {
 
     /// #160 in `stare check`: a parallel citation stare.pub doesn't hold is found
     /// through its partner, and parallel citations that open different cases are
+    /// #212: at 31 A.2d 657, where Brooks v. District of Columbia and Waterman v. Railway
+    /// Express Agency both start, the citing text's case name picks the case.
+    #[test]
+    fn a_shared_page_opens_the_case_the_citing_text_names() {
+        let _env = CACHE_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let cache = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", cache.path());
+        let (_idx, _data, src) = idx_fixture(true);
+        let pick = |text: &str| {
+            let detected = stare::cite::detect_citations(text);
+            let parallels = reconcile_parallels(
+                &detected,
+                |c| check_status(&src, c),
+                |c| check_cases(&src, c),
+            );
+            names_pick(&src, &detected, &parallels)
+                .remove("31 A.2d 657")
+                .map(|b| (b.case.clone(), b.among, b.shared, b.note()))
+        };
+        assert_eq!(
+            pick("Waterman v. Railway Express Agency, 31 A.2d 657 (1943)."),
+            Some((
+                "a2d/31/657-2".into(),
+                2,
+                false,
+                "matched by case name among the 2 cases on this page".into()
+            ))
+        );
+        assert_eq!(
+            pick("Brooks v. District of Columbia, 31 A.2d 657 (1943).").map(|p| p.0),
+            Some("a2d/31/657".into())
+        );
+        // Another year, a name neither has, or no name: the page's first, as before.
+        assert_eq!(
+            pick("Waterman v. Railway Express Agency, 31 A.2d 657 (1950)."),
+            None
+        );
+        assert_eq!(pick("Doe v. Roe, 31 A.2d 657 (1943)."), None);
+        assert_eq!(pick("See 31 A.2d 657."), None);
+        // A page with one case has nothing to pick among.
+        let detected = stare::cite::detect_citations("D'Elia & Marks Co. v. Lyon, 31 A.2d 647.");
+        assert!(names_pick(&src, &detected, &Default::default()).is_empty());
+    }
+
     /// flagged with each other.
     #[test]
     fn check_reconciles_parallel_citations() {

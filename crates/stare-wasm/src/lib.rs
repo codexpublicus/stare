@@ -153,9 +153,10 @@ pub fn detect_citations(text: &str) -> Result<String, JsError> {
 /// printings, `{ run, official, lookup }`, `lookup` being `{ status: "found", cases }`
 /// (every case at the page, #204), `{ status: "held_miss" }`, `{ status: "not_held" }`
 /// or `{ status: "unknown" }`. Returns a JSON array of one
-/// `{ partner, conflicts, preferred, case }` per printing, in order, `partner` an index
-/// or null and `case` the case a run that agrees opens, or null. Throws on JSON that
-/// isn't a list of printings.
+/// `{ partner, conflicts, preferred, case, tied? }` per printing, in order, `partner` an
+/// index or null, `case` the case a run that agrees opens, or null, and `tied`, when
+/// its members share more than one case, all of them (#212). Throws on JSON that isn't
+/// a list of printings.
 #[wasm_bindgen]
 pub fn reconcile_parallels(printings: &str) -> Result<String, JsError> {
     let printings: Vec<stare::parallel::Printing> =
@@ -177,6 +178,44 @@ pub fn group_citations(input: &str) -> Result<String, JsError> {
         serde_json::from_str(input).map_err(|e| JsError::new(&e.to_string()))?;
     serde_json::to_string(&stare::cited::group(&input.entries, &input.places))
         .map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// A zip's central directory from its tail (#212, `stare::ziprange::directory`): `tail`
+/// is the zip's bytes from offset `tail_start` to its end. Returns JSON
+/// `{ "entries": [{ name, start, end }] }`, each file's local entry by offset, or
+/// `{ "need": offset }` when the directory starts before the tail. Throws on bytes with
+/// no end of central directory.
+#[wasm_bindgen]
+pub fn zip_directory(tail: &[u8], tail_start: f64) -> Result<String, JsError> {
+    let dir = stare::ziprange::directory(tail, tail_start as u64)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    serde_json::to_string(&dir).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// One file's text from a range of a zip (`stare::ziprange::entry`): `bytes` from offset
+/// `bytes_start`, holding the whole local entry of `entry`, one of `zip_directory`'s
+/// `{ name, start, end }` as JSON.
+#[wasm_bindgen]
+pub fn zip_entry(bytes: &[u8], bytes_start: f64, entry: &str) -> Result<String, JsError> {
+    let entry: stare::ziprange::Entry =
+        serde_json::from_str(entry).map_err(|e| JsError::new(&e.to_string()))?;
+    let data = stare::ziprange::entry(bytes, bytes_start as u64, &entry)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    String::from_utf8(data).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// The case the citing text's `name` (and `year`, or none) means among the cases at a
+/// page (#212, `stare::byname::pick`), from JSON `[{ id, names, date }]`: its `id`, or
+/// undefined when no one case matches clearly.
+#[wasm_bindgen]
+pub fn match_case_name(
+    cases: &str,
+    name: &str,
+    year: Option<i32>,
+) -> Result<Option<String>, JsError> {
+    let cases: Vec<stare::byname::Candidate> =
+        serde_json::from_str(cases).map_err(|e| JsError::new(&e.to_string()))?;
+    Ok(stare::byname::pick(&cases, name, year).map(str::to_string))
 }
 
 /// List all case filenames in a zip. Returns a JSON array of strings.

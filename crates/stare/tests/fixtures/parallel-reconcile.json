@@ -5,7 +5,8 @@
     "`run` is the index of the first citation of the parallel run a printing is in (its own",
     "index when it starts one or is in none); `lookup` is what the index says of it, a found",
     "one with every case that starts at its page, the first the one a reader opens (#204).",
-    "A verdict's `case` is the case a run that agrees opens, which its members share."
+    "A verdict's `case` is the case a run that agrees opens, which its members share.",
+    "When they share more than one case, `tied` lists them, `case` first (#212); it is left out otherwise."
   ],
   "vectors": [
     {
@@ -885,6 +886,102 @@
           "conflicts": [],
           "preferred": false,
           "case": null
+        }
+      ]
+    },
+    {
+      "name": "two printings at shared pages that share two cases tie (Brooks v. Powers: 261 Conn. 941, 808 A.2d 1132)",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "conn/261/941",
+              "conn/261/941-2",
+              "conn/261/941-3"
+            ]
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "conn/261/938-2",
+              "conn/261/941",
+              "conn/261/941-2"
+            ]
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true,
+          "case": "conn/261/941",
+          "tied": [
+            "conn/261/941",
+            "conn/261/941-2"
+          ]
+        },
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": false,
+          "case": "conn/261/941",
+          "tied": [
+            "conn/261/941",
+            "conn/261/941-2"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a member that misses beside one at a shared page ties among that page's cases",
+      "printings": [
+        {
+          "run": 0,
+          "official": true,
+          "lookup": {
+            "status": "found",
+            "cases": [
+              "conn/261/941",
+              "conn/261/941-2"
+            ]
+          }
+        },
+        {
+          "run": 0,
+          "official": false,
+          "lookup": {
+            "status": "held_miss"
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "partner": null,
+          "conflicts": [],
+          "preferred": true,
+          "case": "conn/261/941",
+          "tied": [
+            "conn/261/941",
+            "conn/261/941-2"
+          ]
+        },
+        {
+          "partner": 0,
+          "conflicts": [],
+          "preferred": false,
+          "case": "conn/261/941",
+          "tied": [
+            "conn/261/941",
+            "conn/261/941-2"
+          ]
         }
       ]
     }
