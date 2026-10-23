@@ -219,7 +219,7 @@ fn is_subsequent_history(gap: &str) -> bool {
             | petition\s+for\s+(?:review|certification|certiorari)\s+denied
             | (?:reh(?:earin)?['\x{2019}]?g|reh\.|rehearing)\s+denied
         )
-        (?:,?\s+(?:in\s+part|on\s+other\s+grounds|per\s+curiam|mem\.))*
+        (?:,?\s+(?:in\s+part|on\s+other\s+grounds|per\s+curiam|mem\.|(?:after|on)\s+remand))*
         [\s,]*$"
     )
     .is_match(gap)
@@ -2057,8 +2057,9 @@ mod tests {
             .iter()
             .all(|(_, own, history)| own.is_none() && *history == name));
         // Other spellings of history: N.J.'s `certif. denied`, `reh. denied`, a bracketed
-        // note, and a second history after a semicolon.
+        // note, a second history after a semicolon, and `aff'd after remand` (D98 (1)).
         for (text, at) in [
+            ("State v. Webb, 238 Conn. 389, 468 n.56, 680 A.2d 147 (1996), aff'd after remand, 252 Conn. 128, 750 A.2d 448, cert. denied, 531 U.S. 835, 121 S. Ct. 93, 148 L. Ed. 2d 53 (2000).", 4),
             ("Hantman v. Township of Randolph, 58 N.J.Super. 127, 155 A.2d 554 (App.Div.1959), certif. denied, 31 N.J. 550.", 2),
             ("United States v. Mendenhall, 446 U.S. 544, 553-54, 100 S. Ct. 1870, 64 L. Ed. 2d 497, reh. denied, 448 U.S. 908.", 3),
             ("United States v. Rosenwasser, 550 F.2d 806, 814 (2d Cir.) [Gurfein, J., dissenting], cert. denied, 434 U.S. 825.", 1),
