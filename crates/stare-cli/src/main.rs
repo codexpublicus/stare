@@ -960,12 +960,21 @@ struct ByName {
     /// Whether those were the cases its parallel citations share, not every case at
     /// its page.
     shared: bool,
+    /// When none of the cases its run's printings share fits the name and one case on
+    /// the official printing's page does (D90), that printing (`455 U.S. 989`), and
+    /// `among` counts the cases at its page.
+    official: Option<String>,
 }
 
 impl ByName {
     /// "matched by case name among the 3 cases on this page", as the site says it.
     fn note(&self) -> String {
-        if self.shared {
+        if let Some(official) = &self.official {
+            format!(
+                "matched by case name among the {} cases on the official page, {}; the cases its parallel citations share don't include it",
+                self.among, official
+            )
+        } else if self.shared {
             format!(
                 "matched by case name among the {} cases its parallel citations share",
                 self.among
@@ -984,6 +993,10 @@ impl ByName {
 /// share more than one), the case its name in the citing text picks
 /// ([`stare::byname::pick`]), by raw string. A citation no one case matches clearly
 /// isn't in it, and opens the page's first case as before.
+///
+/// When a run's printings share several cases, none of them fits the name, and exactly
+/// one case on the official printing's whole page does, every printing in the run
+/// opens that case (D90, [`stare::byname::pick_on_official_page`]).
 fn names_pick(
     src: &Sources,
     detected: &[stare::cite::DetectedCitation],
@@ -991,6 +1004,8 @@ fn names_pick(
 ) -> std::collections::HashMap<String, ByName> {
     let mut out = std::collections::HashMap::new();
     let mut reader = NameReader::default();
+    // The official printings picked on their whole page (D90), by raw string.
+    let mut official_picks: std::collections::HashMap<String, ByName> = Default::default();
     for c in detected {
         if c.citation_type != "FullCaseCitation" || out.contains_key(&c.matched_text) {
             continue;
@@ -1016,16 +1031,17 @@ fn names_pick(
         if open.len() < 2 {
             continue;
         }
+        let mut candidate = |id: &String, r: &stare::parallel::CaseRef| match reader.names(src, r) {
+            Some(names) => names.candidate(id),
+            None => stare::byname::Candidate {
+                id: id.clone(),
+                ..Default::default()
+            },
+        };
         let candidates: Vec<stare::byname::Candidate> = refs
             .iter()
             .filter(|(id, _)| open.contains(id))
-            .map(|(id, r)| match reader.names(src, r) {
-                Some(names) => names.candidate(id),
-                None => stare::byname::Candidate {
-                    id: id.clone(),
-                    ..Default::default()
-                },
-            })
+            .map(|(id, r)| candidate(id, r))
             .collect();
         if let Some(case) = stare::byname::pick(&candidates, name, c.year) {
             out.insert(
@@ -1034,8 +1050,30 @@ fn names_pick(
                     case: case.to_string(),
                     among: open.len(),
                     shared,
+                    official: None,
                 },
             );
+        } else if shared && verdict.and_then(|v| v.official.as_ref()) == Some(&c.matched_text) {
+            let page: Vec<stare::byname::Candidate> =
+                refs.iter().map(|(id, r)| candidate(id, r)).collect();
+            if let Some(case) = stare::byname::pick_on_official_page(&page, &open, name, c.year) {
+                official_picks.insert(
+                    c.matched_text.clone(),
+                    ByName {
+                        case: case.to_string(),
+                        among: refs.len(),
+                        shared: false,
+                        official: Some(c.matched_text.clone()),
+                    },
+                );
+            }
+        }
+    }
+    // Every printing in such a run opens the case its official printing's page names;
+    // one found through its partner follows that partner, as before.
+    for (raw, v) in parallels.iter().filter(|(_, v)| v.partner.is_none()) {
+        if let Some(pick) = v.official.as_ref().and_then(|o| official_picks.get(o)) {
+            out.insert(raw.clone(), pick.clone());
         }
     }
     out
@@ -1163,6 +1201,9 @@ struct ParallelVerdict {
     tied: Vec<String>,
     /// Whether it is the printing its run shows by default (R3).
     preferred: bool,
+    /// The raw string of its run's official printing (`DetectedCitation::official`),
+    /// when the run agrees and that printing is the one it shows by default (D90).
+    official: Option<String>,
 }
 
 /// [`stare::parallel::reconcile`] over the full case citations in `detected`, with
@@ -1233,6 +1274,15 @@ fn reconcile_parallels(
             entry.tied = v.tied.clone();
         }
         entry.preferred |= v.preferred;
+        if v.case.is_some() && entry.official.is_none() {
+            entry.official = (0..printings.len())
+                .find(|&j| {
+                    printings[j].run == printings[i].run
+                        && printings[j].official
+                        && verdicts[j].preferred
+                })
+                .map(|j| members[j].matched_text.clone());
+        }
     }
     out
 }
@@ -1323,9 +1373,14 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
                     .or_else(|| check_cases(src, c).into_iter().next())
             })
             .flatten();
-        // At a page with several aliases, the alias that names the case it opens.
+        // At a page with several aliases, the alias that names the case it opens. A
+        // printing that opens the case its official printing's page names (D90) has
+        // none when no alias at its own page names that case.
         if let (Some(_), Some(case)) = (&via, &case) {
-            via = check_case_via(src, c, case).or(via);
+            let fallback = via
+                .take()
+                .filter(|_| !by_name.is_some_and(|b| b.official.is_some()));
+            via = check_case_via(src, c, case).or(fallback);
         }
         citations.push(serde_json::json!({
             "raw": c.matched_text, "type": c.citation_type,
@@ -1341,7 +1396,7 @@ fn check_citations(file: &str, src: &Sources, json: bool) -> Result<()> {
             "via": via,
             "partner": partner,
             "by_name": by_name.filter(|_| resolvable).map(|b| serde_json::json!({
-                "among": b.among, "shared": b.shared, "note": b.note(),
+                "among": b.among, "shared": b.shared, "official": b.official, "note": b.note(),
             })),
             "conflicts": conflicts,
             "needs_review": !conflicts.is_empty(),
@@ -2146,6 +2201,91 @@ mod tests {
         // A page with one case has nothing to pick among.
         let detected = stare::cite::detect_citations("D'Elia & Marks Co. v. Lyon, 31 A.2d 647.");
         assert!(names_pick(&src, &detected, &Default::default()).is_empty());
+    }
+
+    /// D90: when a run's printings share several cases and none fits the citing text's
+    /// name, the one case on the official printing's whole page that fits opens, in
+    /// every printing of the run.
+    #[test]
+    fn the_official_page_decides_when_the_shared_cases_miss_the_name() {
+        let _env = CACHE_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let cache = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", cache.path());
+        let (idx, _data, src) = idx_fixture(true);
+        // An alias at 31 A.2d 657 to Raaen v. Southern Hotel Supply Co. (31 A.2d 659), so
+        // the page has three cases: Brooks v. District of Columbia, Waterman v. Railway
+        // Express Agency and Raaen.
+        let path = idx.path().join("v/v1/a2d/31.idx.gz");
+        let text = stare::idx::decode(&std::fs::read(&path).unwrap()).unwrap();
+        let alias = stare::idx::Entry::alias(
+            stare::index::PageKey::Number(657),
+            "a2d",
+            "31",
+            "0659-01",
+            1,
+        )
+        .unwrap()
+        .line();
+        let mut lines: Vec<&str> = text.lines().collect();
+        let at = lines.iter().rposition(|l| l.starts_with("657,")).unwrap() + 1;
+        lines.insert(at, &alias);
+        std::fs::write(&path, stare::idx::gzip(&(lines.join("\n") + "\n"))).unwrap();
+
+        let detected = |name: &str| {
+            stare::cite::detect_citations(&format!("{name}, 31 A.2d 657 (1943), 1 U.S. 1."))
+        };
+        // The run's printings share Brooks and Raaen, as reconciliation would say of a
+        // partner whose data leaves out Waterman.
+        let shared = vec!["a2d/31/657".to_string(), "a2d/31/659".to_string()];
+        let run = |official: bool| {
+            let verdict = || ParallelVerdict {
+                case: Some("a2d/31/657".into()),
+                tied: shared.clone(),
+                official: official.then(|| "31 A.2d 657".to_string()),
+                ..Default::default()
+            };
+            std::collections::HashMap::from([
+                (
+                    "31 A.2d 657".to_string(),
+                    ParallelVerdict {
+                        preferred: true,
+                        ..verdict()
+                    },
+                ),
+                ("1 U.S. 1".to_string(), verdict()),
+            ])
+        };
+        let picks = names_pick(
+            &src,
+            &detected("Waterman v. Railway Express Agency"),
+            &run(true),
+        );
+        let note = "matched by case name among the 3 cases on the official page, 31 A.2d 657; \
+                    the cases its parallel citations share don't include it";
+        for raw in ["31 A.2d 657", "1 U.S. 1"] {
+            let b = &picks[raw];
+            assert_eq!(
+                (b.case.as_str(), b.among, b.note()),
+                ("a2d/31/657-2", 3, note.into())
+            );
+        }
+        // A shared case that fits is picked among the shared cases, as before.
+        let picks = names_pick(
+            &src,
+            &detected("Brooks v. District of Columbia"),
+            &run(true),
+        );
+        assert_eq!(picks["31 A.2d 657"].case, "a2d/31/657");
+        assert!(picks["31 A.2d 657"].official.is_none());
+        // No official printing shown by default, or a name nothing on the page fits:
+        // the run's narrowing stands.
+        assert!(names_pick(
+            &src,
+            &detected("Waterman v. Railway Express Agency"),
+            &run(false)
+        )
+        .is_empty());
+        assert!(names_pick(&src, &detected("Doe v. Roe"), &run(true)).is_empty());
     }
 
     /// flagged with each other.

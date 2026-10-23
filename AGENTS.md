@@ -172,7 +172,13 @@ names one, and its run's printings, if any, share more than one; `Verdict::tied`
 text's case name does (#212, D72 (2), `stare::byname::pick`): its telling words and year
 against each case's names and decision date, the way stare-builder matches CourtListener
 clusters to shared pages (stare-builder#37), taking a case only when it is the one clear
-match. A nameless citation in another's subsequent history (`Segreto v. Bristol, ..., cert.
+match. When a run's printings share several cases, none of them fits the name, and exactly
+one case on the official printing's whole page does (D90,
+`stare::byname::pick_on_official_page`; the U.S. Reports for `State v. Gordon, ..., cert.
+denied, 455 U.S. 989, 102 S. Ct. 1612, 71 L. Ed. 2d 848`, whose L. Ed. aliases leave out
+Connecticut v. Gordon), every printing opens that case, a printing whose own page doesn't
+list it without a `via`, and the note says "among the 12 cases on the official page, 455
+U.S. 989; the cases its parallel citations share don't include it". A nameless citation in another's subsequent history (`Segreto v. Bristol, ..., cert.
 denied, 261 Conn. 941`) takes the name it follows (`DetectedCitation::history_name`). The
 names come from each case's JSON, read out of its volume's zip by range requests
 (`stare::ziprange`; `web/public/js/casenames.js`), or a CourtListener record. The link says

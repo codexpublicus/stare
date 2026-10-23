@@ -218,6 +218,25 @@ pub fn match_case_name(
     Ok(stare::byname::pick(&cases, name, year).map(str::to_string))
 }
 
+/// The owner's ruling D90 (`stare::byname::pick_on_official_page`): for the official
+/// printing of a parallel run whose printings share several cases (`shared`, a JSON
+/// array of ids), the case on its whole page (`cases`, JSON `[{ id, names, date }]`)
+/// the citing text's `name` means, when none of the shared cases fits it and exactly
+/// one case on the page does: its `id`, or undefined.
+#[wasm_bindgen]
+pub fn match_case_name_official(
+    cases: &str,
+    shared: &str,
+    name: &str,
+    year: Option<i32>,
+) -> Result<Option<String>, JsError> {
+    let cases: Vec<stare::byname::Candidate> =
+        serde_json::from_str(cases).map_err(|e| JsError::new(&e.to_string()))?;
+    let shared: Vec<String> =
+        serde_json::from_str(shared).map_err(|e| JsError::new(&e.to_string()))?;
+    Ok(stare::byname::pick_on_official_page(&cases, &shared, name, year).map(str::to_string))
+}
+
 /// List all case filenames in a zip. Returns a JSON array of strings.
 #[wasm_bindgen]
 pub fn list_cases(zip_bytes: &[u8]) -> Result<String, JsError> {
