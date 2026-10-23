@@ -56,7 +56,7 @@
 .cited-case-lookup { flex-wrap: wrap; }
 .cited-lookup { flex-basis: 100%; padding-left: 20px; font-size: 12px; }
 .cited-lookup-link { color: var(--text-secondary); }
-.cited-miss, .cited-via { color: var(--text-secondary); }
+.cited-miss, .cited-via, .cited-by-name { color: var(--text-secondary); }
 .cited-lookup-link:hover { color: var(--text); }
 
 .citation-status-text { padding: 4px 0; font-size: 13px; color: var(--text-secondary); min-height: 1.2em; }

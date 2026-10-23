@@ -162,7 +162,18 @@ the U.S. Reports) when stare.pub holds it. The rules are one function,
 as every one of them (`stare::parallel::page_cases`, `pageCases` in `citations.js`), and
 members are consistent when they share a case (#204): they open that one, which can be the
 page's second (`#md/163/481-02`). A data alias (`via=cl:`) still wins: it resolves the member on
-its own, with its own label. The JS tests load the built WASM (`web/tests/wasm-node.js`) for
+its own, with its own label. When nothing else settles which case at such a page a citation means (no alias
+names one, and its run's printings, if any, share more than one; `Verdict::tied`), the citing
+text's case name does (#212, D72 (2), `stare::byname::pick`): its telling words and year
+against each case's names and decision date, the way stare-builder matches CourtListener
+clusters to shared pages (stare-builder#37), taking a case only when it is the one clear
+match. A nameless citation in another's subsequent history (`Segreto v. Bristol, ..., cert.
+denied, 261 Conn. 941`) takes the name it follows (`DetectedCitation::history_name`). The
+names come from each case's JSON, read out of its volume's zip by range requests
+(`stare::ziprange`; `web/public/js/casenames.js`), or a CourtListener record. The link says
+"Matched by case name among the 3 cases on this page" ("... the 2 cases its parallel
+citations share" when the run narrowed them), and so does `stare check`; case URLs don't
+change. The JS tests load the built WASM (`web/tests/wasm-node.js`) for
 these rules, so CI builds it before running them, and `mise run test-js` runs `build-wasm`
 first.
 

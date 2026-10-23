@@ -1006,11 +1006,13 @@ fn names_pick(
         }
         let refs = check_case_refs(src, c);
         let verdict = parallels.get(&c.matched_text);
-        let (open, shared): (Vec<String>, bool) = match verdict {
+        let open: Vec<String> = match verdict {
             Some(v) if !v.conflicts.is_empty() => continue,
-            Some(v) if v.case.is_some() => (v.tied.clone(), true),
-            _ => (refs.iter().map(|(id, _)| id.clone()).collect(), false),
+            Some(v) if v.case.is_some() => v.tied.clone(),
+            _ => refs.iter().map(|(id, _)| id.clone()).collect(),
         };
+        // Its parallel citations narrowed the page's cases to these.
+        let shared = open.len() < refs.len();
         if open.len() < 2 {
             continue;
         }
