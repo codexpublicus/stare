@@ -77,14 +77,11 @@ fn reporters_json_matches_its_schema() {
     );
     let bundle = stare::data::file_name(stare::data::embedded());
     assert_eq!(map["generated_from"]["citare_data"], json!(bundle));
-    // Slugs citare v0.7.2 dropped (citare#105, D78), kept for one release.
+    // Slugs citare v0.7.2 dropped (citare#105), marked replaced for site release
+    // v2026.10.22.2 (D78) and not since. An index build that still holds a volume
+    // under one (v2026.10.22 has p-r-r 83) lists it like any slug the index holds.
     for (old, new) in [("p-r-r", "pr"), ("cai-r", "cai")] {
-        assert_eq!(
-            map["reporters"][old],
-            json!({"names": [], "variations": [], "editions": [], "cap": false,
-                   "volumes": null, "replaced_by": new}),
-            "{old}"
-        );
+        assert!(map["reporters"].get(old).is_none(), "{old}");
         assert!(map["reporters"][new].get("replaced_by").is_none(), "{new}");
     }
     assert_eq!(map["abbreviations"]["P.R.R."], json!(["pr"]));
@@ -154,8 +151,8 @@ fn the_schema_rejects_what_it_should() {
         ("/sources/1/license/text", json!("x")),
         ("/sources/1/fields", json!([])),
         ("/sources", json!([])),
-        ("/reporters/p-r-r/replaced_by", json!("P.R.")),
-        ("/reporters/p-r-r/replaced_by", json!(null)),
+        ("/reporters/a2d/replaced_by", json!("P.R.")),
+        ("/reporters/a2d/replaced_by", json!(null)),
     ] {
         let mut map = good.clone();
         match map.pointer_mut(pointer) {

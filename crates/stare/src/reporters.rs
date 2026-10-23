@@ -60,9 +60,10 @@ pub const CITARE_CONTRIBUTES: &str =
 /// Slugs citare no longer assigns, each with the slug that took its editions. The map
 /// keeps an entry for each, with `replaced_by` and no names, for one site release
 /// after the citare release that dropped it, so an agent holding the old slug finds
-/// the new one; the next release removes it. citare v0.7.2 (citare#105, ruling D78)
-/// folded `P.R.R.` into CAP's `pr` and `Cai. R.` into CAP's `cai`.
-pub const REPLACED: &[(&str, &str)] = &[("cai-r", "cai"), ("p-r-r", "pr")];
+/// the new one; the next release removes it (ruling D78). Empty since site release
+/// v2026.10.22.2, which carried `p-r-r` (replaced by `pr`) and `cai-r` (by `cai`)
+/// from citare v0.7.2 (citare#105).
+pub const REPLACED: &[(&str, &str)] = &[];
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReporterMap {
@@ -500,10 +501,14 @@ mod tests {
                 assert_eq!(map.reporters[s].replaced_by, None, "{s}");
             }
         }
-        // citare v0.7.2 (citare#105, D78) folded P.R.R. into pr and Cai. R. into cai;
-        // the old slugs stay for one release, saying so.
+        // citare v0.7.2 (citare#105) folded P.R.R. into pr and Cai. R. into cai; the old
+        // slugs were kept for site release v2026.10.22.2 (D78) and are gone now.
         assert_eq!(map.abbreviations["P.R.R."], vec!["pr"]);
         assert_eq!(map.abbreviations["Cai. R."], vec!["cai"]);
+        for old in ["p-r-r", "cai-r"] {
+            assert!(!map.reporters.contains_key(old), "{old}");
+        }
+        assert!(map.reporters.values().all(|r| r.replaced_by.is_none()));
         for (old, new) in REPLACED {
             let r = &map.reporters[*old];
             assert_eq!(r.replaced_by.as_deref(), Some(*new), "{old}");

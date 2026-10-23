@@ -150,7 +150,7 @@
           },
           "replaced_by": {
             "$ref": "#/$defs/slug",
-            "description": "Present only on a slug citare no longer assigns: the slug its editions are filed under now (p-r-r is replaced by pr, cai-r by cai, since citare v0.7.2). The entry has no names, variations or editions, no abbreviation maps to it, and it is kept for one site release, then removed."
+            "description": "Present only on a slug citare no longer assigns: the slug its editions are filed under now (none at present; p-r-r, replaced by pr, and cai-r, by cai, were marked so for site release v2026.10.22.2 after citare v0.7.2). The entry has no names, variations or editions, no abbreviation maps to it, and it is kept for one site release, then removed."
           }
         }
       }
