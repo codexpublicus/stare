@@ -117,6 +117,15 @@ pub struct DetectedCitation {
     /// citation of the run. `None` for the first, and for any other citation.
     #[serde(default)]
     pub parallel_of: Option<usize>,
+    /// For a full case citation with no case name of its own that the text cites as
+    /// another's subsequent history (`Segreto v. Bristol, 71 Conn. App. 844, 804 A.2d
+    /// 928, cert. denied, 261 Conn. 941, 808 A.2d 1132`), the name the citation it
+    /// follows gives (`Segreto v. Bristol`): the same case's, a later decision in it.
+    /// Every printing of such a run has it. `None` for any other citation, and for
+    /// history that names the case anew (`aff'd sub nom.`). Used to pick the case at a
+    /// page several cases start on (#212).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_name: Option<String>,
 }
 
 /// The full citation a short form refers to: what a reader looks up to
@@ -191,6 +200,29 @@ impl DetectedCitation {
             case_links: self.case_links.clone(),
         }
     }
+}
+
+/// Whether the text between two full case citations says the second is the first's
+/// subsequent history: a pin cite or two and a parenthetical at most, then `cert.
+/// denied`, `aff'd`, `rev'd` and the like, and nothing else. `aff'd sub nom.` names
+/// the case anew, so it isn't.
+fn is_subsequent_history(gap: &str) -> bool {
+    regex!(
+        r"(?ix)^[\s,;\[]*
+        (?:(?:at\s+)?\d+(?:[-\x{2013}]\d+)?(?:\s*nn?\.\s*\d+)?[\s,]*)*
+        (?:[(\[][^()\[\]]*[)\]][\s,;]*)*
+        (?:
+            cert(?:iorari|if(?:ication)?)?[.,]?\s+(?:denied|den\.|dismissed|granted)
+            | aff['\x{2019}]?d(?:\s+o\.b\.)? | affirmed | rev['\x{2019}]?d | reversed | vacated | modified
+            | appeal\s+(?:denied|dismissed)
+            | review\s+denied
+            | petition\s+for\s+(?:review|certification|certiorari)\s+denied
+            | (?:reh(?:earin)?['\x{2019}]?g|reh\.|rehearing)\s+denied
+        )
+        (?:,?\s+(?:in\s+part|on\s+other\s+grounds|per\s+curiam|mem\.))*
+        [\s,]*$"
+    )
+    .is_match(gap)
 }
 
 /// A full case citation's parties, as `DetectedCitation::case_name` gives them.
@@ -321,6 +353,7 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
                 antecedent: None,
                 case_name: case_name(c),
                 parallel_of: None,
+                history_name: None,
             };
             if det.citation_type == "FullLawCitation" {
                 det.law = c.law().map(LawRef::from);
@@ -369,6 +402,26 @@ pub fn detect_citations(text: &str) -> Vec<DetectedCitation> {
             if start.is_some() && start == pre.resource.common.full_span_start {
                 detected[i].parallel_of = Some(detected[i - 1].parallel_of.unwrap_or(i - 1));
             }
+        }
+    }
+
+    // A nameless full case citation in the subsequent history of the full case citation
+    // just before it is a later decision in the same case, under the same name (#212).
+    for i in 1..detected.len() {
+        if detected[i].citation_type != "FullCaseCitation" || detected[i].case_name.is_some() {
+            continue;
+        }
+        if let Some(head) = detected[i].parallel_of {
+            detected[i].history_name = detected[head].history_name.clone();
+            continue;
+        }
+        let prev = &detected[i - 1];
+        if prev.citation_type != "FullCaseCitation" {
+            continue;
+        }
+        let gap = text.get(prev.span.1..detected[i].span.0).unwrap_or("");
+        if is_subsequent_history(gap) {
+            detected[i].history_name = prev.case_name.clone().or(prev.history_name.clone());
         }
     }
 
@@ -1977,6 +2030,53 @@ mod tests {
                 ("20 L.Ed.2d 1387", Some(1), None),
             ]
         );
+    }
+
+    /// #212: a nameless citation in another's subsequent history takes its name.
+    #[test]
+    fn subsequent_history_takes_the_name_it_follows() {
+        let names = |text: &str| -> Vec<(String, Option<String>, Option<String>)> {
+            detect_citations(text)
+                .into_iter()
+                .filter(|c| c.citation_type == "FullCaseCitation")
+                .map(|c| (c.matched_text, c.case_name, c.history_name))
+                .collect()
+        };
+        let segreto = || Some("Segreto v. Bristol".to_string());
+        let found = names(
+            "Segreto v. Bristol, 71 Conn.App. 844, 848, 804 A.2d 928, cert. denied, 261 Conn. 941, 808 A.2d 1132 (2002).",
+        );
+        assert_eq!(found[2], ("261 Conn. 941".into(), None, segreto()));
+        assert_eq!(found[3], ("808 A.2d 1132".into(), None, segreto()));
+        let flaksa = names(
+            "Flaksa v. Little River Marine Construction Co., 389 F.2d 885 (5th Cir.), \
+             cert. den., 392 U.S. 928, 88 S.Ct. 2287, 20 L.Ed.2d 1387 (1968).",
+        );
+        let name = Some("Flaksa v. Little River Marine Construction Co.".to_string());
+        assert!(flaksa[1..]
+            .iter()
+            .all(|(_, own, history)| own.is_none() && *history == name));
+        // Other spellings of history: N.J.'s `certif. denied`, `reh. denied`, a bracketed
+        // note, and a second history after a semicolon.
+        for (text, at) in [
+            ("Hantman v. Township of Randolph, 58 N.J.Super. 127, 155 A.2d 554 (App.Div.1959), certif. denied, 31 N.J. 550.", 2),
+            ("United States v. Mendenhall, 446 U.S. 544, 553-54, 100 S. Ct. 1870, 64 L. Ed. 2d 497, reh. denied, 448 U.S. 908.", 3),
+            ("United States v. Rosenwasser, 550 F.2d 806, 814 (2d Cir.) [Gurfein, J., dissenting], cert. denied, 434 U.S. 825.", 1),
+            ("Exxon Corp. v. FTC, 589 F.2d 582, 587 (D.C.Cir.1978), cert, denied, 441 U.S. 943.", 1),
+        ] {
+            let found = names(text);
+            assert!(found[at].1.is_none() && found[at].2.as_deref() == found[0].1.as_deref(), "{text}: {found:?}");
+        }
+        // A citation after a new sentence, or history under another name, takes none.
+        for text in [
+            "Roe v. Wade, 410 U.S. 113 (1973). See 261 Conn. 941.",
+            "Roe v. Wade, 410 U.S. 113 (1973), aff'd sub nom. Doe v. Bolton, 261 Conn. 941.",
+        ] {
+            assert!(
+                names(text).iter().all(|(_, _, history)| history.is_none()),
+                "{text}"
+            );
+        }
     }
 
     /// citare#86: `127 Ohio 545` is the Ohio State Reports, CAP's

@@ -1005,6 +1005,26 @@ test.describe('parallel citations (#160)', () => {
     await expect(page.locator('#topbar-case')).toHaveText('Murray v. Hurst');
   });
 
+  // #212: 421 U.S. 1002 is an orders page twelve cert. denials start on, with no alias and
+  // no parallel citation to say which one; the citing text's name picks Daye v. Bounds,
+  // the eleventh, where the page alone opens the first, Lee v. United States.
+  test('with the live index, a citation to a shared page opens the case its name names', async ({ page }) => {
+    await page.goto('/check');
+    await page.fill('#check-input', 'Daye v. Bounds, 509 F.2d 66, 68 (4th Cir.), cert. denied, 421 U.S. 1002 (1975).');
+    await page.click('#check-btn');
+
+    const link = page.locator('#check-rendered a.cite-link', { hasText: '421 U.S. 1002' });
+    await expect(link).toHaveAttribute('href', '#us/421/1002-11');
+    await expect(link).toHaveAttribute('title', '421 U.S. 1002. Matched by case name among the 12 cases on this page');
+    const e = page.locator('#check-cite-list .cited-entry', { has: page.locator('.cited-case', { hasText: '421 U.S. 1002' }) });
+    await expect(e.locator('.cited-by-name')).toHaveText('Matched by case name among the 12 cases on this page');
+    await expect(e.locator('a.cited-case-link')).toHaveAttribute('href', /#us\/421\/1002-11$/);
+    // The other citation is at a page one case starts on, and says nothing of names.
+    await expect(page.locator('#check-cite-list .cited-by-name')).toHaveCount(1);
+    await page.goto(`/${await link.getAttribute('href')}`);
+    await expect(page.locator('#topbar-case')).toHaveText('Daye v. Bounds');
+  });
+
   test('with the live index, Ray v. Bruce\'s reprint is listed with, and opens, the case it reprints', async ({ page }) => {
     await page.goto('/#a2d/31/693-01');
     await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ cited cases? found/);
@@ -1097,8 +1117,12 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await expect(place.first()).toBeInViewport();
     await expect(e.locator('.cited-pos')).toHaveText('1 of 1');
     await expect(live(page)).toHaveText('1 of 1: 261 Conn. 941, 808 A.2d 1132');
-    // Opening the cited case stays the entry's main action.
-    await expect(e.locator('a.cited-case-link')).toHaveAttribute('href', /#conn\/261\/941$/);
+    // Opening the cited case stays the entry's main action. Both printings are at pages
+    // several cases share, and two of them are at both; the text's name, "Segreto v.
+    // Bristol", picks the second at 261 Conn. 941, Segreto v. City of Bristol (#212).
+    await expect(e.locator('a.cited-case-link')).toHaveAttribute('href', /#conn\/261\/941-02$/);
+    await expect(e.locator('.cited-by-name'))
+      .toHaveText('Matched by case name among the 2 cases its parallel citations share');
     await expect(page).toHaveURL(/#a3d\/138-2\/1012-01~c=\d+$/);
     // The reprint is grouped with 261 Conn. 941 by the case it opens (#208), and opens it on its own.
     const reprint = page.locator('#reader a.cite-link', { hasText: '808 A.2d 1132' });
@@ -1106,7 +1130,8 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     const href = await reprint.getAttribute('href');
     await page.goto('/');
     await page.goto(`/${href}`);
-    await expect(page).toHaveURL(/#conn\/261\/941-01$/);
+    await expect(page).toHaveURL(/#conn\/261\/941-02$/);
+    await expect(page.locator('#topbar-case')).toHaveText('Segreto v. City of Bristol');
   });
 
   test('a case cited several times, with supra, Id. and a footnote: every place, in order', async ({ page }) => {

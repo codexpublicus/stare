@@ -70,6 +70,9 @@ function fromRust(c) {
     law: c.law || null,
     caseLinks: Array.isArray(c.case_links) ? c.case_links : [],
     caseName: c.case_name || null,
+    // For a nameless citation in another's subsequent history (`..., cert. denied,
+    // 261 Conn. 941`), the name the citation it follows gives (#212), else null.
+    historyName: c.history_name || null,
   };
 }
 
@@ -266,15 +269,17 @@ function aliasIdentity(target) {
  * CAP cases, then the cases aliases name, then, on a page with neither, each
  * CourtListener record. Each is `{ id, slug, volume, page, seq, aliasOf, via }`: `id`
  * as caseIdentity names the case, and the rest the fields a citation that opens it
- * links with. The first is the case a reader opens at the page.
+ * links with, and `ref`, where its name is read from (#212): `{ source: 'cap', reporter,
+ * folder, caseFile }` for a CAP case, the index entry (`cluster_id`, `hash`) for a
+ * CourtListener record. The first is the case a reader opens at the page.
  */
 export function pageCases(slug, volume, page, entries) {
   const cited = String(volume);
   const at = `${slug}/${cited.replace(/-\d+$/, '')}/${citedPage(page)}`;
   const cases = [];
   const push = (c) => { if (c.id && !cases.some(x => x.id === c.id)) cases.push(c); };
-  const own = (seq) => ({
-    id: seq > 1 ? `${at}-${seq}` : at, slug, volume: cited, page, seq: seq > 1 ? seq : null, aliasOf: null, via: null,
+  const own = (seq, ref) => ({
+    id: seq > 1 ? `${at}-${seq}` : at, slug, volume: cited, page, seq: seq > 1 ? seq : null, aliasOf: null, via: null, ref,
   });
   let cap = false;
   for (const e of entries || []) {
@@ -286,12 +291,16 @@ export function pageCases(slug, volume, page, entries) {
       push({
         id: aliasIdentity(target), slug: e.reporter, volume: e.folder, page: String(filePage(e.case_file)),
         seq: seq > 1 ? seq : null, aliasOf: target, via: e.via || null,
+        ref: { source: 'cap', reporter: e.reporter, folder: e.folder, caseFile: e.case_file },
       });
     } else {
-      push(own(fileSeq(e.case_file)));
+      push(own(fileSeq(e.case_file), { source: 'cap', reporter: slug, folder: e.folder || cited, caseFile: e.case_file }));
     }
   }
-  if (!cap) (entries || []).filter(e => e.source === 'cl').forEach((_, i) => push(own(i + 1)));
+  if (!cap) {
+    (entries || []).filter(e => e.source === 'cl')
+      .forEach((e, i) => push(own(i + 1, { source: 'cl', cluster_id: e.cluster_id, hash: e.hash })));
+  }
   return cases;
 }
 
@@ -493,6 +502,7 @@ export function inheritStatus(c, a) {
  */
 export async function checkCitations(
   citations, check = checkAvailability, pageCheck = checkPage, reconcile = reconcileParallels,
+  readNames = readCaseNamesLazily,
 ) {
   const byRaw = new Map();
   const full = (c) => {
@@ -506,7 +516,104 @@ export async function checkCitations(
     if (!isShortForm(c)) entries.set(key, full(c));
     else entries.set(key, (c.antecedent ? full(c.antecedent) : Promise.resolve(null)).then(a => inheritStatus(c, a)));
   }
-  return applyParallels(citations, await Promise.all(entries.values()), reconcile);
+  const reconciled = await applyParallels(citations, await Promise.all(entries.values()), reconcile);
+  return applyNames(reconciled, readNames);
+}
+
+// casenames.js's readCaseNames, loaded when a page several cases share is cited.
+async function readCaseNamesLazily(pageCase) {
+  return (await import('./casenames.js')).readCaseNames(pageCase);
+}
+
+/**
+ * The case the citing text's `name` (and `year`, or null) means among `cases`
+ * (`[{ id, names, date }]`), by `stare::byname::pick` through the WASM: its id, or
+ * null when no one case matches clearly. Null too when the WASM isn't loaded.
+ */
+export function matchCaseName(cases, name, year = null) {
+  if (!loadedWasm) return null;
+  return loadedWasm.match_case_name(JSON.stringify(cases), name, year ?? undefined) ?? null;
+}
+
+// The cases a checked full citation is still open among, as `{ open, shared }` (`shared`
+// when its parallel citations narrowed the page's cases to them), or null when
+// something else settles it: a run whose printings share one case (or none), or a page
+// with one case.
+function namesOpen(e) {
+  if (!e.resolvable || e.partner || e.conflicts?.length || !e.pageCases?.length) return null;
+  const open = Array.isArray(e.tied) ? e.tied : e.pageCases.map(x => x.id);
+  return open.length > 1 ? { open, shared: open.length < e.pageCases.length } : null;
+}
+
+/**
+ * Picking the case at a page several cases start on by the citing text's case name
+ * (#212, D72 (2)): for each of checkCitations' full citations whose page has several
+ * cases and nothing else to say which it means (no alias names one, and its parallel
+ * citations, if any, share more than one), compare its case name (`caseName`, or for
+ * subsequent history `historyName`) and year with each case's names and decision date
+ * (`readNames(pageCase)`, `{ names, date }`), and open the one case that matches
+ * clearly. That citation gets the case's `slug`, `volume`, `page`, `seq`, `aliasOf`
+ * and `via`, and `byName`, `{ among, shared }`, the number of cases it was picked
+ * among and whether those were the ones its parallel citations share (byNameLabel).
+ * A parallel citation resolved through it, and a short form of either, follow it.
+ * Anything that doesn't match, or can't be read, keeps opening the page's first case.
+ */
+export async function applyNames(checked, readNames = readCaseNamesLazily, match = matchCaseName) {
+  const picks = new Map();
+  await Promise.all(checked.map(async (e) => {
+    if (isShortForm(e) || picks.has(e.raw)) return;
+    const name = e.caseName || e.historyName;
+    const at = name ? namesOpen(e) : null;
+    if (!at) return;
+    try {
+      const cases = await Promise.all(e.pageCases.filter(x => at.open.includes(x.id)).map(async (x) => {
+        const read = await Promise.resolve(readNames(x)).catch(() => null);
+        return { id: x.id, names: read?.names || [], date: read?.date || null };
+      }));
+      if (!cases.some(c => c.names.length)) return;
+      const id = await match(cases, name, e.year ?? null);
+      const to = id && e.pageCases.find(x => x.id === id);
+      if (to) picks.set(e.raw, { to, among: at.open.length, shared: at.shared });
+    } catch {
+      // A name that can't be read or matched leaves the page's first case.
+    }
+  }));
+  if (!picks.size) return checked;
+  const changed = new Map();
+  for (const e of checked) {
+    const p = !isShortForm(e) && picks.get(e.raw);
+    if (!p) continue;
+    const { to } = p;
+    changed.set(e.raw, {
+      ...e, slug: to.slug, volume: to.volume, page: to.page, seq: to.seq, aliasOf: to.aliasOf, via: to.via,
+      byName: { among: p.among, shared: p.shared },
+    });
+  }
+  for (const e of checked) {
+    const p = !isShortForm(e) && e.partner && changed.get(e.partner);
+    if (p && !changed.has(e.raw)) {
+      changed.set(e.raw, { ...e, slug: p.slug, volume: p.volume, page: p.page, seq: p.seq || null, aliasOf: p.aliasOf || null });
+    }
+  }
+  return checked.map((c) => {
+    if (!isShortForm(c)) return changed.get(c.key ?? c.raw) || c;
+    const a = c.antecedent && changed.get(c.antecedent.raw);
+    return a ? inheritStatus(c, a) : c;
+  });
+}
+
+/**
+ * The note on a citation picked by its case name at a shared page (#212): "Matched
+ * by case name among the 3 cases on this page", or "... among the 2 cases its
+ * parallel citations share" when its parallel citations had narrowed them. '' for
+ * any other citation.
+ */
+export function byNameLabel(c) {
+  if (!c?.byName) return '';
+  const { among, shared } = c.byName;
+  return shared
+    ? `Matched by case name among the ${among} cases its parallel citations share`
+    : `Matched by case name among the ${among} cases on this page`;
 }
 
 // What the index says of a checked full citation, for reconcileParallels: every
@@ -569,6 +676,9 @@ export async function applyParallels(detected, checked, reconcile = reconcilePar
       update(m.raw, { conflicts: [...new Set(others)], conflictRun: members[m.run].raw });
     }
     if (v.preferred) update(m.raw, { preferred: true });
+    // The cases a run that agrees shares when there are several (#212), which the
+    // citing text's case name may decide among (applyNames); none past `case` else.
+    if (v.case) update(m.raw, { tied: v.tied || [] });
     // A member that resolves opens the case its run agrees on, which at a page several
     // cases start on can be other than the first (#204).
     const e = current(m.raw);
@@ -650,7 +760,7 @@ export function conflictNote(c) {
  */
 export async function processCitations(
   caseData, check = checkAvailability, detect = detectCitations, pageCheck = checkPage,
-  reconcile = reconcileParallels,
+  reconcile = reconcileParallels, readNames = readCaseNamesLazily,
 ) {
   const allCites = [];
   const byOpinion = [];
@@ -661,7 +771,7 @@ export async function processCitations(
     byOpinion.push(detected);
   }
 
-  const unique = await checkCitations(allCites, check, pageCheck, reconcile);
+  const unique = await checkCitations(allCites, check, pageCheck, reconcile, readNames);
   // Grouping numbers each citation's place in the text, which the occurrences carry.
   const groups = groupCitations(allCites, unique);
   const occurrencesByOpinion = byOpinion.map(detected => detected.map(c => occurrence(c)));
@@ -849,11 +959,12 @@ function citationElementHtml(raw, inner, info, pin) {
     const pinAttr = pin ? ` data-pin="${escapeHtml(pin)}"` : '';
     const at = escapeHtml(pinSuffix(pin, info.page));
     const via = viaLabel(info.via) || partnerLabel(info);
-    const title = [refers || raw, read, via, conflictNote(info)].filter(Boolean).join('. ');
+    const title = [refers || raw, read, via, byNameLabel(info), conflictNote(info)].filter(Boolean).join('. ');
     const viaAttr = info.via ? ` data-via="${escapeHtml(info.via)}"` : '';
     const partnerAttr = info.partner ? ` data-partner="${escapeHtml(info.partner)}"` : '';
+    const byNameAttr = info.byName ? ` data-by-name="${escapeHtml(String(info.byName.among))}"` : '';
     const review = info.conflicts?.length ? ' cite-review' : '';
-    return `<a class="cite-link${review}" href="#${slug}/${volume}/${segment}${seqSuffix(info.seq)}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr}${viaAttr}${partnerAttr} title="${escapeHtml(title)}">${inner}</a>`;
+    return `<a class="cite-link${review}" href="#${slug}/${volume}/${segment}${seqSuffix(info.seq)}${at}" data-slug="${slug}" data-volume="${volume}" data-page="${page}"${pinAttr}${viaAttr}${partnerAttr}${byNameAttr} title="${escapeHtml(title)}">${inner}</a>`;
   }
   if (isStatute(info)) {
     return `<span class="cite-statute" title="${titled(STATUTE_NOTE)}">${inner}</span>`;
@@ -929,11 +1040,14 @@ export function citedCaseHtml(c, caseHref, caseRel = 'noopener', formCount = nul
     // parallel citations open a different case is flagged.
     const via = viaLabel(c.via) || partnerLabel(c);
     const viaHtml = via ? `\n          <span class="cited-lookup cited-via">${escapeHtml(via)}</span>` : '';
+    // One picked by its case name among the cases at its page says so (#212).
+    const named = byNameLabel(c);
+    const namedHtml = named ? `\n          <span class="cited-lookup cited-by-name">${escapeHtml(named)}</span>` : '';
     const review = conflictNote(c);
     const reviewHtml = review ? `\n          <span class="cited-lookup cited-review">${escapeHtml(review)}</span>` : '';
-    return `<div class="cited-case${via || review ? ' cited-case-lookup' : wrap}">
+    return `<div class="cited-case${via || named || review ? ' cited-case-lookup' : wrap}">
           <span class="cited-status ok">&#10003;</span>
-          <a class="cited-case-link" href="${escapeHtml(caseHref(c))}" target="_blank"${rel}>${raw}</a>${countHtml}${refersHtml}${viaHtml}${reviewHtml}
+          <a class="cited-case-link" href="${escapeHtml(caseHref(c))}" target="_blank"${rel}>${raw}</a>${countHtml}${refersHtml}${viaHtml}${namedHtml}${reviewHtml}
         </div>`;
   }
   const externalUrl = safeExternalUrl(c.externalUrl);
