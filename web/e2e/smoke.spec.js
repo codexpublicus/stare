@@ -1048,6 +1048,29 @@ test.describe('parallel citations (#160)', () => {
     await expect(page.locator('#topbar-case')).toHaveText('Connecticut v. Gordon');
   });
 
+  // D98 (1): 525 U.S. 1179 has fifteen cert. denials, and CourtListener gives 143 L. Ed. 2d
+  // 111 to Compagnie Euralair's cluster alone, so the run's printings share only Euralair.
+  // Its name has no word of State v. Shabazz's, and one case on the U.S. Reports page
+  // fits, so every printing opens Shabazz v. Connecticut.
+  test('with the live index, a run sharing one case the name clearly isn\'t opens the case on the official page', async ({ page }) => {
+    await page.goto('/check');
+    await page.fill('#check-input',
+      'State v. Shabazz, 246 Conn. 746, 759, 719 A.2d 440 (1998), cert. denied, 525 U.S. 1179, 119 S. Ct. 1116, 143 L. Ed. 2d 111 (1999).');
+    await page.click('#check-btn');
+
+    const note = "Matched by case name among the 15 cases on the official page, 525 U.S. 1179; the case its parallel citations share doesn't fit the name";
+    const link = page.locator('#check-rendered a.cite-link', { hasText: '525 U.S. 1179' });
+    await expect(link).toHaveAttribute('href', '#us/525/1179-03');
+    await expect(link).toHaveAttribute('title', `525 U.S. 1179. ${note}`);
+    for (const raw of ['119 S. Ct. 1116', '143 L. Ed. 2d 111']) {
+      await expect(page.locator('#check-rendered a.cite-link', { hasText: raw })).toHaveAttribute('href', '#us/525/1179-03');
+    }
+    const e = page.locator('#check-cite-list .cited-entry', { has: page.locator('.cited-case', { hasText: '525 U.S. 1179' }) });
+    await expect(e.locator('.cited-by-name')).toHaveText(note);
+    await page.goto(`/${await link.getAttribute('href')}`);
+    await expect(page.locator('#topbar-case')).toHaveText('Shabazz v. Connecticut');
+  });
+
   test('with the live index, Ray v. Bruce\'s reprint is listed with, and opens, the case it reprints', async ({ page }) => {
     await page.goto('/#a2d/31/693-01');
     await expect(page.locator('#sidebar [role="status"]')).toHaveText(/^\d+ cited cases? found/);

@@ -178,7 +178,12 @@ one case on the official printing's whole page does (D90,
 denied, 455 U.S. 989, 102 S. Ct. 1612, 71 L. Ed. 2d 848`, whose L. Ed. aliases leave out
 Connecticut v. Gordon), every printing opens that case, a printing whose own page doesn't
 list it without a `via`, and the note says "among the 12 cases on the official page, 455
-U.S. 989; the cases its parallel citations share don't include it". A nameless citation in another's subsequent history (`Segreto v. Bristol, ..., cert.
+U.S. 989; the cases its parallel citations share don't include it". The same goes for a
+run whose printings share one case that clearly isn't the one the name names, having
+telling words and none of the name's (D98 (1): CourtListener gives 143 L. Ed. 2d 111 to
+Compagnie Euralair's cluster alone, so `State v. Shabazz, ..., 525 U.S. 1179, 119 S. Ct.
+1116, 143 L. Ed. 2d 111` shares only Euralair); the note then ends "the case its parallel
+citations share doesn't fit the name". A nameless citation in another's subsequent history (`Segreto v. Bristol, ..., cert.
 denied, 261 Conn. 941`) takes the name it follows (`DetectedCitation::history_name`). The
 names come from each case's JSON, read out of its volume's zip by range requests
 (`stare::ziprange`; `web/public/js/casenames.js`), or a CourtListener record. The link says

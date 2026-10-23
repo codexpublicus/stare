@@ -218,11 +218,12 @@ pub fn match_case_name(
     Ok(stare::byname::pick(&cases, name, year).map(str::to_string))
 }
 
-/// The owner's ruling D90 (`stare::byname::pick_on_official_page`): for the official
-/// printing of a parallel run whose printings share several cases (`shared`, a JSON
-/// array of ids), the case on its whole page (`cases`, JSON `[{ id, names, date }]`)
-/// the citing text's `name` means, when none of the shared cases fits it and exactly
-/// one case on the page does: its `id`, or undefined.
+/// The owner's rulings D90 and D98 (1) (`stare::byname::pick_on_official_page`): for
+/// the official printing of a parallel run whose printings share `shared` (a JSON array
+/// of ids), the case on its whole page (`cases`, JSON `[{ id, names, date }]`) the
+/// citing text's `name` means, when the shared cases miss it (several, none of which
+/// fits it, or one that clearly doesn't) and exactly one case on the page fits: its
+/// `id`, or undefined.
 #[wasm_bindgen]
 pub fn match_case_name_official(
     cases: &str,

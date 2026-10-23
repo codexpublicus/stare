@@ -173,25 +173,53 @@ pub fn pick<'a>(cases: &'a [Candidate], name: &str, year: Option<i32>) -> Option
     }
 }
 
-/// The owner's ruling D90: for the official printing of a parallel run whose printings
-/// share several cases (`shared`), the case on its whole page (`page`, every case at
-/// it) the citing text's `name` means, when none of the shared cases fits the name and
-/// exactly one case on the page does. The other printings' data (CourtListener's
-/// aliases at an orders list, `71 L. Ed. 2d 848`) can leave out the case the text
-/// names, so the run's narrowing would open a case the text doesn't cite. None
-/// otherwise, and the run's narrowing stands ([`pick`] among `shared`).
+/// Whether `case` clearly isn't the case the citing text's `name` names: it has telling
+/// words, and none of them is one of the name's. False when either has none to compare.
+fn clearly_not(case: &Candidate, name: &str) -> bool {
+    let words = name_words(name);
+    let theirs: Vec<BTreeSet<String>> = case
+        .names
+        .iter()
+        .map(|n| name_words(n))
+        .filter(|w| !w.is_empty())
+        .collect();
+    !words.is_empty() && !theirs.is_empty() && theirs.iter().all(|w| w.is_disjoint(&words))
+}
+
+/// The case on the official printing's whole page (`page`, every case at it) the citing
+/// text's `name` means, for a parallel run whose printings' data narrowed it to
+/// `shared`, when that narrowing missed the name and exactly one case on the page fits
+/// it. The other printings' data (CourtListener's aliases at an orders list, `71 L. Ed.
+/// 2d 848`) gives a shared page's citation to only some of the cases printed there, so
+/// the cases a run shares can leave out the one the text names.
+///
+/// - Several shared cases (the owner's ruling D90): none of them fits the name.
+/// - One shared case (D98 (1); `143 L. Ed. 2d 111`'s one alias, to Compagnie Euralair,
+///   for `State v. Shabazz, ..., 525 U.S. 1179`): it clearly doesn't fit, having telling
+///   words and none of the name's. A shared case that fits partly, or one whose names
+///   couldn't be read, stands.
+///
+/// None otherwise, and the run's narrowing stands ([`pick`] among `shared`).
 pub fn pick_on_official_page<'a>(
     page: &'a [Candidate],
     shared: &[String],
     name: &str,
     year: Option<i32>,
 ) -> Option<&'a str> {
-    if shared.len() < 2 {
-        return None;
-    }
     let fits = fits(page, name, year);
-    if fits.iter().any(|(id, _)| shared.iter().any(|s| s == id)) {
-        return None;
+    match shared {
+        [] => return None,
+        [one] => {
+            let case = page.iter().find(|c| c.id == *one)?;
+            if !clearly_not(case, name) {
+                return None;
+            }
+        }
+        _ => {
+            if fits.iter().any(|(id, _)| shared.iter().any(|s| s == id)) {
+                return None;
+            }
+        }
     }
     match fits.as_slice() {
         [(one, _)] => Some(one),
@@ -263,7 +291,7 @@ mod tests {
             None
         );
         // Two cases on the page fitting, none, another year, no telling words, or a run
-        // that shares one case or none: today's case stands.
+        // that shares no case: today's case stands.
         let twice = [
             page.as_slice(),
             &[case("us/455/989-6", "Gordon v. Ohio", "1982-03-22")],
@@ -286,7 +314,94 @@ mod tests {
             None
         );
         assert_eq!(
-            pick_on_official_page(&page, &shared[..1], "State v. Gordon", Some(1982)),
+            pick_on_official_page(&page, &[], "State v. Gordon", Some(1982)),
+            None
+        );
+    }
+
+    #[test]
+    fn the_official_page_decides_when_the_one_shared_case_is_clearly_another() {
+        // 525 U.S. 1179, as `State v. Shabazz, ..., cert. denied, 525 U.S. 1179, 119 S. Ct.
+        // 1116, 143 L. Ed. 2d 111` cites it: 143 L. Ed. 2d 111's one alias is to Compagnie
+        // Euralair, so the run's printings share only that case (D98 (1)).
+        let page = [
+            case("us/525/1179", "Allen v. United States", "1999-02-22"),
+            case("us/525/1179-3", "Shabazz v. Connecticut", "1999-02-22"),
+            case(
+                "us/525/1179-4",
+                "Compagnie Euralair, S. A. v. General Electric Co.",
+                "1999-02-22",
+            ),
+            case("us/525/1179-5", "Mendez v. Texas", "1999-02-22"),
+        ];
+        let euralair = ["us/525/1179-4".to_string()];
+        assert_eq!(
+            pick_on_official_page(&page, &euralair, "State v. Shabazz", Some(1999)),
+            Some("us/525/1179-3")
+        );
+        // A name the shared case fits, even partly, keeps it.
+        assert_eq!(
+            pick_on_official_page(&page, &euralair, "Euralair v. Shabazz", Some(1999)),
+            None
+        );
+        assert_eq!(
+            pick_on_official_page(
+                &page,
+                &euralair,
+                "General Electric Co. v. Shabazz Holdings",
+                Some(1999)
+            ),
+            None
+        );
+        // A name with no telling words, one nothing on the page fits, another year, or
+        // two cases on the page fitting: today's case stands.
+        assert_eq!(
+            pick_on_official_page(&page, &euralair, "State v.", Some(1999)),
+            None
+        );
+        assert_eq!(
+            pick_on_official_page(&page, &euralair, "Doe v. Roe", Some(1999)),
+            None
+        );
+        assert_eq!(
+            pick_on_official_page(&page, &euralair, "State v. Shabazz", Some(1997)),
+            None
+        );
+        let twice = [
+            page.as_slice(),
+            &[case("us/525/1179-6", "Shabazz v. Ohio", "1999-02-22")],
+        ]
+        .concat();
+        assert_eq!(
+            pick_on_official_page(&twice, &euralair, "State v. Shabazz", Some(1999)),
+            None
+        );
+        // A shared case whose names couldn't be read, or that isn't on the page, says
+        // nothing about the name.
+        let unread = [
+            page.as_slice(),
+            &[Candidate {
+                id: "us/525/1179-7".into(),
+                ..Default::default()
+            }],
+        ]
+        .concat();
+        assert_eq!(
+            pick_on_official_page(
+                &unread,
+                &["us/525/1179-7".to_string()],
+                "State v. Shabazz",
+                Some(1999)
+            ),
+            None
+        );
+        assert_eq!(
+            pick_on_official_page(
+                &page,
+                &["us/525/1179-9".to_string()],
+                "State v. Shabazz",
+                Some(1999)
+            ),
             None
         );
     }

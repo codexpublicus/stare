@@ -536,11 +536,12 @@ export function matchCaseName(cases, name, year = null) {
 }
 
 /**
- * The owner's ruling D90, by `stare::byname::pick_on_official_page` through the WASM:
- * for the official printing of a run whose printings share several cases (`shared`,
- * their ids), the case on its whole page (`cases`, `[{ id, names, date }]`) the citing
- * text's `name` means, when none of the shared cases fits it and exactly one case on
- * the page does. Its id, or null; null too when the WASM isn't loaded.
+ * The owner's rulings D90 and D98 (1), by `stare::byname::pick_on_official_page`
+ * through the WASM: for the official printing of a run whose printings share `shared`
+ * (their ids), the case on its whole page (`cases`, `[{ id, names, date }]`) the citing
+ * text's `name` means, when the shared cases miss it (several, none of which fits; or
+ * one that clearly doesn't) and exactly one case on the page fits. Its id, or null;
+ * null too when the WASM isn't loaded.
  */
 export function matchCaseNameOfficial(cases, shared, name, year = null) {
   if (!loadedWasm) return null;
@@ -555,6 +556,14 @@ function namesOpen(e) {
   if (!e.resolvable || e.partner || e.conflicts?.length || !e.pageCases?.length) return null;
   const open = Array.isArray(e.tied) ? e.tied : e.pageCases.map(x => x.id);
   return open.length > 1 ? { open, shared: open.length < e.pageCases.length } : null;
+}
+
+// For a run's official printing (`runOfficial`) whose printings share one case at a page
+// several cases start on, that case's id (D98 (1)); null for any other citation.
+function sharesOne(e) {
+  if (!e.resolvable || e.partner || e.conflicts?.length || e.runOfficial !== e.raw) return null;
+  if (!Array.isArray(e.tied) || e.tied.length || (e.pageCases?.length || 0) < 2) return null;
+  return caseIdentity(e) || null;
 }
 
 /**
@@ -575,7 +584,9 @@ function namesOpen(e) {
  * case at its page (D90, `matchOfficial`), and when exactly one fits, every printing
  * of the run opens it, with `byName` `{ among, shared: false, official }`, `among`
  * the cases at the official page and `official` its raw string. A printing whose own
- * page doesn't list the case opens it without a `via`.
+ * page doesn't list the case opens it without a `via`. Likewise when the run's
+ * printings share one case and it clearly isn't the one the name names (D98 (1)),
+ * with `sharesOne: true` in `byName`.
  */
 export async function applyNames(
   checked, readNames = readCaseNamesLazily, match = matchCaseName, matchOfficial = matchCaseNameOfficial,
@@ -589,7 +600,20 @@ export async function applyNames(
   await Promise.all(checked.map(async (e) => {
     if (isShortForm(e) || picks.has(e.raw)) return;
     const name = e.caseName || e.historyName;
-    const at = name ? namesOpen(e) : null;
+    if (!name) return;
+    const one = sharesOne(e);
+    if (one) {
+      try {
+        const page = await Promise.all(e.pageCases.map(readCase));
+        const official = await matchOfficial(page, [one], name, e.year ?? null);
+        const pick = official && e.pageCases.find(x => x.id === official);
+        if (pick) officialPicks.set(e.raw, { to: pick, among: e.pageCases.length, shared: false, official: e.raw, sharesOne: true });
+      } catch {
+        // A name that can't be read or matched leaves the case the run shares.
+      }
+      return;
+    }
+    const at = namesOpen(e);
     if (!at) return;
     try {
       const cases = await Promise.all(e.pageCases.filter(x => at.open.includes(x.id)).map(readCase));
@@ -622,7 +646,10 @@ export async function applyNames(
     const { to } = p;
     changed.set(e.raw, {
       ...e, slug: to.slug, volume: to.volume, page: to.page, seq: to.seq, aliasOf: to.aliasOf, via: to.via,
-      byName: { among: p.among, shared: p.shared, ...(p.official ? { official: p.official } : {}) },
+      byName: {
+        among: p.among, shared: p.shared,
+        ...(p.official ? { official: p.official } : {}), ...(p.sharesOne ? { sharesOne: true } : {}),
+      },
     });
   }
   for (const e of checked) {
@@ -643,14 +670,18 @@ export async function applyNames(
  * by case name among the 3 cases on this page", or "... among the 2 cases its
  * parallel citations share" when its parallel citations had narrowed them, or, when
  * its official printing's page decided (D90), "... among the 12 cases on the official
- * page, 455 U.S. 989; the cases its parallel citations share don't include it". ''
- * for any other citation.
+ * page, 455 U.S. 989; the cases its parallel citations share don't include it" ("...;
+ * the case its parallel citations share doesn't fit the name" when they shared one,
+ * D98 (1)). '' for any other citation.
  */
 export function byNameLabel(c) {
   if (!c?.byName) return '';
-  const { among, shared, official } = c.byName;
+  const { among, shared, official, sharesOne } = c.byName;
   if (official) {
-    return `Matched by case name among the ${among} cases on the official page, ${official}; the cases its parallel citations share don't include it`;
+    const missed = sharesOne
+      ? "the case its parallel citations share doesn't fit the name"
+      : "the cases its parallel citations share don't include it";
+    return `Matched by case name among the ${among} cases on the official page, ${official}; ${missed}`;
   }
   return shared
     ? `Matched by case name among the ${among} cases its parallel citations share`
