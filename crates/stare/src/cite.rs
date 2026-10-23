@@ -208,7 +208,19 @@ impl DetectedCitation {
 /// the case anew, so it isn't.
 fn is_subsequent_history(gap: &str) -> bool {
     regex!(
-        r"(?i)^[\s,]*(?:(?:at\s+)?\d+(?:[-\x{2013}]\d+)?(?:\s*nn?\.\s*\d+)?[\s,]*)*(?:\([^()]*\)[\s,]*)?(?:cert(?:iorari)?\.?\s+(?:denied|den\.|dismissed|granted)|aff['\x{2019}]?d|affirmed|rev['\x{2019}]?d|reversed|vacated|modified|appeal\s+(?:denied|dismissed)|review\s+denied|petition\s+for\s+(?:review|certification|certiorari)\s+denied|reh(?:earin)?['\x{2019}]?g\s+denied)(?:,?\s+(?:in\s+part|on\s+other\s+grounds|per\s+curiam|mem\.))*[\s,]*$"
+        r"(?ix)^[\s,;\[]*
+        (?:(?:at\s+)?\d+(?:[-\x{2013}]\d+)?(?:\s*nn?\.\s*\d+)?[\s,]*)*
+        (?:[(\[][^()\[\]]*[)\]][\s,;]*)*
+        (?:
+            cert(?:iorari|if(?:ication)?)?[.,]?\s+(?:denied|den\.|dismissed|granted)
+            | aff['\x{2019}]?d(?:\s+o\.b\.)? | affirmed | rev['\x{2019}]?d | reversed | vacated | modified
+            | appeal\s+(?:denied|dismissed)
+            | review\s+denied
+            | petition\s+for\s+(?:review|certification|certiorari)\s+denied
+            | (?:reh(?:earin)?['\x{2019}]?g|reh\.|rehearing)\s+denied
+        )
+        (?:,?\s+(?:in\s+part|on\s+other\s+grounds|per\s+curiam|mem\.))*
+        [\s,]*$"
     )
     .is_match(gap)
 }
@@ -2044,6 +2056,17 @@ mod tests {
         assert!(flaksa[1..]
             .iter()
             .all(|(_, own, history)| own.is_none() && *history == name));
+        // Other spellings of history: N.J.'s `certif. denied`, `reh. denied`, a bracketed
+        // note, and a second history after a semicolon.
+        for (text, at) in [
+            ("Hantman v. Township of Randolph, 58 N.J.Super. 127, 155 A.2d 554 (App.Div.1959), certif. denied, 31 N.J. 550.", 2),
+            ("United States v. Mendenhall, 446 U.S. 544, 553-54, 100 S. Ct. 1870, 64 L. Ed. 2d 497, reh. denied, 448 U.S. 908.", 3),
+            ("United States v. Rosenwasser, 550 F.2d 806, 814 (2d Cir.) [Gurfein, J., dissenting], cert. denied, 434 U.S. 825.", 1),
+            ("Exxon Corp. v. FTC, 589 F.2d 582, 587 (D.C.Cir.1978), cert, denied, 441 U.S. 943.", 1),
+        ] {
+            let found = names(text);
+            assert!(found[at].1.is_none() && found[at].2.as_deref() == found[0].1.as_deref(), "{text}: {found:?}");
+        }
         // A citation after a new sentence, or history under another name, takes none.
         for text in [
             "Roe v. Wade, 410 U.S. 113 (1973). See 261 Conn. 941.",
