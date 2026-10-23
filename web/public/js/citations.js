@@ -182,13 +182,16 @@ export async function checkAvailability(slug, volume, manifest = null) {
 /**
  * The label for a link that came through an alias, from its `via`: "Resolved
  * through CourtListener's citation metadata" for `cl:<cluster>`, and "Resolved as
- * the U.S. Reports under its reporter's name" for a nominative alias. The aliases come
+ * the U.S. Reports under its reporter's name" for a nominative alias, and "Resolved
+ * by the official U.S. Reports page; CAP's scan is a reprint paged differently" for
+ * an official-page alias (stare-builder#41). The `cl:` aliases come
  * from CourtListener's `citations` table (publisher, scraper and import data), a
  * third party's metadata; nothing here calls such a link verified.
  */
 export function viaLabel(via) {
   if (!via) return '';
   if (via === VIA_NOMINATIVE) return "Resolved as the U.S. Reports under its reporter's name";
+  if (via === VIA_OFFICIAL) return "Resolved by the official U.S. Reports page; CAP's scan is a reprint paged differently";
   return /^cl:\d+$/.test(via) ? "Resolved through CourtListener's citation metadata" : `Resolved through ${via}`;
 }
 
@@ -197,6 +200,13 @@ export function viaLabel(via) {
  * filed under the early reporter's name and volume (`22 Wall. 238` is `89 U.S. 238`).
  */
 export const VIA_NOMINATIVE = 'nominative:us';
+
+/**
+ * The `via` of an official-page alias (stare-builder#41): a case in a U.S. Reports
+ * volume CAP scanned from a reprint, filed at its official page in its own volume
+ * (`8 U.S. 29` is CAP's `us/8` page 18).
+ */
+export const VIA_OFFICIAL = 'official:us';
 
 /**
  * The note above a case reached through an alias (#151): "Cited as nw 260 287.
