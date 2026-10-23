@@ -285,6 +285,10 @@ wasm-opt, which made the compressed module larger. Measured 2026-10-03 (gzip -9,
 | citare v0.7.2 | 1,858,787 | 668,148 | 495,198 |
 | its bundle, `citare-data-8058901af64a1aff.bin` | 454,062 | 133,306 | 106,908 |
 | the same bundle with zopfli, as served | | 124,108 | |
+| main before citare v0.7.3, 2026-10-23 | 1,891,970 | 682,319 | 506,108 |
+| citare v0.7.3 | 1,891,971 | 681,587 | 505,784 |
+| its bundle, `citare-data-389bc858cd837989.bin` | 455,708 | 133,968 | 107,230 |
+| the same bundle with zopfli, as served | | 124,517 | |
 
 The Worker compresses on the fly, less tightly than brotli 11. Bytes on the wire, same day:
 
