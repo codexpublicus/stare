@@ -26,11 +26,12 @@ test('/reporters.json maps abbreviations to slugs, with volumes and URL template
   const held = build.reporters.a2d;
   expect(held).toContain('31');
   expect(map.reporters.a2d.volumes).toMatchObject({ count: held.length, first: held[0], last: held.at(-1) });
-  // citare v0.7.2 folded P.R.R. into pr and Cai. R. into cai (citare#105, D78); the
-  // old slugs stay for one release, naming their replacement.
+  // citare v0.7.2 folded P.R.R. into pr and Cai. R. into cai (citare#105); the old
+  // slugs were marked replaced for site release v2026.10.22.2 (D78) and aren't now.
+  // p-r-r stays listed while the index build holds a volume under it.
   expect(map.abbreviations['P.R.R.']).toEqual(['pr']);
-  expect(map.reporters['p-r-r'].replaced_by).toBe('pr');
-  expect(map.reporters['cai-r'].replaced_by).toBe('cai');
+  expect(map.reporters['p-r-r']?.replaced_by).toBeUndefined();
+  expect(map.reporters['cai-r']?.replaced_by).toBeUndefined();
   expect(map.urls.index).toBe('https://idx.stare.pub/{base}{slug}/{volume}.idx.gz');
   expect(map.generated_from.index_build.version).toMatch(/^v\d{4}\.\d{2}\.\d{2}/);
   expect(map.generated_from.citare_data).toMatch(/^citare-data-[0-9a-f]{16}\.bin$/);
