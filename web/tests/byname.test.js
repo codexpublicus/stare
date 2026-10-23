@@ -236,6 +236,86 @@ describe('a run whose shared cases miss the name, decided on the official page (
   });
 });
 
+// State v. Shabazz, as Conn. opinions cite it (D98 (1)): 525 U.S. 1179 has fifteen cert.
+// denials; in index v2026.10.22, 119 S. Ct. 1116 has aliases to seven of them (Shabazz
+// among them) and 143 L. Ed. 2d 111 one, to Compagnie Euralair, so the run's printings
+// share Euralair alone.
+const SHABAZZ_NAMES = [
+  'Horvath v. Ohio State Teachers Retirement Board', 'Onstine v. Ramaley', 'Shabazz v. Connecticut',
+  'Compagnie Euralair, S. A. v. General Electric Co.', 'Schap v. United States', 'Idarecis v. United States',
+  'Andonian v. United States', 'Kirk v. United States', 'Dayton v. United States', 'Walden v. United States',
+  'Hartbarger v. United States', 'Hudson v. United States', 'Smith v. United States', 'Bolin v. Nevada',
+  'Davis v. Alabama',
+];
+const shabazzFile = (n) => `1179-${String(n).padStart(2, '0')}`;
+const AT_US_525 = pageResult(SHABAZZ_NAMES.map((_, i) => ({ page: '1179', source: 'cap', case_file: shabazzFile(i + 1) })), 'us', 525, '1179');
+const us525Alias = (page, n, cluster) => ({ page, source: 'cap', reporter: 'us', folder: '525', case_file: shabazzFile(n), via: `cl:${cluster}` });
+const AT_SCT_119 = pageResult([
+  us525Alias('1116', 3, 9183938), us525Alias('1116', 4, 9183940), us525Alias('1116', 5, 9183941),
+  us525Alias('1116', 6, 9183943), us525Alias('1116', 7, 9183945), us525Alias('1116', 8, 9183947),
+  us525Alias('1116', 9, 9183949),
+], 's-ct', 119, '1116');
+const AT_LED_143 = pageResult([us525Alias('111', 4, 9183940)], 'l-ed-2d', 143, '111');
+
+async function checkShabazz(name = 'State v. Shabazz', official = true) {
+  const text = `${name}, 246 Conn. 746, 759, 719 A.2d 440 (1998), cert. denied, 525 U.S. 1179, 119 S. Ct. 1116, 143 L. Ed. 2d 111 (1999).`;
+  const fields = { year: 1999, historyName: name };
+  const detected = [
+    cite(text, '525 U.S. 1179', { slug: 'us', volume: 525, page: '1179', reporter: 'U.S.', official, ...fields }),
+    cite(text, '119 S. Ct. 1116', { slug: 's-ct', volume: 119, page: '1116', reporter: 'S. Ct.', parallelTo: '525 U.S. 1179', ...fields }),
+    cite(text, '143 L. Ed. 2d 111', { slug: 'l-ed-2d', volume: 143, page: '111', reporter: 'L. Ed. 2d', parallelTo: '119 S. Ct. 1116', ...fields }),
+  ];
+  const pages = { 'us/525/1179': AT_US_525, 's-ct/119/1116': AT_SCT_119, 'l-ed-2d/143/111': AT_LED_143 };
+  const checked = await checkCitations(
+    detected,
+    async (slug, volume) => ['us/525', 's-ct/119', 'l-ed-2d/143'].includes(`${slug}/${volume}`),
+    async (slug, volume, page) => pages[`${slug}/${volume}/${page}`] || false,
+    reconcile,
+    async (c) => ({ names: [SHABAZZ_NAMES[parseInt(c.ref.caseFile.slice(5), 10) - 1]], date: '1999-03-01' }),
+  );
+  const groups = groupCitations(detected, checked);
+  const map = new Map(checked.map(c => [c.key, c]));
+  const html = withoutPlaces(renderTextHtml(text, detected.map(occurrence), map).join('\n'));
+  return { groups, html, entry: (raw) => checked.find(c => c.raw === raw) };
+}
+
+describe('a run sharing one case the name clearly isn\'t, decided on the official page (D98 (1))', () => {
+  test('State v. Shabazz: every printing opens Shabazz v. Connecticut, and says why', async () => {
+    const { groups, html, entry } = await checkShabazz();
+    const note = "Matched by case name among the 15 cases on the official page, 525 U.S. 1179; the case its parallel citations share doesn't fit the name";
+    assert.deepEqual(entry('525 U.S. 1179').byName, { among: 15, shared: false, official: '525 U.S. 1179', sharesOne: true });
+    for (const raw of ['525 U.S. 1179', '119 S. Ct. 1116', '143 L. Ed. 2d 111']) {
+      assert.equal(entry(raw).slug, 'us', raw);
+      assert.equal(entry(raw).seq, 3, raw);
+      assert.equal(byNameLabel(entry(raw)), note, raw);
+    }
+    // S. Ct.'s own alias names Shabazz; L. Ed.'s one alias is Euralair's, so it has no via.
+    assert.equal(entry('119 S. Ct. 1116').via, 'cl:9183938');
+    assert.equal(entry('143 L. Ed. 2d 111').via, null);
+    assert.equal(groups.length, 1);
+    assert.match(tagFor(html, '525 U.S. 1179'), /^<a class="cite-link" href="#us\/525\/1179-03" [^>]*data-by-name="15"/);
+    assert.match(tagFor(html, '143 L. Ed. 2d 111'), /href="#us\/525\/1179-03"/);
+    assert.match(citedGroupHtml(groups[0], href), /<span class="cited-lookup cited-by-name">Matched by case name among the 15 cases on the official page, 525 U\.S\. 1179; the case its parallel citations share doesn&#39;t fit the name<\/span>/);
+  });
+
+  test('a name the shared case fits, even partly, keeps it', async () => {
+    for (const name of ['Compagnie Euralair v. General Electric', 'Euralair v. Shabazz']) {
+      const { entry } = await checkShabazz(name);
+      assert.equal(entry('525 U.S. 1179').byName, undefined, name);
+      assert.equal(entry('525 U.S. 1179').seq, 4, name);
+      assert.equal(entry('143 L. Ed. 2d 111').via, 'cl:9183940', name);
+    }
+  });
+
+  test('a name nothing on the page fits, one with no telling words, or no official printing: Euralair stands', async () => {
+    for (const [name, official] of [['Doe v. Roe', true], ['State v.', true], ['State v. Shabazz', false]]) {
+      const { entry } = await checkShabazz(name, official);
+      assert.equal(entry('525 U.S. 1179').byName, undefined, name);
+      assert.equal(entry('525 U.S. 1179').seq, 4, name);
+    }
+  });
+});
+
 // A zip read the way data.stare.pub serves one to a Range request.
 function rangeServer(bytes, log = []) {
   return async (url, range) => {
