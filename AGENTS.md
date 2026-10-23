@@ -95,7 +95,12 @@ One gzipped text file per volume as cited, for every source (`docs/plans/courtli
   in `n-w/260.idx.gz`. `via=nominative:us` (stare-builder#32) files a case in U.S. Reports
   volumes 1 to 90 under its early reporter's name and volume as well (`wall/22.idx.gz`:
   `238,cap,us/89/0238-01,via=nominative:us`), labelled "Resolved as the U.S. Reports under
-  its reporter's name". A page's own CAP cases sort before its aliases, and aliases before
+  its reporter's name". `via=official:us` (stare-builder#41) files a case in one of the ten
+  U.S. volumes CAP scanned from a reprint (1, 2, 4, 6, 7, 8, 12, 21, 30, 69) at the page its
+  official citation gives, in its own volume (`us/8.idx.gz`: `29,cap,us/8/0018-01,via=official:us`,
+  `8 U.S. 29` at the reprint's page 18), labelled "Resolved by the official U.S. Reports page;
+  CAP's scan is a reprint paged differently"; the build leaves out an own line at a page
+  another case's official citation claims. A page's own CAP cases sort before its aliases, and aliases before
   `cl` lines, so CAP's case wins (#160). Readers label a link that came through one
   "Resolved through CourtListener's citation metadata" and never call it verified. CAP
   case files can hold a comma (`11, 12-01`) or `=` (`1265=1275-01`), so fields are parsed

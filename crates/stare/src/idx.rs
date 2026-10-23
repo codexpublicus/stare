@@ -46,6 +46,13 @@
 //! renumbered, and the index files each case under its reporter's name and volume too:
 //! `238,cap,us/89/0238-01,via=nominative:us` in `wall/22.idx.gz`.
 //!
+//! `via=official:us` is an official-page alias (stare-builder#41): ten of CAP's U.S.
+//! Reports volumes are scans of a reprint whose page numbers differ from the official ones,
+//! and the index files such a case at its official page in its own volume too:
+//! `29,cap,us/8/0018-01,via=official:us` in `us/8.idx.gz` (`8 U.S. 29`, printed at the
+//! reprint's page 18). The build leaves out an own line at a page another case's official
+//! citation claims, so the alias is the first line there.
+//!
 //! `via=cl:<cluster>` is CourtListener's `citations` table, the cluster's own reporter
 //! citations from publisher, scraper and import data. It's a third party's metadata, not
 //! an eyecite detection and not a human check, so a reader labels the link with its
@@ -161,6 +168,9 @@ pub fn via_label(via: &str) -> String {
     if via == VIA_NOMINATIVE {
         return NOMINATIVE_LABEL.to_string();
     }
+    if via == VIA_OFFICIAL {
+        return OFFICIAL_LABEL.to_string();
+    }
     match via_cluster(via) {
         Some(id) => format!("Resolved through CourtListener's citation metadata (cluster {id})"),
         None => format!("Resolved through {via}"),
@@ -174,6 +184,15 @@ pub const VIA_NOMINATIVE: &str = "nominative:us";
 
 /// How a reader labels a link through a nominative alias.
 pub const NOMINATIVE_LABEL: &str = "Resolved as the U.S. Reports under its reporter's name";
+
+/// The `via` of an official-page alias (stare-builder#41): a case in a U.S. Reports volume
+/// CAP scanned from a reprint, filed at the page its official citation gives (`8 U.S. 29`
+/// is CAP's `us/8` page 18).
+pub const VIA_OFFICIAL: &str = "official:us";
+
+/// How a reader labels a link through an official-page alias.
+pub const OFFICIAL_LABEL: &str =
+    "Resolved by the official U.S. Reports page; CAP's scan is a reprint paged differently";
 
 /// Whether a tag could be a source: lowercase ASCII letters.
 fn is_tag(s: &str) -> bool {
@@ -877,6 +896,11 @@ mod tests {
             "Resolved as the U.S. Reports under its reporter's name"
         );
         assert_eq!(via_cluster("nominative:us"), None);
+        assert_eq!(
+            via_label("official:us"),
+            "Resolved by the official U.S. Reports page; CAP's scan is a reprint paged differently"
+        );
+        assert!(!via_label("official:us").to_lowercase().contains("verif"));
     }
 
     #[test]
