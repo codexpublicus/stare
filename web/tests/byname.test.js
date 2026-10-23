@@ -136,6 +136,106 @@ describe('a page several cases start on, picked by the citing text\'s case name'
   });
 });
 
+// State v. Gordon, as Conn. App. opinions cite it (D90): the U.S. Reports page has twelve
+// orders, and CourtListener's aliases at the S. Ct. and L. Ed. pages, in index
+// v2026.10.22, share three of them, none of them Connecticut v. Gordon.
+const US_NAMES = [
+  'Leicht v. Florida', 'Connecticut v. Gordon', "Montana Wilderness Ass'n v. United States Forest Service",
+  'Wright Line v. National Labor Relations Board', 'Gomez v. United States', 'Siegel v. United States',
+  'Bruschi v. United States', 'Catalina v. City of Columbus', 'Truck Drivers & Helpers Local Union No. 728 v. Allen',
+  'F. W. Woolworth Co. v. National Labor Relations Board', 'Watkins v. United States', 'Spieler v. United States',
+];
+const usFile = (n) => `0989-${String(n).padStart(2, '0')}`;
+const AT_US = pageResult(US_NAMES.map((_, i) => ({ page: '989', source: 'cap', case_file: usFile(i + 1) })), 'us', 455, '989');
+const usAlias = (page, caseFile, n) => ({ page, source: 'cap', reporter: 'us', folder: '455', case_file: caseFile, via: `cl:${n}` });
+const AT_SCT = pageResult([
+  usAlias('1612', '0989-02', 9037656), usAlias('1612', '0989-03', 9037657), usAlias('1612', '0989-05', 9037659),
+  usAlias('1612', '0989-06', 9037660), usAlias('1612', '0989-07', 9037661),
+], 's-ct', 102, '1612');
+const AT_LED = pageResult([
+  usAlias('848', '0988-08', 9037653), usAlias('848', '0989-05', 9037659),
+  usAlias('848', '0989-06', 9037660), usAlias('848', '0989-07', 9037661),
+], 'l-ed-2d', 71, '848');
+const US_READ = async (c) => {
+  const file = c.ref.caseFile;
+  const name = file === '0988-08' ? 'Rushen v. Taylor' : US_NAMES[parseInt(file.slice(5), 10) - 1];
+  return { names: [name], date: '1982-03-01' };
+};
+
+async function checkGordon(text, detected) {
+  const pages = { 'us/455/989': AT_US, 's-ct/102/1612': AT_SCT, 'l-ed-2d/71/848': AT_LED };
+  const checked = await checkCitations(
+    detected,
+    async (slug, volume) => ['us/455', 's-ct/102', 'l-ed-2d/71'].includes(`${slug}/${volume}`),
+    async (slug, volume, page) => pages[`${slug}/${volume}/${page}`] || false,
+    reconcile,
+    US_READ,
+  );
+  const groups = groupCitations(detected, checked);
+  const map = new Map(checked.map(c => [c.key, c]));
+  const html = withoutPlaces(renderTextHtml(text, detected.map(occurrence), map).join('\n'));
+  return { checked, groups, html, entry: (raw) => checked.find(c => c.raw === raw) };
+}
+
+function gordon(name = 'State v. Gordon') {
+  const text = `${name}, 185 Conn. 402, 441 A.2d 119 (1981), cert. denied, 455 U.S. 989, 102 S. Ct. 1612, 71 L. Ed. 2d 848 (1982).`;
+  const fields = { year: 1982, historyName: name };
+  return {
+    text,
+    detected: [
+      cite(text, '455 U.S. 989', { slug: 'us', volume: 455, page: '989', reporter: 'U.S.', official: true, ...fields }),
+      cite(text, '102 S. Ct. 1612', { slug: 's-ct', volume: 102, page: '1612', reporter: 'S. Ct.', parallelTo: '455 U.S. 989', ...fields }),
+      cite(text, '71 L. Ed. 2d 848', { slug: 'l-ed-2d', volume: 71, page: '848', reporter: 'L. Ed. 2d', parallelTo: '102 S. Ct. 1612', ...fields }),
+    ],
+  };
+}
+
+describe('a run whose shared cases miss the name, decided on the official page (D90)', () => {
+  test('State v. Gordon: every printing opens Connecticut v. Gordon, and says why', async () => {
+    const { text, detected } = gordon();
+    const { groups, html, entry } = await checkGordon(text, detected);
+    const note = "Matched by case name among the 12 cases on the official page, 455 U.S. 989; the cases its parallel citations share don't include it";
+    assert.deepEqual(entry('455 U.S. 989').byName, { among: 12, shared: false, official: '455 U.S. 989' });
+    for (const raw of ['455 U.S. 989', '102 S. Ct. 1612', '71 L. Ed. 2d 848']) {
+      assert.equal(entry(raw).slug, 'us', raw);
+      assert.equal(entry(raw).seq, 2, raw);
+      assert.equal(byNameLabel(entry(raw)), note, raw);
+    }
+    // S. Ct.'s own alias names the case; L. Ed.'s data doesn't, so it has no via.
+    assert.equal(entry('102 S. Ct. 1612').via, 'cl:9037656');
+    assert.equal(entry('71 L. Ed. 2d 848').via, null);
+    assert.equal(groups.length, 1);
+    assert.match(tagFor(html, '455 U.S. 989'), /^<a class="cite-link" href="#us\/455\/989-02" [^>]*data-by-name="12"/);
+    assert.match(tagFor(html, '71 L. Ed. 2d 848'), /href="#us\/455\/989-02"/);
+    assert.match(citedGroupHtml(groups[0], href), /<span class="cited-lookup cited-by-name">Matched by case name among the 12 cases on the official page, 455 U\.S\. 989; [^<]*<\/span>/);
+  });
+
+  test('a shared case the name fits is picked among the shared cases, as before', async () => {
+    const { text, detected } = gordon('Gomez v. United States');
+    const { entry } = await checkGordon(text, detected);
+    assert.deepEqual(entry('455 U.S. 989').byName, { among: 3, shared: true });
+    assert.equal(entry('455 U.S. 989').seq, 5);
+  });
+
+  test('a name two cases on the page fit, or none, keeps the run\'s narrowing', async () => {
+    for (const name of ['Doe v. Roe', 'United States v. Watkins Spieler']) {
+      const { text, detected } = gordon(name);
+      const { entry } = await checkGordon(text, detected);
+      assert.equal(entry('455 U.S. 989').byName, undefined, name);
+      assert.equal(entry('455 U.S. 989').seq, 5, name);
+      assert.equal(entry('71 L. Ed. 2d 848').via, 'cl:9037659', name);
+    }
+  });
+
+  test('without an official printing in the run, nothing is matched on a whole page', async () => {
+    const { text, detected } = gordon();
+    detected[0].official = false;
+    const { entry } = await checkGordon(text, detected);
+    assert.equal(entry('455 U.S. 989').byName, undefined);
+    assert.equal(entry('455 U.S. 989').seq, 5);
+  });
+});
+
 // A zip read the way data.stare.pub serves one to a Range request.
 function rangeServer(bytes, log = []) {
   return async (url, range) => {

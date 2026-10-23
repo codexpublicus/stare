@@ -535,6 +535,18 @@ export function matchCaseName(cases, name, year = null) {
   return loadedWasm.match_case_name(JSON.stringify(cases), name, year ?? undefined) ?? null;
 }
 
+/**
+ * The owner's ruling D90, by `stare::byname::pick_on_official_page` through the WASM:
+ * for the official printing of a run whose printings share several cases (`shared`,
+ * their ids), the case on its whole page (`cases`, `[{ id, names, date }]`) the citing
+ * text's `name` means, when none of the shared cases fits it and exactly one case on
+ * the page does. Its id, or null; null too when the WASM isn't loaded.
+ */
+export function matchCaseNameOfficial(cases, shared, name, year = null) {
+  if (!loadedWasm) return null;
+  return loadedWasm.match_case_name_official(JSON.stringify(cases), JSON.stringify(shared), name, year ?? undefined) ?? null;
+}
+
 // The cases a checked full citation is still open among, as `{ open, shared }` (`shared`
 // when its parallel citations narrowed the page's cases to them), or null when
 // something else settles it: a run whose printings share one case (or none), or a page
@@ -557,27 +569,51 @@ function namesOpen(e) {
  * among and whether those were the ones its parallel citations share (byNameLabel).
  * A parallel citation resolved through it, and a short form of either, follow it.
  * Anything that doesn't match, or can't be read, keeps opening the page's first case.
+ *
+ * When a run's printings share several cases and none of them fits the name, the
+ * run's official printing (`runOfficial`, applyParallels) is matched against every
+ * case at its page (D90, `matchOfficial`), and when exactly one fits, every printing
+ * of the run opens it, with `byName` `{ among, shared: false, official }`, `among`
+ * the cases at the official page and `official` its raw string. A printing whose own
+ * page doesn't list the case opens it without a `via`.
  */
-export async function applyNames(checked, readNames = readCaseNamesLazily, match = matchCaseName) {
+export async function applyNames(
+  checked, readNames = readCaseNamesLazily, match = matchCaseName, matchOfficial = matchCaseNameOfficial,
+) {
   const picks = new Map();
+  const officialPicks = new Map();
+  const readCase = async (x) => {
+    const read = await Promise.resolve(readNames(x)).catch(() => null);
+    return { id: x.id, names: read?.names || [], date: read?.date || null };
+  };
   await Promise.all(checked.map(async (e) => {
     if (isShortForm(e) || picks.has(e.raw)) return;
     const name = e.caseName || e.historyName;
     const at = name ? namesOpen(e) : null;
     if (!at) return;
     try {
-      const cases = await Promise.all(e.pageCases.filter(x => at.open.includes(x.id)).map(async (x) => {
-        const read = await Promise.resolve(readNames(x)).catch(() => null);
-        return { id: x.id, names: read?.names || [], date: read?.date || null };
-      }));
+      const cases = await Promise.all(e.pageCases.filter(x => at.open.includes(x.id)).map(readCase));
       if (!cases.some(c => c.names.length)) return;
       const id = await match(cases, name, e.year ?? null);
       const to = id && e.pageCases.find(x => x.id === id);
       if (to) picks.set(e.raw, { to, among: at.open.length, shared: at.shared });
+      else if (at.shared && e.runOfficial === e.raw) {
+        const page = await Promise.all(e.pageCases.map(readCase));
+        const official = await matchOfficial(page, at.open, name, e.year ?? null);
+        const pick = official && e.pageCases.find(x => x.id === official);
+        if (pick) officialPicks.set(e.raw, { to: pick, among: e.pageCases.length, shared: false, official: e.raw });
+      }
     } catch {
       // A name that can't be read or matched leaves the page's first case.
     }
   }));
+  // Every printing of a run its official printing's page decided opens that case.
+  for (const e of checked) {
+    const p = !isShortForm(e) && !e.partner && e.runOfficial && officialPicks.get(e.runOfficial);
+    if (!p) continue;
+    const own = (e.pageCases || []).find(x => x.id === p.to.id);
+    picks.set(e.raw, { ...p, to: own || { ...p.to, via: null } });
+  }
   if (!picks.size) return checked;
   const changed = new Map();
   for (const e of checked) {
@@ -586,7 +622,7 @@ export async function applyNames(checked, readNames = readCaseNamesLazily, match
     const { to } = p;
     changed.set(e.raw, {
       ...e, slug: to.slug, volume: to.volume, page: to.page, seq: to.seq, aliasOf: to.aliasOf, via: to.via,
-      byName: { among: p.among, shared: p.shared },
+      byName: { among: p.among, shared: p.shared, ...(p.official ? { official: p.official } : {}) },
     });
   }
   for (const e of checked) {
@@ -605,12 +641,17 @@ export async function applyNames(checked, readNames = readCaseNamesLazily, match
 /**
  * The note on a citation picked by its case name at a shared page (#212): "Matched
  * by case name among the 3 cases on this page", or "... among the 2 cases its
- * parallel citations share" when its parallel citations had narrowed them. '' for
- * any other citation.
+ * parallel citations share" when its parallel citations had narrowed them, or, when
+ * its official printing's page decided (D90), "... among the 12 cases on the official
+ * page, 455 U.S. 989; the cases its parallel citations share don't include it". ''
+ * for any other citation.
  */
 export function byNameLabel(c) {
   if (!c?.byName) return '';
-  const { among, shared } = c.byName;
+  const { among, shared, official } = c.byName;
+  if (official) {
+    return `Matched by case name among the ${among} cases on the official page, ${official}; the cases its parallel citations share don't include it`;
+  }
   return shared
     ? `Matched by case name among the ${among} cases its parallel citations share`
     : `Matched by case name among the ${among} cases on this page`;
@@ -668,6 +709,9 @@ export async function applyParallels(detected, checked, reconcile = reconcilePar
   })));
   const changed = new Map();
   const current = (raw) => changed.get(raw) || byKey.get(raw);
+  // Each run's official printing, when it is the one the run shows by default (D90).
+  const officialOf = new Map();
+  verdicts.forEach((v, i) => { if (v.preferred && members[i].official) officialOf.set(members[i].run, members[i].raw); });
   const update = (raw, fields) => changed.set(raw, { ...current(raw), ...fields });
   verdicts.forEach((v, i) => {
     const m = members[i];
@@ -678,7 +722,9 @@ export async function applyParallels(detected, checked, reconcile = reconcilePar
     if (v.preferred) update(m.raw, { preferred: true });
     // The cases a run that agrees shares when there are several (#212), which the
     // citing text's case name may decide among (applyNames); none past `case` else.
-    if (v.case) update(m.raw, { tied: v.tied || [] });
+    if (v.case) {
+      update(m.raw, { tied: v.tied || [], ...(officialOf.has(m.run) ? { runOfficial: officialOf.get(m.run) } : {}) });
+    }
     // A member that resolves opens the case its run agrees on, which at a page several
     // cases start on can be other than the first (#204).
     const e = current(m.raw);

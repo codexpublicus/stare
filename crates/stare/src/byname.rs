@@ -122,18 +122,17 @@ fn name_overlap(a: &BTreeSet<String>, b: &BTreeSet<String>) -> (f64, f64) {
     (common / least as f64, common / a.union(b).count() as f64)
 }
 
-/// Of `cases`, the one the citing text's `name` (and `year`, when it gives one) means:
-/// decided that year where its date is known, with at least half the shorter name's
-/// telling words in common, and closer to the name than every other case that fits.
-/// None when no case fits, when two fit equally, or when the name has no telling
-/// words (`State v.`); the reader then opens the page's first case, as before.
-pub fn pick<'a>(cases: &'a [Candidate], name: &str, year: Option<i32>) -> Option<&'a str> {
+/// The cases of `cases` the citing text's `name` (and `year`, when it gives one) fits,
+/// each with how alike the names are: decided that year where its date is known, with
+/// at least half the shorter name's telling words in common. None when the name has no
+/// telling words (`State v.`).
+fn fits<'a>(cases: &'a [Candidate], name: &str, year: Option<i32>) -> Vec<(&'a str, (f64, f64))> {
     let words = name_words(name);
     if words.is_empty() {
-        return None;
+        return Vec::new();
     }
     let year = year.map(|y| format!("{y:04}"));
-    let fits: Vec<(&str, (f64, f64))> = cases
+    cases
         .iter()
         .filter(
             |c| match (&year, c.date.as_deref().and_then(|d| d.get(..4))) {
@@ -149,7 +148,16 @@ pub fn pick<'a>(cases: &'a [Candidate], name: &str, year: Option<i32>) -> Option
                 .fold((0.0, 0.0), |a, b| if b > a { b } else { a });
             (best.0 >= 0.5).then_some((c.id.as_str(), best))
         })
-        .collect();
+        .collect()
+}
+
+/// Of `cases`, the one the citing text's `name` (and `year`, when it gives one) means:
+/// decided that year where its date is known, with at least half the shorter name's
+/// telling words in common, and closer to the name than every other case that fits.
+/// None when no case fits, when two fit equally, or when the name has no telling
+/// words (`State v.`); the reader then opens the page's first case, as before.
+pub fn pick<'a>(cases: &'a [Candidate], name: &str, year: Option<i32>) -> Option<&'a str> {
+    let fits = fits(cases, name, year);
     let best = fits
         .iter()
         .map(|f| f.1)
@@ -161,6 +169,32 @@ pub fn pick<'a>(cases: &'a [Candidate], name: &str, year: Option<i32>) -> Option
         .as_slice()
     {
         [one] => Some(one.0),
+        _ => None,
+    }
+}
+
+/// The owner's ruling D90: for the official printing of a parallel run whose printings
+/// share several cases (`shared`), the case on its whole page (`page`, every case at
+/// it) the citing text's `name` means, when none of the shared cases fits the name and
+/// exactly one case on the page does. The other printings' data (CourtListener's
+/// aliases at an orders list, `71 L. Ed. 2d 848`) can leave out the case the text
+/// names, so the run's narrowing would open a case the text doesn't cite. None
+/// otherwise, and the run's narrowing stands ([`pick`] among `shared`).
+pub fn pick_on_official_page<'a>(
+    page: &'a [Candidate],
+    shared: &[String],
+    name: &str,
+    year: Option<i32>,
+) -> Option<&'a str> {
+    if shared.len() < 2 {
+        return None;
+    }
+    let fits = fits(page, name, year);
+    if fits.iter().any(|(id, _)| shared.iter().any(|s| s == id)) {
+        return None;
+    }
+    match fits.as_slice() {
+        [(one, _)] => Some(one),
         _ => None,
     }
 }
@@ -201,6 +235,60 @@ mod tests {
         assert_eq!(pick(&cases, "Segreto v. Bristol", Some(1999)), None);
         assert_eq!(pick(&cases, "Doe v. Roe", Some(2002)), None);
         assert_eq!(pick(&cases, "State v. State", Some(2002)), None);
+    }
+
+    #[test]
+    fn the_official_page_decides_when_no_shared_case_fits_the_name() {
+        // 455 U.S. 989, as `State v. Gordon, ..., cert. denied, 455 U.S. 989, 102 S. Ct.
+        // 1612, 71 L. Ed. 2d 848 (1982)` cites it: the three printings share three cases,
+        // none of them Connecticut v. Gordon.
+        let page = [
+            case("us/455/989", "Gomez v. United States", "1982-03-22"),
+            case("us/455/989-2", "Hall v. Florida", "1982-03-22"),
+            case("us/455/989-3", "Connecticut v. Gordon", "1982-03-22"),
+            case("us/455/989-4", "Jones v. Illinois", "1982-03-22"),
+            case("us/455/989-5", "Smith v. Ohio", "1982-03-22"),
+        ];
+        let shared: Vec<String> = ["us/455/989", "us/455/989-2", "us/455/989-4"]
+            .map(String::from)
+            .to_vec();
+        assert_eq!(
+            pick_on_official_page(&page, &shared, "State v. Gordon", Some(1982)),
+            Some("us/455/989-3")
+        );
+        // A shared case that fits keeps the run's narrowing, even beside one that
+        // doesn't share.
+        assert_eq!(
+            pick_on_official_page(&page, &shared, "Hall v. Florida", Some(1982)),
+            None
+        );
+        // Two cases on the page fitting, none, another year, no telling words, or a run
+        // that shares one case or none: today's case stands.
+        let twice = [
+            page.as_slice(),
+            &[case("us/455/989-6", "Gordon v. Ohio", "1982-03-22")],
+        ]
+        .concat();
+        assert_eq!(
+            pick_on_official_page(&twice, &shared, "State v. Gordon", Some(1982)),
+            None
+        );
+        assert_eq!(
+            pick_on_official_page(&page, &shared, "Doe v. Roe", Some(1982)),
+            None
+        );
+        assert_eq!(
+            pick_on_official_page(&page, &shared, "State v. Gordon", Some(1979)),
+            None
+        );
+        assert_eq!(
+            pick_on_official_page(&page, &shared, "State v.", None),
+            None
+        );
+        assert_eq!(
+            pick_on_official_page(&page, &shared[..1], "State v. Gordon", Some(1982)),
+            None
+        );
     }
 
     #[test]
