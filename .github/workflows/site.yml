@@ -116,7 +116,7 @@ jobs:
             web/public/data/citare/
             web/public/reporters.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
           overwrite: true
 
       - name: Upload to the main preview alias
