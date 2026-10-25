@@ -21,7 +21,7 @@ toml = "0.8"
 # Without default features: the `embedded-data` feature below compiles citare's
 # data bundle in, and stare-wasm turns it off to load the bundle at runtime
 # (#117, codexpublicus/citare docs/data-bundle.md).
-citare-core = { git = "ssh://git@github.com/codexpublicus/citare.git", tag = "v0.7.3", default-features = false }
+citare-core = { git = "ssh://git@github.com/codexpublicus/citare.git", tag = "v0.7.4", default-features = false }
 # Only the Unicode tables the patterns use (\d and \s, and (?i) in citare);
 # the rest add about 230 KB to the WASM module once citare drops them too (#73).
 regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-perl", "unicode-case"] }
