@@ -165,7 +165,9 @@ describe('display', () => {
     assert.equal(viaLabel('human:3'), 'Resolved through human:3');
     assert.doesNotMatch(viaLabel('cl:1'), /verif/i);
     assert.equal(viaLabel('nominative:us'), "Resolved as the U.S. Reports under its reporter's name");
-    assert.equal(viaLabel('official:us'), "Resolved by the official U.S. Reports page; CAP's scan is a reprint paged differently");
+    assert.equal(viaLabel('official:us'), "Resolved by the reporter's official page; CAP's scan numbers the case on another page");
+    assert.equal(viaLabel('official:ohio'), "Resolved by the reporter's official page; CAP's scan numbers the case on another page");
+    assert.equal(viaLabel('officials:us'), 'Resolved through officials:us');
   });
 
   test('the cited-cases entry links here and says where the link came from', async () => {
@@ -199,7 +201,7 @@ describe('display', () => {
   test('an official-page alias says the page is the U.S. Reports\' own', () => {
     assert.equal(
       aliasNoteHtml({ via: 'official:us', reporter: 'us', volume: '8', page: 29 }),
-      '<div class="reader-alias" role="note">Cited as us 8 29. Resolved by the official U.S. Reports page; CAP&#39;s scan is a reprint paged differently.</div>',
+      '<div class="reader-alias" role="note">Cited as us 8 29. Resolved by the reporter&#39;s official page; CAP&#39;s scan numbers the case on another page.</div>',
     );
   });
 
