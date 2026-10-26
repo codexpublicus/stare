@@ -247,6 +247,7 @@ export function createPageView(container, {
   v.toggleText = () => {
     v.text = !v.text;
     updateToolbar();
+    selection.schedule();
   };
   v.toggleHelp = (open = help.hidden) => {
     help.hidden = !open;

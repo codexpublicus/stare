@@ -623,8 +623,10 @@ the text layers, so overlapping OCR boxes no longer paint darker patches. The bo
 placed in percentages of the page, so zooming, resizing and scrolling need no repaint, and
 the layer turns with the page (inside the Raw Scans' turned box; in the PDF, sized and turned
 like PDF.js's text layer, which is drawn again on a turn). `selectionchange` is handled at
-most once a frame and only for a selection reaching a page view; copying is the browser's
-own. Forced colours keep the browser's own selection. The geometry is tested in
+most once a frame and only for a selection reaching a page view, and the highlight is painted
+again when a web font finishes loading (the Raw Scans' OCR text is in the serif face, fetched
+when the text is first shown, so the words move under a selection made before it arrives) and
+when the text is shown or hidden; copying is the browser's own. Forced colours keep the browser's own selection. The geometry is tested in
 `web/tests/selectionpaint.test.js`, and `smoke.spec.js` checks that a selected paragraph is
 one colour in both views. The zoom mode is remembered per view in localStorage
 (`stare-page-zoom-pdf`, `-scans`), every access in try/catch. Neither view loads anything
