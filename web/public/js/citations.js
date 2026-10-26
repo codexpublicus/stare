@@ -186,15 +186,15 @@ export async function checkAvailability(slug, volume, manifest = null) {
  * The label for a link that came through an alias, from its `via`: "Resolved
  * through CourtListener's citation metadata" for `cl:<cluster>`, and "Resolved as
  * the U.S. Reports under its reporter's name" for a nominative alias, and "Resolved
- * by the official U.S. Reports page; CAP's scan is a reprint paged differently" for
- * an official-page alias (stare-builder#41). The `cl:` aliases come
+ * by the reporter's official page; CAP's scan numbers the case on another page" for
+ * an official-page alias, `official:<slug>` (stare-builder#41, #48). The `cl:` aliases come
  * from CourtListener's `citations` table (publisher, scraper and import data), a
  * third party's metadata; nothing here calls such a link verified.
  */
 export function viaLabel(via) {
   if (!via) return '';
   if (via === VIA_NOMINATIVE) return "Resolved as the U.S. Reports under its reporter's name";
-  if (via === VIA_OFFICIAL) return "Resolved by the official U.S. Reports page; CAP's scan is a reprint paged differently";
+  if (isOfficialVia(via)) return "Resolved by the reporter's official page; CAP's scan numbers the case on another page";
   return /^cl:\d+$/.test(via) ? "Resolved through CourtListener's citation metadata" : `Resolved through ${via}`;
 }
 
@@ -205,11 +205,20 @@ export function viaLabel(via) {
 export const VIA_NOMINATIVE = 'nominative:us';
 
 /**
- * The `via` of an official-page alias (stare-builder#41): a case in a U.S. Reports
- * volume CAP scanned from a reprint, filed at its official page in its own volume
- * (`8 U.S. 29` is CAP's `us/8` page 18).
+ * The `via` of an official-page alias in the U.S. Reports (stare-builder#41): a case
+ * filed at its official page in its own volume (`8 U.S. 29` is CAP's `us/8` page 18).
+ * Every reporter's is `official:<slug>` (`isOfficialVia`).
  */
 export const VIA_OFFICIAL = 'official:us';
+
+/**
+ * Whether `via` is an official-page alias's, in any reporter (`official:ohio`,
+ * stare-builder#48): a case whose official citation gives another page than the one
+ * CAP's scan numbers it by.
+ */
+export function isOfficialVia(via) {
+  return /^official:[a-z0-9._-]+$/.test(via || '');
+}
 
 /**
  * The note above a case reached through an alias (#151): "Cited as nw 260 287.
