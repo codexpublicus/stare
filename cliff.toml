@@ -84,6 +84,9 @@ commit_parsers = [
   { message = "^fix", group = "<!-- 1 -->Fixes" },
   { message = "^perf", group = "<!-- 2 -->Performance" },
   { message = "^chore\\(deps\\)", group = "<!-- 3 -->Dependencies" },
+  # A citare bump changes what the browser resolves, so it releases the site on
+  # its own; other build(deps) bumps (dependabot's vite, zod and the like) don't.
+  { message = "^build\\(deps\\):.*\\bcitare\\b", group = "<!-- 3 -->Dependencies" },
   { message = "^(docs|chore|ci|test|build|style|refactor)", skip = true },
   { message = ".*", skip = true },
 ]
