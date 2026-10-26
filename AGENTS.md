@@ -566,7 +566,19 @@ scrolls under the toolbar, which stays put. The toolbar also has a page box (a n
 the case HTML's `page-label`s), rotate, a Text button that shows the OCR text over a faded
 image (hidden but selectable in the PDF otherwise), a link to the page in the archival PDF,
 print (the page image alone, from an iframe), and a key help (←/→, +/−, 0 for 100%, f fit
-page/width, r rotate, t text, ?). The zoom mode is remembered per view in localStorage
+page/width, r rotate, t text, ?). Selected text is painted once (#247):
+`web/public/js/selectionpaint.js` (watched by `pageview.js`) takes the selected text's rects,
+turns them into the page's own coordinates, merges each line's into one rect, and draws them
+as solid boxes in a layer between the image and the text that is translucent as a whole
+(`--selection-bg`, `--selection-opacity` in `theme.css`), with `::selection` transparent on
+the text layers, so overlapping OCR boxes no longer paint darker patches. The boxes are
+placed in percentages of the page, so zooming, resizing and scrolling need no repaint, and
+the layer turns with the page (inside the Raw Scans' turned box; in the PDF, sized and turned
+like PDF.js's text layer, which is drawn again on a turn). `selectionchange` is handled at
+most once a frame and only for a selection reaching a page view; copying is the browser's
+own. Forced colours keep the browser's own selection. The geometry is tested in
+`web/tests/selectionpaint.test.js`, and `smoke.spec.js` checks that a selected paragraph is
+one colour in both views. The zoom mode is remembered per view in localStorage
 (`stare-page-zoom-pdf`, `-scans`), every access in try/catch. Neither view loads anything
 until its tab is first opened, and zooming, resizing or rotating fetches nothing more
 (`web/e2e/smoke.spec.js` checks this, and the fit at phone, laptop and large sizes). CourtListener records and the 658 volumes CAP published
