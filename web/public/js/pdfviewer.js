@@ -11,6 +11,7 @@ import {
 } from './pdfpages.js';
 import { createPageView, pageLabels } from './pageview.js';
 import { CSS_PER_POINT, canvasRatio } from './pagezoom.js';
+import { selectionLayer } from './selectionpaint.js';
 import { pdfUrl } from './sources.js';
 
 let pdfjsPromise = null;
@@ -133,6 +134,9 @@ export async function renderPdfViewer(container, result, { openScans, page = 1, 
     pageEl = document.createElement('div');
     pageEl.className = 'pdf-page';
     pageEl.innerHTML = '<canvas class="pdf-page-canvas"></canvas><div class="textLayer"></div>';
+    // The selection's highlight, under the text and over the canvas, in the text layer's
+    // own (unturned) coordinates, so a turned page's lines still run across it.
+    pageEl.querySelector('.textLayer').before(selectionLayer());
     ui.area.replaceChildren(pageEl);
     return pageEl;
   }
@@ -206,6 +210,10 @@ export async function renderPdfViewer(container, result, { openScans, page = 1, 
       viewport,
     });
     view.textLayer = textLayer;
+    const layer = el.querySelector('.pv-selection');
+    layer.style.width = textEl.style.width;
+    layer.style.height = textEl.style.height;
+    layer.setAttribute('data-main-rotation', textEl.getAttribute('data-main-rotation') ?? '0');
     try {
       await textLayer.render();
     } catch (e) {
