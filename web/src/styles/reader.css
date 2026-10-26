@@ -102,6 +102,7 @@
 .pv-help dl { display: grid; grid-template-columns: auto auto; gap: 4px 14px; margin: 0; }
 .pv-help dd { margin: 0; color: var(--text-secondary); }
 .pv-help kbd { font-family: var(--font-mono); font-size: 12px; }
+.page-viewer { --pv-ocr-text: #b00020; }
 .page-viewer-image {
   flex: 1; min-height: 0; overflow: auto; display: flex; padding: 16px;
   background: var(--bg-surface); scrollbar-gutter: stable; touch-action: pan-x pan-y;
@@ -118,7 +119,7 @@
 .page-turn { position: absolute; left: 50%; top: 50%; transform-origin: 50% 50%; }
 .page-turn img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
 .alto-overlay { position: absolute; top: 0; left: 0; transform-origin: 0 0; display: none; }
-.alto-line { position: absolute; white-space: nowrap; overflow: visible; color: #b00020; font-family: var(--font-text); }
+.alto-line { position: absolute; white-space: nowrap; overflow: visible; color: var(--pv-ocr-text); font-family: var(--font-text); }
 /* The ALTO text is hidden unless the toolbar's Text button shows it, over a faded image. */
 .pv-show-text .alto-overlay { display: block; }
 .pv-show-text .page-turn img, .pv-show-text .pdf-page-canvas { opacity: 0.3; }
@@ -168,7 +169,34 @@
 .textLayer[data-main-rotation="180"] { transform: rotate(180deg) translate(-100%, -100%); }
 .textLayer[data-main-rotation="270"] { transform: rotate(270deg) translateX(-100%); }
 /* The Text button shows the PDF's OCR text, to check against the image. */
-.pv-show-text .textLayer :is(span, br) { color: #b00020; }
+.pv-show-text .textLayer :is(span, br) { color: var(--pv-ocr-text); }
+
+/* The text selection (#247). The browser paints ::selection on each OCR box separately, so
+   overlapping boxes came out darker; selectionpaint.js paints it instead, once, in a layer
+   between the image and the text: solid boxes (a line's words merged into one) in a layer
+   made translucent as a whole, so overlapping boxes don't add up. The layer's corner points
+   tell the script where it is on screen. In the PDF the layer is turned with the text layer.
+   In forced colours the browser's own selection shows, as before. */
+.pv-selection {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: 0 0;
+  pointer-events: none; user-select: none; -webkit-user-select: none;
+  opacity: var(--selection-opacity);
+}
+.pv-sel-probe { position: absolute; width: 0; height: 0; left: 0; top: 0; }
+.pv-sel-probe[data-at="x"] { left: 100%; }
+.pv-sel-probe[data-at="y"] { top: 100%; }
+.pv-sel-fill > div { position: absolute; background: var(--selection-bg); }
+.pv-selection[data-main-rotation="90"] { transform: rotate(90deg) translateY(-100%); }
+.pv-selection[data-main-rotation="180"] { transform: rotate(180deg) translate(-100%, -100%); }
+.pv-selection[data-main-rotation="270"] { transform: rotate(270deg) translateX(-100%); }
+@media not (forced-colors: active) {
+  .pv-paint-selection .textLayer ::selection { background: transparent; color: transparent; }
+  .pv-paint-selection .alto-overlay ::selection { background: transparent; color: var(--pv-ocr-text); }
+  .pv-show-text .pv-paint-selection .textLayer ::selection { color: var(--pv-ocr-text); }
+}
+@media (forced-colors: active) {
+  .pv-selection { display: none; }
+}
 
 .cite-tooltip {
   position: fixed; z-index: 100;

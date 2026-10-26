@@ -25,6 +25,8 @@
   --footnote-text: #666;
   --error-bg: #fef2f2; --error-border: #fecaca; --error-text: #dc2626;
   --status-bg: #f0f7ff; --status-border: #dbeafe; --status-text: #2563eb;
+  /* The page views' text selection (reader.css): a colour, laid over the page at this opacity. */
+  --selection-bg: #2563eb; --selection-opacity: 0.3;
 }
 
 [data-theme="dark"] {
@@ -43,6 +45,7 @@
   --footnote-text: #888;
   --error-bg: #2d1b1b; --error-border: #5c2626; --error-text: #f87171;
   --status-bg: #1a2332; --status-border: #253344; --status-text: #60a5fa;
+  --selection-bg: #60a5fa; --selection-opacity: 0.4;
 }
 
 body {

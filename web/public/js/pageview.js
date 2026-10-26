@@ -11,11 +11,15 @@
 //   render(zoom, rotation) draws it properly at that size (the PDF's canvas, at the device
 //                        pixel ratio); run once the zoom has settled.
 //   printUrl(i)          resolves to a URL of the page's image, to print.
+//
+// The view puts selectionpaint.js's selectionLayer() in its page, between the image and the
+// text; this module paints the text selection there (#247).
 import {
   ZOOM_MAX, ZOOM_MIN, anchoredScroll, caseLabels, clampZoom, defaultMode, fitZoom,
   parsePageInput, parseStoredMode, rotate, stepZoom, storedMode, zoomLabel,
 } from './pagezoom.js';
 import { filePage } from './pagekey.js';
+import { watchSelection } from './selectionpaint.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -140,6 +144,7 @@ export function createPageView(container, {
   const area = $('area');
   const input = $('page');
   const help = $('keys');
+  const selection = watchSelection(area);
 
   const v = {
     kind, area, root, count, labels,
@@ -420,6 +425,7 @@ export function createPageView(container, {
   v.destroy = () => {
     v.destroyed = true;
     clearTimeout(v.renderTimer);
+    selection.destroy();
     observer.disconnect();
     window.removeEventListener('resize', resized);
     window.removeEventListener('orientationchange', resized);

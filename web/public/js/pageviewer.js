@@ -7,6 +7,7 @@ import { createPageView, pageLabels } from './pageview.js';
 import { CSS_PER_SCAN_PIXEL } from './pagezoom.js';
 import { extractFile, getPageOrders } from './resolve.js';
 import { pdfPage } from './scans.js';
+import { selectionLayer } from './selectionpaint.js';
 import { pdfUrl, tarCsvUrl, tarUrl } from './sources.js';
 import { loadWasm } from './wasm.js';
 
@@ -213,6 +214,7 @@ export async function renderPageViewer(container, result, { page = 1, onPage } =
         const inner = document.createElement('div');
         inner.className = 'page-turn';
         inner.appendChild(img);
+        inner.appendChild(selectionLayer());
         const overlay = altoPage?.lines?.length ? renderOverlay(altoPage) : null;
         if (overlay) inner.appendChild(overlay);
         outer.appendChild(inner);
