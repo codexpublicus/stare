@@ -550,7 +550,9 @@ test('the Archival PDF view draws the case\'s pages with a selectable text layer
   await openArchivalPdf(page, '#a2d/142/148-01', 'Renaire Corp. v. Vaughn');
   const viewer = page.locator('#pdf-viewer');
   await expect(viewer.locator('.pdf-page')).toHaveAttribute('data-rendered', '184', { timeout: 30_000 });
-  await expect(viewer.locator('#ap-info')).toHaveText('Page 1 of 4');
+  await expect(viewer.locator('#ap-page')).toHaveValue('1');
+  await expect(viewer.locator('#ap-count')).toHaveText('of 4');
+  await expect(viewer.locator('#ap-label')).toHaveText('p. 148');
   await expect(viewer.locator('#ap-prev')).toBeDisabled();
   const canvas = viewer.locator('canvas.pdf-page-canvas');
   const size = await canvas.evaluate((c) => ({ w: c.width, h: c.height, css: c.getBoundingClientRect().width, ratio: devicePixelRatio }));
@@ -564,18 +566,232 @@ test('the Archival PDF view draws the case\'s pages with a selectable text layer
 
   // The keyboard steps through the case's pages and zooms.
   await page.keyboard.press('ArrowRight');
-  await expect(viewer.locator('#ap-info')).toHaveText('Page 2 of 4');
+  await expect(viewer.locator('#ap-page')).toHaveValue('2');
+  await expect(viewer.locator('#ap-label')).toHaveText('p. 149');
   await expect(viewer.locator('.pdf-page')).toHaveAttribute('data-rendered', '185', { timeout: 30_000 });
-  await page.keyboard.press('+');
-  await expect(viewer.locator('#ap-zoom')).toHaveText('125%');
   await page.keyboard.press('0');
   await expect(viewer.locator('#ap-zoom')).toHaveText('100%');
+  await expect(viewer.locator('#ap-actual')).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('+');
+  await expect(viewer.locator('#ap-zoom')).toHaveText('110%');
 
   // Range requests only, and a small part of the 3.3 MB file.
   expect(ranges.length).toBeGreaterThan(0);
   expect(ranges.every((r) => r.status === 206)).toBe(true);
   const fetched = ranges.reduce((n, r) => n + r.bytes, 0);
   expect(fetched).toBeLessThan(ranges[0].total / 4);
+});
+
+// The page views (#246): sized to the window, with a toolbar that stays put. a2d/142's
+// 148-01 is four pages, the volume PDF's 184 to 187 and the tar's ORDERs 184 to 187,
+// printed 148 to 151.
+const PAGE_CASE = '#a2d/142/148-01';
+const SIZES = {
+  phone: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
+  laptop: { viewport: { width: 1366, height: 768 } },
+  large: { viewport: { width: 2560, height: 1440 } },
+};
+
+// Open the case's page view (`#tab-pdf` or `#tab-pages`) and wait for its first page.
+async function openPageView(page, tab, hash = PAGE_CASE) {
+  await page.goto(`/${hash}`);
+  await expect(page.locator('#reader .reader-title')).toHaveText('Renaire Corp. v. Vaughn');
+  await page.click(tab);
+  const el = page.locator(tab === '#tab-pdf' ? '#pdf-viewer .pdf-page' : '#page-viewer .page-wrapper');
+  await expect(el).toHaveAttribute('data-rendered', /\d+/, { timeout: 30_000 });
+  return el;
+}
+
+// The page's box, the page area's and the window's.
+function boxes(el) {
+  return el.evaluate((p) => {
+    const area = p.closest('.page-viewer-image');
+    const r = p.getBoundingClientRect();
+    return {
+      page: { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width, height: r.height },
+      area: { width: area.clientWidth, height: area.clientHeight, scrollW: area.scrollWidth, scrollH: area.scrollHeight },
+      window: { width: innerWidth, height: innerHeight, scrollY: document.scrollingElement.scrollTop },
+    };
+  });
+}
+
+// Wait until no more of the PDF has been fetched for a while (the next page's prefetch).
+async function settle(page, ranges) {
+  for (let n = -1; n !== ranges.length;) {
+    n = ranges.length;
+    await page.waitForTimeout(2000);
+  }
+}
+
+for (const [size, use] of Object.entries(SIZES)) {
+  test.describe(`the page views on a ${size} screen`, () => {
+    test.use(use);
+
+    for (const [tab, prefix] of [['#tab-pdf', 'ap'], ['#tab-pages', 'pv']]) {
+      test(`${tab === '#tab-pdf' ? 'the Archival PDF' : 'the Raw Scans'} fits the page to the window`, async ({ page }) => {
+        const el = await openPageView(page, tab);
+        const mode = size === 'phone' ? 'width' : 'page';
+        await expect(page.locator(`#${prefix}-fit-${mode}`)).toHaveAttribute('aria-pressed', 'true');
+        const b = await boxes(el);
+        if (size === 'phone') {
+          // Fit width: the page across the view, scrolling down it.
+          expect(b.page.width).toBeGreaterThan(b.area.width - 40);
+          expect(b.page.right).toBeLessThanOrEqual(b.window.width);
+        } else {
+          // Fit page: the whole page on screen, nothing to scroll.
+          expect(b.page.top).toBeGreaterThanOrEqual(0);
+          expect(b.page.bottom).toBeLessThanOrEqual(b.window.height);
+          expect(b.page.right).toBeLessThanOrEqual(b.window.width);
+          expect(b.area.scrollH).toBeLessThanOrEqual(b.area.height);
+          expect(b.area.scrollW).toBeLessThanOrEqual(b.area.width);
+          expect(b.page.height).toBeGreaterThan(b.window.height / 2);
+          expect(b.window.scrollY).toBe(0);
+        }
+        if (tab === '#tab-pdf') {
+          // The canvas is drawn for the size it's shown at, not stretched.
+          const c = await el.locator('canvas').evaluate((x) => ({ w: x.width, css: x.getBoundingClientRect().width, ratio: devicePixelRatio }));
+          expect(Math.abs(c.w - c.css * c.ratio)).toBeLessThan(c.ratio + 1);
+        }
+      });
+    }
+
+    test('the toolbar stays in view when a zoomed page is scrolled', async ({ page }) => {
+      const el = await openPageView(page, '#tab-pdf');
+      for (let i = 0; i < 4; i++) await page.click('#ap-zoom-in');
+      await expect(el).toHaveAttribute('data-scale', /.+/);
+      const area = page.locator('#ap-area');
+      await area.evaluate((a) => a.scrollBy(0, 600));
+      await page.evaluate(() => window.scrollBy(0, 600));
+      await expect(page.locator('#pdf-viewer .page-viewer-toolbar')).toBeInViewport({ ratio: 1 });
+      await expect(page.locator('#ap-next')).toBeInViewport();
+      expect(await area.evaluate((a) => a.scrollTop)).toBeGreaterThan(0);
+    });
+  });
+}
+
+test.describe('the page views\' toolbar', () => {
+  test.use(SIZES.laptop);
+
+  test('the page box goes to a page by its place or its printed number, and puts it in the hash', async ({ page }) => {
+    const el = await openPageView(page, '#tab-pdf');
+    await page.fill('#ap-page', '3');
+    await page.press('#ap-page', 'Enter');
+    await expect(el).toHaveAttribute('data-rendered', '186', { timeout: 30_000 });
+    await expect(page.locator('#ap-label')).toHaveText('p. 150');
+    await expect(page).toHaveURL(/#a2d\/142\/148-01~v=pdf&p=3$/);
+    await page.fill('#ap-page', 'p. 149');
+    await page.press('#ap-page', 'Enter');
+    await expect(el).toHaveAttribute('data-rendered', '185', { timeout: 30_000 });
+    await expect(page.locator('#ap-page')).toHaveValue('2');
+    await page.fill('#ap-page', '9');
+    await page.press('#ap-page', 'Enter');
+    await expect(page.locator('#ap-page')).toHaveValue('2');
+    // The Reader takes the page view out of the hash.
+    await page.click('#tab-reader');
+    await expect(page).toHaveURL(/#a2d\/142\/148-01$/);
+  });
+
+  test('a link to a page opens that view at that page', async ({ page }) => {
+    await page.goto(`/${PAGE_CASE}~v=scans&p=2`);
+    await expect(page.locator('#tab-pages')).toHaveClass(/active/);
+    await expect(page.locator('#page-viewer .page-wrapper')).toHaveAttribute('data-rendered', '185', { timeout: 30_000 });
+    await expect(page.locator('#pv-page')).toHaveValue('2');
+    await expect(page.locator('#pv-label')).toHaveText('p. 149');
+    // The other view, by the hash, on the case already shown.
+    await page.evaluate(() => { location.hash = '#a2d/142/148-01~v=pdf&p=4'; });
+    await expect(page.locator('#tab-pdf')).toHaveClass(/active/);
+    await expect(page.locator('#pdf-viewer .pdf-page')).toHaveAttribute('data-rendered', '187', { timeout: 30_000 });
+  });
+
+  test('rotate turns the page a quarter at a time, in both views', async ({ page }) => {
+    for (const [tab, prefix] of [['#tab-pdf', 'ap'], ['#tab-pages', 'pv']]) {
+      const el = tab === '#tab-pdf' ? await openPageView(page, tab) : await (async () => {
+        await page.click(tab);
+        const w = page.locator('#page-viewer .page-wrapper');
+        await expect(w).toHaveAttribute('data-rendered', /\d+/, { timeout: 30_000 });
+        return w;
+      })();
+      const upright = await boxes(el);
+      expect(upright.page.height).toBeGreaterThan(upright.page.width);
+      await page.click(`#${prefix}-rotate`);
+      if (tab === '#tab-pdf') await expect(el).toHaveAttribute('data-rotation', '90', { timeout: 30_000 });
+      await expect(page.locator(`#${tab === '#tab-pdf' ? 'pdf' : 'page'}-viewer .page-viewer`)).toHaveAttribute('data-rotation', '90');
+      const turned = await boxes(el);
+      expect(turned.page.width).toBeGreaterThan(turned.page.height);
+      // Still fits.
+      expect(turned.page.bottom).toBeLessThanOrEqual(turned.window.height);
+      await page.keyboard.press('r');
+      await page.keyboard.press('r');
+      await page.keyboard.press('r');
+      await expect(page.locator(`#${tab === '#tab-pdf' ? 'pdf' : 'page'}-viewer .page-viewer`)).toHaveAttribute('data-rotation', '0');
+    }
+  });
+
+  test('the Text button shows the OCR text, and the help lists the keys', async ({ page }) => {
+    await openPageView(page, '#tab-pdf');
+    const text = page.locator('#ap-text');
+    await expect(text).toHaveAttribute('aria-pressed', 'false');
+    const span = page.locator('#pdf-viewer .textLayer span').first();
+    expect(await span.evaluate((s) => getComputedStyle(s).color)).toBe('rgba(0, 0, 0, 0)');
+    await text.click();
+    await expect(text).toHaveAttribute('aria-pressed', 'true');
+    expect(await span.evaluate((s) => getComputedStyle(s).color)).not.toBe('rgba(0, 0, 0, 0)');
+    await page.keyboard.press('?');
+    await expect(page.locator('#ap-keys')).toBeVisible();
+    await expect(page.locator('#ap-help')).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#ap-keys')).toBeHidden();
+    await expect(page.locator('#ap-pdf')).toHaveAttribute('href', 'https://data.stare.pub/pdf/us/a2d/142.pdf#page=184');
+  });
+
+  test('the zoom mode is remembered for each view', async ({ page }) => {
+    await openPageView(page, '#tab-pdf');
+    await page.click('#ap-fit-width');
+    // The link reopens the Archival PDF; it opens in the mode last chosen there.
+    await page.reload();
+    await expect(page.locator('#pdf-viewer .pdf-page')).toHaveAttribute('data-rendered', '184', { timeout: 30_000 });
+    await expect(page.locator('#ap-fit-width')).toHaveAttribute('aria-pressed', 'true');
+    await page.click('#tab-pages');
+    await expect(page.locator('#pv-fit-page')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('the page views work with storage blocked', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('blocked', 'SecurityError'); } });
+    });
+    const el = await openPageView(page, '#tab-pdf');
+    await page.click('#ap-fit-width');
+    await expect(page.locator('#ap-fit-width')).toHaveAttribute('aria-pressed', 'true');
+    await page.click('#ap-next');
+    await expect(el).toHaveAttribute('data-rendered', '185', { timeout: 30_000 });
+  });
+});
+
+test('zooming, resizing and rotating the Archival PDF fetch nothing more', async ({ page }) => {
+  await page.setViewportSize(SIZES.laptop.viewport);
+  const ranges = pdfRanges(page, 'us/a2d/142.pdf');
+  const el = await openPageView(page, '#tab-pdf');
+  await settle(page, ranges);
+  const before = ranges.length;
+  const bytes = ranges.reduce((n, r) => n + r.bytes, 0);
+
+  const scale = await el.getAttribute('data-scale');
+  await page.click('#ap-zoom-in');
+  await expect(el).not.toHaveAttribute('data-scale', scale, { timeout: 30_000 });
+  const box = await page.locator('#ap-area').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up('Control');
+  await page.click('#ap-fit-page');
+  await page.setViewportSize(SIZES.large.viewport);
+  await expect.poll(async () => Number(await el.getAttribute('data-scale')), { timeout: 30_000 }).toBeGreaterThan(Number(scale));
+  await page.setViewportSize(SIZES.phone.viewport);
+  await page.click('#ap-rotate');
+  await expect(el).toHaveAttribute('data-rotation', '90', { timeout: 30_000 });
+  await page.waitForTimeout(1000);
+
+  expect(ranges.length, `fetched ${bytes} bytes, then more`).toBe(before);
 });
 
 test('PDF.js is served from the site, immutable, with the patched worker', async ({ request }) => {
