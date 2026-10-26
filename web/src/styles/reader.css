@@ -65,6 +65,7 @@
 
 .sidebar-action { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--sidebar-action); text-decoration: none; font-size: 13px; cursor: pointer; transition: color 0.15s; }
 .sidebar-action:hover { color: var(--text); }
+.sidebar-no-scans, .sidebar-no-scans:hover { cursor: default; color: var(--text-secondary); }
 .sidebar-action-icon { width: 16px; text-align: center; font-size: 14px; }
 
 .multi-notice { padding: 8px 16px; background: var(--status-bg); border-bottom: 1px solid var(--status-border); font-size: 13px; color: var(--status-text); }

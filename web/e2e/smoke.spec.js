@@ -422,6 +422,29 @@ test('/#a2d/31/647-01 resolves through idx.stare.pub and renders the case', asyn
   }
 });
 
+// The archival PDFs (D120, D122): the case's link opens our PDF of its volume at the
+// case's first page, which is its METS ORDER (a2d/31's 647-01 is ORDER 695, where the PDF's
+// bookmark for it points). Only the link is checked; nothing here fetches the PDF.
+test('/#a2d/31/647-01 links the archival PDF at the case\'s page', async ({ page }) => {
+  await page.goto('/#a2d/31/647-01');
+  await expect(page.locator('#reader .reader-title')).toHaveText("D'Elia & Marks Co. v. Lyon");
+  const link = page.locator('#sidebar #pdf-link');
+  await expect(link).toHaveText(/View original PDF/);
+  await expect(link).toHaveAttribute('href', 'https://data.stare.pub/pdf/us/a2d/31.pdf#page=695');
+  await expect(page.locator('#tab-pages')).toBeVisible();
+});
+
+// A volume CAP published without page scans (a3d/200) says so, with no PDF link and no
+// Pages tab.
+test('/#a3d/200/10-01 says its volume has no page scans', async ({ page }) => {
+  await page.goto('/#a3d/200/10-01');
+  await expect(page.locator('#resolved')).toBeVisible();
+  await expect(page.locator('#reader .reader-title')).not.toBeEmpty();
+  await expect(page.locator('#sidebar #no-scans')).toHaveText('No page scans exist for this volume');
+  await expect(page.locator('#sidebar #pdf-link')).toHaveCount(0);
+  await expect(page.locator('#tab-pages')).toBeHidden();
+});
+
 // Labelled pages (#154): front matter and supplements, keyed by their label. The live
 // manifest has no `idx`, so these come from the volumes' .multi files.
 test('/#cai-cas/1/xxix-01 opens the case on front-matter page xxix', async ({ page }) => {

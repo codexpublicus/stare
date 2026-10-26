@@ -272,3 +272,33 @@ describe('updateCitationStatus persists the status and list nodes', () => {
     assert.doesNotThrow(() => updateCitationStatus(null, caseData, detected, 'done'));
   });
 });
+
+describe('renderSidebar volume PDF', () => {
+  let restore;
+  before(() => { restore = installFakeDom(); });
+  after(() => restore());
+
+  const caseData = { name_abbreviation: 'A v. B', citations: [{ cite: '1 A.2d 1' }], cites_to: [] };
+
+  test('links the archival PDF at the case\'s page', () => {
+    const el = new FakeElement();
+    renderSidebar(el, caseData, 'a2d', '31', [], null, 'done', null, 647);
+    assert.match(el.innerHTML,
+      /<a class="sidebar-action" id="pdf-link" href="https:\/\/data.stare.pub\/pdf\/us\/a2d\/31.pdf#page=647" target="_blank" rel="noopener">/);
+    assert.match(el.innerHTML, /View original PDF/);
+  });
+
+  test('links the volume when the page is unknown', () => {
+    const el = new FakeElement();
+    renderSidebar(el, caseData, 'pr', '1', [], null, 'done');
+    assert.match(el.innerHTML, /href="https:\/\/data.stare.pub\/pdf\/pr\/pr\/1.pdf"/);
+  });
+
+  test('says a volume without scans has none, with no link', () => {
+    const el = new FakeElement();
+    renderSidebar(el, caseData, 'a3d', '200', [], null, 'done', null, 3);
+    assert.match(el.innerHTML, /No page scans exist for this volume/);
+    assert.doesNotMatch(el.innerHTML, /View original PDF/);
+    assert.doesNotMatch(el.innerHTML, /\.pdf/);
+  });
+});

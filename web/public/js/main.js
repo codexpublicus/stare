@@ -1,4 +1,4 @@
-import { parseInput, resolve, extractCase, extractFile } from './resolve.js';
+import { parseInput, resolve, extractCase, extractFile, getPageOrders } from './resolve.js';
 import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } from './ui.js';
 import { caseHash, getHashParams, setHash, onHashChange } from './router.js';
 import { aliasNoteHtml, processCitations, setupCiteHovers } from './citations.js';
@@ -8,6 +8,7 @@ import { footnoteParagraphs, pageBreaks, pageMarker } from './pages.js';
 import { preloadWasm, WasmLoadError } from './wasm.js';
 import { showWasmProgress } from './wasmbar.js';
 import { filePage } from './pagekey.js';
+import { hasScans, pdfPage } from './scans.js';
 
 let currentResult = null;
 // The shown case's cited-cases list wired to its text (citenav.js), and a
@@ -135,6 +136,17 @@ function showLanding() {
 
 // Case files are "<first page>-<seq>"; the page can itself hold a hyphen
 // ("1114-1140-01") or a bracket ("[106]-01"), or be a label ("xxix-01").
+// The case's first page in its volume's PDF, from the zip's page orders; null when the
+// zip doesn't give them (the link then opens the volume at its start).
+function casePdfPage(zipData, caseFile) {
+  if (!zipData) return null;
+  try {
+    return pdfPage(getPageOrders(zipData, caseFile)?.first);
+  } catch {
+    return null;
+  }
+}
+
 function seqFromFile(caseFile) {
   return parseInt(caseFile.slice(caseFile.lastIndexOf('-') + 1), 10) || 1;
 }
@@ -198,8 +210,8 @@ async function showResolved(result, pin = null, cite = null) {
   reader.classList.remove('hidden');
   tabReader.classList.add('active');
   tabPages.classList.remove('active');
-  // A CourtListener record has no page scans to show.
-  tabPages.classList.toggle('hidden', !result.zipData);
+  // A CourtListener record has no page scans to show, nor has a CAP volume without them.
+  tabPages.classList.toggle('hidden', !result.zipData || !hasScans(result.reporter, result.volume));
 
   const multiEl = document.createElement('div');
   reader.innerHTML = '';
@@ -243,7 +255,8 @@ async function showResolved(result, pin = null, cite = null) {
     renderReader(readerContent, caseData, cached, layout.pages, layout.footnotes);
     citationStatusHandle = renderSidebar(
       sidebar, caseData, result.reporter, result.volume, result.allCases,
-      cached?.unique || null, cached ? 'done' : 'loading', cached?.groups || null
+      cached?.unique || null, cached ? 'done' : 'loading', cached?.groups || null,
+      casePdfPage(result.zipData, caseFile)
     );
     wireActions(actions);
     if (cached) {

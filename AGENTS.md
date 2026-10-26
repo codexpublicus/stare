@@ -71,7 +71,9 @@ Three interfaces to the same data, all static files:
 /cl/c/{cluster_id}/{hash}.json.gz — one CourtListener record, CAP's case JSON shape plus `source` (codex-data, data.stare.pub/cl); immutable
 /data/{reporter}/{vol}.tar        — page images + ALTO OCR (range requests via tar.csv)
 /data/{reporter}/{vol}.tar.csv    — tar byte offset manifest
-/data/{reporter}/{vol}.pdf        — volume PDF fallback
+/pdf/{jur}/{reporter}/{vol}.pdf   — our archival PDF of the volume (codex-data, data.stare.pub/pdf; D120, D122); immutable
+/pdf/{jur}/{reporter}/{vol}.json  — its manifest: provenance, SHA-256, size, pages and their METS ORDERs, bookmarks
+/pdf/manifest.json                — the index of every CAP volume, with its PDF or under no_scans; max-age 60
 /search/...                       — RoaringBuckets bitmap index
 /ducklake/...                     — DuckLake Parquet + catalog
 ```
@@ -523,8 +525,16 @@ their own `Disallow: /` robots.txt from stare-builder's publish tasks.
 
 The archival per-volume PDF pipeline (#51) and the CourtListener bulk-export pipeline (#83)
 are in codexpublicus/stare-builder, with their runbooks. What they publish, and how the site
-and CLI read it, is above: `/cl/c/...` records (`crates/stare/src/cl.rs`) and, later, the
-`codex-data/cap-pdf/` volumes.
+and CLI read it, is above: `/cl/c/...` records (`crates/stare/src/cl.rs`) and the archival
+PDFs at `pdf/<jurisdiction>/<reporter>/<volume>.pdf`, which stare-builder's `pdf-publish`
+uploads (D120, D122). `{jur}` is the reporter's jurisdiction code, `us` except the
+territories' own reporters (`PDF_JURISDICTIONS` in `web/public/js/sources.js`, a copy of
+stare-builder's `pipelines/pdf-publish/reporter-jurisdictions.json`; the two change together
+or not at all, since the paths are fixed once published). The case view's "View original
+PDF" opens the volume's PDF at `#page=<first_page_order>`: every PDF's pages are its METS
+ORDERs 1 to N. The 658 volumes CAP published without scans (`web/public/js/scans.js`, from
+the index's `no_scans`) say "No page scans exist for this volume" instead, and hide the
+Pages tab.
 
 ### Agent files (#161: `reporters.json`, `openapi.json`, `/schemas/`, JSON-LD)
 
@@ -623,7 +633,9 @@ CourtListener records, a new data build rather than a site change.
   the 900,342 CourtListener records (export 2026-09-30) and `via=cl:` aliases, with 589 slugs in
   `reporters` and its `based_on` naming CAP and CourtListener's bulk data.
 - **Zips**: the site and the CLI fetch case zips from `https://data.stare.pub/cap/<reporter>/<volume>.zip`
-  (our copy, #27). Tars, `.tar.csv` and the volume PDF link still point at static.case.law.
+  (our copy, #27), and the volume PDF link opens our archival PDF at
+  `https://data.stare.pub/pdf/<jurisdiction>/<reporter>/<volume>.pdf#page=N`. Tars and
+  `.tar.csv` still point at static.case.law.
 - **Mirror**: complete. TrueNAS `mega/codexpublicus/cap-mirror` holds 40,622 zips and 39,964
   each of tars, `.tar.csv` and PDFs (counted 2026-09-29; checksums not yet audited, and a2d/142.tar fails its `.tar.sha256`, see #77); the dataset is read-only and the
   aria2 `codex-mirror` container is stopped.
