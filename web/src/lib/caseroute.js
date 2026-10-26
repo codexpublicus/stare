@@ -2,7 +2,7 @@
 //
 // index.astro inlines `isCaseHash` into a script in <head>, which marks <html>
 // with data-route="case" so the landing never shows while main.js loads and
-// resolves the case. It has to run before main.js (a module, run after the page
+// resolves the case, a page view (`~v=pdf&p=3`) included. It has to run before main.js (a module, run after the page
 // is parsed) and can't import anything, so it repeats router.js's `parseHash`
 // (with manifest.js's VOLUME_KEY and pagekey.js's `pageKey`) in one function.
 // web/tests/caseroute.test.js checks the two agree. main.js clears the mark
@@ -20,7 +20,7 @@ export function isCaseHash(hash) {
   } catch {
     return false;
   }
-  const p = decoded.match(/^([^@~/]+?)(?:-(\d+))?(?:@(\d+))?(?:~c=([1-9]\d*))?$/);
+  const p = decoded.match(/^([^@~/]+?)(?:-(\d+))?(?:@(\d+))?(?:~c=([1-9]\d*)|~v=(pdf|scans)(?:&p=([1-9]\d*))?)?$/);
   if (!p) return false;
   const page = p[1].trim().replace(/\s+/g, ' ');
   if (!page) return false;

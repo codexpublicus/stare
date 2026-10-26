@@ -74,29 +74,58 @@
 .status-line { padding: 6px 16px; font-size: 13px; color: var(--status-text); min-height: 1.4em; }
 .status-line.error { color: var(--error-text); background: var(--error-bg); border-bottom: 1px solid var(--error-border); }
 
-.page-viewer { display: flex; flex-direction: column; height: 100%; }
-.page-viewer-toolbar { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--bg-alt); flex-shrink: 0; }
-.page-viewer-btn { padding: 4px 12px; background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--text); cursor: pointer; font-size: 13px; transition: all 0.15s; }
-.page-viewer-btn:hover:not(:disabled) { border-color: var(--link); color: var(--link); }
-.page-viewer-btn:disabled { opacity: 0.3; cursor: default; }
-.page-viewer-info { font-size: 13px; color: var(--text-secondary); min-width: 100px; text-align: center; }
-.page-viewer-sep { color: var(--border); margin: 0 4px; }
-.page-viewer-zoom { font-size: 12px; color: var(--text-secondary); min-width: 40px; text-align: center; }
-.page-viewer-image { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; background: var(--bg-surface); }
-.page-viewer-img { max-width: 100%; height: auto; box-shadow: 0 2px 12px rgba(0,0,0,0.15); }
-.page-viewer-loading { display: flex; align-items: center; gap: 8px; padding: 48px; color: var(--text-secondary); font-size: 14px; }
-
-.page-wrapper { position: relative; display: inline-block; }
-.page-wrapper img { display: block; max-width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
-.alto-overlay {
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+/* The page views (public/js/pageview.js, #246): the Archival PDF and the Raw Scans fill the
+   reader column; the toolbar stays at the top and the page scrolls under it when zoomed. */
+#pdf-viewer, #page-viewer { height: 100%; }
+.page-viewer { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.page-viewer-toolbar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 20px;
+  padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--bg-alt); flex-shrink: 0;
 }
-/* ALTO text overlay — selection disabled pending alto.js component (Phase 5) */
-.alto-overlay { display: none; }
+.pv-group { display: flex; align-items: center; gap: 6px; }
+.page-viewer-btn { padding: 4px 10px; background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--text); cursor: pointer; font: inherit; font-size: 13px; line-height: 1.3; text-decoration: none; transition: all 0.15s; }
+.page-viewer-btn:hover:not(:disabled) { border-color: var(--link); color: var(--link); }
+.page-viewer-btn:disabled, a.page-viewer-btn:not([href]) { opacity: 0.3; cursor: default; }
+.page-viewer-btn[aria-pressed="true"] { background: var(--bg); border-color: var(--tab-active-border); color: var(--tab-active-text); font-weight: 600; }
+.page-viewer-btn:focus-visible, .pv-page-input:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+.page-viewer-info { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+.pv-page-input { width: 3.2em; padding: 3px 4px; text-align: center; font: inherit; font-size: 13px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; }
+.pv-label { font-size: 12px; color: var(--text-secondary); white-space: nowrap; min-width: 3.5em; }
+.page-viewer-zoom { font-size: 12px; color: var(--text-secondary); min-width: 3em; text-align: center; font-variant-numeric: tabular-nums; }
+.pv-help {
+  position: absolute; top: 100%; right: 16px; z-index: 20; margin-top: 4px; padding: 10px 14px;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2); font-size: 13px;
+}
+.pv-help[hidden] { display: none; }
+.pv-help dl { display: grid; grid-template-columns: auto auto; gap: 4px 14px; margin: 0; }
+.pv-help dd { margin: 0; color: var(--text-secondary); }
+.pv-help kbd { font-family: var(--font-mono); font-size: 12px; }
+.page-viewer-image {
+  flex: 1; min-height: 0; overflow: auto; display: flex; padding: 16px;
+  background: var(--bg-surface); scrollbar-gutter: stable; touch-action: pan-x pan-y;
+  overscroll-behavior: contain;
+}
+.page-viewer-image.pv-pannable { cursor: grab; }
+.page-viewer-image.pv-panning { cursor: grabbing; user-select: none; }
+.page-viewer-loading { display: flex; align-items: center; gap: 8px; padding: 48px; margin: 0 auto; color: var(--text-secondary); font-size: 14px; }
+.pv-print-frame { position: fixed; right: 0; bottom: 0; width: 0; height: 0; border: 0; }
+
+/* Raw Scans: the image and its ALTO text in a box turned to the rotation, centred in a box
+   at the turned size. */
+.page-wrapper { position: relative; flex-shrink: 0; margin: auto; box-shadow: 0 2px 12px rgba(0,0,0,0.15); }
+.page-turn { position: absolute; left: 50%; top: 50%; transform-origin: 50% 50%; }
+.page-turn img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
+.alto-overlay { position: absolute; top: 0; left: 0; transform-origin: 0 0; display: none; }
+.alto-line { position: absolute; white-space: nowrap; overflow: visible; color: #b00020; font-family: var(--font-text); }
+/* The ALTO text is hidden unless the toolbar's Text button shows it, over a faded image. */
+.pv-show-text .alto-overlay { display: block; }
+.pv-show-text .page-turn img, .pv-show-text .pdf-page-canvas { opacity: 0.3; }
 
 /* Archival PDF view (public/js/pdfviewer.js): a canvas with PDF.js's text layer over it. */
 .pdf-page {
-  position: relative; flex-shrink: 0; background: #fff;
+  position: relative; flex-shrink: 0; margin: auto; background: #fff;
   box-shadow: 0 2px 12px rgba(0,0,0,0.15);
   --total-scale-factor: 1; --scale-round-x: 1px; --scale-round-y: 1px;
 }
@@ -135,6 +164,11 @@
   display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default; user-select: none;
 }
 .textLayer.selecting .endOfContent { top: 0; }
+.textLayer[data-main-rotation="90"] { transform: rotate(90deg) translateY(-100%); }
+.textLayer[data-main-rotation="180"] { transform: rotate(180deg) translate(-100%, -100%); }
+.textLayer[data-main-rotation="270"] { transform: rotate(270deg) translateX(-100%); }
+/* The Text button shows the PDF's OCR text, to check against the image. */
+.pv-show-text .textLayer :is(span, br) { color: #b00020; }
 
 .cite-tooltip {
   position: fixed; z-index: 100;
@@ -203,3 +237,6 @@
    for review. */
 .cite-review { border-bottom-style: double; }
 .cited-review { color: var(--error-text); }
+
+/* Fit width starts at the top of the page, rather than centring a page taller than the view. */
+.page-viewer[data-mode="width"] .page-viewer-image > * { margin-top: 0; }

@@ -2,6 +2,16 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
+## v2026.10.26.5 - 2026-10-26
+
+### Features
+
+- web: page views fit the screen, with a sticky toolbar, zoom modes and page links
+
+### Dependencies
+
+- deps: move to citare v0.7.5
+
 ## v2026.10.26.4 - 2026-10-26
 
 ### Features

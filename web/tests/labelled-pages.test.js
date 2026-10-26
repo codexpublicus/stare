@@ -54,18 +54,18 @@ test('labelCases finds a label\'s case files in a .multi', () => {
 describe('the hash route', () => {
   test('reads a labelled page, with or without a sequence', () => {
     assert.deepEqual(parseHash('#cai-cas/1/xxix-01'),
-      { reporter: 'cai-cas', volume: '1', page: 'xxix', seq: 1, pin: null, cite: null });
+      { reporter: 'cai-cas', volume: '1', page: 'xxix', seq: 1, pin: null, cite: null, view: null, viewPage: null });
     assert.deepEqual(parseHash('#cai-cas/1/XXIX'),
-      { reporter: 'cai-cas', volume: '1', page: 'xxix', seq: null, pin: null, cite: null });
+      { reporter: 'cai-cas', volume: '1', page: 'xxix', seq: null, pin: null, cite: null, view: null, viewPage: null });
     assert.deepEqual(parseHash('#cal-app-4th/15/supp.%201-01'),
-      { reporter: 'cal-app-4th', volume: '15', page: 'supp. 1', seq: 1, pin: null, cite: null });
+      { reporter: 'cal-app-4th', volume: '15', page: 'supp. 1', seq: 1, pin: null, cite: null, view: null, viewPage: null });
     assert.deepEqual(parseHash('#cal-app-4th/15/Supp. 1'),
-      { reporter: 'cal-app-4th', volume: '15', page: 'supp. 1', seq: null, pin: null, cite: null });
+      { reporter: 'cal-app-4th', volume: '15', page: 'supp. 1', seq: null, pin: null, cite: null, view: null, viewPage: null });
   });
 
   test('still reads numbered pages as before, and rejects what it did', () => {
     assert.deepEqual(parseHash('#a2d/31/647-02'),
-      { reporter: 'a2d', volume: '31', page: 647, seq: 2, pin: null, cite: null });
+      { reporter: 'a2d', volume: '31', page: 647, seq: 2, pin: null, cite: null, view: null, viewPage: null });
     for (const bad of ['#a2d/31', '#a2d/31/647/648', '#a2d/31/647a', '#p2d/997/1021@n.4', '#a2d/x/647', '#a2d/31/%E0%A4%A']) {
       assert.equal(parseHash(bad), null, bad);
     }

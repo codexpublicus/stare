@@ -1,6 +1,13 @@
+// The Raw Scans view: CAP's color JPEGs of the case's pages, from the volume's tar on
+// static.case.law by range requests through its `.tar.csv`, with the page's ALTO OCR text
+// over the image (hidden unless the toolbar's Text button shows it). The toolbar, zoom and
+// keys are pageview.js's, shared with the Archival PDF.
 import { fetchCachedText } from './cache.js';
-import { getPageOrders } from './resolve.js';
-import { tarCsvUrl, tarUrl } from './sources.js';
+import { createPageView, pageLabels } from './pageview.js';
+import { CSS_PER_SCAN_PIXEL } from './pagezoom.js';
+import { extractFile, getPageOrders } from './resolve.js';
+import { pdfPage } from './scans.js';
+import { pdfUrl, tarCsvUrl, tarUrl } from './sources.js';
 import { loadWasm } from './wasm.js';
 
 /**
@@ -119,150 +126,136 @@ export async function fetchAltoForPage(reporter, volume, pageOrder) {
 }
 
 /**
- * Render the text overlay on a page image.
+ * The ALTO text over a page: each line placed in the ALTO page's own pixels, in a box the
+ * size of that page, which place() scales to the image's drawn size.
  */
-function renderOverlay(container, altoPage, renderedHeight) {
+function renderOverlay(altoPage) {
   const overlay = document.createElement('div');
   overlay.className = 'alto-overlay';
-
-  const pw = altoPage.width;
-  const ph = altoPage.height;
-  // Scale factor: rendered pixels per ALTO pixel
-  const scale = renderedHeight / ph;
-
+  overlay.style.width = `${altoPage.width}px`;
+  overlay.style.height = `${altoPage.height}px`;
   for (const line of altoPage.lines) {
     // Each line is a positioned div containing inline text nodes.
     // This gives the browser a natural text flow for selection within each line.
     const lineDiv = document.createElement('div');
     lineDiv.className = 'alto-line';
-    lineDiv.style.left = (line.x / pw * 100) + '%';
-    lineDiv.style.top = (line.y / ph * 100) + '%';
-    lineDiv.style.width = (line.width / pw * 100) + '%';
-    lineDiv.style.height = (line.height / ph * 100) + '%';
-
-    const fontSize = Math.max(1, Math.round(line.height * scale * 0.85));
-    lineDiv.style.fontSize = fontSize + 'px';
-    lineDiv.style.lineHeight = Math.round(line.height * scale) + 'px';
-
-    for (let i = 0; i < line.words.length; i++) {
-      lineDiv.appendChild(document.createTextNode(line.words[i].text));
-      if (i < line.words.length - 1) {
-        lineDiv.appendChild(document.createTextNode(' '));
-      }
-    }
-
+    lineDiv.style.left = `${line.x}px`;
+    lineDiv.style.top = `${line.y}px`;
+    lineDiv.style.width = `${line.width}px`;
+    lineDiv.style.height = `${line.height}px`;
+    lineDiv.style.fontSize = `${Math.max(1, Math.round(line.height * 0.85))}px`;
+    lineDiv.style.lineHeight = `${Math.round(line.height)}px`;
+    lineDiv.textContent = line.words.map((w) => w.text).join(' ');
     overlay.appendChild(lineDiv);
   }
-
-  container.appendChild(overlay);
+  return overlay;
 }
 
+let current = null;
+
 /**
- * Render the page viewer for a case.
+ * Render the page viewer for a case. `page` is the case's page to open at (1-based, from
+ * the URL hash); `onPage(i)` hears of each page shown.
  */
-export async function renderPageViewer(container, result, onStatus) {
+export async function renderPageViewer(container, result, { page = 1, onPage } = {}) {
+  current?.destroy();
+  current = null;
   const orders = getPageOrders(result.zipData, result.caseFile);
   if (!orders) {
-    container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-secondary)">Page order data not available for this case.</div>';
+    container.innerHTML = '<div class="pdf-view-message">Page order data not available for this case.</div>';
     return;
   }
+  const count = orders.last - orders.first + 1;
+  const orderOf = (i) => orders.first + i - 1;
+  const labels = pageLabels(count, extractFile, result);
 
-  let currentPage = orders.first;
-  let zoomLevel = 1;
+  // The page shown: its element (outer box at the drawn, rotated size; inner box at the
+  // unrotated size, turned), image and overlay, and the blob URLs fetched, by ORDER.
+  let shown = null;
+  const blobs = new Map();
+  let destroyed = false;
 
-  // Keyboard navigation
-  function handleKey(e) {
-    if (container.classList.contains('hidden')) return;
-    if (e.key === 'ArrowLeft' && currentPage > orders.first) {
-      showPage(currentPage - 1);
-    } else if (e.key === 'ArrowRight' && currentPage < orders.last) {
-      showPage(currentPage + 1);
-    } else if (e.key === '+' || e.key === '=') {
-      adjustZoom(0.25);
-    } else if (e.key === '-') {
-      adjustZoom(-0.25);
-    } else if (e.key === '0') {
-      zoomLevel = 1;
-      applyZoom();
+  async function pageImage(order) {
+    if (!blobs.has(order)) {
+      const url = await fetchPageImage(result.reporter, result.volume, order);
+      if (!url) throw new Error(`no image for page ${order} in the volume's tar`);
+      blobs.set(order, url);
     }
-  }
-  document.addEventListener('keydown', handleKey);
-
-  function adjustZoom(delta) {
-    zoomLevel = Math.max(0.5, Math.min(3, zoomLevel + delta));
-    applyZoom();
+    return blobs.get(order);
   }
 
-  function applyZoom() {
-    const img = container.querySelector('.page-viewer-img');
-    if (img) img.style.maxWidth = (100 * zoomLevel) + '%';
-    const zoomInfo = container.querySelector('#pv-zoom');
-    if (zoomInfo) zoomInfo.textContent = Math.round(zoomLevel * 100) + '%';
-  }
+  const ui = createPageView(container, {
+    kind: 'scans',
+    prefix: 'pv',
+    count,
+    start: page,
+    labels,
+    pdfHref: (i) => pdfUrl(result.reporter, result.volume, pdfPage(orderOf(i))),
+    onPage,
+    pages: {
+      async load(i) {
+        const order = orderOf(i);
+        if (!shown) ui.area.innerHTML = '<div class="page-viewer-loading"><span class="spinner"></span> Loading page...</div>';
+        const [blobUrl, altoPage] = await Promise.all([
+          pageImage(order),
+          fetchAltoForPage(result.reporter, result.volume, order).catch(() => null),
+        ]);
+        const img = document.createElement('img');
+        img.src = blobUrl;
+        img.alt = `Page ${i} of ${count}`;
+        img.className = 'page-viewer-img';
+        img.draggable = false;
+        await img.decode();
+        if (destroyed) return null;
+        const outer = document.createElement('div');
+        outer.className = 'page-wrapper';
+        outer.dataset.page = String(order);
+        const inner = document.createElement('div');
+        inner.className = 'page-turn';
+        inner.appendChild(img);
+        const overlay = altoPage?.lines?.length ? renderOverlay(altoPage) : null;
+        if (overlay) inner.appendChild(overlay);
+        outer.appendChild(inner);
+        ui.area.replaceChildren(outer);
+        const width = img.naturalWidth * CSS_PER_SCAN_PIXEL;
+        const height = img.naturalHeight * CSS_PER_SCAN_PIXEL;
+        shown = { outer, inner, overlay, altoPage, width, height };
+        return { width, height };
+      },
+      place(zoom, rotation) {
+        if (!shown) return;
+        const { outer, inner, overlay, altoPage, width, height } = shown;
+        const w = width * zoom;
+        const h = height * zoom;
+        const turned = rotation % 180 !== 0;
+        outer.style.width = `${Math.floor(turned ? h : w)}px`;
+        outer.style.height = `${Math.floor(turned ? w : h)}px`;
+        inner.style.width = `${w}px`;
+        inner.style.height = `${h}px`;
+        inner.style.transform = `translate(-50%, -50%) rotate(${rotation}deg)`;
+        if (overlay) overlay.style.transform = `scale(${w / altoPage.width}, ${h / altoPage.height})`;
+        outer.dataset.rendered = String(outer.dataset.page);
+      },
+      render() {},
+      fail(e) {
+        ui.area.innerHTML = `<div class="pdf-view-message" role="status">Failed to load page: ${String(e?.message || e).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}</div>`;
+        shown = null;
+      },
+      printUrl: (i) => pageImage(orderOf(i)),
+    },
+  });
+  current = {
+    destroy() {
+      destroyed = true;
+      ui.destroy();
+      for (const url of blobs.values()) URL.revokeObjectURL(url);
+    },
+  };
+  await ui.go(ui.index);
+}
 
-  async function showPage(pageOrder) {
-    currentPage = pageOrder;
-    container.innerHTML = `<div class="page-viewer">
-      <div class="page-viewer-toolbar">
-        <button class="page-viewer-btn" id="pv-prev" ${pageOrder <= orders.first ? 'disabled' : ''} title="Previous page (←)">&#9664;</button>
-        <span class="page-viewer-info">Page ${pageOrder - orders.first + 1} of ${orders.last - orders.first + 1}</span>
-        <button class="page-viewer-btn" id="pv-next" ${pageOrder >= orders.last ? 'disabled' : ''} title="Next page (→)">&#9654;</button>
-        <span class="page-viewer-sep">|</span>
-        <button class="page-viewer-btn" id="pv-zoom-out" title="Zoom out (-)">−</button>
-        <span class="page-viewer-zoom" id="pv-zoom">${Math.round(zoomLevel * 100)}%</span>
-        <button class="page-viewer-btn" id="pv-zoom-in" title="Zoom in (+)">+</button>
-      </div>
-      <div class="page-viewer-image" id="pv-image">
-        <div class="page-viewer-loading"><span class="spinner"></span> Loading page...</div>
-      </div>
-    </div>`;
-
-    container.querySelector('#pv-prev')?.addEventListener('click', () => showPage(currentPage - 1));
-    container.querySelector('#pv-next')?.addEventListener('click', () => showPage(currentPage + 1));
-    container.querySelector('#pv-zoom-in')?.addEventListener('click', () => adjustZoom(0.25));
-    container.querySelector('#pv-zoom-out')?.addEventListener('click', () => adjustZoom(-0.25));
-
-    const imgEl = container.querySelector('#pv-image');
-
-    try {
-      // Fetch image and ALTO in parallel
-      const [blobUrl, altoPage] = await Promise.all([
-        fetchPageImage(result.reporter, result.volume, pageOrder),
-        fetchAltoForPage(result.reporter, result.volume, pageOrder).catch(() => null),
-      ]);
-
-      if (!blobUrl || !imgEl) return;
-
-      // Create image + overlay container
-      const wrapper = document.createElement('div');
-      wrapper.className = 'page-wrapper';
-
-      const img = document.createElement('img');
-      img.src = blobUrl;
-      img.alt = `Page ${pageOrder}`;
-      img.className = 'page-viewer-img';
-      img.draggable = false;
-      wrapper.appendChild(img);
-
-      imgEl.innerHTML = '';
-      imgEl.appendChild(wrapper);
-
-      if (altoPage && altoPage.lines.length > 0) {
-        // Wait for image to load so we know rendered dimensions
-        if (img.complete) {
-          renderOverlay(wrapper, altoPage, img.clientHeight);
-        } else {
-          img.addEventListener('load', () => {
-            renderOverlay(wrapper, altoPage, img.clientHeight);
-          });
-        }
-      }
-    } catch (e) {
-      if (imgEl) {
-        imgEl.innerHTML = `<div style="padding:32px;text-align:center;color:var(--error-text)">Failed to load page: ${e.message}</div>`;
-      }
-    }
-  }
-
-  await showPage(currentPage);
+/** Stop the view's work (a new case is shown). */
+export function resetPageViewer() {
+  current?.destroy();
+  current = null;
 }
