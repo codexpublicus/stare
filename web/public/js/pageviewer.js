@@ -67,8 +67,8 @@ export async function getTarIndex(reporter, volume) {
  * Fetch raw bytes from the tar via HTTP range request.
  */
 async function fetchTarRange(reporter, volume, entry) {
-  const tarUrl = tarUrl(reporter, volume);
-  const response = await fetch(tarUrl, {
+  const url = tarUrl(reporter, volume);
+  const response = await fetch(url, {
     headers: { 'Range': `bytes=${entry.offset}-${entry.offset + entry.size - 1}` },
   });
   if (!response.ok && response.status !== 206) {
