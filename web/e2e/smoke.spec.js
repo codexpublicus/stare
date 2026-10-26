@@ -587,7 +587,7 @@ test('the Archival PDF view draws the case\'s pages with a selectable text layer
 // printed 148 to 151.
 const PAGE_CASE = '#a2d/142/148-01';
 const SIZES = {
-  phone: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
+  phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
   laptop: { viewport: { width: 1366, height: 768 } },
   large: { viewport: { width: 2560, height: 1440 } },
 };
@@ -650,6 +650,7 @@ for (const [size, use] of Object.entries(SIZES)) {
         if (tab === '#tab-pdf') {
           // The canvas is drawn for the size it's shown at, not stretched.
           const c = await el.locator('canvas').evaluate((x) => ({ w: x.width, css: x.getBoundingClientRect().width, ratio: devicePixelRatio }));
+          expect(Math.abs(c.css - b.page.width)).toBeLessThan(1);
           expect(Math.abs(c.w - c.css * c.ratio)).toBeLessThan(c.ratio + 1);
         }
       });

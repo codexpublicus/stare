@@ -177,6 +177,8 @@ export async function renderPdfViewer(container, result, { openScans, page = 1, 
     next.className = 'pdf-page-canvas';
     next.width = Math.floor(viewport.width * ratio);
     next.height = Math.floor(viewport.height * ratio);
+    next.style.width = '100%';
+    next.style.height = '100%';
     const task = p.render({
       canvasContext: next.getContext('2d'),
       viewport,
