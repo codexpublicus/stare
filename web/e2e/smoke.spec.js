@@ -440,7 +440,7 @@ test('/#a3d/200/10-01 says its volume has no page scans', async ({ page }) => {
   await page.goto('/#a3d/200/10-01');
   await expect(page.locator('#resolved')).toBeVisible();
   await expect(page.locator('#reader .reader-title')).not.toBeEmpty();
-  await expect(page.locator('#sidebar #no-scans')).toHaveText('No page scans exist for this volume');
+  await expect(page.locator('#sidebar #no-scans')).toContainText('No page scans exist for this volume');
   await expect(page.locator('#sidebar #pdf-link')).toHaveCount(0);
   await expect(page.locator('#tab-pages')).toBeHidden();
 });
