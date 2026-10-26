@@ -133,6 +133,13 @@
 
 .hidden { display: none !important; }
 
+/* A case in the URL hash (src/lib/caseroute.js, run in index.astro's <head>):
+   the reader's shell and a loading line from the first paint, never the
+   landing. main.js removes data-route once it has taken over. */
+html[data-route="case"] #landing { display: none !important; }
+html[data-route="case"] #resolved.hidden, html[data-route="case"] #status-bar.hidden { display: block !important; }
+html[data-route="case"] #status-bar:empty::before { content: 'Loading...'; }
+
 .sidebar-toggle { display: none; position: fixed; right: 16px; bottom: 16px; width: 40px; height: 40px; background: var(--topbar-bg); color: var(--topbar-text); border: none; border-radius: 50%; font-size: 18px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 20; }
 
 @media (max-width: 768px) {

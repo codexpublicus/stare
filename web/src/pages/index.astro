@@ -3,6 +3,7 @@ import JsonLd from '../components/JsonLd.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import { casesLabel, yearRange } from '../lib/collection.js';
 import { webSite } from '../lib/jsonld.js';
+import { isCaseHash } from '../lib/caseroute.js';
 import '../styles/theme.css';
 import '../styles/layout.css';
 import '../styles/reader.css';
@@ -32,6 +33,8 @@ import '../styles/reader.css';
 				}
 			} catch(e) {}
 		</script>
+		<!-- A case in the hash opens on the reader's loading shell, not the landing (layout.css). -->
+		<script is:inline set:html={`try { if ((${isCaseHash})(location.hash)) document.documentElement.setAttribute('data-route', 'case'); } catch (e) {}`}></script>
 	</head>
 	<body>
 		<!-- Landing state -->
