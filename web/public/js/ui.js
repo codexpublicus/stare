@@ -1,6 +1,7 @@
 import { citationSummary, citedListHtml, groupCitations, renderTextHtml, seqSuffix } from './citations.js';
 import { blockedLineHtml, isClRecord, sourceLineHtml } from './cl.js';
 import { insertPageMarkers } from './pages.js';
+import { hasScans } from './scans.js';
 import { pdfUrl as volumePdfUrl } from './sources.js';
 
 /**
@@ -153,6 +154,8 @@ function fillCitationStatus(handle, caseData, detectedCitations, citationStatus,
  *   to caseData.cites_to when there are none.
  * @param {Array|null} groups - processCitations()' `groups` for
  *   detectedCitations (one list entry per cited case, with counts)
+ * @param {number|null} pdfPage - the case's first page in its volume's PDF
+ *   (scans.js's pdfPage), which the PDF link opens at; null opens the volume
  * @returns {CitationStatusHandle} pass this to updateCitationStatus once
  *   detection finishes or fails, instead of calling renderSidebar again,
  *   so the same role="status" aria-live="polite" node is updated in place
@@ -160,19 +163,27 @@ function fillCitationStatus(handle, caseData, detectedCitations, citationStatus,
  *   from ever announcing the change), and so the list itself, which is not
  *   a live region, doesn't get read aloud wholesale.
  */
-export function renderSidebar(el, caseData, reporter, volume, allCases, detectedCitations, citationStatus, groups = null) {
+export function renderSidebar(el, caseData, reporter, volume, allCases, detectedCitations, citationStatus, groups = null, pdfPage = null) {
   const citeBadges = (caseData.citations || [])
     .map((c, i) => `<span class="cite-badge${i === 0 ? ' primary' : ''}">${esc(c.cite)}</span>`)
     .join(' ');
 
   // A CourtListener record has no scans, so no volume PDF; its source line says
-  // where it came from instead.
+  // where it came from instead. A CAP volume without scans says so.
   const fromCl = isClRecord(caseData);
   const docket = caseData.docket_number || (fromCl ? caseData.source.docket_number : null);
-  const pdfAction = fromCl ? '' : `
-      <a class="sidebar-action" href="${volumePdfUrl(reporter, volume)}" target="_blank" rel="noopener">
+  let pdfAction = '';
+  if (!fromCl && !hasScans(reporter, volume)) {
+    pdfAction = `
+      <div class="sidebar-action sidebar-no-scans" id="no-scans">
+        <span class="sidebar-action-icon">&#128196;</span>No page scans exist for this volume
+      </div>`;
+  } else if (!fromCl) {
+    pdfAction = `
+      <a class="sidebar-action" id="pdf-link" href="${esc(volumePdfUrl(reporter, volume, pdfPage))}" target="_blank" rel="noopener">
         <span class="sidebar-action-icon">&#128196;</span>View original PDF
       </a>`;
+  }
 
   const beforeHtml = `
     <div class="sidebar-section">

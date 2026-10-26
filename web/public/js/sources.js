@@ -4,9 +4,11 @@
 // MIRROR_URL is a full CAP mirror laid out like static.case.law
 // (`<reporter>/<volume>.<ext>`). Each kind of corpus file has its own base, defaulting
 // to the mirror, because each moves to our own copy on its own schedule: the zips
-// already have (data.stare.pub, codex-data's `cap/`, codexpublicus/stare#42), and the
-// PDFs will when the archival PDFs are published (#51), which are different files from
-// CAP's. A .tar.csv holds byte offsets into its tar, so the tar it's read against must be
+// already have (data.stare.pub, codex-data's `cap/`, codexpublicus/stare#42), and so have
+// the PDFs, which are our archival PDFs (#51), not CAP's: one per volume with scans, at
+// `pdf/<jurisdiction>/<reporter>/<volume>.pdf` with its manifest beside it as
+// `<volume>.json` (D120, D122; stare-builder's pdf-publish). The tars stay on the mirror.
+// A .tar.csv holds byte offsets into its tar, so the tar it's read against must be
 // byte-identical to the one it was made from; sharing one base keeps them paired.
 
 export const INDEX_URL = 'https://idx.stare.pub';
@@ -15,13 +17,38 @@ export const MIRROR_URL = 'https://static.case.law';
 export const DATA_URL = 'https://data.stare.pub';
 export const ZIP_URL = `${DATA_URL}/cap`;
 export const TAR_URL = MIRROR_URL; // the .tar and its .tar.csv
-export const PDF_URL = MIRROR_URL;
+export const PDF_URL = `${DATA_URL}/pdf`;
+
+// The jurisdiction segment of a reporter's PDF paths: `us`, except the territories' own
+// reporters. A copy of stare-builder's pipelines/pdf-publish/reporter-jurisdictions.json
+// (derived from codexpublicus/exemplar 0.4.0's court registry), which pdf-publish's
+// index, data.stare.pub/pdf/manifest.json, repeats under `jurisdictions`. The paths are
+// immutable once published, so the two change together or not at all.
+export const PDF_JURISDICTIONS = Object.freeze({
+  'am-samoa': 'as',
+  'am-samoa-2d': 'as',
+  'am-samoa-3d': 'as',
+  guam: 'gu',
+  'n-mar-i': 'mp',
+  pr: 'pr',
+  'pr-dec': 'pr',
+  'pr-sent': 'pr',
+  tca: 'pr',
+  vi: 'vi',
+});
+export const pdfJurisdiction = (reporter) => PDF_JURISDICTIONS[reporter] || 'us';
 
 export const indexUrl = (path) => `${INDEX_URL}/${path}`;
 export const zipUrl = (reporter, volume) => `${ZIP_URL}/${reporter}/${volume}.zip`;
 export const tarUrl = (reporter, volume) => `${TAR_URL}/${reporter}/${volume}.tar`;
 export const tarCsvUrl = (reporter, volume) => `${TAR_URL}/${reporter}/${volume}.tar.csv`;
-export const pdfUrl = (reporter, volume) => `${PDF_URL}/${reporter}/${volume}.pdf`;
+export const pdfPath = (reporter, volume, ext = 'pdf') =>
+  `${pdfJurisdiction(reporter)}/${reporter}/${volume}.${ext}`;
+// `page` (1-based) opens the PDF there: `#page=N`, which PDF.js and the browsers' own
+// viewers follow.
+export const pdfUrl = (reporter, volume, page = null) => `${PDF_URL}/${pdfPath(reporter, volume)}`
+  + (Number.isSafeInteger(page) && page > 0 ? `#page=${page}` : '');
+export const pdfManifestUrl = (reporter, volume) => `${PDF_URL}/${pdfPath(reporter, volume, 'json')}`;
 
 // The unified per-volume index (docs/plans/courtlistener-mirror.md, "Index";
 // crates/stare/src/idx.rs is the Rust side): one gzipped text file per volume for every
