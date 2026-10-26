@@ -257,7 +257,7 @@ All rendering runs client-side. Server serves only static files.
 - Citation parsing: eyeCite (Python) or Rust port
 - Zip extraction, tar range access, ALTO XML parsing: WASM
 - On-demand PDF generation: BentoPDF or printpdf WASM module
-- Page viewer: JPG + ALTO text overlay
+- Page views: the archival PDF through PDF.js with its text layer, and the raw scans (JPG + ALTO text overlay)
 
 ### WASM module size (#73)
 
@@ -530,11 +530,45 @@ PDFs at `pdf/<jurisdiction>/<reporter>/<volume>.pdf`, which stare-builder's `pdf
 uploads (D120, D122). `{jur}` is the reporter's jurisdiction code, `us` except the
 territories' own reporters (`PDF_JURISDICTIONS` in `web/public/js/sources.js`, a copy of
 stare-builder's `pipelines/pdf-publish/reporter-jurisdictions.json`; the two change together
-or not at all, since the paths are fixed once published). The case view's "View original
-PDF" opens the volume's PDF at `#page=<first_page_order>`: every PDF's pages are its METS
-ORDERs 1 to N. The 658 volumes CAP published without scans (`web/public/js/scans.js`, from
-the index's `no_scans`) say "No page scans exist for this volume" instead, and hide the
-Pages tab.
+or not at all, since the paths are fixed once published). Every PDF's pages are its METS
+ORDERs 1 to N, so a case's pages are its `first_page_order` to `last_page_order`.
+
+The case view has three tabs, in this order, with Reader the default; the tab isn't in the
+URL hash:
+
+- **Reader**: the case's text.
+- **Archival PDF** (`web/public/js/pdfviewer.js`, `pdfpages.js`): the case's pages of the
+  volume's archival PDF, drawn by PDF.js to a canvas at the device pixel ratio, with PDF.js's
+  text layer from the PDF's own invisible OCR text, so it can be selected and copied. It
+  fetches the PDF by range requests only (a `PDFDataRangeTransport`, 32 KiB chunks,
+  `disableAutoFetch`, `disableStream`): the first chunk gives the length and the
+  linearization header, then the cross-reference section and each page shown, and it
+  prefetches the next page once one is drawn. A 404 says the volume's PDF isn't published
+  yet (f-appx/660, stare-builder#24) and offers the Raw Scans.
+- **Raw Scans** (`web/public/js/pageviewer.js`): CAP's color JPEGs from the volume's tar on
+  static.case.law, by range requests through its `.tar.csv`, with the ALTO text.
+
+Both page views have the same toolbar and keys (←/→ pages, +/-/0 zoom), and load nothing
+until their tab is first opened. CourtListener records and the 658 volumes CAP published
+without scans (`web/public/js/scans.js`, from the index's `no_scans`) hide both tabs, and the
+sidebar says "No page scans exist for this volume" instead of the PDF link. The sidebar's
+"Download archival PDF" opens the whole volume's PDF at `#page=<first_page_order>`, for
+saving or printing.
+
+PDF.js is pdfjs-dist's legacy build, pinned exactly in `web/package.json` and self-hosted:
+the `stare-pdfjs` hook in `web/astro.config.mjs` copies `pdf.min.mjs`, the worker,
+`jbig2.wasm` (pdfjs-dist 6 decodes JBIG2 in WebAssembly) and their licences into
+`web/public/vendor/pdfjs-<version>-p<patch>/` (gitignored) before the dev server or the
+build reads `public/`, and `_headers` serves it immutable. The worker is patched
+(`web/src/lib/pdfjs-vendor.js`): unpatched, PDF.js finds a page by fetching every page's
+dictionary in the flat page tree qpdf writes, which for these linearized files meant
+reading most of the volume before the first page showed: in Chromium on 2026-10-26, 2.2 MB
+of a2d/142's 3.3 MB and 42 MB of f2d/500's 84 MB, in 1,297 requests. Patched, opening a case
+there took 142 KB in 5 requests and 183 KB in 6.
+A pdfjs-dist bump updates the version in `web/public/js/pdfjs-path.js` with it, and the
+build fails if the patch no longer applies. The site sends no Content-Security-Policy; if
+one is added, the view needs `worker-src 'self'`, `connect-src https://data.stare.pub` and
+`'wasm-unsafe-eval'`, and no `'unsafe-eval'` (it passes `isEvalSupported: false`).
 
 ### Agent files (#161: `reporters.json`, `openapi.json`, `/schemas/`, JSON-LD)
 
