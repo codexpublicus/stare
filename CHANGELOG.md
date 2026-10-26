@@ -2,6 +2,17 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
+## v2026.10.26.2 - 2026-10-26
+
+### Features
+
+- idx: label official-page aliases in every reporter, official:<slug>
+- web: read Codex Publicus's archival PDFs from data.stare.pub
+
+### Fixes
+
+- web: stop the scan viewer shadowing tarUrl
+
 ## v2026.10.26.1 - 2026-10-26
 
 ### Dependencies
