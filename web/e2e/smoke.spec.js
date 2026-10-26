@@ -222,6 +222,90 @@ test('the case view shows a loading bar while the WASM loads, then the case', as
   await expect(page.locator('#topbar-case')).toHaveText("D'Elia & Marks Co. v. Lyon");
 });
 
+// Notes whether #landing is rendered in any frame, from the first: the probe runs
+// in requestAnimationFrame, which comes before every paint, and at
+// DOMContentLoaded. `window.__landingSeen` says whether it ever was.
+async function watchLanding(page) {
+  await page.addInitScript(() => {
+    window.__landingSeen = false;
+    const probe = () => {
+      const el = document.getElementById('landing');
+      if (el && el.checkVisibility()) window.__landingSeen = true;
+    };
+    const frame = () => {
+      probe();
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+    document.addEventListener('DOMContentLoaded', probe);
+  });
+}
+
+test('a case in the hash never shows the landing, only the reader loading it', async ({ page }) => {
+  await watchLanding(page);
+  // Held, the WASM keeps the page loading for as long as the landing used to show.
+  const release = await holdWasm(page);
+  await page.goto('/#a2d/31/647-01');
+
+  await expect(page.locator('#resolved')).toBeVisible();
+  await expect(page.getByRole('progressbar', { name: /^Loading the citation parser/ })).toBeVisible();
+  release();
+  await expect(page.locator('#topbar-case')).toHaveText("D'Elia & Marks Co. v. Lyon");
+  expect(await page.evaluate(() => window.__landingSeen)).toBe(false);
+  await expect(page.locator('html')).not.toHaveAttribute('data-route');
+});
+
+test('a pin cite in the hash never shows the landing either', async ({ page }) => {
+  await watchLanding(page);
+  await page.goto('/#a2d/31/647-01@648');
+  await expect(page.locator('#topbar-case')).toHaveText("D'Elia & Marks Co. v. Lyon");
+  expect(await page.evaluate(() => window.__landingSeen)).toBe(false);
+});
+
+for (const path of ['/', '/#', '/#about']) {
+  test(`${path} shows the landing straight away`, async ({ page }) => {
+    await page.goto(path, { waitUntil: 'commit' });
+    // Before main.js has run: the <head> script alone decides.
+    await page.waitForSelector('#landing', { state: 'attached' });
+    expect(await page.evaluate(() => document.documentElement.getAttribute('data-route'))).toBeNull();
+    await expect(page.locator('#landing')).toBeVisible();
+    await expect(page.locator('#resolved')).toBeHidden();
+  });
+}
+
+test('a case hash that does not resolve ends on the landing with the error', async ({ page }) => {
+  await page.goto('/#a2d/31/99999-01');
+  await expect(page.locator('#landing-status')).toHaveText(/^No case starts at page 99999\b/);
+  await expect(page.locator('#landing')).toBeVisible();
+  await expect(page.locator('#resolved')).toBeHidden();
+  await expect(page.locator('html')).not.toHaveAttribute('data-route');
+});
+
+// A plain test: the failed loads log console errors on purpose.
+base('a case hash whose WASM fails to load keeps the reader, with Retry, and opens the case on it', async ({ page }) => {
+  let failing = true;
+  await page.route(`**${WASM_PATH}`, (route) => (failing ? route.abort() : route.continue()));
+  await page.goto('/#a2d/31/647-01');
+
+  const alert = page.getByRole('alert');
+  await expect(alert).toHaveText("Couldn't load the citation parser. Retry");
+  await expect(page.locator('#resolved')).toBeVisible();
+  await expect(page.locator('#landing')).toBeHidden();
+
+  failing = false;
+  await alert.getByRole('button', { name: 'Retry' }).click();
+  await expect(page.locator('#topbar-case')).toHaveText("D'Elia & Marks Co. v. Lyon");
+});
+
+test('going back from a case to the bare URL shows the landing', async ({ page }) => {
+  await page.goto('/');
+  await page.click('.landing-example >> nth=0');
+  await expect(page.locator('#topbar-case')).toHaveText("D'Elia & Marks Co. v. Lyon");
+  await page.goBack();
+  await expect(page.locator('#landing')).toBeVisible();
+  await expect(page.locator('#resolved')).toBeHidden();
+});
+
 // A plain test: the failed loads log console errors on purpose.
 base('/check reports a failed WASM load and retries it', async ({ page }) => {
   let failing = true;

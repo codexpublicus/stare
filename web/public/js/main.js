@@ -128,6 +128,7 @@ function wireCiteNav(listEl, readerContent) {
 }
 
 function showLanding() {
+  document.documentElement.removeAttribute('data-route');
   landing.classList.remove('hidden');
   resolved.classList.add('hidden');
   sidebarToggle.classList.add('hidden');
@@ -377,10 +378,11 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
   } catch (err) {
     if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
     // Only go to landing if we're not already showing a case
-    // (i.e., this was a landing page search, not an inline edit)
-    if (landing.classList.contains('hidden') && !currentResult) {
+    // (i.e., this was a landing page search, not an inline edit). A WASM
+    // failure stays on the reader's shell, where its Retry button is.
+    if (landing.classList.contains('hidden') && !currentResult && !(err instanceof WasmLoadError)) {
       showLanding();
-      if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
+      setStatus(err.message, true);
     }
   } finally {
     landingBtn.disabled = false;
@@ -552,9 +554,15 @@ window.addEventListener('hashchange', () => {
   }
 });
 
-// Auto-resolve from URL hash on load
+// Auto-resolve from URL hash on load. A case opens on the reader's shell, as
+// index.astro's <head> script already showed it (data-route="case"), so the
+// landing never flashes; a lookup that fails goes back to the landing with
+// its error.
 const initial = getHashParams();
+document.documentElement.removeAttribute('data-route');
 if (initial) {
+  landing.classList.add('hidden');
+  resolved.classList.remove('hidden');
   landingInput.value = `${initial.reporter} ${initial.volume} ${initial.page}`;
   doResolve(initial.reporter, initial.volume, initial.page, initial.seq, initial.pin, initial.cite);
 }
