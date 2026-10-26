@@ -1,5 +1,5 @@
 // What the two page views share (#246): the Archival PDF (pdfviewer.js) and the Raw Scans
-// (pageviewer.js) show one page of the case at a time, with the same toolbar, keys and
+// (scanviewer.js) show one page of the case at a time, with the same toolbar, keys and
 // gestures. This module draws the toolbar, keeps the page, zoom, rotation and text-layer
 // state, sizes the page to the view, and asks the view to draw it; the plain logic is in
 // pagezoom.js.

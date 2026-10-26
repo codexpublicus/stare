@@ -597,10 +597,10 @@ takes it out. A hash has a place in the text (`~c=`) or a page view, not both:
   linearization header, then the cross-reference section and each page shown, and it
   prefetches the next page once one is drawn. A 404 says the volume's PDF isn't published
   yet (f-appx/660, stare-builder#24) and offers the Raw Scans.
-- **Raw Scans** (`web/public/js/pageviewer.js`): CAP's color JPEGs from the volume's tar on
+- **Raw Scans** (`web/public/js/scanviewer.js`): CAP's color JPEGs from the volume's tar on
   static.case.law, by range requests through its `.tar.csv`, with the ALTO text.
 
-Both page views share `web/public/js/pageview.js` (the toolbar, page, zoom, rotation and
+Both page views share `web/public/js/pageshell.js` (the toolbar, page, zoom, rotation and
 text state, keys and gestures; plain logic in `pagezoom.js`, tested in
 `web/tests/pagezoom.test.js`); each view supplies how to load, size (`place`, CSS only) and
 draw (`render`) its page. The default is fit page, the whole page in the visible part of
@@ -615,7 +615,7 @@ the case HTML's `page-label`s), rotate, a Text button that shows the OCR text ov
 image (hidden but selectable in the PDF otherwise), a link to the page in the archival PDF,
 print (the page image alone, from an iframe), and a key help (←/→, +/−, 0 for 100%, f fit
 page/width, r rotate, t text, ?). Selected text is painted once (#247):
-`web/public/js/selectionpaint.js` (watched by `pageview.js`) takes the selected text's rects,
+`web/public/js/selectionpaint.js` (watched by `pageshell.js`) takes the selected text's rects,
 turns them into the page's own coordinates, merges each line's into one rect, and draws them
 as solid boxes in a layer between the image and the text that is translucent as a whole
 (`--selection-bg`, `--selection-opacity` in `theme.css`), with `::selection` transparent on
