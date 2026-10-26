@@ -3,9 +3,9 @@ import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } 
 import { caseHash, getHashParams, setHash, onHashChange } from './router.js';
 import { aliasNoteHtml, processCitations, setupCiteHovers } from './citations.js';
 import { attachCiteNav } from './citenav.js';
-import { renderPageViewer, resetPageViewer } from './pageviewer.js';
+import { renderPageViewer, resetPageViewer } from './scanviewer.js';
 import { renderPdfViewer, resetPdfViewer } from './pdfviewer.js';
-import { pageViewIn } from './pageview.js';
+import { pageViewIn } from './pageshell.js';
 import { footnoteParagraphs, pageBreaks, pageMarker } from './pages.js';
 import { preloadWasm, WasmLoadError } from './wasm.js';
 import { showWasmProgress } from './wasmbar.js';
@@ -552,7 +552,7 @@ sidebarToggle.addEventListener('click', (e) => {
 
 // Tab switching: the Reader (the case's text), the Archival PDF (our PDF of the volume,
 // pdfviewer.js) and the Raw Scans (CAP's page images from the volume's tar,
-// pageviewer.js). Neither page view loads anything until its tab is first opened. A page
+// scanviewer.js). Neither page view loads anything until its tab is first opened. A page
 // view and its page are in the hash (`~v=pdf&p=3`), so a page can be linked; the Reader
 // takes them out.
 const VIEWS = {

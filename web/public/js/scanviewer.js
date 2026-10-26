@@ -1,9 +1,9 @@
 // The Raw Scans view: CAP's color JPEGs of the case's pages, from the volume's tar on
 // static.case.law by range requests through its `.tar.csv`, with the page's ALTO OCR text
 // over the image (hidden unless the toolbar's Text button shows it). The toolbar, zoom and
-// keys are pageview.js's, shared with the Archival PDF.
+// keys are pageshell.js's, shared with the Archival PDF.
 import { fetchCachedText } from './cache.js';
-import { createPageView, pageLabels } from './pageview.js';
+import { createPageView, pageLabels } from './pageshell.js';
 import { CSS_PER_SCAN_PIXEL } from './pagezoom.js';
 import { extractFile, getPageOrders } from './resolve.js';
 import { pdfPage } from './scans.js';

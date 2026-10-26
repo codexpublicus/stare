@@ -3,13 +3,13 @@
 // bytes those pages need. The PDFs are linearized, so the first range request gives the
 // file's length and layout, and each page after that is a range request or two
 // (pdfpages.js). PDF.js is our own copy (pdfjs-path.js), loaded the first time the view
-// opens. The toolbar, zoom and keys are pageview.js's, shared with the Raw Scans.
+// opens. The toolbar, zoom and keys are pageshell.js's, shared with the Raw Scans.
 import { extractFile, getPageOrders } from './resolve.js';
 import { PDFJS_BASE } from './pdfjs-path.js';
 import {
   PdfMissingError, casePdfPages, clampPages, documentOptions, openRangeTransport,
 } from './pdfpages.js';
-import { createPageView, pageLabels } from './pageview.js';
+import { createPageView, pageLabels } from './pageshell.js';
 import { CSS_PER_POINT, canvasRatio } from './pagezoom.js';
 import { selectionLayer } from './selectionpaint.js';
 import { pdfUrl } from './sources.js';

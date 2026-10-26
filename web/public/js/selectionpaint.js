@@ -9,7 +9,7 @@
 // is made translucent as a whole, so nothing is painted twice. The text and what's copied
 // are the browser's own, as before; only the painting changes.
 //
-// pageview.js watches each view's area (watchSelection); a view puts selectionLayer()'s
+// pageshell.js watches each view's area (watchSelection); a view puts selectionLayer()'s
 // element in its page where the highlight goes. The plain geometry (toLocal, mergeRects) is
 // tested in web/tests/selectionpaint.test.js.
 

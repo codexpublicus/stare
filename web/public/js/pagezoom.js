@@ -1,4 +1,4 @@
-// The page views' plain logic, apart from the DOM (pageview.js uses it, for the Archival
+// The page views' plain logic, apart from the DOM (pageshell.js uses it, for the Archival
 // PDF and the Raw Scans; web/tests/pagezoom.test.js tests it): how big a page is drawn in
 // each zoom mode, the zoom steps, rotation, the remembered zoom mode, the page box and the
 // printed page labels.
