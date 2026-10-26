@@ -2,6 +2,17 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
+## v2026.10.26.6 - 2026-10-26
+
+### Features
+
+- web: typeahead and the citation as written in the search boxes
+
+### Fixes
+
+- web: paint one selection highlight per line in the page views
+- web: rename page-view scripts that content blockers block
+
 ## v2026.10.26.5 - 2026-10-26
 
 ### Features
