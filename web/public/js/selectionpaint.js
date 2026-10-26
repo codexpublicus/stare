@@ -193,7 +193,11 @@ function clear(layer) {
   if (fill?.firstChild) fill.replaceChildren();
 }
 
-// The areas watched, and one selectionchange listener for them all, run at most once a frame.
+// The areas watched, and one listener for them all, run at most once a frame. Besides a
+// change of selection, the text can move under a selection that stays put: a web font
+// arriving after the text was drawn in a fallback face (the Raw Scans' OCR text is in the
+// serif face, fetched when the text is first shown), or the view showing or hiding its text.
+// Those paint again too (`document.fonts` here, the view's own changes through schedule()).
 const watched = new Set();
 let frame = 0;
 
@@ -207,10 +211,16 @@ function onSelectionChange() {
   if (!frame) frame = requestAnimationFrame(update);
 }
 
+function listen(on) {
+  const how = on ? 'addEventListener' : 'removeEventListener';
+  document[how]('selectionchange', onSelectionChange);
+  document.fonts?.[how]?.('loadingdone', onSelectionChange);
+}
+
 /**
  * Paint the selection in `area` (a page view's page area) in the layer `layer()` gives (the
- * page's current .pv-selection, or null). Returns `{ update, destroy }`; `update()` paints
- * again now (after the page is redrawn).
+ * page's current .pv-selection, or null). Returns `{ update, schedule, destroy }`; `update()`
+ * paints again now, `schedule()` on the next frame (after the view moves its text).
  */
 export function watchSelection(area, layer = () => area.querySelector('.pv-selection')) {
   let painted = null;
@@ -237,13 +247,14 @@ export function watchSelection(area, layer = () => area.querySelector('.pv-selec
         .filter(Boolean);
       paint(el, mergeRects(local, { gap: WORD_GAP }), f.w, f.h);
     },
+    schedule: onSelectionChange,
     destroy() {
       watched.delete(w);
       clear(painted);
-      if (!watched.size) document.removeEventListener('selectionchange', onSelectionChange);
+      if (!watched.size) listen(false);
     },
   };
-  if (!watched.size) document.addEventListener('selectionchange', onSelectionChange);
+  if (!watched.size) listen(true);
   watched.add(w);
   area.classList.add('pv-paint-selection');
   return w;
