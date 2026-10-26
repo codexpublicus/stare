@@ -3,15 +3,19 @@ import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } 
 import { caseHash, getHashParams, setHash, onHashChange } from './router.js';
 import { aliasNoteHtml, processCitations, setupCiteHovers } from './citations.js';
 import { attachCiteNav } from './citenav.js';
-import { renderPageViewer, resetPageViewer } from './scanviewer.js';
-import { renderPdfViewer, resetPdfViewer } from './pdfviewer.js';
-import { pageViewIn } from './pageshell.js';
 import { footnoteParagraphs, pageBreaks, pageMarker } from './pages.js';
 import { preloadWasm, WasmLoadError } from './wasm.js';
 import { showWasmProgress } from './wasmbar.js';
 import { filePage } from './pagekey.js';
 import { hasScans, pdfPage } from './scans.js';
-import { attachSearchBox } from './searchbox.js';
+
+// The reader's own modules are imported above; the page views (scanviewer.js, pdfviewer.js
+// and pageshell.js with theirs) and the search boxes' typeahead (searchbox.js, suggest.js,
+// casenames.js) are imported when first wanted (#265). A module that fails to load, a
+// content blocker's doing or a 404 mid-deploy, then costs its own feature, with a message
+// saying so, and the Reader keeps working. Anything that fails above stops main.js from
+// running at all, which the boot guard in index.astro's <head> (src/lib/bootguard.js)
+// reports instead of leaving "Loading..." up.
 
 let currentResult = null;
 // The shown case's cited-cases list wired to its text (citenav.js), and a
@@ -44,14 +48,59 @@ const pdfViewerEl = document.getElementById('pdf-viewer');
 const pageViewerEl = document.getElementById('page-viewer');
 const landingWasmSlot = document.getElementById('landing-wasm-progress');
 const resolvedWasmSlot = document.getElementById('wasm-progress');
+// A search box with its typeahead (searchbox.js, #248), loaded the first time the input is
+// focused. Until it loads, or if it can't, the input is a plain text box: `fill` puts the
+// citation in it and parseBox reads it with the parser alone. `fill`s before the load are
+// passed on once it's in, if the text is still theirs, so the box still remembers the case.
+function lazySearchBox(input, listbox, status, opts) {
+  let box = null;
+  let loading = null;
+  let early = null;
+  function load() {
+    if (!loading) {
+      loading = import('./searchbox.js').then((m) => {
+        box = m.attachSearchBox(input, listbox, status, opts);
+        const focused = document.activeElement === input;
+        if (early && input.value === early.text) box.fill(early.cite, early.target);
+        else if (focused && input.value) input.dispatchEvent(new Event('input'));
+        early = null;
+        // The box fetches what it suggests from on focus; the focus that loaded it came first.
+        if (focused) input.dispatchEvent(new FocusEvent('focus'));
+        return box;
+      }).catch((e) => {
+        console.warn('The search suggestions could not load; citations still work without them.', e);
+        return null;
+      });
+    }
+    return loading;
+  }
+  input.addEventListener('focus', load);
+  return {
+    fill(cite, target) {
+      if (box) {
+        box.fill(cite, target);
+        return;
+      }
+      const text = typeof cite === 'string' ? cite.trim() : '';
+      input.value = text;
+      early = { cite, target, text };
+    },
+    close: () => box?.close(),
+    // The box once loaded, or null when it can't be.
+    load,
+  };
+}
+
 // The landing's box suggests citations as it is typed in (#248); a page suggestion opens
 // its case.
-const landingBox = attachSearchBox(landingInput, document.getElementById('landing-suggest'),
+const landingBox = lazySearchBox(landingInput, document.getElementById('landing-suggest'),
   document.getElementById('landing-suggest-status'), {
     onPick: (t) => doResolve(t.reporter, t.volume, t.page, t.seq),
   });
 let pageViewerLoaded = false;
 let pdfViewerLoaded = false;
+// The page views' modules, once loaded: pdfviewer.js and scanviewer.js.
+const viewModules = { pdf: null, scans: null };
 // The reader's scrolling container.
 const scroller = () => reader.closest('.main-content') || reader.closest('.main');
 
@@ -224,10 +273,10 @@ async function showResolved(result, pin = null, cite = null) {
   pageViewerLoaded = false;
   viewPages.pdf = 1;
   viewPages.scans = 1;
-  resetPageViewer();
+  viewModules.scans?.resetPageViewer();
   pageViewerEl.innerHTML = '';
   pdfViewerLoaded = false;
-  resetPdfViewer();
+  viewModules.pdf?.resetPdfViewer();
   pdfViewerEl.innerHTML = '';
   showView('reader');
   // A CourtListener record has no page scans or archival PDF to show, nor has a CAP
@@ -419,8 +468,10 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
 // The citation a search box's text names: the case it was filled with while the text is
 // unchanged (searchbox.js), else what the parser reads, else a reporter typed first by
 // its abbreviation (`Misc. 32 426`), which only the typeahead's reporter list knows.
+// Without the typeahead (lazySearchBox), only the parser.
 async function parseBox(box, input) {
-  return box.kept() || await parseInput(input.value) || await box.parse();
+  const b = await box.load();
+  return b?.kept() || await parseInput(input.value) || await b?.parse() || null;
 }
 
 // Landing form submit
@@ -450,7 +501,7 @@ const topbarSuggest = document.getElementById('topbar-suggest');
 // The top bar's editor suggests citations as it is typed in (#248); a page suggestion
 // opens its case. Attached before the editor's own keys below, so it takes Enter and
 // Escape first while its list is open.
-const topbarBox = attachSearchBox(topbarCiteInput, topbarSuggest, document.getElementById('topbar-suggest-status'), {
+const topbarBox = lazySearchBox(topbarCiteInput, topbarSuggest, document.getElementById('topbar-suggest-status'), {
   onPick: (t) => {
     editSubmitting = true;
     stopEditing();
@@ -485,7 +536,10 @@ let editSubmitting = false;
 
 topbarCite.addEventListener('click', startEditing);
 
-topbarCiteInput.addEventListener('keydown', async (e) => {
+// On the top bar rather than the input: the typeahead attaches to the input when it loads,
+// after this, and it must see Enter and Escape first while its list is open.
+document.getElementById('topbar').addEventListener('keydown', async (e) => {
+  if (e.target !== topbarCiteInput) return;
   if (e.key === 'Enter') {
     e.preventDefault();
     let parsed;
@@ -588,6 +642,26 @@ const onViewPage = (view) => (i) => {
   if (!VIEWS[view][1].classList.contains('hidden')) setViewHash(view);
 };
 
+// Each page view's module, imported the first time its tab opens (#265).
+const VIEW_IMPORTS = {
+  pdf: () => import('./pdfviewer.js'),
+  scans: () => import('./scanviewer.js'),
+};
+const VIEW_NAMES = { pdf: 'The Archival PDF view', scans: 'The Raw Scans view' };
+
+// What a page view shows when its module didn't load; the Reader is unaffected. Reloading
+// keeps the view in the hash, so it is tried again.
+function viewFailed(view, el) {
+  el.innerHTML = `<div class="pdf-view-message" role="status" data-view-failed="${view}">${VIEW_NAMES[view]}`
+    + ' couldn\u2019t load: its script was blocked or failed to download. A content blocker (an ad or'
+    + ' tracker blocker) is the most likely cause; allow stare.pub in it, then'
+    + ' <a href="" class="view-reload">reload the page</a>. The Reader still works.</div>';
+  el.querySelector('.view-reload').addEventListener('click', (e) => {
+    e.preventDefault();
+    window.location.reload();
+  });
+}
+
 // Show a page view, at the case's page `page` when given (the hash's), loading it the
 // first time.
 async function openPageView(view, page = null) {
@@ -595,26 +669,45 @@ async function openPageView(view, page = null) {
   if (page) viewPages[view] = page;
   setViewHash(view);
   if (!currentResult?.zipData) return;
+  const el = VIEWS[view][1];
+  if (view === 'pdf' ? pdfViewerLoaded : pageViewerLoaded) {
+    if (page) goToViewPage(el, page);
+    return;
+  }
+  if (view === 'pdf') pdfViewerLoaded = true;
+  else pageViewerLoaded = true;
+  const result = currentResult;
+  try {
+    viewModules[view] = await VIEW_IMPORTS[view]();
+  } catch (e) {
+    console.error(`${VIEW_NAMES[view]} could not load:`, e);
+    // Another case shown meanwhile has reset the view.
+    if (currentResult !== result) return;
+    if (view === 'pdf') pdfViewerLoaded = false;
+    else pageViewerLoaded = false;
+    viewFailed(view, el);
+    return;
+  }
+  if (currentResult !== result) return;
   if (view === 'pdf') {
-    if (!pdfViewerLoaded) {
-      pdfViewerLoaded = true;
-      await renderPdfViewer(pdfViewerEl, currentResult, {
-        openScans: () => openPageView('scans'), page: viewPages.pdf, onPage: onViewPage('pdf'),
-      });
-    } else if (page) {
-      goToViewPage(pdfViewerEl, page);
-    }
-  } else if (!pageViewerLoaded) {
-    pageViewerLoaded = true;
-    await renderPageViewer(pageViewerEl, currentResult, { page: viewPages.scans, onPage: onViewPage('scans') });
-  } else if (page) {
-    goToViewPage(pageViewerEl, page);
+    await viewModules.pdf.renderPdfViewer(pdfViewerEl, currentResult, {
+      openScans: () => openPageView('scans'), page: viewPages.pdf, onPage: onViewPage('pdf'),
+    });
+  } else {
+    await viewModules.scans.renderPageViewer(pageViewerEl, currentResult, { page: viewPages.scans, onPage: onViewPage('scans') });
   }
 }
 
-// A page view already open goes to the case's page `page`.
-function goToViewPage(el, page) {
-  const view = pageViewIn(el);
+// A page view already open goes to the case's page `page`. pageshell.js came in with the
+// view, so this import doesn't fetch.
+async function goToViewPage(el, page) {
+  let shell;
+  try {
+    shell = await import('./pageshell.js');
+  } catch {
+    return;
+  }
+  const view = shell.pageViewIn(el);
   if (view && view.index !== page) view.go(page);
 }
 
@@ -683,3 +776,6 @@ if (initial) {
 // Fetch and compile the WASM in the background once the page has painted;
 // nothing waits on it until a feature needs it.
 preloadWasm();
+
+// Everything above ran: the boot guard in <head> (src/lib/bootguard.js) stops waiting.
+globalThis.stareBoot?.ready();
