@@ -2,6 +2,12 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
+## v2026.10.26.1 - 2026-10-26
+
+### Dependencies
+
+- deps: move to citare v0.7.4
+
 ## v2026.10.23.1 - 2026-10-23
 
 ### Features
@@ -10,6 +16,10 @@ Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed 
 - cite: pick the case on a shared page by the citing text's case name
 - cite: match the case name on the official page when a run's shared cases miss it
 - cite: match the case name on the official page when a run's one shared case doesn't fit it
+
+### Dependencies
+
+- deps: move to citare v0.7.3 and retire the replaced reporters.json entries
 
 ## v2026.10.22.3 - 2026-10-22
 
@@ -25,6 +35,10 @@ Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed 
 - idx: label nominative aliases as the U.S. Reports
 - cite: count citations by the case they resolve to, comparing parallels against every case at a page
 
+### Dependencies
+
+- deps: move to citare v0.7.2, keeping p-r-r and cai-r in reporters.json for one release
+
 ## v2026.10.22.1 - 2026-10-22
 
 ### Features
@@ -38,11 +52,19 @@ Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed 
 
 - web: keep every case at one /c/ path and allow the curated set by name
 
+### Dependencies
+
+- deps: move citare-core to v0.7.1
+
 ## v2026.10.20.1 - 2026-10-20
 
 ### Features
 
 - resolve a parallel citation through its partner
+
+### Dependencies
+
+- deps: move citare-core to v0.7.0
 
 ## v2026.10.18.1 - 2026-10-18
 
