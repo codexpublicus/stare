@@ -7,6 +7,15 @@ import { join } from 'node:path';
 
 import { contentHash, fingerprintWasm, hashedName, modulePreloads, pageEntries, staticGraph } from '../src/lib/assetcache.js';
 
+// esbuild resolves the import graph; CI runs these tests before npm ci, so the graph
+// tests skip without it.
+let build;
+try {
+  ({ build } = await import('esbuild'));
+} catch {
+  build = null;
+}
+
 function site(files) {
   const dir = mkdtempSync(join(tmpdir(), 'assetcache-'));
   for (const [path, body] of Object.entries(files)) {
@@ -63,6 +72,7 @@ test('pageEntries finds module scripts by src and the static imports of inline o
 });
 
 test('staticGraph follows static imports and leaves dynamic ones alone', async (t) => {
+  if (!build) return t.skip('esbuild is not installed (npm --prefix web ci)');
   const dir = site({
     'js/main.js': "import { b } from './b.js';\nimport '/js/c.js';\nexport const lazy = () => import('./lazy.js');\nconst glue = '/wasm/x.js'; import(glue);\n",
     'js/b.js': "import { d } from './d.js';\nexport const b = d;\n",
@@ -72,10 +82,11 @@ test('staticGraph follows static imports and leaves dynamic ones alone', async (
     'js/only-lazy.js': 'export {};\n',
   });
   t.after(() => rmSync(dir, { recursive: true }));
-  assert.deepEqual(await staticGraph(dir, ['/js/main.js']), ['/js/main.js', '/js/b.js', '/js/c.js', '/js/d.js']);
+  assert.deepEqual(await staticGraph(dir, ['/js/main.js'], { build }), ['/js/main.js', '/js/b.js', '/js/c.js', '/js/d.js']);
 });
 
 test('modulePreloads adds links to the pages that load modules, once', async (t) => {
+  if (!build) return t.skip('esbuild is not installed (npm --prefix web ci)');
   const dir = site({
     'index.html': '<html><head><title>x</title></head><body><script type="module" src="/js/main.js"></script></body></html>',
     'about/index.html': '<html><head></head><body>no scripts</body></html>',
@@ -83,10 +94,10 @@ test('modulePreloads adds links to the pages that load modules, once', async (t)
     'js/b.js': 'export {};\n',
   });
   t.after(() => rmSync(dir, { recursive: true }));
-  assert.deepEqual(await modulePreloads(dir), { pages: 1, modules: 2 });
+  assert.deepEqual(await modulePreloads(dir, { build }), { pages: 1, modules: 2 });
   const html = readFileSync(join(dir, 'index.html'), 'utf8');
   assert.ok(html.includes('<link rel="modulepreload" href="/js/main.js"><link rel="modulepreload" href="/js/b.js"></head>'));
   assert.equal(readFileSync(join(dir, 'about/index.html'), 'utf8'), '<html><head></head><body>no scripts</body></html>');
-  await modulePreloads(dir);
+  await modulePreloads(dir, { build });
   assert.equal(readFileSync(join(dir, 'index.html'), 'utf8'), html, 'a second run changes nothing');
 });

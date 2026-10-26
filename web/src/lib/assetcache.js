@@ -22,8 +22,6 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 
-import { build } from 'esbuild';
-
 export const WASM_DIR = 'wasm';
 export const WASM_MODULE = 'stare_wasm_bg.wasm';
 export const WASM_GLUE = 'stare_wasm.js';
@@ -85,10 +83,11 @@ export function pageEntries(html) {
 
 /**
  * The static import closure of `entries` (site paths under /js/), entries first, in
- * the order the browser would discover them. esbuild resolves the graph; only
- * import-statement edges are followed.
+ * the order the browser would discover them. `build` is esbuild's, which resolves the
+ * graph (passed in, as pdfjs-vendor.js's minifier is, so this module loads without
+ * node_modules); only import-statement edges are followed.
  */
-export async function staticGraph(distDir, entries) {
+export async function staticGraph(distDir, entries, { build }) {
   if (entries.length === 0) return [];
   const jsDir = join(distDir, 'js') + sep;
   // esbuild keys its metafile by path relative to absWorkingDir: 'js/main.js'.
@@ -140,16 +139,16 @@ export const preloadLinks = (paths) => paths.map((p) => `<link rel="modulepreloa
 /**
  * Adds the modulepreload links to every page under distDir that loads /js/ modules,
  * skipping any the page already has. Returns { pages, modules }: how many pages got
- * links, and the most one page got.
+ * links, and the most one page got. `build` is esbuild's, as for staticGraph.
  */
-export async function modulePreloads(distDir) {
+export async function modulePreloads(distDir, { build }) {
   let pages = 0;
   let modules = 0;
   for (const file of htmlFiles(distDir)) {
     const html = readFileSync(file, 'utf8');
     // A page may preload some modules itself; add only the rest.
     const have = new Set([...html.matchAll(/<link\b[^>]*\brel=["']?modulepreload\b[^>]*\bhref=["']?([^"'\s>]+)/gi)].map((m) => m[1]));
-    const graph = (await staticGraph(distDir, pageEntries(html))).filter((p) => !have.has(p));
+    const graph = (await staticGraph(distDir, pageEntries(html), { build })).filter((p) => !have.has(p));
     if (graph.length === 0) continue;
     const at = html.search(/<\/head>/i);
     if (at < 0) throw new Error(`${relative(distDir, file)} has no </head>`);

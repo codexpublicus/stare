@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from '
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import { defineConfig } from 'astro/config';
-import { transform } from 'esbuild';
+import { build, transform } from 'esbuild';
 
 import { PDFJS_DIR, PDFJS_VERSION } from './public/js/pdfjs-path.js';
 import { vendorPdfjs } from './src/lib/pdfjs-vendor.js';
@@ -128,7 +128,7 @@ const assetCache = {
 				const { module, glue } = fingerprintWasm(dist);
 				logger.info(`js/wasm.js loads ${module} and ${glue}`);
 			}
-			const { pages, modules } = await modulePreloads(dist);
+			const { pages, modules } = await modulePreloads(dist, { build });
 			logger.info(`modulepreload: ${pages} pages, up to ${modules} modules each`);
 		},
 	},
