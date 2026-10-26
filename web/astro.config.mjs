@@ -4,6 +4,10 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from '
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import { defineConfig } from 'astro/config';
+import { transform } from 'esbuild';
+
+import { PDFJS_DIR, PDFJS_VERSION } from './public/js/pdfjs-path.js';
+import { vendorPdfjs } from './src/lib/pdfjs-vendor.js';
 
 import { isAllowed, parseLlmsTxt, parseRobots } from './src/lib/crawlfiles.js';
 import { CASE_PREFIX, ROBOTS_MAX_BYTES, curatedAllows, curatedSet } from './src/lib/robots.js';
@@ -110,9 +114,28 @@ const crawlFiles = {
 	},
 };
 
+// Copies PDF.js, its patched worker and its JBIG2 decoder into public/vendor/ (gitignored)
+// for the Archival PDF view, before the dev server or the build reads public/
+// (src/lib/pdfjs-vendor.js says what the patch does). Self-hosted: the view loads nothing
+// from a CDN.
+const pdfjs = {
+	name: 'stare-pdfjs',
+	hooks: {
+		'astro:config:setup': async ({ logger }) => {
+			await vendorPdfjs({
+				pkgDir: fileURLToPath(new URL('./node_modules/pdfjs-dist/', import.meta.url)),
+				outDir: fileURLToPath(new URL(`./public/${PDFJS_DIR}/`, import.meta.url)),
+				version: PDFJS_VERSION,
+				minify: async (code) => (await transform(code, { minify: true, format: 'esm', legalComments: 'inline' })).code,
+			});
+			logger.info(`public/${PDFJS_DIR}: PDF.js ${PDFJS_VERSION}, worker patched`);
+		},
+	},
+};
+
 // https://astro.build/config
 export default defineConfig({
-	integrations: [wasmSize, crawlFiles],
+	integrations: [pdfjs, wasmSize, crawlFiles],
 	vite: {
 		server: {
 			// /about imports the repo-root CHANGELOG.md (?raw); let the dev server

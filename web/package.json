@@ -13,9 +13,11 @@
     "og-image": "node scripts/og-image.mjs"
   },
   "dependencies": {
-    "astro": "^7.3.5"
+    "astro": "^7.3.5",
+    "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0"
+    "@playwright/test": "^1.63.0",
+    "esbuild": "^0.28.2"
   }
 }
