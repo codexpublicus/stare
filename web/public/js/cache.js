@@ -1,6 +1,7 @@
 // The browser's cache of index and case files, in IndexedDB (an in-memory map where
 // IndexedDB isn't available): `bins` and `multi` hold idx.stare.pub's .bin, .idx.gz and
-// .multi files (and the scans' tar.csv), `zips` the case zips and CourtListener records.
+// .multi files (and the scans' tar.csv, and a volume's case names for the search boxes,
+// `names/<slug>/<folder>`), `zips` the case zips and CourtListener records.
 //
 // Index files are keyed by their path on idx.stare.pub, which is under the build's
 // versioned prefix (`v/v2026.10.03/a3d/138.bin`) when the manifest has a `base`; see
