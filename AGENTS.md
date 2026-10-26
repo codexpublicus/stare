@@ -259,6 +259,51 @@ All rendering runs client-side. Server serves only static files.
 - On-demand PDF generation: BentoPDF or printpdf WASM module
 - Page views: the archival PDF through PDF.js with its text layer, and the raw scans (JPG + ALTO text overlay)
 
+### The search boxes (#248: `web/public/js/searchbox.js`, `suggest.js`)
+
+The landing's box and the top bar's citation editor are the same component. Both take a
+citation as written (`32 Misc. 426`, read by citare), the slug form (`misc 32 426-01`,
+`a2d/31/647`), or a reporter typed first by its abbreviation (`Misc. 32 426`), which only
+the typeahead's reporter list reads (`citeFromQuery`). Clicking the top bar's citation
+fills the editor with the case's citation as written, not the slug form; the landing's
+box shows the same once a case opens. The box remembers the case it was filled with
+(`prefill`, `keptTarget`), from the hash, so the unchanged text reopens that case even on
+a page several cases start on; the sequence never goes in the text, and any edit drops it.
+
+Each box is an ARIA combobox (`role="combobox"`, `aria-expanded`, `aria-controls`,
+`aria-activedescendant` over a `role="listbox"` of options) with a polite live region
+saying what it suggests. Arrow keys move, Enter takes the active suggestion (a reporter or
+volume fills the box; a page opens its case), and Escape closes the list before it closes
+the top bar's editor. Suggestions are worked out 120 ms after typing stops, and a result
+for text that has since changed is dropped, so nothing blocks typing. `suggest.js` is pure
+(unit tests in `web/tests/suggest.test.js`); `searchbox.js` does the DOM and the fetches.
+What each stage suggests, and fetches the first time:
+
+- **Reporter**, while letters are typed: `/reporters.json` (about 75 KB compressed) and
+  the index manifest (about 40 KB; a case page already has it). A reporter matches by its
+  names, its variations and its slug, ignoring case, spaces and periods (`misc`, `Misc`),
+  then by its editions' full names word by word (`N.Y. Misc.` finds New York
+  Miscellaneous Reports). Reporters the index holds volumes of come first, then exact
+  matches before prefixes before word matches, then the most volumes in the live
+  manifest. Each shows its abbreviation, full name, years and volume count.
+  reporters.json has no jurisdiction, so the suggestions don't show one yet.
+- **Volume**, after a volume number: nothing more is fetched. Whether the manifest holds
+  it (`holdsVolume`), a volume of parallel citations only (`aliases`), or, when it holds
+  neither, the four held volumes nearest it; a volume CAP published without scans
+  (`scans.js`) is marked "no page scans".
+- **Page**, after page digits: the volume's `.idx.gz` (0.4 to 5 KB, in the cache's `bins`
+  store; a split volume's later part when the digits fall in it), parsed by the WASM's
+  `parse_idx`, gives the pages starting with those digits, or the pages either side of a
+  page no case starts on (a pin cite). A page's cases are the resolver's (`casesAt`): CAP's
+  own, one per sequence, else the alias, else CourtListener's records. The pages show at
+  once, and the cases' names follow from the volume zip's `metadata/CasesMetadata.json`,
+  read by range requests (`casenames.js`, `volumeCaseNames`: the zip's 64 KB tail, then
+  that one entry, 70 to 380 KB per volume in the ten volumes measured on #248), kept in
+  the cache's `multi` store as `names/<slug>/<folder>`, and aborted when the typing moves
+  to another volume. The index lines carry no names; a names column added to the index
+  files in stare-builder would cost 0.2 to 8 KB more per volume compressed (the index
+  files grow about threefold) and would replace the range read.
+
 ### WASM module size (#73)
 
 `web/public/wasm/stare_wasm_bg.wasm` is built by wasm-pack with the release profile in
@@ -552,10 +597,10 @@ takes it out. A hash has a place in the text (`~c=`) or a page view, not both:
   linearization header, then the cross-reference section and each page shown, and it
   prefetches the next page once one is drawn. A 404 says the volume's PDF isn't published
   yet (f-appx/660, stare-builder#24) and offers the Raw Scans.
-- **Raw Scans** (`web/public/js/pageviewer.js`): CAP's color JPEGs from the volume's tar on
+- **Raw Scans** (`web/public/js/scanviewer.js`): CAP's color JPEGs from the volume's tar on
   static.case.law, by range requests through its `.tar.csv`, with the ALTO text.
 
-Both page views share `web/public/js/pageview.js` (the toolbar, page, zoom, rotation and
+Both page views share `web/public/js/pageshell.js` (the toolbar, page, zoom, rotation and
 text state, keys and gestures; plain logic in `pagezoom.js`, tested in
 `web/tests/pagezoom.test.js`); each view supplies how to load, size (`place`, CSS only) and
 draw (`render`) its page. The default is fit page, the whole page in the visible part of
@@ -570,7 +615,7 @@ the case HTML's `page-label`s), rotate, a Text button that shows the OCR text ov
 image (hidden but selectable in the PDF otherwise), a link to the page in the archival PDF,
 print (the page image alone, from an iframe), and a key help (←/→, +/−, 0 for 100%, f fit
 page/width, r rotate, t text, ?). Selected text is painted once (#247):
-`web/public/js/selectionpaint.js` (watched by `pageview.js`) takes the selected text's rects,
+`web/public/js/selectionpaint.js` (watched by `pageshell.js`) takes the selected text's rects,
 turns them into the page's own coordinates, merges each line's into one rect, and draws them
 as solid boxes in a layer between the image and the text that is translucent as a whole
 (`--selection-bg`, `--selection-opacity` in `theme.css`), with `::selection` transparent on

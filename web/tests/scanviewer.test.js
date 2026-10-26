@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { resetMemoryCache } from '../public/js/cache.js';
-import { fetchPageImage } from '../public/js/pageviewer.js';
+import { fetchPageImage } from '../public/js/scanviewer.js';
 import { tarCsvUrl, tarUrl } from '../public/js/sources.js';
 
 describe('fetchPageImage', () => {
