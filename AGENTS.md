@@ -488,15 +488,24 @@ may run code from a fork or check out PR code under `pull_request_target`.
   (the PR merged on a later day), opens "chore(release): sync CHANGELOG.md with the release
   tags" from `release/changelog-sync`. Merging that releases nothing.
 
-The footer on every page (`web/src/components/SiteFooter.astro`, `web/src/lib/version.js`)
-credits Codex Publicus and lokkju and shows the build: on a release, the CalVer tag linking
-to `/updates#<tag>`; on any other build (PR previews, the main preview, local), `preview` and
-the commit date. It never shows a commit SHA; the SHA is only in a `data-commit` attribute.
-The values come from `PUBLIC_RELEASE`, `PUBLIC_COMMIT` and `PUBLIC_BUILD_DATE`. It also shows
-the live index's data version from the manifest's `version`, and the sources its `based_on`
-names (`Index v2026.10.22 · Sources: Caselaw Access Project, CourtListener bulk data`), read in
-the browser by `web/public/js/dataversion.js`, and the manifest's Last-Modified date for a
-manifest without a version.
+The footer on every page (`web/src/components/SiteFooter.astro`) is the Codex Publicus
+family footer (codexpublicus.org#8): "A project of [tablet] Codex Publicus" linking to
+codexpublicus.org, and the GitHub, X and Hugging Face accounts as `rel="me"` icon links.
+`web/src/vendor/cp-footer/` holds byte-for-byte copies of the canonical `footer.html` and
+`footer.css` from codexpublicus/codexpublicus.org at the commit its README names;
+`web/tests/footer.test.js` fails if the component's markup differs from the fragment outside
+its two slots, so update the vendored copy first and then the component. stare.pub's slot
+(`slot:site-line`) holds "Data terms" (`/data#licences`), the live index's data version
+from the manifest's `version` (`Index v2026.10.22`, with the sources its `based_on` names in
+the link's title, read in the browser by `web/public/js/dataversion.js`; the manifest's
+Last-Modified date for a manifest without a version), and the build (`web/src/lib/version.js`):
+on a release, the CalVer tag linking to `/updates#<tag>`; on any other build (PR previews,
+the main preview, local), `preview` and the commit date. It never shows a commit SHA; the
+SHA is only in a `data-commit` attribute. The values come from `PUBLIC_RELEASE`,
+`PUBLIC_COMMIT` and `PUBLIC_BUILD_DATE`. At phone width the footer is two lines at most
+(`smoke.spec.js` checks it). `footer.css` reads the theme from `prefers-color-scheme` and
+`data-theme`, but stare.pub's theme switch removes `data-theme` for light, so `layout.css`
+points the footer's `--cp-*` tokens at stare.pub's own.
 
 `CHANGELOG.md` is rendered at build time three ways: every release on `/updates` (each with
 an anchor named for its tag), the latest three on /about's "What's new", and the Atom feed
@@ -534,6 +543,40 @@ its declaration.
 
 Infrastructure changes go through PRs to codexpublicus/infra, not this repo. See that
 repo's `AGENTS.md` for the Pulumi, Wrangler and LFS rules that apply across the org.
+
+### The look (#257, #261: `web/src/styles/`, `web/src/components/Brand.astro`, `SiteHead.astro`)
+
+stare.pub wears the Codex Publicus family look (codexpublicus.org#7, D111, D112). The mark is
+the family's tablet with stare.pub's letter, a § in the glyph green: `web/scripts/marks.py`
+(`mise run marks`) draws it from Source Serif 4's § in two drawings, the full one (40 x 48)
+for 32 px and up and a 16 px pixel-grid one with a § in whole pixels, and outlines the
+wordmark, "stare.pub" in Cinzel 500 (google/fonts at a pinned commit), into
+`web/src/lib/marks.js`; `Brand.astro` sets the tablet at the wordmark's cap height, in the
+top bars (16 px, the wordmark hidden under 600 px) and the landing's hero. Being outlines, the
+header loads no font and can't shift. The same script writes `favicon.svg` (the small drawing
+with a 1 px ground-coloured outline, so it reads on dark tab bars), `favicon-32.png`,
+`favicon.ico` (16 and 32 px, pixel for pixel) and the 180 px `apple-touch-icon.png`.
+
+`theme.css` maps the family palette onto the site's tokens for light and `[data-theme="dark"]`
+(the head script sets that from the saved choice or `prefers-color-scheme`): ground #f8f7f4,
+ink #1d1b18, muted #5d584f, rule #d9d4ca, the green #2f6b5f / #7fbfae for the site's links,
+focus and selection, and a dark ground of #161513. Citation links keep a blue of their own
+(`--cite`), so a case link reads apart from the site's links. `web/tests/contrast.test.js`
+checks every text token at 4.5:1 or more on the backgrounds it's drawn on, in both themes.
+The top bars are the ground colour with a rule, the landing and the content pages set their
+text in Source Serif 4, and the reader's chrome (top bar, tabs, sidebar, page-view toolbar)
+stays in Source Sans 3 for its density.
+
+The web fonts are `font-display: swap` behind metric-matched stand-ins (#261):
+`web/scripts/fallback-fonts.py` (run by `mise run fonts`) writes `fonts-fallback.css`, a
+face per local system font (Georgia, Times New Roman and Liberation Serif, Noto Serif, DejaVu
+Serif; Arial and Liberation Sans, Helvetica, Segoe UI, Roboto, Noto Sans, DejaVu Sans;
+Courier New and Liberation Mono, DejaVu Sans Mono) scaled with `size-adjust` to the web font's
+frequency-weighted average width, with its ascent, descent and line gap, and the font stacks
+in `theme.css` list them after each web font. `SiteHead.astro` preloads Source Serif 4's
+regular core file on every page, and the case route's loading line is set in it, so the
+preload is used at the first paint there too (an unused preload is a console warning, which
+fails the smoke suite).
 
 ### Crawlers and agents (`web/src/lib/robots.js`, `src/data/curated.json`, `public/llms.txt`, `src/lib/sitemap.js`; #171, #161)
 
