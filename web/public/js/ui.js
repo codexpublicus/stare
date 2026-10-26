@@ -169,7 +169,9 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
     .join(' ');
 
   // A CourtListener record has no scans, so no volume PDF; its source line says
-  // where it came from instead. A CAP volume without scans says so.
+  // where it came from instead. A CAP volume without scans says so. The link is the
+  // whole volume's archival PDF, opened at the case's first page, to save or print; the
+  // Archival PDF tab shows the case's own pages without fetching the rest.
   const fromCl = isClRecord(caseData);
   const docket = caseData.docket_number || (fromCl ? caseData.source.docket_number : null);
   let pdfAction = '';
@@ -180,8 +182,8 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
       </div>`;
   } else if (!fromCl) {
     pdfAction = `
-      <a class="sidebar-action" id="pdf-link" href="${esc(volumePdfUrl(reporter, volume, pdfPage))}" target="_blank" rel="noopener">
-        <span class="sidebar-action-icon">&#128196;</span>View original PDF
+      <a class="sidebar-action" id="pdf-link" href="${esc(volumePdfUrl(reporter, volume, pdfPage))}" target="_blank" rel="noopener" title="The whole volume's archival PDF, opened at this case">
+        <span class="sidebar-action-icon">&#128196;</span>Download archival PDF
       </a>`;
   }
 

@@ -10,6 +10,8 @@ import { test as base, expect } from '@playwright/test';
 
 import { casesLabel, courtListener, yearRange } from '../src/lib/collection.js';
 import { isAllowed, parseLlmsTxt, parseRobots } from '../src/lib/crawlfiles.js';
+import { PATCH_MARKER } from '../src/lib/pdfjs-vendor.js';
+import { PDFJS_BASE } from '../public/js/pdfjs-path.js';
 import { parseSitemap } from '../src/lib/sitemap.js';
 
 const WASM_PATH = '/wasm/stare_wasm_bg.wasm';
@@ -429,9 +431,108 @@ test('/#a2d/31/647-01 links the archival PDF at the case\'s page', async ({ page
   await page.goto('/#a2d/31/647-01');
   await expect(page.locator('#reader .reader-title')).toHaveText("D'Elia & Marks Co. v. Lyon");
   const link = page.locator('#sidebar #pdf-link');
-  await expect(link).toHaveText(/View original PDF/);
+  await expect(link).toHaveText(/Download archival PDF/);
   await expect(link).toHaveAttribute('href', 'https://data.stare.pub/pdf/us/a2d/31.pdf#page=695');
+  await expect(page.locator('.view-tab:visible')).toHaveText(['Reader', 'Archival PDF', 'Raw Scans']);
+  await expect(page.locator('#tab-reader')).toHaveClass(/active/);
   await expect(page.locator('#tab-pages')).toBeVisible();
+});
+
+// The Archival PDF view draws the case's pages of the volume's archival PDF with PDF.js,
+// fetching only what they need by range request. Each response for the PDF is a 206; their
+// bodies, summed from Content-Range, are what opening the case cost.
+function pdfRanges(page, path) {
+  const ranges = [];
+  page.on('response', (r) => {
+    if (r.url() !== `https://data.stare.pub/pdf/${path}`) return;
+    const m = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(r.headers()['content-range'] || '');
+    ranges.push({ status: r.status(), bytes: m ? Number(m[2]) - Number(m[1]) + 1 : null, total: m ? Number(m[3]) : null });
+  });
+  return ranges;
+}
+
+async function openArchivalPdf(page, hash, title) {
+  await page.goto(`/${hash}`);
+  await expect(page.locator('#reader .reader-title')).toHaveText(title);
+  await page.click('#tab-pdf');
+  await expect(page.locator('#tab-pdf')).toHaveClass(/active/);
+  await expect(page.locator('#pdf-viewer')).toBeVisible();
+  await expect(page.locator('#reader')).toBeHidden();
+}
+
+test('the Archival PDF view draws the case\'s pages with a selectable text layer, by range requests', async ({ page }) => {
+  // a2d/142 148-01 (Renaire Corp. v. Vaughn) is the volume PDF's pages 184 to 187.
+  const ranges = pdfRanges(page, 'us/a2d/142.pdf');
+  await openArchivalPdf(page, '#a2d/142/148-01', 'Renaire Corp. v. Vaughn');
+  const viewer = page.locator('#pdf-viewer');
+  await expect(viewer.locator('.pdf-page')).toHaveAttribute('data-rendered', '184', { timeout: 30_000 });
+  await expect(viewer.locator('#ap-info')).toHaveText('Page 1 of 4');
+  await expect(viewer.locator('#ap-prev')).toBeDisabled();
+  const canvas = viewer.locator('canvas.pdf-page-canvas');
+  const size = await canvas.evaluate((c) => ({ w: c.width, h: c.height, css: c.getBoundingClientRect().width, ratio: devicePixelRatio }));
+  expect(size.w).toBeGreaterThan(300);
+  expect(size.h).toBeGreaterThan(size.w);
+  expect(size.w).toBe(Math.floor(size.css * size.ratio));
+  // The PDF's own invisible OCR text, positioned over the image.
+  const text = viewer.locator('.textLayer span');
+  expect(await text.count()).toBeGreaterThan(20);
+  await expect(viewer.locator('.textLayer')).toContainText('RENAIRE');
+
+  // The keyboard steps through the case's pages and zooms.
+  await page.keyboard.press('ArrowRight');
+  await expect(viewer.locator('#ap-info')).toHaveText('Page 2 of 4');
+  await expect(viewer.locator('.pdf-page')).toHaveAttribute('data-rendered', '185', { timeout: 30_000 });
+  await page.keyboard.press('+');
+  await expect(viewer.locator('#ap-zoom')).toHaveText('125%');
+  await page.keyboard.press('0');
+  await expect(viewer.locator('#ap-zoom')).toHaveText('100%');
+
+  // Range requests only, and a small part of the 3.3 MB file.
+  expect(ranges.length).toBeGreaterThan(0);
+  expect(ranges.every((r) => r.status === 206)).toBe(true);
+  const fetched = ranges.reduce((n, r) => n + r.bytes, 0);
+  expect(fetched).toBeLessThan(ranges[0].total / 4);
+});
+
+test('PDF.js is served from the site, immutable, with the patched worker', async ({ request }) => {
+  for (const name of ['pdf.min.mjs', 'pdf.worker.min.mjs', 'jbig2.wasm', 'LICENSE']) {
+    const response = await request.get(`${PDFJS_BASE}${name}`);
+    expect(response.status(), name).toBe(200);
+    expect(response.headers()['cache-control'], name).toBe('public, max-age=31536000, immutable');
+    if (name === 'pdf.worker.min.mjs') expect(await response.text()).toContain(PATCH_MARKER);
+    if (name === 'jbig2.wasm') expect(response.headers()['content-type']).toBe('application/wasm');
+  }
+});
+
+test('the Archival PDF view opens a case in the largest volume without fetching the volume', async ({ page }) => {
+  // f2d/500 is the largest archival PDF, about 84 MB.
+  const ranges = pdfRanges(page, 'us/f2d/500.pdf');
+  await page.goto('/#f2d/500/49-01');
+  await expect(page.locator('#reader .reader-title')).not.toBeEmpty();
+  await page.click('#tab-pdf');
+  const viewer = page.locator('#pdf-viewer');
+  await expect(viewer.locator('.pdf-page[data-rendered]')).toBeVisible({ timeout: 30_000 });
+  expect(await viewer.locator('.textLayer span').count()).toBeGreaterThan(20);
+  expect(ranges.every((r) => r.status === 206)).toBe(true);
+  const fetched = ranges.reduce((n, r) => n + r.bytes, 0);
+  expect(ranges[0].total).toBeGreaterThan(50_000_000);
+  expect(fetched).toBeLessThan(2_000_000);
+});
+
+test.describe('a scanned volume without an archival PDF', () => {
+  // f-appx/660 has scans, and no PDF yet (stare-builder#24).
+  test.use({ expectedMissing: ['https://data.stare.pub/pdf/us/f-appx/660.pdf'] });
+
+  test('the Archival PDF view says so and points at the Raw Scans', async ({ page }) => {
+    await page.goto('/#f-appx/660/1-01');
+    await expect(page.locator('#reader .reader-title')).not.toBeEmpty();
+    await page.click('#tab-pdf');
+    const message = page.locator('#pdf-viewer .pdf-view-message');
+    await expect(message).toContainText('The archival PDF of this volume isn\'t published yet.');
+    await message.getByRole('button', { name: 'Open the Raw Scans' }).click();
+    await expect(page.locator('#tab-pages')).toHaveClass(/active/);
+    await expect(page.locator('#page-viewer')).toBeVisible();
+  });
 });
 
 // A volume CAP published without page scans (a3d/200) says so, with no PDF link and no
@@ -442,6 +543,7 @@ test('/#a3d/200/10-01 says its volume has no page scans', async ({ page }) => {
   await expect(page.locator('#reader .reader-title')).not.toBeEmpty();
   await expect(page.locator('#sidebar #no-scans')).toContainText('No page scans exist for this volume');
   await expect(page.locator('#sidebar #pdf-link')).toHaveCount(0);
+  await expect(page.locator('#tab-pdf')).toBeHidden();
   await expect(page.locator('#tab-pages')).toBeHidden();
 });
 
@@ -791,8 +893,9 @@ test.describe('the unified per-volume index', () => {
     await expect(page.locator('#sidebar [role="status"]')).toHaveText('1 cited case found (1 resolvable)');
     await expect(page.locator('#reader a.cite-link', { hasText: '31 A.2d 647' })).toHaveAttribute('href', '#a2d/31/647');
     // No scans and no volume PDF for a record.
+    await expect(page.locator('#tab-pdf')).toBeHidden();
     await expect(page.locator('#tab-pages')).toBeHidden();
-    await expect(page.locator('#sidebar', { hasText: 'View original PDF' })).toHaveCount(0);
+    await expect(page.locator('#sidebar', { hasText: 'Download archival PDF' })).toHaveCount(0);
     await expect(page.locator('#sidebar .sidebar-meta').first()).toContainText('Docket: J-12-2021');
     await expect(page.locator('#sidebar .sidebar-source')).toHaveText("From CourtListener's bulk data, export 2026-09-30 · Published");
     expect(seen.bins).toEqual([]);
