@@ -1694,3 +1694,161 @@ test.describe('CourtListener credited as a source (#206)', () => {
     await expect(source.locator('a')).toHaveAttribute('href', 'https://www.courtlistener.com/opinion/4893133/alexander-khochinsky-v-republic-of-poland/');
   });
 });
+
+test.describe('the search boxes (#248)', () => {
+  const options = (page, list) => page.locator(`${list} [role="option"]`);
+
+  test('the top bar\'s citation opens for editing as written, "32 Misc. 426"', async ({ page }) => {
+    await page.goto('/#misc/32/426-01');
+    await expect(page.locator('#topbar-cite')).toHaveText('32 Misc. 426');
+    await page.click('#topbar-cite');
+    const box = page.locator('#topbar-cite-input');
+    await expect(box).toBeVisible();
+    await expect(box).toHaveValue('32 Misc. 426');
+    await expect(box).toHaveAttribute('role', 'combobox');
+    await expect(box).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('the same text reopens the case shown on a page two cases start on; an edit lets it go', async ({ page }) => {
+    await page.goto('/#misc/32/699-02');
+    await expect(page.locator('#topbar-cite')).toHaveText('32 Misc. 699');
+    const second = await page.locator('#topbar-case').textContent();
+    // The reader's text is rebuilt once a lookup finishes.
+    const reloaded = async (submit) => {
+      await page.locator('#reader .reader').evaluate((el) => { el.dataset.before = '1'; });
+      await submit();
+      await expect(page.locator('#reader .reader:not([data-before])')).toHaveCount(1);
+    };
+    await reloaded(async () => {
+      await page.click('#topbar-cite');
+      await expect(page.locator('#topbar-cite-input')).toHaveValue('32 Misc. 699');
+      await page.press('#topbar-cite-input', 'Enter');
+    });
+    expect(new URL(page.url()).hash).toBe('#misc/32/699-02');
+    await expect(page.locator('#topbar-case')).toHaveText(second);
+
+    await reloaded(async () => {
+      await page.click('#topbar-cite');
+      await page.press('#topbar-cite-input', 'End');
+      await page.press('#topbar-cite-input', 'Backspace');
+      await page.locator('#topbar-cite-input').pressSequentially('9');
+      // The first Escape closes the suggestions and leaves the editor open.
+      await expect(options(page, '#topbar-suggest').first()).toContainText('32 Misc. 699');
+      await page.press('#topbar-cite-input', 'Escape');
+      await expect(page.locator('#topbar-cite-input')).toBeVisible();
+      await page.press('#topbar-cite-input', 'Enter');
+    });
+    await expect(page).toHaveURL(/#misc\/32\/699-01$/);
+  });
+
+  test('typing "misc", then "32", then "426" suggests the reporter, the volume and the page, and Enter opens the case', async ({ page }) => {
+    await page.goto('/');
+    const box = page.locator('#landing-input');
+    await box.pressSequentially('misc');
+    const first = options(page, '#landing-suggest').first();
+    await expect(first).toContainText('Misc.');
+    await expect(first).toContainText('New York Miscellaneous Reports');
+    await expect(first).toContainText('1892–1955');
+    await expect(first).toContainText('208 volumes');
+    await expect(box).toHaveAttribute('aria-expanded', 'true');
+
+    await box.pressSequentially(' 32');
+    await expect(first).toContainText('32 Misc.');
+    await expect(first).toContainText('in the index');
+
+    await box.pressSequentially(' 426');
+    await expect(first).toContainText('32 Misc. 426');
+    // The case's name, once the volume's names are read from its zip.
+    await expect(first).toContainText('Paddock v. Palmer');
+    await box.press('ArrowDown');
+    await expect(first).toHaveAttribute('aria-selected', 'true');
+    await expect(box).toHaveAttribute('aria-activedescendant', await first.getAttribute('id'));
+    await box.press('Enter');
+    await expect(page).toHaveURL(/#misc\/32\/426-01$/);
+    await expect(page.locator('#topbar-case')).toHaveText('Paddock v. Palmer');
+    // The landing's box keeps the case as written.
+    await expect(box).toHaveValue('32 Misc. 426');
+  });
+
+  test('a volume the index doesn\'t hold gets the nearest it does; one without scans says so', async ({ page }) => {
+    await page.goto('/');
+    const box = page.locator('#landing-input');
+    await box.pressSequentially('misc 999');
+    const opts = options(page, '#landing-suggest');
+    await expect(opts.first()).toContainText("Vol. 999 isn't in the index");
+    await expect(opts.first()).toHaveAttribute('aria-disabled', 'true');
+    await expect(opts.last()).toContainText('208 Misc.');
+
+    await box.fill('');
+    await box.pressSequentially('200 A.3d ');
+    await expect(opts.first()).toContainText('200 A.3d');
+    await expect(opts.first()).toContainText('no page scans');
+  });
+
+  test('the whole flow by keyboard alone', async ({ page }) => {
+    await page.goto('/');
+    const box = page.locator('#landing-input');
+    await box.focus();
+    await page.keyboard.type('misc');
+    await expect(options(page, '#landing-suggest').first()).toContainText('Misc.');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await expect(box).toHaveValue('Misc. ');
+    await page.keyboard.type('32');
+    await expect(options(page, '#landing-suggest').first()).toContainText('in the index');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await expect(box).toHaveValue('32 Misc. ');
+    await page.keyboard.type('42');
+    await expect(options(page, '#landing-suggest').first()).toContainText('32 Misc. 42');
+    // Escape closes the list and leaves the text; ArrowDown opens it again.
+    await page.keyboard.press('Escape');
+    await expect(box).toHaveAttribute('aria-expanded', 'false');
+    await expect(box).toHaveValue('32 Misc. 42');
+    await page.keyboard.type('6');
+    await expect(options(page, '#landing-suggest').first()).toContainText('32 Misc. 426');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/#misc\/32\/426-01$/);
+  });
+
+  test('the top bar suggests too, and a click on a page opens its case', async ({ page }) => {
+    await page.goto('/#misc/32/426-01');
+    await expect(page.locator('#topbar-cite')).toHaveText('32 Misc. 426');
+    await page.click('#topbar-cite');
+    const box = page.locator('#topbar-cite-input');
+    await box.pressSequentially('32 Misc. 42');
+    const opt = options(page, '#topbar-suggest').filter({ hasText: '32 Misc. 421' });
+    await expect(opt).toContainText("Rowlands v. Young Men's Christian Ass'n");
+    await opt.click();
+    await expect(page).toHaveURL(/#misc\/32\/421-01$/);
+    await expect(page.locator('#topbar-case')).toHaveText("Rowlands v. Young Men's Christian Ass'n");
+  });
+
+  test.describe('at phone width', () => {
+    test.use({ viewport: { width: 375, height: 740 } });
+
+    for (const [where, start, open, input, list] of [
+      ['the landing', '/', null, '#landing-input', '#landing-suggest'],
+      ['the top bar', '/#misc/32/426-01', '#topbar-cite', '#topbar-cite-input', '#topbar-suggest'],
+    ]) {
+      test(`${where}'s suggestions fit the screen`, async ({ page }) => {
+        await page.goto(start);
+        if (open) {
+          await expect(page.locator(open)).toHaveText('32 Misc. 426');
+          await page.click(open);
+          await page.locator(input).fill('');
+        }
+        await page.locator(input).pressSequentially('misc 32 42');
+        await expect(options(page, list).first()).toContainText('32 Misc. 421');
+        const box = await page.locator(list).boundingBox();
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(375);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+        await page.locator(input).press('ArrowDown');
+        await page.locator(input).press('Enter');
+        await expect(page).toHaveURL(/#misc\/32\/421-01$/);
+      });
+    }
+  });
+});

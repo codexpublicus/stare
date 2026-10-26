@@ -4,6 +4,7 @@
 // instead of the whole zip), or a CourtListener record. The zip parsing is the WASM's
 // (`stare::ziprange`, `zip_directory` and `zip_entry`).
 
+import { cacheGet, cacheSet } from './cache.js';
 import { fetchClRecord } from './cl.js';
 import { zipUrl } from './sources.js';
 import { loadWasm } from './wasm.js';
@@ -90,4 +91,47 @@ export async function readCaseNames(pageCase, deps = {}) {
     read.catch(() => names.delete(key));
   }
   return names.get(key);
+}
+
+// Volumes' case names read this page, by `<reporter>/<folder>`, in flight or done.
+const volumeNames = new Map();
+
+/**
+ * The short names of the cases in a CAP volume folder, `{ <case file>: <name
+ * abbreviation> }` (`0426-01` to `Matter of Smith`), for the search boxes' page
+ * suggestions (#248): the zip's `metadata/CasesMetadata.json` read by range requests,
+ * the zip's tail and then that one entry (70 to 380 KB in the volumes measured on #248,
+ * against 0.4 to 5 MB for the zip). Kept in the cache's `multi` store under
+ * `names/<reporter>/<folder>` once read, since CAP's zips never change. `deps.signal`
+ * aborts the reads; `deps` ({ fetchRange, wasm, cacheGet, cacheSet }) are injectable
+ * for tests.
+ */
+export async function volumeCaseNames(reporter, folder, deps = {}) {
+  const key = `${reporter}/${folder}`;
+  if (volumeNames.has(key) && !deps.fresh) return volumeNames.get(key);
+  const read = (async () => {
+    const get = deps.cacheGet || cacheGet;
+    const set = deps.cacheSet || cacheSet;
+    const cached = await get('multi', `names/${key}`);
+    if (cached) return JSON.parse(cached);
+    const signal = deps.signal;
+    const rangeDeps = {
+      ...deps,
+      fresh: false,
+      fetchRange: deps.fetchRange
+        || ((url, range) => fetchRange(url, range, (u, init) => fetch(u, { ...init, signal }))),
+    };
+    const text = await zipFileText(zipUrl(reporter, folder), 'metadata/CasesMetadata.json', rangeDeps);
+    const out = {};
+    for (const c of JSON.parse(text)) {
+      if (typeof c?.file_name === 'string' && typeof c.name_abbreviation === 'string') {
+        out[c.file_name] = c.name_abbreviation;
+      }
+    }
+    await set('multi', `names/${key}`, JSON.stringify(out));
+    return out;
+  })();
+  volumeNames.set(key, read);
+  read.catch(() => volumeNames.delete(key));
+  return read;
 }

@@ -10,6 +10,7 @@ import { preloadWasm, WasmLoadError } from './wasm.js';
 import { showWasmProgress } from './wasmbar.js';
 import { filePage } from './pagekey.js';
 import { hasScans, pdfPage } from './scans.js';
+import { attachSearchBox } from './searchbox.js';
 
 let currentResult = null;
 // The shown case's cited-cases list wired to its text (citenav.js), and a
@@ -40,6 +41,12 @@ const pdfViewerEl = document.getElementById('pdf-viewer');
 const pageViewerEl = document.getElementById('page-viewer');
 const landingWasmSlot = document.getElementById('landing-wasm-progress');
 const resolvedWasmSlot = document.getElementById('wasm-progress');
+// The landing's box suggests citations as it is typed in (#248); a page suggestion opens
+// its case.
+const landingBox = attachSearchBox(landingInput, document.getElementById('landing-suggest'),
+  document.getElementById('landing-suggest-status'), {
+    onPick: (t) => doResolve(t.reporter, t.volume, t.page, t.seq),
+  });
 let pageViewerLoaded = false;
 let pdfViewerLoaded = false;
 // The reader's scrolling container.
@@ -195,6 +202,8 @@ function updateTopbar(caseData) {
   const cite = caseData.citations?.[0]?.cite || '';
   topbarCite.textContent = cite;
   topbarCase.textContent = caseData.name_abbreviation;
+  // The landing's box keeps the case shown, as written (#248), for going back to it.
+  landingBox.fill(cite, getHashParams());
 }
 
 async function showResolved(result, pin = null, cite = null) {
@@ -390,20 +399,29 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
     if (landing.classList.contains('hidden') && !currentResult && !(err instanceof WasmLoadError)) {
       showLanding();
       setStatus(err.message, true);
+      landingBox.fill('', { reporter, volume, page, seq });
     }
   } finally {
     landingBtn.disabled = false;
   }
 }
 
+// The citation a search box's text names: the case it was filled with while the text is
+// unchanged (searchbox.js), else what the parser reads, else a reporter typed first by
+// its abbreviation (`Misc. 32 426`), which only the typeahead's reporter list knows.
+async function parseBox(box, input) {
+  return box.kept() || await parseInput(input.value) || await box.parse();
+}
+
 // Landing form submit
 landingForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  landingBox.close();
   setStatus('', false);
   if (landingInput.value.trim()) showWasmBar(() => landingForm.requestSubmit());
   let parsed;
   try {
-    parsed = await parseInput(landingInput.value);
+    parsed = await parseBox(landingBox, landingInput);
   } catch (err) {
     if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
     return;
@@ -417,22 +435,38 @@ landingForm.addEventListener('submit', async (e) => {
 
 // Inline citation editing in topbar
 const topbarCiteInput = document.getElementById('topbar-cite-input');
+const topbarSuggest = document.getElementById('topbar-suggest');
+
+// The top bar's editor suggests citations as it is typed in (#248); a page suggestion
+// opens its case. Attached before the editor's own keys below, so it takes Enter and
+// Escape first while its list is open.
+const topbarBox = attachSearchBox(topbarCiteInput, topbarSuggest, document.getElementById('topbar-suggest-status'), {
+  onPick: (t) => {
+    editSubmitting = true;
+    stopEditing();
+    doResolve(t.reporter, t.volume, t.page, t.seq);
+    editSubmitting = false;
+  },
+  // Under the editor; at phone width the stylesheet spans it across the screen instead.
+  position: (list) => list.style.setProperty('--suggest-left', `${topbarCiteInput.offsetLeft}px`),
+});
 
 function startEditing() {
   topbarCite.classList.add('hidden');
   topbarCiteInput.classList.remove('hidden');
-  // Pre-fill with slug format (parseable), not display citation
+  // Pre-fill with the citation as written (#248), remembering the case shown, so the
+  // same text reopens it even on a page several cases start on.
   if (currentResult) {
-    const seq = currentResult.seq || 1;
-    topbarCiteInput.value = `${currentResult.reporter} ${currentResult.volume} ${currentResult.page}-${String(seq).padStart(2, '0')}`;
+    topbarBox.fill(topbarCite.textContent, getHashParams() || currentResult);
   } else {
-    topbarCiteInput.value = '';
+    topbarBox.fill('', null);
   }
   topbarCiteInput.focus();
   topbarCiteInput.select();
 }
 
 function stopEditing() {
+  topbarBox.close();
   topbarCiteInput.classList.add('hidden');
   topbarCite.classList.remove('hidden');
 }
@@ -447,7 +481,7 @@ topbarCiteInput.addEventListener('keydown', async (e) => {
     let parsed;
     showWasmBar(null);
     try {
-      parsed = await parseInput(topbarCiteInput.value);
+      parsed = await parseBox(topbarBox, topbarCiteInput);
     } catch (err) {
       stopEditing();
       if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
