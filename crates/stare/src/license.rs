@@ -219,7 +219,7 @@ impl Upstream {
 /// The codexpublicus/citare commit stare is built with, the one `Cargo.lock` pins
 /// `citare-core` at. `tests/upstream_licenses.rs` checks it against the checkout cargo
 /// built, so a citare bump fails there until this is updated.
-pub const CITARE_COMMIT: &str = "c473a5d1a68b0c17381d75eb3ce72e325163d291";
+pub const CITARE_COMMIT: &str = "8986d6832ab4ed7def8fc6664be7585e6f3e92da";
 
 /// citare's own supplements to reporters-db as a `sources` entry (D67): its
 /// `data/reporters-local.json` and `data/laws-local.json`, which add reporters,
