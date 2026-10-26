@@ -500,8 +500,8 @@ from the manifest's `version` (`Index v2026.10.22`, with the sources its `based_
 the link's title, read in the browser by `web/public/js/dataversion.js`; the manifest's
 Last-Modified date for a manifest without a version), and the build (`web/src/lib/version.js`):
 on a release, the CalVer tag linking to `/updates#<tag>`; on any other build (PR previews,
-the main preview, local), `preview` and the commit date. It never shows a commit SHA; the
-SHA is only in a `data-commit` attribute. The values come from `PUBLIC_RELEASE`,
+the main preview, local), `preview`, with the commit date in its title. It never shows a
+commit SHA; the SHA is only in a `data-commit` attribute. The values come from `PUBLIC_RELEASE`,
 `PUBLIC_COMMIT` and `PUBLIC_BUILD_DATE`. At phone width the footer is two lines at most
 (`smoke.spec.js` checks it). `footer.css` reads the theme from `prefers-color-scheme` and
 `data-theme`, but stare.pub's theme switch removes `data-theme` for light, so `layout.css`

@@ -795,8 +795,9 @@ function wordBox(page, root, word) {
   }, word);
 }
 
-// The Raw Scans' OCR text is in the serif text face, which the browser fetches only once
-// the text is shown; until it arrives the text is in a fallback face of other widths.
+// The Raw Scans' OCR text is in the serif text face. Every page preloads it (#261), but on
+// a slow connection it can still arrive after the text is shown, in a stand-in face whose
+// widths are close to its own but not the same.
 const OCR_FACE = '400 16px "Source Serif 4"';
 
 // Open the view at p. 149 at 100%, with the OCR text shown if `text`, and drag across the
@@ -804,7 +805,8 @@ const OCR_FACE = '400 16px "Source Serif 4"';
 // `waitForFace` is false. Returns the view's page element.
 async function selectParagraph(page, view, { text = false, waitForFace = true } = {}) {
   const pdf = view === 'pdf';
-  await page.goto(`/${PAGE_CASE}~v=${view}&p=2`);
+  // A preloaded font held back holds the load event too, so don't wait for it then.
+  await page.goto(`/${PAGE_CASE}~v=${view}&p=2`, { waitUntil: waitForFace ? 'load' : 'domcontentloaded' });
   const el = page.locator(pdf ? '#pdf-viewer .pdf-page' : '#page-viewer .page-wrapper');
   await expect(el).toHaveAttribute('data-rendered', '185', { timeout: 30_000 });
   const prefix = pdf ? 'ap' : 'pv';
@@ -931,14 +933,15 @@ test.describe('the page views\' text selection', () => {
     const held = [];
     await page.route('**/fonts/source-serif-4/**', (route) => { held.push(route); });
     await selectParagraph(page, 'scans', { text: true, waitForFace: false });
-    expect(held.length, 'the face was fetched after the text was shown').toBeGreaterThan(0);
+    expect(held.length, 'the face was fetched and held back').toBeGreaterThan(0);
     const before = around(await paintedBoxes(page));
     await Promise.all(held.map((r) => r.continue()));
     await page.unroute('**/fonts/source-serif-4/**');
     await page.evaluate((face) => document.fonts.load(face, 'whether'), OCR_FACE);
     const selected = await selectedBox(page, '#page-viewer .alto-overlay');
-    // The face's widths differ from the fallback's, so the text moved.
-    expect(Math.abs(selected.right - before.right)).toBeGreaterThan(4);
+    // The face's widths differ a little from its stand-in's (fonts-fallback.css), so the text
+    // moved, if only by a pixel or two now.
+    expect(Math.abs(selected.right - before.right)).toBeGreaterThan(0);
     await expect.poll(async () => {
       const painted = around(await paintedBoxes(page));
       return Math.max(...['left', 'top', 'right', 'bottom'].map((side) => Math.abs(painted[side] - selected[side])));
@@ -2291,12 +2294,17 @@ test.describe('the Codex Publicus look (#257, #261)', () => {
     const page = await ctx.newPage();
     await page.goto('/about');
     await expect(page.locator('footer [data-site-data-line]')).toBeVisible();
+    // Rows of the footer's pieces: a piece starts a new row when it lies wholly below the last.
     const lines = await page.locator('.cp-footer-inner').evaluate((el) => {
-      const tops = new Set();
-      for (const child of el.querySelectorAll('.cp-footer-lead, .cp-footer-icons, .cp-footer-line')) {
-        for (const r of child.getClientRects()) tops.add(Math.round(r.top / 4));
+      const rects = [...el.querySelectorAll('.cp-footer-lead, .cp-footer-icons, .cp-footer-line > :not([hidden])')]
+        .flatMap((c) => [...c.getClientRects()]).sort((a, b) => a.top - b.top);
+      let rows = 0;
+      let bottom = -Infinity;
+      for (const r of rects) {
+        if (r.top >= bottom - 1) rows += 1;
+        bottom = Math.max(r.top >= bottom - 1 ? r.bottom : bottom, r.bottom);
       }
-      return tops.size;
+      return rows;
     });
     expect(lines).toBeLessThanOrEqual(2);
     await ctx.close();

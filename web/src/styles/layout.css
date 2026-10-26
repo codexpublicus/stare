@@ -131,6 +131,8 @@ html:root .site-footer .cp-footer {
   --cp-serif: var(--font-text);
 }
 .site-footer-line > * + *::before { content: '\00b7'; margin: 0 0.5em; color: var(--text-secondary); }
+/* Each item wraps whole, so the line breaks between them, never inside a version. */
+.site-footer-line > * { white-space: nowrap; }
 .site-footer-line [hidden] { display: none; }
 /* A page's own link colour (.page a) doesn't reach into the footer. */
 .site-footer .cp-footer a { color: inherit; }
