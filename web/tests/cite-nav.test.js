@@ -321,7 +321,7 @@ describe('case names and parallels from the WASM', () => {
 describe('the ~c= fragment', () => {
   test('parseHash reads a place in the text', () => {
     assert.deepEqual(parseHash('#a2d/31/647-01~c=3'),
-      { reporter: 'a2d', volume: '31', page: 647, seq: 1, pin: null, cite: 3 });
+      { reporter: 'a2d', volume: '31', page: 647, seq: 1, pin: null, cite: 3, view: null, viewPage: null });
     assert.equal(parseHash('#a2d/31/647-01@648~c=12').cite, 12);
     assert.equal(parseHash('#a2d/31/647-01~c=0'), null);
     assert.equal(parseHash('#a2d/31/647-01~c='), null);
@@ -379,5 +379,35 @@ describe('footnotes', () => {
   test('an opinion with no footnotes has none', () => {
     const doc = { querySelectorAll: () => [] };
     assert.deepEqual(footnoteParagraphs('', [{ text: 'Plain.' }], () => doc), [[]]);
+  });
+});
+
+describe('the ~v= fragment (#246)', () => {
+  test('parseHash reads a page view and its page', () => {
+    assert.deepEqual(parseHash('#a2d/142/148-01~v=pdf&p=3'),
+      { reporter: 'a2d', volume: '142', page: 148, seq: 1, pin: null, cite: null, view: 'pdf', viewPage: 3 });
+    assert.equal(parseHash('#a2d/142/148-01~v=scans&p=2').view, 'scans');
+    assert.equal(parseHash('#a2d/142/148-01~v=pdf').viewPage, 1);
+    assert.equal(parseHash('#a2d/142/148-01@150~v=pdf&p=3').pin, 150);
+    assert.equal(parseHash('#a2d/142/148-01~v=pdf%26p%3D3').viewPage, 3);
+  });
+
+  test('parseHash refuses other views, page 0, and a view with a place in the text', () => {
+    assert.equal(parseHash('#a2d/142/148-01~v=reader'), null);
+    assert.equal(parseHash('#a2d/142/148-01~v=pdf&p=0'), null);
+    assert.equal(parseHash('#a2d/142/148-01~c=3~v=pdf&p=2'), null);
+  });
+
+  test('caseHash writes one, and a place in the text wins', () => {
+    assert.equal(caseHash('a2d', '142', 148, 1, null, null, { view: 'pdf', page: 3 }), '#a2d/142/148-01~v=pdf&p=3');
+    assert.equal(caseHash('a2d', '142', 148, 1, null, null, { view: 'scans' }), '#a2d/142/148-01~v=scans&p=1');
+    assert.equal(caseHash('a2d', '142', 148, 1, null, 2, { view: 'pdf', page: 3 }), '#a2d/142/148-01~c=2');
+    assert.equal(caseHash('a2d', '142', 148, 1, null, null, { view: 'reader', page: 3 }), '#a2d/142/148-01');
+  });
+
+  test('round-trips', () => {
+    const hash = caseHash('p2d', '997', 1021, 1, '1023', null, { view: 'scans', page: 4 });
+    const p = parseHash(hash);
+    assert.deepEqual([p.pin, p.view, p.viewPage], [1023, 'scans', 4]);
   });
 });

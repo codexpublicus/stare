@@ -3,8 +3,9 @@ import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } 
 import { caseHash, getHashParams, setHash, onHashChange } from './router.js';
 import { aliasNoteHtml, processCitations, setupCiteHovers } from './citations.js';
 import { attachCiteNav } from './citenav.js';
-import { renderPageViewer } from './pageviewer.js';
+import { renderPageViewer, resetPageViewer } from './pageviewer.js';
 import { renderPdfViewer, resetPdfViewer } from './pdfviewer.js';
+import { pageViewIn } from './pageview.js';
 import { footnoteParagraphs, pageBreaks, pageMarker } from './pages.js';
 import { preloadWasm, WasmLoadError } from './wasm.js';
 import { showWasmProgress } from './wasmbar.js';
@@ -16,6 +17,8 @@ let currentResult = null;
 // place in the text (`~c=3`) to go to once its citations are found.
 let citeNav = null;
 let pendingCite = null;
+// The page view a `~v=pdf&p=3` fragment named, opened once the case is shown.
+let pendingView = null;
 
 // DOM refs
 const landing = document.getElementById('landing');
@@ -210,6 +213,9 @@ async function showResolved(result, pin = null, cite = null) {
 
   // Reset the page views for the new case, and show the Reader.
   pageViewerLoaded = false;
+  viewPages.pdf = 1;
+  viewPages.scans = 1;
+  resetPageViewer();
   pageViewerEl.innerHTML = '';
   pdfViewerLoaded = false;
   resetPdfViewer();
@@ -220,6 +226,9 @@ async function showResolved(result, pin = null, cite = null) {
   const scans = !!result.zipData && hasScans(result.reporter, result.volume);
   tabPdf.classList.toggle('hidden', !scans);
   tabPages.classList.toggle('hidden', !scans);
+  const wantView = pendingView;
+  pendingView = null;
+  if (scans && wantView) openPageView(wantView.view, wantView.page);
 
   const multiEl = document.createElement('div');
   reader.innerHTML = '';
@@ -367,10 +376,10 @@ function setStatus(msg, isError) {
   }
 }
 
-async function doResolve(reporter, volume, page, seq = null, pin = null, cite = null) {
+async function doResolve(reporter, volume, page, seq = null, pin = null, cite = null, view = null) {
   landingBtn.disabled = true;
   setStatus('', false);
-  showWasmBar(() => doResolve(reporter, volume, page, seq, pin, cite));
+  showWasmBar(() => doResolve(reporter, volume, page, seq, pin, cite, view));
 
   try {
     const result = await resolve(reporter, volume, page, (msg) => setStatus(msg, false), seq);
@@ -379,8 +388,9 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
     // A citation that resolved through an alias (#151) goes to the case it names, whose
     // pages a pin cite in the other printing doesn't number.
     if (result.alias) setHash(result.reporter, result.volume, result.page, result.seq, null);
-    else setHash(reporter, result.volume, page, result.seq, pin, cite);
+    else setHash(reporter, result.volume, page, result.seq, pin, cite, cite ? null : view);
     lastResolvedHash = window.location.hash;
+    pendingView = result.alias || cite ? null : view;
     showResolved(result, result.alias ? null : pin, result.alias ? null : cite);
   } catch (err) {
     if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
@@ -508,7 +518,9 @@ sidebarToggle.addEventListener('click', (e) => {
 
 // Tab switching: the Reader (the case's text), the Archival PDF (our PDF of the volume,
 // pdfviewer.js) and the Raw Scans (CAP's page images from the volume's tar,
-// pageviewer.js). Neither page view loads anything until its tab is first opened.
+// pageviewer.js). Neither page view loads anything until its tab is first opened. A page
+// view and its page are in the hash (`~v=pdf&p=3`), so a page can be linked; the Reader
+// takes them out.
 const VIEWS = {
   reader: [tabReader, reader],
   pdf: [tabPdf, pdfViewerEl],
@@ -522,23 +534,62 @@ function showView(name) {
   }
 }
 
-tabReader.addEventListener('click', () => showView('reader'));
+// The page each page view is on, for the hash when its tab is shown again.
+const viewPages = { pdf: 1, scans: 1 };
 
-tabPdf.addEventListener('click', async () => {
-  showView('pdf');
-  if (!pdfViewerLoaded && currentResult?.zipData) {
-    pdfViewerLoaded = true;
-    await renderPdfViewer(pdfViewerEl, currentResult, { openScans: () => tabPages.click() });
-  }
-});
+// Put the page view and its page in the hash (`~v=pdf&p=3`), or take them out (`view`
+// null), without a history entry or a hashchange.
+function setViewHash(view) {
+  const p = getHashParams();
+  if (!p) return;
+  const hash = caseHash(p.reporter, p.volume, p.page, p.seq, null, view ? null : p.cite,
+    view ? { view, page: viewPages[view] } : null);
+  if (window.location.hash === hash) return;
+  history.replaceState(history.state, '', hash);
+  lastResolvedHash = hash;
+}
 
-tabPages.addEventListener('click', async () => {
-  showView('scans');
-  if (!pageViewerLoaded && currentResult?.zipData) {
+const onViewPage = (view) => (i) => {
+  viewPages[view] = i;
+  if (!VIEWS[view][1].classList.contains('hidden')) setViewHash(view);
+};
+
+// Show a page view, at the case's page `page` when given (the hash's), loading it the
+// first time.
+async function openPageView(view, page = null) {
+  showView(view);
+  if (page) viewPages[view] = page;
+  setViewHash(view);
+  if (!currentResult?.zipData) return;
+  if (view === 'pdf') {
+    if (!pdfViewerLoaded) {
+      pdfViewerLoaded = true;
+      await renderPdfViewer(pdfViewerEl, currentResult, {
+        openScans: () => openPageView('scans'), page: viewPages.pdf, onPage: onViewPage('pdf'),
+      });
+    } else if (page) {
+      goToViewPage(pdfViewerEl, page);
+    }
+  } else if (!pageViewerLoaded) {
     pageViewerLoaded = true;
-    await renderPageViewer(pageViewerEl, currentResult, (msg) => setStatus(msg, false));
+    await renderPageViewer(pageViewerEl, currentResult, { page: viewPages.scans, onPage: onViewPage('scans') });
+  } else if (page) {
+    goToViewPage(pageViewerEl, page);
   }
+}
+
+// A page view already open goes to the case's page `page`.
+function goToViewPage(el, page) {
+  const view = pageViewIn(el);
+  if (view && view.index !== page) view.go(page);
+}
+
+tabReader.addEventListener('click', () => {
+  showView('reader');
+  setViewHash(null);
 });
+tabPdf.addEventListener('click', () => openPageView('pdf'));
+tabPages.addEventListener('click', () => openPageView('scans'));
 
 // Hash routing — handle back/forward navigation
 let lastResolvedHash = '';
@@ -556,6 +607,11 @@ onHashChange((params) => {
   if (currentHash === lastResolvedHash) return;
   if (isShownCase(params)) {
     lastResolvedHash = currentHash;
+    if (params.view && !tabPdf.classList.contains('hidden')) {
+      openPageView(params.view, params.viewPage);
+      return;
+    }
+    showView('reader');
     if (params.cite) {
       // Before the citations are found, the place waits for them.
       if (!citeNav?.goTo(params.cite)) pendingCite = citeNav ? null : params.cite;
@@ -565,7 +621,8 @@ onHashChange((params) => {
     return;
   }
   landingInput.value = `${params.reporter} ${params.volume} ${params.page}`;
-  doResolve(params.reporter, params.volume, params.page, params.seq, params.pin, params.cite);
+  doResolve(params.reporter, params.volume, params.page, params.seq, params.pin, params.cite,
+    params.view ? { view: params.view, page: params.viewPage } : null);
 });
 
 // Handle back to empty hash (return to landing)
@@ -585,7 +642,8 @@ if (initial) {
   landing.classList.add('hidden');
   resolved.classList.remove('hidden');
   landingInput.value = `${initial.reporter} ${initial.volume} ${initial.page}`;
-  doResolve(initial.reporter, initial.volume, initial.page, initial.seq, initial.pin, initial.cite);
+  doResolve(initial.reporter, initial.volume, initial.page, initial.seq, initial.pin, initial.cite,
+    initial.view ? { view: initial.view, page: initial.viewPage } : null);
 }
 
 // Fetch and compile the WASM in the background once the page has painted;

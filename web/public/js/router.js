@@ -9,6 +9,7 @@ import { pageKey, pageSegment } from './pagekey.js';
  *   #a3d/138-2/1012   → { reporter, volume: '138-2', page: 1012, seq: null }
  *   #p2d/997/1021-01@1023 → { reporter, volume: '997', page: 1021, seq: 1, pin: 1023 }
  *   #a2d/31/647-01~c=3    → { ..., cite: 3 }
+ *   #a2d/31/647-01~v=pdf&p=3 → { ..., view: 'pdf', viewPage: 3 }
  *   #cai-cas/1/xxix-01    → { reporter, volume: '1', page: 'xxix', seq: 1 }
  *   #cal-app-4th/15/supp.%201-01 → { ..., page: 'supp. 1', seq: 1 }
  *
@@ -22,6 +23,11 @@ import { pageKey, pageSegment } from './pagekey.js';
  * reader marks, in order, footnotes included (citenav.js numbers them). The
  * reader goes there and highlights the cited case's other places. Null
  * without one.
+ * `view` (#246) is a page view the case opens in, 'pdf' (the Archival PDF) or
+ * 'scans' (the Raw Scans), and `viewPage` the case's page it shows, counting
+ * from 1 at the case's first page, as the view's "Page i of n" does (`~v=pdf&p=3`).
+ * Both null for the Reader. A link has a place in the text or a page view, not
+ * both.
  */
 export function getHashParams() {
   return parseHash(window.location.hash);
@@ -44,15 +50,17 @@ export function parseHash(hashWithMark) {
     return null;
   }
 
-  const pageMatch = pageStr.match(/^([^@~/]+?)(?:-(\d+))?(?:@(\d+))?(?:~c=([1-9]\d*))?$/);
+  const pageMatch = pageStr.match(/^([^@~/]+?)(?:-(\d+))?(?:@(\d+))?(?:~c=([1-9]\d*)|~v=(pdf|scans)(?:&p=([1-9]\d*))?)?$/);
   if (!pageMatch) return null;
   const page = pageKey(pageMatch[1]);
   if (page === null) return null;
   const seq = pageMatch[2] ? parseInt(pageMatch[2], 10) : null;
   const pin = pageMatch[3] ? parseInt(pageMatch[3], 10) : null;
   const cite = pageMatch[4] ? parseInt(pageMatch[4], 10) : null;
+  const view = pageMatch[5] || null;
+  const viewPage = view ? parseInt(pageMatch[6] || '1', 10) : null;
 
-  return { reporter: reporter.toLowerCase(), volume, page, seq, pin, cite };
+  return { reporter: reporter.toLowerCase(), volume, page, seq, pin, cite, view, viewPage };
 }
 
 /**
@@ -75,20 +83,23 @@ export function pinSuffix(pin, firstPage = null) {
 
 /**
  * The hash for a case, with its sequence suffix always (#a2d/31/647-01), and
- * a pin page (`@1023`) or a place in its text (`~c=3`) when given.
+ * a pin page (`@1023`) and a place in its text (`~c=3`) or a page view
+ * (`~v=pdf&p=3`, from `view` as { view, page }) when given.
  */
-export function caseHash(reporter, volume, page, seq, pin = null, cite = null) {
+export function caseHash(reporter, volume, page, seq, pin = null, cite = null, view = null) {
   const suffix = `-${String(seq || 1).padStart(2, '0')}`;
-  const at = cite ? `~c=${cite}` : '';
+  let at = '';
+  if (cite) at = `~c=${cite}`;
+  else if (view?.view === 'pdf' || view?.view === 'scans') at = `~v=${view.view}&p=${view.page || 1}`;
   return `#${reporter}/${volume}/${pageSegment(page)}${suffix}${pinSuffix(pin, page)}${at}`;
 }
 
 /**
- * Set hash with optional case sequence suffix, pin page and cited place.
+ * Set hash with optional case sequence suffix, pin page, cited place and page view.
  * Always includes the suffix for explicitness: #a2d/31/647-01, #p2d/997/1021-01@1023
  */
-export function setHash(reporter, volume, page, seq, pin = null, cite = null) {
-  const newHash = caseHash(reporter, volume, page, seq, pin, cite);
+export function setHash(reporter, volume, page, seq, pin = null, cite = null, view = null) {
+  const newHash = caseHash(reporter, volume, page, seq, pin, cite, view);
   if (window.location.hash !== newHash) {
     window.location.hash = newHash;
   }

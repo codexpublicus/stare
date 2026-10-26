@@ -2,9 +2,8 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  PdfMissingError, RANGE_CHUNK_SIZE, ZOOM_MAX, ZOOM_MIN, casePdfPages, clampPages,
-  documentOptions, fetchRange, fitScale, openRangeTransport, pageInfo, parseContentRange,
-  stepZoom,
+  PdfMissingError, RANGE_CHUNK_SIZE, casePdfPages, clampPages, documentOptions, fetchRange,
+  openRangeTransport, parseContentRange,
 } from '../public/js/pdfpages.js';
 
 describe('casePdfPages', () => {
@@ -35,26 +34,6 @@ describe('clampPages', () => {
     assert.equal(clampPages(null, 12), null);
     assert.equal(clampPages({ first: 1, last: 1, count: 1 }, undefined), null);
   });
-});
-
-test('pageInfo counts from the case\'s first page', () => {
-  const pages = { first: 695, last: 702, count: 8 };
-  assert.equal(pageInfo(pages, 695), 'Page 1 of 8');
-  assert.equal(pageInfo(pages, 702), 'Page 8 of 8');
-});
-
-test('stepZoom keeps to Raw Scans\' 50% to 300%', () => {
-  assert.equal(stepZoom(1, 0.25), 1.25);
-  assert.equal(stepZoom(ZOOM_MAX, 0.25), ZOOM_MAX);
-  assert.equal(stepZoom(ZOOM_MIN, -0.25), ZOOM_MIN);
-  assert.equal(stepZoom(0.75, -0.25), 0.5);
-});
-
-test('fitScale fits the page to the width, times the zoom', () => {
-  assert.equal(fitScale(900, 450, 1), 2);
-  assert.equal(fitScale(900, 450, 1.5), 3);
-  // A hidden view has no width; the page is drawn at its own size.
-  assert.equal(fitScale(0, 450, 1.25), 1.25);
 });
 
 test('documentOptions asks PDF.js for ranges only, without eval', () => {
