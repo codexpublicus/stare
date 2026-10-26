@@ -12,6 +12,7 @@ Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed 
 
 - web: paint one selection highlight per line in the page views
 - web: rename page-view scripts that content blockers block
+- web: repaint the selection highlight when the OCR text's font arrives
 
 ## v2026.10.26.5 - 2026-10-26
 
