@@ -768,6 +768,170 @@ test.describe('the page views\' toolbar', () => {
   });
 });
 
+// The text selection in the page views (#247): painted once, in one translucent colour,
+// however the OCR boxes under it overlap, and copying the same text as before. The page
+// is a2d/142's p. 149 (the case's page 2) at 100%; the selection runs from "whether" to
+// "place" down the left column's first paragraph, by dragging the mouse.
+const SELECTED = {
+  pdf: 'whether appellant, the seller under a\nconditional sales contract, committed a\ntrespass in retaking the chattel from the\nhome of appellee, the purchaser. The\nquestion is governed by the law of Virginia\nwhere the purchaser lived and where the\ncontract provided the chattel should be\nkept and where the retaking took place',
+  // The ALTO lines are boxes of their own, so the copy has no line breaks (as before #247).
+  scans: 'whether appellant, the seller under aconditional sales contract, committed atrespass in retaking the chattel from thehome of appellee, the purchaser. Thequestion is governed by the law of Virginiawhere the purchaser lived and where thecontract provided the chattel should bekept and where the retaking took place',
+};
+
+// The client box of the first `word` in `root`'s text.
+function wordBox(page, root, word) {
+  return page.locator(root).evaluate((el, w) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const i = n.data.indexOf(w);
+      if (i < 0) continue;
+      const range = document.createRange();
+      range.setStart(n, i);
+      range.setEnd(n, i + w.length);
+      const b = range.getBoundingClientRect();
+      return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
+    }
+    return null;
+  }, word);
+}
+
+// Open the view at p. 149 at 100%, with the OCR text shown if `text`, and drag across the
+// paragraph. Returns the view's page element.
+async function selectParagraph(page, view, { text = false } = {}) {
+  const pdf = view === 'pdf';
+  await page.goto(`/${PAGE_CASE}~v=${view}&p=2`);
+  const el = page.locator(pdf ? '#pdf-viewer .pdf-page' : '#page-viewer .page-wrapper');
+  await expect(el).toHaveAttribute('data-rendered', '185', { timeout: 30_000 });
+  const prefix = pdf ? 'ap' : 'pv';
+  await page.click(`#${prefix}-actual`);
+  if (pdf) await expect.poll(async () => Number(await el.getAttribute('data-scale')), { timeout: 30_000 }).toBeCloseTo(4 / 3, 5);
+  if (text) await page.click(`#${prefix}-text`);
+  const root = pdf ? '#pdf-viewer .textLayer' : '#page-viewer .alto-overlay';
+  await expect(page.locator(`${root} ${pdf ? 'span' : '.alto-line'}`).first()).toBeAttached({ timeout: 30_000 });
+  const from = await wordBox(page, root, 'whether');
+  const to = await wordBox(page, root, 'place');
+  await page.mouse.move(from.left + 1, (from.top + from.bottom) / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.right - 1, (to.top + to.bottom) / 2, { steps: 10 });
+  await page.mouse.up();
+  await expect(page.locator(`#${pdf ? 'pdf' : 'page'}-viewer .pv-sel-fill > div`).first()).toBeAttached();
+  return el;
+}
+
+// The highlight's boxes on screen.
+const paintedBoxes = (page) => page.locator('.pv-sel-fill > div').evaluateAll((d) => d.map((x) => {
+  const r = x.getBoundingClientRect();
+  return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+}));
+
+// The colours on screen inside `boxes` (each less a 2 px edge), with the page image and the
+// OCR glyphs hidden, so what's left is the page's background and the selection's painting.
+async function coloursIn(page, boxes) {
+  await page.addStyleTag({
+    content: '.page-turn img, .pdf-page-canvas { visibility: hidden !important; } .page-viewer { --pv-ocr-text: transparent !important; }',
+  });
+  const shot = (await page.screenshot()).toString('base64');
+  return page.evaluate(async ({ png, rects }) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${png}`;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0);
+    const k = img.width / innerWidth;
+    const seen = new Set();
+    for (const r of rects) {
+      const x = Math.ceil((r.left + 2) * k);
+      const y = Math.ceil((r.top + 2) * k);
+      const w = Math.floor((r.right - 2) * k) - x;
+      const h = Math.floor((r.bottom - 2) * k) - y;
+      if (w <= 0 || h <= 0) continue;
+      const { data } = ctx.getImageData(x, y, w, h);
+      for (let i = 0; i < data.length; i += 4) seen.add(`${data[i]},${data[i + 1]},${data[i + 2]}`);
+    }
+    return [...seen];
+  }, { png: shot, rects: boxes });
+}
+
+// The bounding box of a list of boxes.
+const around = (boxes) => boxes.reduce((a, b) => ({
+  left: Math.min(a.left, b.left), top: Math.min(a.top, b.top),
+  right: Math.max(a.right, b.right), bottom: Math.max(a.bottom, b.bottom),
+}));
+
+// The bounding box of the selected text in `root`, from the browser's own selection (its
+// text, not the boxes of the ALTO lines it takes in whole).
+const selectedBox = (page, root) => page.locator(root).evaluate((el) => {
+  const sel = getSelection().getRangeAt(0);
+  const rects = [];
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!sel.intersectsNode(n)) continue;
+    const range = document.createRange();
+    range.selectNodeContents(n);
+    if (n === sel.startContainer) range.setStart(n, sel.startOffset);
+    if (n === sel.endContainer) range.setEnd(n, sel.endOffset);
+    rects.push(...[...range.getClientRects()].filter((r) => r.width && r.height));
+  }
+  return rects.reduce((a, r) => ({
+    left: Math.min(a.left, r.left), top: Math.min(a.top, r.top),
+    right: Math.max(a.right, r.right), bottom: Math.max(a.bottom, r.bottom),
+  }), { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity });
+});
+
+test.describe('the page views\' text selection', () => {
+  test.use({ viewport: { width: 1366, height: 900 } });
+
+  const cases = [
+    ['pdf', 'light', false],
+    ['pdf', 'dark', true],
+    ['scans', 'light', true],
+    ['scans', 'dark', true],
+  ];
+  for (const [view, theme, text] of cases) {
+    test(`the ${view === 'pdf' ? 'Archival PDF' : 'Raw Scans'} paints a selected paragraph in one colour (${theme}, OCR text ${text ? 'shown' : 'hidden'})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: theme });
+      await selectParagraph(page, view, { text });
+      expect(await page.evaluate(() => getSelection().toString())).toBe(SELECTED[view]);
+      const boxes = await paintedBoxes(page);
+      // A box a line, the line's words merged: eight lines.
+      expect(boxes.length).toBeGreaterThanOrEqual(8);
+      expect(boxes.length).toBeLessThanOrEqual(12);
+      const colours = await coloursIn(page, boxes);
+      expect(colours, 'the colours under the selection').toHaveLength(1);
+      // And it is the highlight, not the bare page.
+      expect(colours[0]).not.toBe('255,255,255');
+    });
+  }
+
+  test('the Raw Scans\' highlight stays on the selected text as the page turns and zooms', async ({ page }) => {
+    await selectParagraph(page, 'scans', { text: true });
+    for (const step of ['#pv-rotate', '#pv-zoom-in']) {
+      await page.click(step);
+      const painted = around(await paintedBoxes(page));
+      const selected = await selectedBox(page, '#page-viewer .alto-overlay');
+      for (const side of ['left', 'top', 'right', 'bottom']) {
+        expect(Math.abs(painted[side] - selected[side]), `${step}: ${side}`).toBeLessThan(4);
+      }
+    }
+    await expect(page.locator('#page-viewer .page-viewer')).toHaveAttribute('data-rotation', '90');
+    expect(await page.evaluate(() => getSelection().toString())).toBe(SELECTED.scans);
+  });
+
+  test('a collapsed selection clears the highlight, and forced colours keep the browser\'s own', async ({ page }) => {
+    await selectParagraph(page, 'pdf');
+    await page.evaluate(() => getSelection().collapseToStart());
+    await expect(page.locator('#pdf-viewer .pv-sel-fill > div')).toHaveCount(0);
+    await page.emulateMedia({ forcedColors: 'active' });
+    await expect(page.locator('#pdf-viewer .pv-selection')).toBeHidden();
+    const native = await page.locator('#pdf-viewer .textLayer span').first()
+      .evaluate((s) => getComputedStyle(s, '::selection').backgroundColor);
+    expect(native).not.toBe('rgba(0, 0, 0, 0)');
+  });
+});
+
 test('zooming, resizing and rotating the Archival PDF fetch nothing more', async ({ page }) => {
   await page.setViewportSize(SIZES.laptop.viewport);
   const ranges = pdfRanges(page, 'us/a2d/142.pdf');
