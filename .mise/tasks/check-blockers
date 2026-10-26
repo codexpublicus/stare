@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Check every URL the built site serves, and the data hosts' paths, against content blockers' filter lists"
+set -euo pipefail
+
+# Needs the build in web/dist (`mise run build-web`) and web/node_modules. The lists
+# are fetched at most daily into ~/.cache/stare/filterlists ($STARE_FILTERLIST_CACHE)
+# (web/checks/filterlists.js, #265).
+node --test 'web/checks/*.test.js'

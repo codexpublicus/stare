@@ -17,6 +17,7 @@
     "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
+    "@ghostery/adblocker": "^2.20.1",
     "@playwright/test": "^1.63.0",
     "esbuild": "^0.28.2"
   }
