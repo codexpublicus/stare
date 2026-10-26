@@ -160,7 +160,9 @@ html[data-route="case"] #status-bar:empty::before { content: 'Loading...'; }
   .landing-form input { width: 100%; }
   .landing-tools { flex-direction: column; }
   .landing-tool { min-width: 0; }
-  .page-viewer-toolbar { flex-wrap: wrap; gap: 8px; }
+  .page-viewer-toolbar { gap: 6px 10px; padding: 6px 8px; }
+  .page-viewer-btn { padding: 4px 8px; }
+  .page-viewer-image { padding: 8px; }
 }
 
 /* The WASM loading bar (web/public/js/wasmbar.js, #73). */

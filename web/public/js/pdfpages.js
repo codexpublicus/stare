@@ -1,6 +1,6 @@
 // The Archival PDF view's plain logic, apart from PDF.js and the DOM (pdfviewer.js uses it;
-// web/tests/pdfpages.test.js tests it): which pages of the volume's PDF a case is on, how
-// the view asks for them, and the zoom steps it shares with Raw Scans.
+// web/tests/pdfpages.test.js tests it): which pages of the volume's PDF a case is on, and how
+// the view asks for them. The zoom it shares with Raw Scans is pagezoom.js's.
 import { pdfPage } from './scans.js';
 
 // PDF.js asks for the file in chunks of this many bytes, and joins neighbouring chunks
@@ -43,22 +43,6 @@ export function clampPages(pages, numPages) {
   if (!pages || !Number.isSafeInteger(numPages) || pages.first > numPages) return null;
   const last = Math.min(pages.last, numPages);
   return { first: pages.first, last, count: last - pages.first + 1 };
-}
-
-/** "Page i of n" for PDF page `page` of the case's `pages`. */
-export const pageInfo = (pages, page) => `Page ${page - pages.first + 1} of ${pages.count}`;
-
-// Zoom, as Raw Scans has it: 50% to 300% in steps of 25%, 100% fitting the page to the
-// view's width.
-export const ZOOM_MIN = 0.5;
-export const ZOOM_MAX = 3;
-export const ZOOM_STEP = 0.25;
-export const stepZoom = (zoom, delta) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom + delta));
-
-/** The PDF.js scale that shows a page `pageWidth` points wide `width` CSS pixels wide, times `zoom`. */
-export function fitScale(width, pageWidth, zoom) {
-  if (!(width > 0) || !(pageWidth > 0)) return zoom;
-  return (width / pageWidth) * zoom;
 }
 
 /** `bytes <start>-<end>/<total>` as numbers, or null. */

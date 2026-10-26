@@ -3,13 +3,14 @@
 // bytes those pages need. The PDFs are linearized, so the first range request gives the
 // file's length and layout, and each page after that is a range request or two
 // (pdfpages.js). PDF.js is our own copy (pdfjs-path.js), loaded the first time the view
-// opens.
-import { getPageOrders } from './resolve.js';
+// opens. The toolbar, zoom and keys are pageview.js's, shared with the Raw Scans.
+import { extractFile, getPageOrders } from './resolve.js';
 import { PDFJS_BASE } from './pdfjs-path.js';
 import {
-  PdfMissingError, ZOOM_STEP, casePdfPages, clampPages, documentOptions, fitScale,
-  openRangeTransport, pageInfo, stepZoom,
+  PdfMissingError, casePdfPages, clampPages, documentOptions, openRangeTransport,
 } from './pdfpages.js';
+import { createPageView, pageLabels } from './pageview.js';
+import { CSS_PER_POINT, canvasRatio } from './pagezoom.js';
 import { pdfUrl } from './sources.js';
 
 let pdfjsPromise = null;
@@ -28,23 +29,12 @@ function loadPdfjs() {
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-// The view's state for the case shown; one keyboard handler serves every case.
+// A page is printed at this many dots to the inch, drawn again from the page already
+// fetched.
+const PRINT_DPI = 200;
+
+// The view's state for the case shown.
 let current = null;
-
-function isTyping(target) {
-  return target instanceof Element && !!target.closest('input, textarea, select, [contenteditable="true"]');
-}
-
-document.addEventListener('keydown', (e) => {
-  const v = current;
-  if (!v || v.container.classList.contains('hidden') || !v.doc || isTyping(e.target)) return;
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.key === 'ArrowLeft' && v.page > v.pages.first) v.show(v.page - 1);
-  else if (e.key === 'ArrowRight' && v.page < v.pages.last) v.show(v.page + 1);
-  else if (e.key === '+' || e.key === '=') v.zoomBy(ZOOM_STEP);
-  else if (e.key === '-') v.zoomBy(-ZOOM_STEP);
-  else if (e.key === '0') v.zoomTo(1);
-});
 
 function messageHtml(text, scansHint) {
   const hint = scansHint
@@ -55,9 +45,10 @@ function messageHtml(text, scansHint) {
 
 /**
  * Show `result`'s case in `container` from its volume's archival PDF. `openScans`
- * switches the reader to Raw Scans, which the error messages offer.
+ * switches the reader to Raw Scans, which the error messages offer. `page` is the case's
+ * page to open at (1-based, from the URL hash); `onPage(i)` hears of each page shown.
  */
-export async function renderPdfViewer(container, result, { openScans } = {}) {
+export async function renderPdfViewer(container, result, { openScans, page = 1, onPage } = {}) {
   current?.destroy();
   current = null;
 
@@ -82,14 +73,14 @@ export async function renderPdfViewer(container, result, { openScans } = {}) {
 
   const url = pdfUrl(result.reporter, result.volume);
   const view = {
-    container, doc: null, task: null, pages: wanted, page: wanted.first, zoom: 1,
-    renderTask: null, textLayer: null, token: 0, destroyed: false,
-    show: () => {}, zoomBy: () => {}, zoomTo: () => {},
+    doc: null, task: null, pages: wanted, renderTask: null, textLayer: null, token: 0,
+    destroyed: false, ui: null,
     destroy() {
       this.destroyed = true;
       this.renderTask?.cancel();
       this.textLayer?.cancel();
       this.task?.destroy();
+      this.ui?.destroy();
     },
   };
   current = view;
@@ -126,40 +117,25 @@ export async function renderPdfViewer(container, result, { openScans } = {}) {
     fail(new Error(`the case's pages aren't in the volume's ${view.doc.numPages}-page PDF`));
     return;
   }
-  view.page = view.pages.first;
+  const { first, count } = view.pages;
+  const pdfPageOf = (i) => first + i - 1;
 
-  container.innerHTML = `<div class="page-viewer pdf-view">
-    <div class="page-viewer-toolbar">
-      <button class="page-viewer-btn" id="ap-prev" title="Previous page (←)">&#9664;</button>
-      <span class="page-viewer-info" id="ap-info"></span>
-      <button class="page-viewer-btn" id="ap-next" title="Next page (→)">&#9654;</button>
-      <span class="page-viewer-sep">|</span>
-      <button class="page-viewer-btn" id="ap-zoom-out" title="Zoom out (-)">−</button>
-      <span class="page-viewer-zoom" id="ap-zoom">100%</span>
-      <button class="page-viewer-btn" id="ap-zoom-in" title="Zoom in (+)">+</button>
-    </div>
-    <div class="page-viewer-image" id="ap-page">
-      <div class="pdf-page">
-        <canvas class="pdf-page-canvas"></canvas>
-        <div class="textLayer"></div>
-      </div>
-    </div>
-  </div>`;
+  // The printed labels: the PDF's own page labels (the volume's METS ORDERLABELs), else the
+  // case's, as the reader's page markers have them.
+  const fallbackLabels = pageLabels(count, extractFile, result);
 
-  const $ = (sel) => container.querySelector(sel);
-  const prevBtn = $('#ap-prev');
-  const nextBtn = $('#ap-next');
-  const info = $('#ap-info');
-  const zoomInfo = $('#ap-zoom');
-  const area = $('#ap-page');
-  const pageEl = $('.pdf-page');
-  const canvas = $('.pdf-page-canvas');
-  const textEl = $('.textLayer');
+  let pageEl = null;
+  let shown = null; // { n, page } for the page in pageEl
+  let drawn = '';
 
-  prevBtn.addEventListener('click', () => view.show(view.page - 1));
-  nextBtn.addEventListener('click', () => view.show(view.page + 1));
-  $('#ap-zoom-in').addEventListener('click', () => view.zoomBy(ZOOM_STEP));
-  $('#ap-zoom-out').addEventListener('click', () => view.zoomBy(-ZOOM_STEP));
+  function pageElement() {
+    if (pageEl?.isConnected) return pageEl;
+    pageEl = document.createElement('div');
+    pageEl.className = 'pdf-page';
+    pageEl.innerHTML = '<canvas class="pdf-page-canvas"></canvas><div class="textLayer"></div>';
+    ui.area.replaceChildren(pageEl);
+    return pageEl;
+  }
 
   // Fetch the next page's bytes, and decode it, while the reader reads this one.
   const prefetched = new Set();
@@ -169,29 +145,39 @@ export async function renderPdfViewer(container, result, { openScans } = {}) {
     view.doc.getPage(n).then((p) => p.getOperatorList()).catch(() => prefetched.delete(n));
   }
 
-  async function draw(n) {
+  const viewportFor = (p, zoom, rotation) => p.getViewport({
+    scale: zoom * CSS_PER_POINT,
+    rotation: (p.rotate + rotation) % 360,
+  });
+
+  function showError(e, n) {
+    if (view.destroyed) return;
+    console.error('Archival PDF page:', e);
+    ui.area.innerHTML = messageHtml(`Couldn't show page ${n}: ${e.message || e}.`, true);
+    ui.area.querySelector('.pdf-view-scans')?.addEventListener('click', () => openScans?.());
+    pageEl = null;
+  }
+
+  // Draw the page at `zoom` and `rotation`, swapping the finished canvas in whole, so the
+  // old one shows (stretched to the new size) until the new one is ready.
+  async function render(zoom, rotation) {
+    if (!shown) return;
+    const { n, page: p } = shown;
+    const viewport = viewportFor(p, zoom, rotation);
+    const ratio = canvasRatio(viewport.width, viewport.height, window.devicePixelRatio || 1);
+    const key = `${n}:${viewport.scale}:${viewport.rotation}:${ratio}`;
+    if (key === drawn) return;
     const token = ++view.token;
     view.renderTask?.cancel();
     view.textLayer?.cancel();
     view.renderTask = null;
     view.textLayer = null;
-    const page = await view.doc.getPage(n);
-    if (token !== view.token || view.destroyed) return;
-
-    // Fit the page to the view's width at 100%, as Raw Scans does.
-    const style = getComputedStyle(area);
-    const width = area.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-    const scale = fitScale(width, page.getViewport({ scale: 1 }).width, view.zoom);
-    const viewport = page.getViewport({ scale });
-    const ratio = window.devicePixelRatio || 1;
 
     const next = document.createElement('canvas');
     next.className = 'pdf-page-canvas';
     next.width = Math.floor(viewport.width * ratio);
     next.height = Math.floor(viewport.height * ratio);
-    next.style.width = `${Math.floor(viewport.width)}px`;
-    next.style.height = `${Math.floor(viewport.height)}px`;
-    const task = page.render({
+    const task = p.render({
       canvasContext: next.getContext('2d'),
       viewport,
       transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : null,
@@ -201,17 +187,19 @@ export async function renderPdfViewer(container, result, { openScans } = {}) {
       await task.promise;
     } catch (e) {
       if (e?.name === 'RenderingCancelledException') return;
-      throw e;
+      showError(e, n);
+      return;
     }
     if (token !== view.token || view.destroyed) return;
 
-    // Swap the finished page in whole, so the old one shows until the new one is ready.
-    pageEl.style.setProperty('--total-scale-factor', String(viewport.scale));
-    pageEl.querySelector('.pdf-page-canvas').replaceWith(next);
+    const el = pageElement();
+    el.querySelector('.pdf-page-canvas').replaceWith(next);
+    el.style.setProperty('--total-scale-factor', String(viewport.scale));
+    const textEl = el.querySelector('.textLayer');
     textEl.replaceChildren();
-    pageEl.dataset.page = String(n);
+    el.dataset.page = String(n);
     const textLayer = new pdfjs.TextLayer({
-      textContentSource: page.streamTextContent(),
+      textContentSource: p.streamTextContent(),
       container: textEl,
       viewport,
     });
@@ -222,59 +210,73 @@ export async function renderPdfViewer(container, result, { openScans } = {}) {
       if (e?.name !== 'AbortException') console.error('Archival PDF text layer:', e);
     }
     if (token !== view.token || view.destroyed) return;
-    pageEl.dataset.rendered = String(n);
+    drawn = key;
+    el.dataset.rendered = String(n);
+    el.dataset.scale = String(viewport.scale);
+    el.dataset.rotation = String(rotation);
+    el.dataset.ratio = String(ratio);
     prefetch(n + 1);
   }
 
-  function update() {
-    info.textContent = pageInfo(view.pages, view.page);
-    prevBtn.disabled = view.page <= view.pages.first;
-    nextBtn.disabled = view.page >= view.pages.last;
-    zoomInfo.textContent = `${Math.round(view.zoom * 100)}%`;
-  }
-
-  function redraw() {
-    update();
-    return draw(view.page).catch((e) => {
-      if (view.destroyed) return;
-      console.error('Archival PDF page:', e);
-      area.innerHTML = messageHtml(`Couldn't show page ${view.page}: ${e.message || e}.`, true);
-      area.querySelector('.pdf-view-scans')?.addEventListener('click', () => openScans?.());
-    });
-  }
-
-  view.show = (n) => {
-    if (n < view.pages.first || n > view.pages.last || n === view.page) return;
-    view.page = n;
-    area.scrollTo?.(0, 0);
-    container.closest('.main-content')?.scrollTo?.(0, 0);
-    redraw();
-  };
-  view.zoomTo = (z) => {
-    if (z === view.zoom) return;
-    view.zoom = z;
-    redraw();
-  };
-  view.zoomBy = (delta) => view.zoomTo(stepZoom(view.zoom, delta));
-
-  // The canvas is drawn for the view's width; draw it again when that changes.
-  let lastWidth = area.clientWidth;
-  const resize = new ResizeObserver(() => {
-    if (view.destroyed || !area.isConnected) return resize.disconnect();
-    const w = area.clientWidth;
-    if (w > 0 && w !== lastWidth) {
-      lastWidth = w;
-      redraw();
-    }
+  const ui = createPageView(container, {
+    kind: 'pdf',
+    prefix: 'ap',
+    count,
+    start: page,
+    labels: fallbackLabels,
+    pdfHref: (i) => pdfUrl(result.reporter, result.volume, pdfPageOf(i)),
+    onPage,
+    pages: {
+      async load(i) {
+        const n = pdfPageOf(i);
+        const p = await view.doc.getPage(n);
+        if (view.destroyed) return null;
+        shown = { n, page: p };
+        drawn = '';
+        const vp = p.getViewport({ scale: CSS_PER_POINT });
+        return { width: vp.width, height: vp.height };
+      },
+      // Size the page box, and the canvas in it, to the new size at once; render() draws
+      // it properly once the zoom settles.
+      place(zoom, rotation) {
+        if (!shown) return;
+        const vp = viewportFor(shown.page, zoom, rotation);
+        const el = pageElement();
+        el.style.width = `${Math.floor(vp.width)}px`;
+        el.style.height = `${Math.floor(vp.height)}px`;
+        const canvas = el.querySelector('.pdf-page-canvas');
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        const textEl = el.querySelector('.textLayer');
+        // A text layer drawn for another rotation is wrong until it's drawn again.
+        if (textEl.getAttribute('data-main-rotation') !== String(vp.rotation)) textEl.replaceChildren();
+        el.style.setProperty('--total-scale-factor', String(vp.scale));
+      },
+      render: (zoom, rotation) => render(zoom, rotation).catch((e) => showError(e, shown?.n)),
+      fail: (e, i) => showError(e, pdfPageOf(i)),
+      async printUrl(i) {
+        const p = await view.doc.getPage(pdfPageOf(i));
+        const vp = p.getViewport({ scale: PRINT_DPI / 72 });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(vp.width);
+        canvas.height = Math.floor(vp.height);
+        await p.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+        return blob ? URL.createObjectURL(blob) : null;
+      },
+    },
   });
-  resize.observe(area);
-  const destroy = view.destroy.bind(view);
-  view.destroy = () => {
-    resize.disconnect();
-    destroy();
-  };
+  view.ui = ui;
+  ui.area.innerHTML = '<div class="page-viewer-loading"><span class="spinner"></span> Loading page...</div>';
 
-  await redraw();
+  // The PDF's own labels, when it has them for these pages.
+  view.doc.getPageLabels().then((all) => {
+    if (view.destroyed || !all) return;
+    const mine = Array.from({ length: count }, (_, k) => all[first - 1 + k] || null);
+    if (mine.some(Boolean)) ui.setLabels(mine.map((l, k) => l || fallbackLabels[k]));
+  }).catch(() => {});
+
+  await ui.go(ui.index);
 }
 
 /** Stop the view's work (a new case is shown). */
