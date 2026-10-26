@@ -54,7 +54,7 @@ const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
 				<li>unpacks and renders the case itself, using a WebAssembly build of the same Rust code the <code>stare</code> command line tool runs;</li>
 				<li>caches both files, so later lookups in that volume don't download them again.</li>
 			</ul>
-			<p>The page viewer shows the original scans. Each page is a color JPEG of about 180 KB inside the volume's tar archive, which typically runs around 200 MB. The viewer reads the archive's table of contents and fetches only the bytes of the page you're looking at.</p>
+			<p>A case has three views. Reader is its text. Archival PDF shows the case's pages from our archival PDF of the volume: the bitonal scans, with the OCR as a text layer you can select and copy. The PDFs are linearized, so the viewer reads the file's header and cross-reference table and then only the pages you look at, a few hundred KB of a file that runs to 84 MB for the largest volume. Raw Scans shows CAP's original color scans. Each page is a color JPEG of about 180 KB inside the volume's tar archive, which typically runs around 200 MB; the viewer reads the archive's table of contents and fetches only the bytes of the page you're looking at.</p>
 
 			<h2>Where it stands</h2>
 			<p>Done:</p>

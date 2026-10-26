@@ -4,6 +4,7 @@ import { caseHash, getHashParams, setHash, onHashChange } from './router.js';
 import { aliasNoteHtml, processCitations, setupCiteHovers } from './citations.js';
 import { attachCiteNav } from './citenav.js';
 import { renderPageViewer } from './pageviewer.js';
+import { renderPdfViewer, resetPdfViewer } from './pdfviewer.js';
 import { footnoteParagraphs, pageBreaks, pageMarker } from './pages.js';
 import { preloadWasm, WasmLoadError } from './wasm.js';
 import { showWasmProgress } from './wasmbar.js';
@@ -33,11 +34,14 @@ const reader = document.getElementById('reader');
 const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebar-toggle');
 const tabReader = document.getElementById('tab-reader');
+const tabPdf = document.getElementById('tab-pdf');
 const tabPages = document.getElementById('tab-pages');
+const pdfViewerEl = document.getElementById('pdf-viewer');
 const pageViewerEl = document.getElementById('page-viewer');
 const landingWasmSlot = document.getElementById('landing-wasm-progress');
 const resolvedWasmSlot = document.getElementById('wasm-progress');
 let pageViewerLoaded = false;
+let pdfViewerLoaded = false;
 // The reader's scrolling container.
 const scroller = () => reader.closest('.main-content') || reader.closest('.main');
 
@@ -204,15 +208,18 @@ async function showResolved(result, pin = null, cite = null) {
   updateTopbar(result.caseData);
   updatePrevNext(result, result.caseFile);
 
-  // Reset page viewer for new case
+  // Reset the page views for the new case, and show the Reader.
   pageViewerLoaded = false;
   pageViewerEl.innerHTML = '';
-  pageViewerEl.classList.add('hidden');
-  reader.classList.remove('hidden');
-  tabReader.classList.add('active');
-  tabPages.classList.remove('active');
-  // A CourtListener record has no page scans to show, nor has a CAP volume without them.
-  tabPages.classList.toggle('hidden', !result.zipData || !hasScans(result.reporter, result.volume));
+  pdfViewerLoaded = false;
+  resetPdfViewer();
+  pdfViewerEl.innerHTML = '';
+  showView('reader');
+  // A CourtListener record has no page scans or archival PDF to show, nor has a CAP
+  // volume without scans.
+  const scans = !!result.zipData && hasScans(result.reporter, result.volume);
+  tabPdf.classList.toggle('hidden', !scans);
+  tabPages.classList.toggle('hidden', !scans);
 
   const multiEl = document.createElement('div');
   reader.innerHTML = '';
@@ -499,20 +506,34 @@ sidebarToggle.addEventListener('click', (e) => {
   sidebar.classList.toggle('open');
 });
 
-// Tab switching
-tabReader.addEventListener('click', () => {
-  tabReader.classList.add('active');
-  tabPages.classList.remove('active');
-  reader.classList.remove('hidden');
-  pageViewerEl.classList.add('hidden');
+// Tab switching: the Reader (the case's text), the Archival PDF (our PDF of the volume,
+// pdfviewer.js) and the Raw Scans (CAP's page images from the volume's tar,
+// pageviewer.js). Neither page view loads anything until its tab is first opened.
+const VIEWS = {
+  reader: [tabReader, reader],
+  pdf: [tabPdf, pdfViewerEl],
+  scans: [tabPages, pageViewerEl],
+};
+
+function showView(name) {
+  for (const [key, [tab, el]] of Object.entries(VIEWS)) {
+    tab.classList.toggle('active', key === name);
+    el.classList.toggle('hidden', key !== name);
+  }
+}
+
+tabReader.addEventListener('click', () => showView('reader'));
+
+tabPdf.addEventListener('click', async () => {
+  showView('pdf');
+  if (!pdfViewerLoaded && currentResult?.zipData) {
+    pdfViewerLoaded = true;
+    await renderPdfViewer(pdfViewerEl, currentResult, { openScans: () => tabPages.click() });
+  }
 });
 
 tabPages.addEventListener('click', async () => {
-  tabPages.classList.add('active');
-  tabReader.classList.remove('active');
-  pageViewerEl.classList.remove('hidden');
-  reader.classList.add('hidden');
-
+  showView('scans');
   if (!pageViewerLoaded && currentResult?.zipData) {
     pageViewerLoaded = true;
     await renderPageViewer(pageViewerEl, currentResult, (msg) => setStatus(msg, false));

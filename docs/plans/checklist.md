@@ -51,8 +51,9 @@
 - [x] Mock citation detection (regex): inline highlighting (blue=resolvable, gray=not), sidebar grouping
 - [x] Hover tooltips on citations: lazy-load case name/date with spinner
 - [x] Prev/Next case navigation in topbar (traverses full volume case list)
-- [x] Original Pages tab: tar range requests for individual JPG pages via tar.csv byte offsets
-- [x] Fixed tab bar (Reader/Original Pages tabs stay pinned, content scrolls)
+- [x] Original Pages tab (now Raw Scans): tar range requests for individual JPG pages via tar.csv byte offsets
+- [x] Archival PDF tab: the case's pages of the volume's archival PDF through self-hosted PDF.js, by range requests, with its text layer (#1, #75)
+- [x] Fixed tab bar (Reader/Archival PDF/Raw Scans tabs stay pinned, content scrolls)
 - [x] Error returns to landing (no stale case display)
 - [x] Core: extract_file_from_zip, extract_cases_metadata, get_page_orders (shared CLI + WASM)
 

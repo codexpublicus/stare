@@ -4,7 +4,7 @@
 // paths are in sources.js.
 //
 // A record has no page scans, ALTO or page numbers, so the case viewer shows its text
-// with a source line and no Original Pages tab.
+// with a source line and no Archival PDF or Raw Scans tab.
 
 import { fetchCached } from './cache.js';
 import { escapeHtml, safeExternalUrl } from './citations.js';

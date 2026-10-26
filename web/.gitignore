@@ -7,3 +7,4 @@ test-results/
 playwright-report/
 public/data/citare/
 public/reporters.json
+public/vendor/
