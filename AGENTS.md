@@ -533,8 +533,12 @@ stare-builder's `pipelines/pdf-publish/reporter-jurisdictions.json`; the two cha
 or not at all, since the paths are fixed once published). Every PDF's pages are its METS
 ORDERs 1 to N, so a case's pages are its `first_page_order` to `last_page_order`.
 
-The case view has three tabs, in this order, with Reader the default; the tab isn't in the
-URL hash:
+The case view has three tabs, in this order, with Reader the default. A page view and its
+page are in the URL hash, `#a2d/142/148-01~v=pdf&p=3` (`~v=pdf` or `~v=scans`, `p` the
+case's page counting from 1; `router.js`'s `parseHash`, mirrored by
+`web/src/lib/caseroute.js` for the pre-paint check, the two kept in step by
+`web/tests/caseroute.test.js`). A link with one opens that tab at that page; the Reader
+takes it out. A hash has a place in the text (`~c=`) or a page view, not both:
 
 - **Reader**: the case's text.
 - **Archival PDF** (`web/public/js/pdfviewer.js`, `pdfpages.js`): the case's pages of the
@@ -548,8 +552,24 @@ URL hash:
 - **Raw Scans** (`web/public/js/pageviewer.js`): CAP's color JPEGs from the volume's tar on
   static.case.law, by range requests through its `.tar.csv`, with the ALTO text.
 
-Both page views have the same toolbar and keys (←/→ pages, +/-/0 zoom), and load nothing
-until their tab is first opened. CourtListener records and the 658 volumes CAP published
+Both page views share `web/public/js/pageview.js` (the toolbar, page, zoom, rotation and
+text state, keys and gestures; plain logic in `pagezoom.js`, tested in
+`web/tests/pagezoom.test.js`); each view supplies how to load, size (`place`, CSS only) and
+draw (`render`) its page. The default is fit page, the whole page in the visible part of
+the view at most 1200 px wide, or fit width under 600 px; both are recomputed on resize and
+orientation change, and the PDF canvas is drawn again at the new size and device pixel
+ratio once the size settles, from the page already fetched. Zoom is a percentage of the
+printed size (PDF points at 96/72; CAP's scans are 300 dpi), 25% to 400%, by the toolbar,
+Ctrl/Cmd + wheel or pinch, anchored at the pointer; a zoomed page pans by dragging and
+scrolls under the toolbar, which stays put. The toolbar also has a page box (a number, or
+`p. 149` for a printed page) with the printed label beside it (the PDF's page labels, else
+the case HTML's `page-label`s), rotate, a Text button that shows the OCR text over a faded
+image (hidden but selectable in the PDF otherwise), a link to the page in the archival PDF,
+print (the page image alone, from an iframe), and a key help (←/→, +/−, 0 for 100%, f fit
+page/width, r rotate, t text, ?). The zoom mode is remembered per view in localStorage
+(`stare-page-zoom-pdf`, `-scans`), every access in try/catch. Neither view loads anything
+until its tab is first opened, and zooming, resizing or rotating fetches nothing more
+(`web/e2e/smoke.spec.js` checks this, and the fit at phone, laptop and large sizes). CourtListener records and the 658 volumes CAP published
 without scans (`web/public/js/scans.js`, from the index's `no_scans`) hide both tabs, and the
 sidebar says "No page scans exist for this volume" instead of the PDF link. The sidebar's
 "Download archival PDF" opens the whole volume's PDF at `#page=<first_page_order>`, for
