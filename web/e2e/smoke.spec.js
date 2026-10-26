@@ -795,9 +795,14 @@ function wordBox(page, root, word) {
   }, word);
 }
 
+// The Raw Scans' OCR text is in the serif text face, which the browser fetches only once
+// the text is shown; until it arrives the text is in a fallback face of other widths.
+const OCR_FACE = '400 16px "Source Serif 4"';
+
 // Open the view at p. 149 at 100%, with the OCR text shown if `text`, and drag across the
-// paragraph. Returns the view's page element.
-async function selectParagraph(page, view, { text = false } = {}) {
+// paragraph. The drag goes where the words are once the text's face has loaded, unless
+// `waitForFace` is false. Returns the view's page element.
+async function selectParagraph(page, view, { text = false, waitForFace = true } = {}) {
   const pdf = view === 'pdf';
   await page.goto(`/${PAGE_CASE}~v=${view}&p=2`);
   const el = page.locator(pdf ? '#pdf-viewer .pdf-page' : '#page-viewer .page-wrapper');
@@ -808,6 +813,7 @@ async function selectParagraph(page, view, { text = false } = {}) {
   if (text) await page.click(`#${prefix}-text`);
   const root = pdf ? '#pdf-viewer .textLayer' : '#page-viewer .alto-overlay';
   await expect(page.locator(`${root} ${pdf ? 'span' : '.alto-line'}`).first()).toBeAttached({ timeout: 30_000 });
+  if (!pdf && waitForFace) await page.evaluate((face) => document.fonts.load(face, 'whether'), OCR_FACE);
   const from = await wordBox(page, root, 'whether');
   const to = await wordBox(page, root, 'place');
   await page.mouse.move(from.left + 1, (from.top + from.bottom) / 2);
@@ -917,6 +923,26 @@ test.describe('the page views\' text selection', () => {
       }
     }
     await expect(page.locator('#page-viewer .page-viewer')).toHaveAttribute('data-rotation', '90');
+    expect(await page.evaluate(() => getSelection().toString())).toBe(SELECTED.scans);
+  });
+
+  test('the Raw Scans\' highlight moves with the OCR text when its face arrives after the selection', async ({ page }) => {
+    // Hold the serif face back until the paragraph is selected in the fallback face.
+    const held = [];
+    await page.route('**/fonts/source-serif-4/**', (route) => { held.push(route); });
+    await selectParagraph(page, 'scans', { text: true, waitForFace: false });
+    expect(held.length, 'the face was fetched after the text was shown').toBeGreaterThan(0);
+    const before = around(await paintedBoxes(page));
+    await Promise.all(held.map((r) => r.continue()));
+    await page.unroute('**/fonts/source-serif-4/**');
+    await page.evaluate((face) => document.fonts.load(face, 'whether'), OCR_FACE);
+    const selected = await selectedBox(page, '#page-viewer .alto-overlay');
+    // The face's widths differ from the fallback's, so the text moved.
+    expect(Math.abs(selected.right - before.right)).toBeGreaterThan(4);
+    await expect.poll(async () => {
+      const painted = around(await paintedBoxes(page));
+      return Math.max(...['left', 'top', 'right', 'bottom'].map((side) => Math.abs(painted[side] - selected[side])));
+    }).toBeLessThan(4);
     expect(await page.evaluate(() => getSelection().toString())).toBe(SELECTED.scans);
   });
 
