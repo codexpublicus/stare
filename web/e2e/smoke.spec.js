@@ -2060,7 +2060,10 @@ test.describe('CourtListener credited as a source (#206)', () => {
     const names = (manifest.based_on ?? []).map((s) => s.name);
     expect(names.some((n) => n.includes('CourtListener'))).toBe(true);
     await page.goto('/about');
-    await expect(page.locator('footer [data-site-data-line]')).toHaveText(`Index ${manifest.version} · Sources: ${names.join(', ')}`);
+    // The index on the footer's line, its sources in the title (#257: the footer is one line).
+    const line = page.locator('footer [data-site-data-line]');
+    await expect(line).toHaveText(`Index ${manifest.version}`);
+    await expect(line).toHaveAttribute('title', `Sources: ${names.join(', ')}`);
   });
 
   test('1 F.4th 1, a case only CourtListener has, opens from its live record with the source line', async ({ page }) => {
@@ -2231,5 +2234,79 @@ test.describe('the search boxes (#248)', () => {
         await expect(page).toHaveURL(/#misc\/32\/421-01$/);
       });
     }
+  });
+});
+
+test.describe('the Codex Publicus look (#257, #261)', () => {
+  for (const path of ['/', '/about', '/check', '/data', '/updates']) {
+    test(`${path} has the family footer with its account links`, async ({ page }) => {
+      await page.goto(path);
+      const footer = page.locator('footer.cp-footer');
+      await expect(footer).toHaveCount(1);
+      await expect(footer.locator('.cp-footer-lead a')).toHaveAttribute('href', 'https://codexpublicus.org/');
+      await expect(footer.locator('.cp-footer-lead')).toContainText('A project of Codex Publicus');
+      for (const [label, href] of [
+        ['GitHub', 'https://github.com/codexpublicus'],
+        ['X', 'https://x.com/codexpublicus'],
+        ['Hugging Face', 'https://huggingface.co/codexpublicus'],
+      ]) {
+        const link = footer.getByRole('link', { name: label, exact: true });
+        await expect(link).toHaveAttribute('href', href);
+        await expect(link).toHaveAttribute('rel', 'me');
+        await expect(link).not.toHaveAttribute('target', /.+/);
+      }
+      await expect(footer.getByRole('link', { name: 'Data terms' })).toHaveAttribute('href', '/data#licences');
+      await expect(footer.locator('[data-site-data-line]')).toHaveText(/^Index /);
+    });
+  }
+
+  test('the footer is at most two lines on a phone', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await ctx.newPage();
+    await page.goto('/about');
+    await expect(page.locator('footer [data-site-data-line]')).toBeVisible();
+    const lines = await page.locator('.cp-footer-inner').evaluate((el) => {
+      const tops = new Set();
+      for (const child of el.querySelectorAll('.cp-footer-lead, .cp-footer-icons, .cp-footer-line')) {
+        for (const r of child.getClientRects()) tops.add(Math.round(r.top / 4));
+      }
+      return tops.size;
+    });
+    expect(lines).toBeLessThanOrEqual(2);
+    await ctx.close();
+  });
+
+  test('the favicons are served', async ({ page, request }) => {
+    for (const [path, type] of [
+      ['/favicon.svg', 'image/svg+xml'],
+      ['/favicon-32.png', 'image/png'],
+      ['/apple-touch-icon.png', 'image/png'],
+      ['/favicon.ico', /^image\/(x-icon|vnd\.microsoft\.icon)/],
+    ]) {
+      const response = await request.get(path);
+      expect(response.status(), path).toBe(200);
+      expect(response.headers()['content-type'], path).toMatch(type);
+    }
+    expect(await (await request.get('/favicon.svg')).text()).toContain('shape-rendering="crispEdges"');
+    await page.goto('/');
+    await expect(page.locator('link[rel="icon"][type="image/svg+xml"]')).toHaveAttribute('href', '/favicon.svg');
+    await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', '/apple-touch-icon.png');
+  });
+
+  test('the text face is preloaded and used, with no warning', async ({ page }) => {
+    const font = page.waitForResponse((r) => r.url().endsWith('/fonts/source-serif-4/regular-core.woff2'));
+    await page.goto('/about');
+    expect((await font).status()).toBe(200);
+    await expect(page.locator('link[rel="preload"][as="font"]')).toHaveAttribute('href', '/fonts/source-serif-4/regular-core.woff2');
+    await page.evaluate(() => document.fonts.ready);
+    expect(await page.evaluate(() => document.fonts.check('16px "Source Serif 4"'))).toBe(true);
+  });
+
+  test('the header shows the § tablet and the wordmark, named for screen readers', async ({ page }) => {
+    await page.goto('/about');
+    const home = page.locator('.page-topbar a[href="/"]');
+    await expect(home).toHaveAccessibleName('stare.pub');
+    await expect(home.locator('.brand-tablet')).toBeVisible();
+    await expect(home.locator('.brand-word')).toBeVisible();
   });
 });

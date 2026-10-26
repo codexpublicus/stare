@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Redraw the § tablet mark, the Cinzel wordmark and the favicons (web/scripts/marks.py)"
+set -euo pipefail
+
+uv run "${MISE_PROJECT_ROOT}/web/scripts/marks.py" "$@"

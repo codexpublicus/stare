@@ -8,13 +8,15 @@ import '../styles/theme.css';
 import '../styles/layout.css';
 import '../styles/reader.css';
 import '../styles/suggest.css';
+import Brand from '../components/Brand.astro';
+import SiteHead from '../components/SiteHead.astro';
 ---
 
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<SiteHead />
 		<title>stare.pub — U.S. Case Law Citation Resolution</title>
 		<meta name="description" content="Free, serverless U.S. case law citation resolution. Look up any case by citation — all client-side, no server, no tracking." />
 		<meta property="og:title" content="§tare.pub — Free U.S. Case Law Lookup" />
@@ -42,7 +44,7 @@ import '../styles/suggest.css';
 		<div id="landing" class="landing">
 			<button class="landing-theme-toggle" id="landing-theme-btn" title="Toggle dark mode">&#9790;</button>
 			<div class="landing-hero">
-				<h1 class="landing-brand">§tare.pub</h1>
+				<h1 class="landing-brand"><Brand variant="hero" /></h1>
 				<p class="landing-tagline">Free, open U.S. case law lookup</p>
 				<p class="landing-desc">Resolve legal citations to full case text and original scanned pages.<br>No server. No tracking. No account. Just static files and your browser.</p>
 			</div>
@@ -117,7 +119,7 @@ import '../styles/suggest.css';
 		<!-- Resolved state (hidden initially) -->
 		<div id="resolved" class="hidden">
 			<div class="topbar" id="topbar">
-				<a href="/" class="topbar-brand">§tare.pub</a>
+				<a href="/" class="topbar-brand"><Brand /></a>
 				<span class="topbar-divider">|</span>
 				<span class="topbar-cite topbar-editable" id="topbar-cite" title="Search another citation"></span>
 				<input class="topbar-cite-input hidden" id="topbar-cite-input" type="text" autocomplete="off" spellcheck="false" aria-label="Citation" />

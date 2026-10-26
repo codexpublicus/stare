@@ -7,13 +7,15 @@ import '../styles/theme.css';
 import '../styles/layout.css';
 
 const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
+import Brand from '../components/Brand.astro';
+import SiteHead from '../components/SiteHead.astro';
 ---
 
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<SiteHead />
 		<title>About · stare.pub</title>
 		<link rel="alternate" type="application/atom+xml" title="stare.pub updates" href="/updates.xml" />
 		<meta name="description" content={`stare.pub resolves U.S. case citations to full text and original scans, from the Codex Publicus copy of the Caselaw Access Project (${casesLabel}) and CourtListener's bulk data.`} />
@@ -32,7 +34,7 @@ const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
 		</script>
 	</head>
 	<body>
-		<div class="page-topbar"><a href="/">§tare.pub</a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
+		<div class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
 		<div class="page">
 			<h1>About stare.pub</h1>
 			<p><strong>stare.pub</strong> resolves U.S. case citations to the full text of the decision and to the original scanned pages of the reporter it was printed in. Type <em>31 A.2d 647</em> and you get the opinion. It's a <a href="https://codexpublicus.org" target="_blank" rel="noopener">Codex Publicus</a> project, built by <a href="https://x.com/lokkju" target="_blank" rel="noopener">lokkju</a>.</p>
@@ -120,7 +122,7 @@ const releases = parseChangelog(changelog, { limit: 3, maxItems: 8 });
 				<li><strong><a href="https://astro.build/" target="_blank" rel="noopener">Astro</a></strong>: the site, as plain HTML, JavaScript and CSS.</li>
 				<li><strong><a href="https://www.cloudflare.com/" target="_blank" rel="noopener">Cloudflare</a></strong>: Workers serve the site and R2 holds the index and the case text. Any static host would do, whether S3, IPFS or a directory on your own machine.</li>
 			</ul>
-			<p>stare.pub is one of the <a href="https://codexpublicus.org" target="_blank" rel="noopener">Codex Publicus</a> projects.</p>
+			<p>stare.pub is one of the <a href="https://codexpublicus.org" target="_blank" rel="noopener">Codex Publicus</a> projects. Write to <a href="mailto:info@codexpublicus.org">info@codexpublicus.org</a> with questions, corrections or a mirror you run.</p>
 
 			<a href="/" class="back-link">&larr; Back to stare.pub</a>
 

@@ -165,10 +165,13 @@ describe('sitemap', () => {
     const files = contentFiles(`${pagesDir}about.astro`).map((f) => relative(root, f));
     assert.deepEqual(files, [
       'CHANGELOG.md',
+      'web/src/components/Brand.astro',
       'web/src/components/SiteFooter.astro',
+      'web/src/components/SiteHead.astro',
       'web/src/data/collection.json',
       'web/src/lib/changelog.js',
       'web/src/lib/collection.js',
+      'web/src/lib/marks.js',
       'web/src/lib/version.js',
       'web/src/pages/about.astro',
     ]);

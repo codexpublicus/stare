@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-#MISE description="Download the upstream web fonts and regenerate web/public/fonts and the @font-face CSS"
+#MISE description="Download the upstream web fonts, regenerate web/public/fonts and the @font-face CSS, and the metric-matched fallbacks"
 set -euo pipefail
 
 uv run "${MISE_PROJECT_ROOT}/web/scripts/subset-fonts.py" "$@"
+uv run "${MISE_PROJECT_ROOT}/web/scripts/fallback-fonts.py"

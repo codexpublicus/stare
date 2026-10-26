@@ -1,16 +1,19 @@
-.topbar { position: sticky; top: 0; z-index: 10; background: var(--topbar-bg); color: var(--topbar-text); padding: 8px 16px; display: flex; align-items: center; gap: 12px; font-size: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
-.topbar-brand { font-weight: 700; letter-spacing: -0.5px; font-size: 15px; }
+@import '../vendor/cp-footer/footer.css';
+
+.topbar { position: sticky; top: 0; z-index: 10; background: var(--topbar-bg); color: var(--topbar-text); padding: 8px 16px; display: flex; align-items: center; gap: 12px; font-size: 14px; box-shadow: 0 1px 0 var(--border); }
+/* The ground-coloured bar takes its rule as a shadow, so the bar stays 40 px tall (.layout). */
+.topbar-brand { display: inline-flex; align-items: center; flex-shrink: 0; border-radius: 3px; }
 .topbar-divider { color: var(--topbar-divider); }
 .topbar-cite { font-family: var(--font-mono); color: var(--topbar-cite); font-size: 13px; }
 .topbar-editable { cursor: pointer; padding: 2px 6px; border-radius: 3px; transition: background 0.15s; }
-.topbar-editable:hover { background: rgba(255,255,255,0.1); }
+.topbar-editable:hover { background: var(--topbar-hover); }
 .topbar-cite-input {
   font-family: var(--font-mono); font-size: 13px;
-  background: rgba(255,255,255,0.1); color: var(--topbar-text);
-  border: 1px solid rgba(255,255,255,0.2); border-radius: 3px;
+  background: var(--bg); color: var(--topbar-text);
+  border: 1px solid var(--border); border-radius: 3px;
   padding: 2px 8px; width: 180px; outline: none;
 }
-.topbar-cite-input:focus { border-color: rgba(255,255,255,0.4); }
+.topbar-cite-input:focus { border-color: var(--focus); }
 .topbar-case { color: var(--topbar-muted); font-size: 13px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar-edit { color: var(--topbar-muted); font-size: 12px; cursor: pointer; padding: 2px 8px; border: 1px solid var(--topbar-edit-border); border-radius: 3px; transition: all 0.15s; background: none; }
 .topbar-edit:hover { color: var(--topbar-text); border-color: var(--topbar-muted); }
@@ -19,6 +22,22 @@
 .topbar-nav:disabled { opacity: 0.3; cursor: default; }
 .theme-toggle { color: var(--topbar-muted); font-size: 18px; cursor: pointer; background: none; border: none; padding: 2px 6px; line-height: 1; transition: color 0.15s; }
 .theme-toggle:hover { color: var(--topbar-text); }
+
+/* stare.pub's mark (Brand.astro): the § tablet at the wordmark's cap height. The tablet's
+   parts take the theme's ink and glyph colours. */
+.brand { display: inline-flex; align-items: flex-end; gap: 0.5em; color: var(--mark-ink); line-height: 1; }
+.brand svg { display: block; flex: none; }
+.brand-word { fill: currentColor; }
+.mark-ink { fill: var(--mark-ink); }
+.mark-glyph { fill: var(--mark-glyph); }
+.brand--bar { gap: 8px; }
+.brand--bar .brand-tablet, .brand--bar .brand-word { height: 16px; width: auto; }
+.brand--hero { gap: calc(var(--brand-cap, 40px) * 0.3); }
+.brand--hero .brand-tablet, .brand--hero .brand-word { height: var(--brand-cap, 40px); width: auto; }
+.brand-name { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* On a phone the bars show the tablet alone, which leaves the top bar its citation. */
+@media (max-width: 600px) { .brand--bar .brand-word { display: none; } }
+:is(.topbar-brand, .page-topbar a):focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 
 .layout { display: flex; height: calc(100vh - 40px); }
 .main { flex: 1; min-width: 0; border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
@@ -39,7 +58,7 @@
 .view-tab:hover { color: var(--text); }
 .view-tab.active { color: var(--tab-active-text); font-weight: 600; border-bottom-color: var(--tab-active-border); background: var(--bg); }
 
-.landing { display: flex; flex-direction: column; align-items: center; padding: 10vh 1rem 4rem; min-height: 100vh; position: relative; }
+.landing { display: flex; flex-direction: column; align-items: center; padding: 10vh 1rem 4rem; min-height: 100vh; position: relative; font-family: var(--font-text); }
 .landing-theme-toggle {
   position: absolute; top: 16px; right: 16px;
   background: none; border: none; font-size: 20px;
@@ -49,20 +68,20 @@
 .landing-theme-toggle:hover { color: var(--text); }
 
 .landing-hero { text-align: center; margin-bottom: 2rem; }
-.landing-brand { font-size: 2.5rem; font-weight: 700; letter-spacing: -1.5px; margin-bottom: 0.25rem; }
+.landing-brand { display: flex; justify-content: center; margin-bottom: 1rem; font-size: 1rem; font-weight: 400; --brand-cap: 40px; }
 .landing-tagline { font-size: 1.15rem; color: var(--text-secondary); margin-bottom: 0.5rem; }
 .landing-desc { font-size: 0.9rem; color: var(--text-tertiary); line-height: 1.6; max-width: 440px; margin: 0 auto; }
-.landing-input-hint { font-size: 0.8rem; color: var(--text-tertiary); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.landing-input-hint { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.12em; }
 .landing-form { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
 .landing-form input { padding: 12px 16px; border: 2px solid var(--border); border-radius: 8px; font-size: 16px; font-family: var(--font-mono); background: var(--bg); color: var(--text); width: 280px; }
-.landing-form input:focus { outline: none; border-color: var(--link); }
-.landing-form button { padding: 12px 24px; background: var(--topbar-bg); color: var(--topbar-text); border: none; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer; transition: opacity 0.15s; }
+.landing-form input:focus { outline: none; border-color: var(--focus); }
+.landing-form button { padding: 12px 24px; background: var(--button-bg); color: var(--button-text); border: none; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer; transition: opacity 0.15s; }
 .landing-form button:hover { opacity: 0.85; }
 .landing-form button:disabled { opacity: 0.5; cursor: wait; }
 
 .landing-examples { margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-tertiary); }
 .landing-examples-label { margin-right: 0.25rem; }
-.landing-example { color: var(--link); text-decoration: none; margin: 0 0.35rem; font-family: var(--font-mono); font-size: 0.8rem; }
+.landing-example { color: var(--cite); text-decoration: none; margin: 0 0.35rem; font-family: var(--font-mono); font-size: 0.8rem; }
 .landing-example:hover { text-decoration: underline; }
 
 .landing-features { display: flex; gap: 1.5rem; margin-top: 2.5rem; max-width: 580px; width: 100%; justify-content: center; }
@@ -81,7 +100,7 @@
   text-decoration: none; color: var(--text);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.landing-tool:hover { border-color: var(--link); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.landing-tool:hover { border-color: var(--link); box-shadow: 0 2px 8px rgba(29,27,24,0.06); }
 .landing-tool.coming-soon { opacity: 0.75; }
 .landing-tool.coming-soon:hover { border-color: var(--link); opacity: 1; }
 .landing-tool-icon { font-size: 1.5rem; line-height: 1; flex-shrink: 0; margin-top: 2px; }
@@ -97,21 +116,33 @@
 }
 
 .landing-links { margin-top: 2rem; font-size: 0.85rem; }
-/* SiteFooter.astro, shared by every page. */
-.site-footer { margin-top: 3rem; font-size: 0.8rem; color: var(--text-tertiary); }
-.site-footer--landing { text-align: center; }
-.site-footer--page { padding-top: 1.5rem; border-top: 1px solid var(--border); }
-.site-footer p, .page .site-footer p { margin: 0; font-size: inherit; line-height: 1.6; color: inherit; }
-.site-footer-build { margin-top: 0.25rem; font-family: var(--font-mono); font-size: 0.75rem; }
-.site-footer a, .page .site-footer a { color: var(--text-secondary); text-decoration: none; }
-.site-footer a:hover, .page .site-footer a:hover { color: var(--link); text-decoration: none; }
-.site-footer-sep { color: var(--text-tertiary); margin: 0 0.5rem; }
-.site-footer-data:empty { display: none; }
+/* SiteFooter.astro: the Codex Publicus footer (src/vendor/cp-footer/footer.css), under the
+   landing's column or a page's. footer.css reads the theme from prefers-color-scheme and
+   data-theme="dark"/"light"; stare.pub's switch removes data-theme for light, so its colours
+   are pointed at stare.pub's own tokens instead, which follow the switch and the system alike. */
+/* The footer spans its column: the landing's 580 px, or the page's measure. */
+.site-footer { width: 100%; }
+.site-footer--landing { max-width: 580px; margin-top: 3rem; }
+.site-footer .cp-footer { margin-top: 0; padding: 0; }
+.site-footer--page .cp-footer { margin-top: 3rem; }
+.site-footer .cp-footer-inner { max-width: none; padding-bottom: 0; }
+html:root .site-footer .cp-footer {
+  --cp-ground: var(--bg); --cp-muted: var(--text-secondary); --cp-rule: var(--border); --cp-accent: var(--link);
+  --cp-serif: var(--font-text);
+}
+.site-footer-line > * + *::before { content: '\00b7'; margin: 0 0.5em; color: var(--text-secondary); }
+.site-footer-line [hidden] { display: none; }
+/* A page's own link colour (.page a) doesn't reach into the footer. */
+.site-footer .cp-footer a { color: inherit; }
+.site-footer .cp-footer a:hover { color: var(--cp-accent); }
+.site-footer-line a { text-decoration: none; }
+.site-footer-line a:hover { text-decoration: underline; }
+.site-footer-data { font-variant-numeric: lining-nums tabular-nums; }
 .landing-link { color: var(--text-secondary); text-decoration: none; transition: color 0.15s; }
 .landing-link:hover { color: var(--link); }
 
 /* Shared page layout for About, Check, etc. */
-.page { max-width: 680px; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+.page { max-width: 680px; margin: 0 auto; padding: 3rem 1.5rem 4rem; font-family: var(--font-text); }
 .page h1 { font-family: var(--font-text); font-size: 1.75rem; font-weight: 600; margin-bottom: 0.5rem; }
 .page h2 { font-size: 1.15rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.5rem; }
 .page p { font-size: 0.95rem; line-height: 1.7; color: var(--text-body); margin-bottom: 1rem; }
@@ -128,9 +159,9 @@
 .page .whats-new-release ul { margin-top: 0.25rem; font-size: 0.9rem; }
 .back-link, .page .back-link { display: inline-block; margin-top: 2rem; font-size: 0.9rem; color: var(--text-secondary); text-decoration: none; }
 .back-link:hover, .page .back-link:hover { color: var(--link); }
-.page-topbar { background: var(--topbar-bg); color: var(--topbar-text); padding: 8px 16px; font-size: 14px; }
+.page-topbar { background: var(--topbar-bg); color: var(--topbar-text); padding: 8px 16px; font-size: 14px; box-shadow: 0 1px 0 var(--border); }
 .page-topbar { display: flex; align-items: center; justify-content: space-between; }
-.page-topbar a, .page-topbar a:visited { color: var(--topbar-text); text-decoration: none; font-weight: 700; letter-spacing: -0.5px; }
+.page-topbar a, .page-topbar a:visited { display: inline-flex; color: var(--topbar-text); text-decoration: none; border-radius: 3px; }
 .page-theme-toggle { background: none; border: none; font-size: 18px; color: var(--topbar-muted); cursor: pointer; padding: 2px 6px; transition: color 0.15s; }
 .page-theme-toggle:hover { color: var(--topbar-text); }
 .topbar-brand, .topbar-brand:visited { color: var(--topbar-text); text-decoration: none; }
@@ -144,7 +175,7 @@ html[data-route="case"] #landing { display: none !important; }
 html[data-route="case"] #resolved.hidden, html[data-route="case"] #status-bar.hidden { display: block !important; }
 html[data-route="case"] #status-bar:empty::before { content: 'Loading...'; }
 
-.sidebar-toggle { display: none; position: fixed; right: 16px; bottom: 16px; width: 40px; height: 40px; background: var(--topbar-bg); color: var(--topbar-text); border: none; border-radius: 50%; font-size: 18px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 20; }
+.sidebar-toggle { display: none; position: fixed; right: 16px; bottom: 16px; width: 40px; height: 40px; background: var(--button-bg); color: var(--button-text); border: none; border-radius: 50%; font-size: 18px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 20; }
 
 @media (max-width: 768px) {
   .sidebar { display: none; }
@@ -155,7 +186,7 @@ html[data-route="case"] #status-bar:empty::before { content: 'Loading...'; }
   .topbar { font-size: 13px; padding: 6px 12px; gap: 8px; }
   .topbar-nav { font-size: 10px; padding: 2px 4px; }
   .landing { padding: 6vh 1rem 3rem; }
-  .landing-brand { font-size: 2rem; }
+  .landing-brand { --brand-cap: 30px; }
   .landing-form { flex-direction: column; align-items: stretch; width: 100%; max-width: 320px; }
   .landing-form input { width: 100%; }
   .landing-tools { flex-direction: column; }
