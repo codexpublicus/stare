@@ -8,6 +8,7 @@ import { transform } from 'esbuild';
 
 import { PDFJS_DIR, PDFJS_VERSION } from './public/js/pdfjs-path.js';
 import { vendorPdfjs } from './src/lib/pdfjs-vendor.js';
+import { fingerprintWasm, modulePreloads } from './src/lib/assetcache.js';
 
 import { isAllowed, parseLlmsTxt, parseRobots } from './src/lib/crawlfiles.js';
 import { CASE_PREFIX, ROBOTS_MAX_BYTES, curatedAllows, curatedSet } from './src/lib/robots.js';
@@ -114,6 +115,25 @@ const crawlFiles = {
 	},
 };
 
+// Lets browsers keep what doesn't change (#266; src/lib/assetcache.js says how): copies
+// the WASM module and glue to content-hashed names that _headers marks immutable and
+// points the built /js/wasm.js at them, then adds modulepreload links for each page's
+// static /js/ import graph so the modules that stay revalidated revalidate in parallel.
+const assetCache = {
+	name: 'stare-asset-cache',
+	hooks: {
+		'astro:build:done': async ({ dir, logger }) => {
+			const dist = fileURLToPath(dir);
+			if (existsSync(fileURLToPath(new URL('wasm/stare_wasm_bg.wasm', dir)))) {
+				const { module, glue } = fingerprintWasm(dist);
+				logger.info(`js/wasm.js loads ${module} and ${glue}`);
+			}
+			const { pages, modules } = await modulePreloads(dist);
+			logger.info(`modulepreload: ${pages} pages, up to ${modules} modules each`);
+		},
+	},
+};
+
 // Copies PDF.js, its patched worker and its JBIG2 decoder into public/vendor/ (gitignored)
 // for the Archival PDF view, before the dev server or the build reads public/
 // (src/lib/pdfjs-vendor.js says what the patch does). Self-hosted: the view loads nothing
@@ -135,7 +155,7 @@ const pdfjs = {
 
 // https://astro.build/config
 export default defineConfig({
-	integrations: [pdfjs, wasmSize, crawlFiles],
+	integrations: [pdfjs, wasmSize, crawlFiles, assetCache],
 	vite: {
 		server: {
 			// /about imports the repo-root CHANGELOG.md (?raw); let the dev server
