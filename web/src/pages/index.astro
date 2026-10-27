@@ -4,6 +4,7 @@ import SiteFooter from '../components/SiteFooter.astro';
 import { casesLabel, yearRange } from '../lib/collection.js';
 import { webSite } from '../lib/jsonld.js';
 import { isCaseHash } from '../lib/caseroute.js';
+import { BOOT_TIMEOUT_MS, bootGuardScript } from '../lib/bootguard.js';
 import '../styles/theme.css';
 import '../styles/layout.css';
 import '../styles/reader.css';
@@ -38,6 +39,8 @@ import SiteHead from '../components/SiteHead.astro';
 		</script>
 		<!-- A case in the hash opens on the reader's loading shell, not the landing (layout.css). -->
 		<script is:inline set:html={`try { if ((${isCaseHash})(location.hash)) document.documentElement.setAttribute('data-route', 'case'); } catch (e) {}`}></script>
+		<!-- If main.js or a module it imports fails to load, say so instead of "Loading..." forever (#265). -->
+		<script is:inline set:html={bootGuardScript({ targets: ['status-bar', 'landing-status'], what: 'The reader', errorClass: 'error', timeout: BOOT_TIMEOUT_MS })}></script>
 	</head>
 	<body>
 		<!-- Landing state -->

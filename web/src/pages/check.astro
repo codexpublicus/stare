@@ -1,6 +1,7 @@
 ---
 import SiteFooter from '../components/SiteFooter.astro';
 import { casesLabel } from '../lib/collection.js';
+import { BOOT_TIMEOUT_MS, bootGuardScript } from '../lib/bootguard.js';
 import '../styles/theme.css';
 import '../styles/layout.css';
 import '../styles/reader.css';
@@ -28,6 +29,8 @@ import SiteHead from '../components/SiteHead.astro';
 				}
 			} catch(e) {}
 		</script>
+		<!-- If the checker's modules fail to load, say so (#265). -->
+		<script is:inline set:html={bootGuardScript({ targets: ['check-status'], what: 'The citation checker', errorClass: 'check-error', timeout: BOOT_TIMEOUT_MS })}></script>
 		<style>
 			.check-container { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
 			.check-header { margin-bottom: 1.5rem; }
@@ -196,6 +199,8 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 			// Fetch and compile the WASM in the background once the page has
 			// painted; the check button waits on it only if it isn't ready.
 			preloadWasm();
+			// The boot guard in <head> stops waiting (#265).
+			globalThis.stareBoot?.ready();
 		</script>
 		<script is:inline>
 			(function() {

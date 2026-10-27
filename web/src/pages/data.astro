@@ -3,6 +3,7 @@ import JsonLd from '../components/JsonLd.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import { dataset } from '../lib/jsonld.js';
 import { courtListener, formatCount } from '../lib/collection.js';
+import { BOOT_TIMEOUT_MS, bootGuardScript } from '../lib/bootguard.js';
 import '../styles/theme.css';
 import '../styles/layout.css';
 import '../styles/data.css';
@@ -31,6 +32,8 @@ import SiteHead from '../components/SiteHead.astro';
 				}
 			} catch(e) {}
 		</script>
+		<!-- If the charts' module fails to load, say so instead of "Loading" (#265). -->
+		<script is:inline set:html={bootGuardScript({ targets: ['data-root'], what: 'This page\u2019s charts', timeout: BOOT_TIMEOUT_MS })}></script>
 	</head>
 	<body>
 		<div class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
@@ -64,6 +67,7 @@ import SiteHead from '../components/SiteHead.astro';
 		</div>
 	<script is:inline type="module">
 			import { mountDataPage } from '/js/datapage.js';
+			globalThis.stareBoot?.ready();
 			mountDataPage(document.getElementById('data-root'));
 		</script>
 	<script is:inline>

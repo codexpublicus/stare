@@ -35,3 +35,22 @@
 # URL never changes content.
 /vendor/pdfjs-*
   Cache-Control: public, max-age=31536000, immutable
+
+# Long caching for everything whose URL changes when its content does (#266), and
+# nothing else. Every other file keeps Workers' default, public, max-age=0,
+# must-revalidate: the pages, /js/*.js (plain names that import each other, so a
+# long max-age would let a browser mix two deployments' modules), the fonts, the
+# un-hashed /wasm/ files and stare_wasm_bg.json, reporters.json and the crawler
+# files. Don't add a rule here for a file whose name doesn't change with it.
+#
+# Astro's build output: Vite names each file for its content hash.
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The WASM module and its glue under content-hashed names, which the build copies
+# them to and points the built /js/wasm.js at (src/lib/assetcache.js). The plain
+# stare_wasm_bg.wasm and stare_wasm.js don't match these patterns.
+/wasm/stare_wasm_bg.*.wasm
+  Cache-Control: public, max-age=31536000, immutable
+/wasm/stare_wasm.*.js
+  Cache-Control: public, max-age=31536000, immutable
