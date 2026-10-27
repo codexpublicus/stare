@@ -8,6 +8,7 @@ import { preloadWasm, WasmLoadError } from './wasm.js';
 import { showWasmProgress } from './wasmbar.js';
 import { filePage } from './pagekey.js';
 import { hasScans, pdfPage } from './scans.js';
+import { generations } from './generation.js';
 
 // The reader's own modules are imported above; the page views (scanviewer.js, pdfviewer.js
 // and pageshell.js with theirs) and the search boxes' typeahead (searchbox.js, suggest.js,
@@ -18,6 +19,10 @@ import { hasScans, pdfPage } from './scans.js';
 // reports instead of leaving "Loading..." up.
 
 let currentResult = null;
+// The case load under way or shown (#267): each doResolve starts one and ends the one
+// before it, and every step of a load checks it's still current before it touches the
+// DOM or the state below, so a late result from a replaced case is dropped.
+const loads = generations();
 // The shown case's cited-cases list wired to its text (citenav.js), and a
 // place in the text (`~c=3`) to go to once its citations are found.
 let citeNav = null;
@@ -190,8 +195,18 @@ function wireCiteNav(listEl, readerContent) {
   }
 }
 
+// The landing's status line as the page starts, empty (#282): a lookup's progress goes
+// there while the landing is showing, and nothing else takes it down.
+function clearLandingStatus() {
+  landingStatus.textContent = '';
+  landingStatus.className = 'status-line';
+}
+
+// Back to the landing, its status line cleared; doResolve's failure path sets its error
+// after this.
 function showLanding() {
   document.documentElement.removeAttribute('data-route');
+  clearLandingStatus();
   landing.classList.remove('hidden');
   resolved.classList.add('hidden');
   sidebarToggle.classList.add('hidden');
@@ -258,18 +273,8 @@ function updateTopbar(caseData) {
   landingBox.fill(cite, getHashParams());
 }
 
-async function showResolved(result, pin = null, cite = null) {
-  citeNav?.destroy();
-  citeNav = null;
-  pendingCite = cite;
-  landing.classList.add('hidden');
-  resolved.classList.remove('hidden');
-  sidebarToggle.classList.remove('hidden');
-
-  updateTopbar(result.caseData);
-  updatePrevNext(result, result.caseFile);
-
-  // Reset the page views for the new case, and show the Reader.
+// Reset the page views for a new case, and show the Reader.
+function resetPageViews() {
   pageViewerLoaded = false;
   viewPages.pdf = 1;
   viewPages.scans = 1;
@@ -279,6 +284,23 @@ async function showResolved(result, pin = null, cite = null) {
   viewModules.pdf?.resetPdfViewer();
   pdfViewerEl.innerHTML = '';
   showView('reader');
+}
+
+// Show a resolved case. `load` is the case load it came from (generation.js); its
+// citation pass writes nothing once another load has started.
+async function showResolved(result, pin, cite, load) {
+  citeNav?.destroy();
+  citeNav = null;
+  pendingCite = cite;
+  landing.classList.add('hidden');
+  clearLandingStatus();
+  resolved.classList.remove('hidden');
+  sidebarToggle.classList.remove('hidden');
+
+  updateTopbar(result.caseData);
+  updatePrevNext(result, result.caseFile);
+
+  resetPageViews();
   // A CourtListener record has no page scans or archival PDF to show, nor has a CAP
   // volume without scans.
   const scans = !!result.zipData && hasScans(result.reporter, result.volume);
@@ -351,13 +373,18 @@ async function showResolved(result, pin = null, cite = null) {
   // a freshly created replacement a screen reader never saw appear.
   async function highlightCase(caseFile, caseData, actions) {
     const handle = citationStatusHandle;
+    // Whether this case is still the one on screen: another case of the page, or another
+    // load altogether, may have replaced it while its citations were being found.
+    const shown = () => load.current() && shownCaseFile === caseFile;
     try {
-      const { unique, occurrencesByOpinion, groups } = await processCitations(caseData);
+      const { unique, occurrencesByOpinion, groups } = await processCitations(
+        caseData, undefined, undefined, undefined, undefined, undefined, { signal: load.signal },
+      );
       const citationMap = new Map(unique.map(c => [c.key, c]));
       const citations = { unique, citationMap, occurrencesByOpinion, groups };
       // Cache empty results too, so switching back doesn't detect again.
       citationsByCase.set(caseFile, citations);
-      if (shownCaseFile !== caseFile) return;
+      if (!shown()) return;
       if (unique.length > 0) {
         const layout = pagesFor(caseFile, caseData);
         renderReader(readerContent, caseData, citations, layout.pages, layout.footnotes);
@@ -367,8 +394,10 @@ async function showResolved(result, pin = null, cite = null) {
       setupCiteHovers(readerContent, resolve);
       wireCiteNav(handle.listEl, readerContent);
     } catch (e) {
+      // A pass ended by another load (its AbortError) is no failure.
+      if (!load.current()) return;
       console.error('Citation detection failed:', e);
-      if (shownCaseFile !== caseFile) return;
+      if (!shown()) return;
       updateCitationStatus(handle, caseData, null, 'error');
     }
   }
@@ -382,12 +411,18 @@ async function showResolved(result, pin = null, cite = null) {
     const caseData = extractCase(result.zipData, caseFile);
     const seq = seqFromFile(caseFile);
     const page = pageFromFile(caseFile);
-    // Update URL to reflect the specific case
+    // The case shown is now this one (#268): the hash names it, and the hashchange that
+    // follows is ours, not a new case to resolve. A new object, so a page view still
+    // opening for the case before sees it isn't current (openPageView).
+    const shownResult = { ...result, caseData, caseFile, seq };
+    currentResult = shownResult;
     setHash(result.reporter, result.volume, page, seq);
+    lastResolvedHash = window.location.hash;
     updateTopbar(caseData);
     updatePrevNext(result, caseFile);
     renderMultiNotice(multiEl, result.allCases, caseFile, switchCase);
-    showCase(caseFile, caseData, { ...result, caseData, caseFile, seq });
+    resetPageViews();
+    showCase(caseFile, caseData, shownResult);
     goToPage(null);
   }
 }
@@ -435,12 +470,16 @@ function setStatus(msg, isError) {
 }
 
 async function doResolve(reporter, volume, page, seq = null, pin = null, cite = null, view = null) {
+  // Ends any load still under way: from here on only this one sets the hash, the status
+  // line and the case shown (#267).
+  const load = loads.start();
   landingBtn.disabled = true;
   setStatus('', false);
   showWasmBar(() => doResolve(reporter, volume, page, seq, pin, cite, view));
 
   try {
-    const result = await resolve(reporter, volume, page, (msg) => setStatus(msg, false), seq);
+    const result = await resolve(reporter, volume, page, (msg) => { if (load.current()) setStatus(msg, false); }, seq);
+    if (!load.current()) return;
     currentResult = result;
     // The folder the case is in, which can differ from the volume as cited (a3d/138-2).
     // A citation that resolved through an alias (#151) goes to the case it names, whose
@@ -449,8 +488,9 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
     else setHash(reporter, result.volume, page, result.seq, pin, cite, cite ? null : view);
     lastResolvedHash = window.location.hash;
     pendingView = result.alias || cite ? null : view;
-    showResolved(result, result.alias ? null : pin, result.alias ? null : cite);
+    showResolved(result, result.alias ? null : pin, result.alias ? null : cite, load);
   } catch (err) {
+    if (!load.current()) return;
     if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
     // Only go to landing if we're not already showing a case
     // (i.e., this was a landing page search, not an inline edit). A WASM
@@ -461,7 +501,7 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
       landingBox.fill('', { reporter, volume, page, seq });
     }
   } finally {
-    landingBtn.disabled = false;
+    if (load.current()) landingBtn.disabled = false;
   }
 }
 
@@ -752,9 +792,13 @@ onHashChange((params) => {
     params.view ? { view: params.view, page: params.viewPage } : null);
 });
 
-// Handle back to empty hash (return to landing)
+// Handle back to empty hash (return to landing). A case still loading is dropped, so it
+// can't open over the landing when it arrives, and Forward opens the case again.
 window.addEventListener('hashchange', () => {
   if (!window.location.hash || window.location.hash === '#') {
+    loads.cancel();
+    lastResolvedHash = '';
+    landingBtn.disabled = false;
     showLanding();
   }
 });

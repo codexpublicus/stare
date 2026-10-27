@@ -344,7 +344,7 @@ keep that from happening again:
   404; the site sends no Content-Security-Policy, and if one is added each inline script
   (theme, caseroute, boot guard) needs its `'sha256-...'` in `script-src`, computed from
   the built HTML since the guard's text is generated.
-- **Only the reader's own modules are static.** main.js's static graph is 16 modules
+- **Only the reader's own modules are static.** main.js's static graph is 17 modules
   (`web/tests/boot-graph.test.js` keeps it so). The page views (`pdfviewer.js`,
   `scanviewer.js`, `pageshell.js`, `pagezoom.js`, `pdfpages.js`, `pdfjs-path.js`,
   `selectionpaint.js`) are imported when a page-view tab first opens; one that fails shows
@@ -403,6 +403,16 @@ last section, so their list arriving moves nothing below it. `web/e2e/caseload.s
 keeps a case load's layout shifts under 0.05 at phone, laptop and large sizes, with the WASM
 held so the loading line and the bar both show, and checks that the index file and the zip
 are requested while the WASM is held.
+
+Each case load (a search, prev/next, a hash change) is a generation (`generations()` in
+`web/public/js/generation.js`, #267): `doResolve` starts one, which ends the one before it,
+and the load's steps check `current()` before they set the hash, the status line, the case
+shown or the cited-cases navigation, so a case that arrives late is dropped. The citation
+pass takes the load's `AbortSignal` (`processCitations`) and starts no lookup once it
+aborts. Back to the landing ends the load under way and clears `#landing-status` (#282).
+Switching between the cases on one page renders from the zip in memory and marks the hash
+as its own, so it doesn't resolve the page again (#268). `web/e2e/caseswitch.spec.js`
+covers the three.
 
 ### WASM module size (#73)
 
