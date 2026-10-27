@@ -1,8 +1,9 @@
 name: Build and check the site
 description: >
   The checks and build site.yml's previews run: cargo fmt, clippy and tests,
-  the stare-wasm build, the JS tests, citare's data bundle and the Astro build
-  into web/dist (build-web). release.yml doesn't run it: it deploys the
+  the stare-wasm build, the JS tests, citare's data bundle, the Astro build
+  into web/dist (build-web), and the build's URLs against content blockers'
+  filter lists. release.yml doesn't run it: it deploys the
   stare-wasm build and data bundle the merge commit's main build made and
   checked, with only the Astro build redone for the release tag. Expects the
   repo to be checked out already.
@@ -124,3 +125,24 @@ runs:
       with:
         release: ${{ inputs.release }}
         commit: ${{ inputs.commit }}
+
+    # Every URL in the build, and the data hosts' paths, against content blockers'
+    # filter lists (#265; web/checks/). The lists are fetched at most daily; the cache
+    # keeps the last day's, which the check falls back to (up to two weeks old) if a
+    # list's host is down.
+    - name: Date for the filter lists' cache
+      id: filterlists
+      shell: bash
+      run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .filterlists
+        key: filterlists-${{ steps.filterlists.outputs.day }}
+        restore-keys: filterlists-
+
+    - name: Check URLs against content blockers' lists
+      shell: bash
+      env:
+        STARE_FILTERLIST_CACHE: ${{ github.workspace }}/.filterlists
+      run: node --test 'web/checks/*.test.js'
