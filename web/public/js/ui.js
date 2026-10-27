@@ -206,7 +206,7 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
     </div>
   `;
 
-  const afterHtml = `
+  const actionsHtml = `
     <div class="sidebar-section">
       <div class="sidebar-label">Actions</div>${pdfAction}
       <a class="sidebar-action" href="#" id="copy-link-btn">
@@ -246,10 +246,13 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
   region.appendChild(statusEl);
   region.appendChild(listEl);
 
+  // The cited cases go last: their list replaces "Finding citations..." once the
+  // citations are found, usually longer, and anything under it would be pushed down
+  // as the case loads (#260).
   el.innerHTML = '';
   el.insertAdjacentHTML('beforeend', beforeHtml);
+  el.insertAdjacentHTML('beforeend', actionsHtml);
   el.appendChild(region);
-  el.insertAdjacentHTML('beforeend', afterHtml);
 
   return handle;
 }

@@ -2,13 +2,17 @@
 // for something the WASM does before it has loaded: the case viewer and
 // /check. It shows the download's real progress, goes away when the WASM is
 // ready, and on a failure says so with a Retry button. It never covers or
-// blocks the rest of the page.
+// blocks the rest of the page. It waits SHOW_AFTER_MS before it appears, so a
+// load that finishes sooner (a warm cache, a fast connection) never shows it
+// and never moves anything (#260); a failure shows at once.
 
 import { onWasmProgress, progressFraction, retryWasm, wasmProgress } from './wasm.js';
 
 let nextId = 0;
 // The bar showing in each slot, so a second call reuses it.
 const bars = new WeakMap();
+
+export const SHOW_AFTER_MS = 500;
 
 function formatBytes(n) {
   return n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.round(n / 1e3)} KB`;
@@ -17,10 +21,11 @@ function formatBytes(n) {
 /**
  * Shows the bar in `slot`, an element the page keeps empty for it, unless the
  * WASM is already ready. `onRetryReady` runs when a load retried from this
- * bar succeeds, so the page can redo what failed. Returns a function that
- * removes the bar.
+ * bar succeeds, so the page can redo what failed. `delay` is how long the
+ * bar waits before it goes into the slot. Returns a function that removes
+ * the bar.
  */
-export function showWasmProgress(slot, { onRetryReady } = {}) {
+export function showWasmProgress(slot, { onRetryReady, delay = SHOW_AFTER_MS } = {}) {
   if (!slot || wasmProgress().state === 'ready') return () => {};
   const shown = bars.get(slot);
   if (shown) {
@@ -55,7 +60,14 @@ export function showWasmProgress(slot, { onRetryReady } = {}) {
   retry.textContent = 'Retry';
 
   bar.append(label, track);
-  slot.replaceChildren(bar);
+  let timer = null;
+  const place = () => {
+    clearTimeout(timer);
+    timer = null;
+    if (!bar.isConnected) slot.replaceChildren(bar);
+  };
+  if (delay > 0) timer = setTimeout(place, delay);
+  else place();
 
   let retried = false;
   retry.addEventListener('click', () => {
@@ -66,6 +78,7 @@ export function showWasmProgress(slot, { onRetryReady } = {}) {
   let unsubscribe = () => {};
   const handle = { onRetryReady, remove: () => {} };
   const remove = () => {
+    clearTimeout(timer);
     unsubscribe();
     bars.delete(slot);
     if (bar.isConnected) bar.remove();
@@ -83,6 +96,7 @@ export function showWasmProgress(slot, { onRetryReady } = {}) {
       error.replaceChildren("Couldn't load the citation parser. ", retry);
       bar.classList.add('wasm-progress-failed');
       bar.replaceChildren(error);
+      place();
       return;
     }
     if (bar.classList.contains('wasm-progress-failed')) {

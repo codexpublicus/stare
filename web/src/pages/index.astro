@@ -135,19 +135,25 @@ import SiteHead from '../components/SiteHead.astro';
 				<button id="next-btn" class="topbar-nav" title="Next case" disabled>&#9654;</button>
 				<button id="theme-btn" class="theme-toggle" title="Toggle dark mode">&#9790;</button>
 			</div>
-			<div id="status-bar" class="status-line hidden"></div>
-			<div id="wasm-progress"></div>
 			<div class="layout">
 				<div class="main">
+					<!-- The page views' tabs show once the case says it has scans (main.js). -->
 					<div class="view-tabs">
 						<div class="view-tab active" id="tab-reader">Reader</div>
-						<div class="view-tab" id="tab-pdf">Archival PDF</div>
-						<div class="view-tab" id="tab-pages">Raw Scans</div>
+						<div class="view-tab hidden" id="tab-pdf">Archival PDF</div>
+						<div class="view-tab hidden" id="tab-pages">Raw Scans</div>
 					</div>
-					<div class="main-content">
-						<div id="reader"></div>
-						<div id="pdf-viewer" class="hidden"></div>
-						<div id="page-viewer" class="hidden"></div>
+					<div class="main-body">
+						<!-- Over the top of the reader, so showing or hiding them moves nothing (#260). -->
+						<div class="load-status">
+							<div id="status-bar" class="status-line hidden"></div>
+							<div id="wasm-progress"></div>
+						</div>
+						<div class="main-content">
+							<div id="reader"></div>
+							<div id="pdf-viewer" class="hidden"></div>
+							<div id="page-viewer" class="hidden"></div>
+						</div>
 					</div>
 				</div>
 				<div class="sidebar" id="sidebar"></div>
