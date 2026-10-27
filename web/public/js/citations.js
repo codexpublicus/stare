@@ -843,11 +843,25 @@ export function conflictNote(c) {
  * `reconcileParallels`, used by tests to stub the network fetch and to hand
  * in the WASM, which Node can't load from the site path. Rejects, with a
  * WasmLoadError, if the WASM fails to load.
+ *
+ * `signal` (an AbortSignal) ends the pass once another case replaces this one (#267):
+ * no detection, index lookup or name read starts after it aborts, and the pass rejects
+ * with its reason, an AbortError, instead of returning.
  */
 export async function processCitations(
   caseData, check = checkAvailability, detect = detectCitations, pageCheck = checkPage,
-  reconcile = reconcileParallels, readNames = readCaseNamesLazily,
+  reconcile = reconcileParallels, readNames = readCaseNamesLazily, { signal = null } = {},
 ) {
+  // Each step checks the signal before it starts and once it's done.
+  const step = (fn) => async (...args) => {
+    signal?.throwIfAborted();
+    const out = await fn(...args);
+    signal?.throwIfAborted();
+    return out;
+  };
+  if (signal) {
+    [check, detect, pageCheck, reconcile, readNames] = [check, detect, pageCheck, reconcile, readNames].map(step);
+  }
   const allCites = [];
   const byOpinion = [];
 
@@ -858,6 +872,7 @@ export async function processCitations(
   }
 
   const unique = await checkCitations(allCites, check, pageCheck, reconcile, readNames);
+  signal?.throwIfAborted();
   // Grouping numbers each citation's place in the text, which the occurrences carry.
   const groups = groupCitations(allCites, unique);
   const occurrencesByOpinion = byOpinion.map(detected => detected.map(c => occurrence(c)));
