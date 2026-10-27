@@ -2,6 +2,12 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
+## v2026.10.27.2 - 2026-10-27
+
+### Fixes
+
+- web: open a case without moving the reader, and fetch its data while the WASM loads
+
 ## v2026.10.27.1 - 2026-10-27
 
 ### Features
