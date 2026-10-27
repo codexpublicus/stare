@@ -10,6 +10,7 @@
 // the cache between runs (.github/actions/build-site), so a list host being down doesn't
 // fail a build.
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { get } from 'node:https';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -72,10 +73,38 @@ export async function expandIncludes(text, base, fetchText) {
   return out.join('\n');
 }
 
-async function fetchText(url) {
-  const res = await fetch(url, { headers: { 'user-agent': 'stare.pub filter-list check (+https://github.com/codexpublicus/stare)' } });
-  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
-  return res.text();
+// A list's text, over node:https with a connection of its own (`agent: false`), following
+// up to five redirects. Not fetch(): Node's undici keeps the sockets alive, and a list
+// host closing one after the lists are read hit undici's `assert(!this.paused)` in
+// Parser.finish as an uncaught exception, failing the check about half the time with an
+// empty cache (CI's, always).
+function fetchText(url, redirects = 5) {
+  return new Promise((resolve, reject) => {
+    const req = get(url, {
+      agent: false,
+      headers: { 'user-agent': 'stare.pub filter-list check (+https://github.com/codexpublicus/stare)' },
+      timeout: 60_000,
+    }, (res) => {
+      const { statusCode: status, headers } = res;
+      if (status >= 300 && status < 400 && headers.location && redirects > 0) {
+        res.resume();
+        resolve(fetchText(new URL(headers.location, url).href, redirects - 1));
+        return;
+      }
+      if (status !== 200) {
+        res.resume();
+        reject(new Error(`${url}: HTTP ${status}`));
+        return;
+      }
+      res.setEncoding('utf8');
+      let text = '';
+      res.on('data', (chunk) => { text += chunk; });
+      res.on('end', () => resolve(text));
+      res.on('error', reject);
+    });
+    req.on('timeout', () => req.destroy(new Error(`${url}: timed out`)));
+    req.on('error', reject);
+  });
 }
 
 /**
