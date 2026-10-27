@@ -53,6 +53,8 @@ test('a case opened again comes from the cache, with one HEAD to check the zip i
   page.on('request', (req) => { if (isZip(req)) requests.push(req.method()); });
   await page.reload();
   await expect(page.locator('#topbar-case')).toHaveText(TITLE);
+  // The HEAD goes out once the cached zip has been read, in the background.
+  await expect.poll(() => requests).toEqual(['HEAD']);
   await page.waitForLoadState('networkidle');
   expect(requests).toEqual(['HEAD']);
 });
