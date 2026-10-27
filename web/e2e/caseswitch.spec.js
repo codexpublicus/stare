@@ -53,14 +53,13 @@ test('a case that finishes loading after the next one opened does not replace it
 });
 
 test('a citation pass that finishes after the next case opened leaves its cited cases working', async ({ page }) => {
-  // Every index request Lyon's citation pass makes is held: those made while it's shown,
-  // other than for the two cases themselves.
-  let holding = false;
+  // Every index request Lyon's citation pass makes is held: those made before Renaire is
+  // opened, other than the manifest and the two cases' own volumes.
+  let holding = true;
   const lyon = await holdIndex(page, (url) => holding && !/manifest\.json$/.test(url)
     && !LYON.files.test(url) && !RENAIRE.files.test(url));
   await page.goto(`/${LYON.hash}`);
   await expect(page.locator('#topbar-case')).toHaveText(LYON.title);
-  holding = true;
   await expect.poll(() => lyon.held.length).toBeGreaterThan(0);
   holding = false;
 
