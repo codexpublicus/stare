@@ -2,6 +2,13 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
+## v2026.10.27.3 - 2026-10-27
+
+### Fixes
+
+- web: drop a case load's late results once another case replaces it
+- web: bound the zip cache and never let IndexedDB stop a case opening
+
 ## v2026.10.27.2 - 2026-10-27
 
 ### Fixes
