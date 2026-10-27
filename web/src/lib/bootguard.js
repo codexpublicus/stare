@@ -6,8 +6,9 @@
 // the case view sat on "Loading..." for good. The pages inline `bootGuard` into a classic
 // script in <head>, ahead of their module scripts, so it can't be blocked or fail to load
 // itself. It listens for
-// - an `error` event on a <script> element (the module graph failed to load: the browser
-//   fires it at the module script whose graph it was), and
+// - an `error` event on one of the site's own <script> elements, inline or loaded from the
+//   page's origin (the module graph failed to load: the browser fires it at the module
+//   script whose graph it was), and
 // - an uncaught error from the page's own origin before the scripts say they've started
 //   (a module that loaded but threw while evaluating),
 // and waits `timeout` ms for `stareBoot.ready()`, which each page's module script calls
@@ -79,7 +80,11 @@ export function bootGuard(opts, win) {
     if (state.ready) return;
     var t = e.target;
     if (t && t.tagName === 'SCRIPT') {
-      show(false);
+      // Another host's script is not the page's to start: Cloudflare Web Analytics' beacon,
+      // which Cloudflare adds to every page and EasyPrivacy blocks, fails this way for
+      // anyone running uBlock Origin. An inline module script's `src` is ''.
+      var src = t.src || '';
+      if (!src || src.indexOf(win.location.origin + '/') === 0) show(false);
       return;
     }
     // An uncaught error while a module evaluated: the page's own scripts (an inline module's

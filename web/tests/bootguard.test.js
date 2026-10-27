@@ -127,6 +127,23 @@ test('an uncaught error from the site before ready() counts; one from elsewhere,
   assert.ok(message(f.els['status-bar']));
 });
 
+test('a script from the site that fails counts; another host\'s, like Cloudflare\'s beacon, does not', () => {
+  const f = fakeWindow(['status-bar']);
+  bootGuard(OPTS, f.win);
+  f.fire({ target: { tagName: 'SCRIPT', src: 'https://static.cloudflareinsights.com/beacon.min.js' } });
+  f.fire({ target: { tagName: 'SCRIPT', src: 'https://stare.pub.example.com/js/main.js' } });
+  assert.ok(!message(f.els['status-bar']));
+  f.fire({ target: { tagName: 'SCRIPT', src: 'https://stare.pub/js/main.js' } });
+  assert.ok(message(f.els['status-bar']));
+});
+
+test('an inline module script that fails counts', () => {
+  const f = fakeWindow(['status-bar']);
+  bootGuard(OPTS, f.win);
+  f.fire({ target: { tagName: 'SCRIPT', src: '' } });
+  assert.ok(message(f.els['status-bar']));
+});
+
 test('an error before the body is parsed waits for it', () => {
   const f = fakeWindow(['status-bar'], { readyState: 'loading' });
   bootGuard(OPTS, f.win);
