@@ -304,6 +304,56 @@ What each stage suggests, and fetches the first time:
   files in stare-builder would cost 0.2 to 8 KB more per volume compressed (the index
   files grow about threefold) and would replace the range read.
 
+### A script that fails to load (#265)
+
+v2026.10.26.5 shipped `js/pageview.js`, which EasyPrivacy blocks (`/pageview.js`), and with
+uBlock Origin on, every case link stayed on "Loading...": main.js runs only once every
+module it imports statically has loaded, and nothing reported the failure. Three things
+keep that from happening again:
+
+- **The boot guard** (`web/src/lib/bootguard.js`), inlined into a classic script in the
+  `<head>` of `/`, `/check` and `/data`, after #241's caseroute script. It listens, capturing,
+  for an `error` event on a `<script>` element (the browser fires it at the module script
+  whose graph failed to load) and for an uncaught error from the site's own origin, and
+  waits 10 seconds (`BOOT_TIMEOUT_MS`) for `stareBoot.ready()`, which main.js calls as its
+  last statement and the pages' inline modules call once wired. On the first of those
+  before `ready()`, it replaces "Loading..." (the status line on a case route, else
+  `#landing-status`; `#check-status`; `#data-root`) with a message that the page didn't
+  start, a content blocker is the likely cause, and a link that reloads the page. A late
+  `ready()` takes the message down. It is inline so that it can't itself be blocked or
+  404; the site sends no Content-Security-Policy, and if one is added each inline script
+  (theme, caseroute, boot guard) needs its `'sha256-...'` in `script-src`, computed from
+  the built HTML since the guard's text is generated.
+- **Only the reader's own modules are static.** main.js's static graph is 16 modules
+  (`web/tests/boot-graph.test.js` keeps it so). The page views (`pdfviewer.js`,
+  `scanviewer.js`, `pageshell.js`, `pagezoom.js`, `pdfpages.js`, `pdfjs-path.js`,
+  `selectionpaint.js`) are imported when a page-view tab first opens; one that fails shows
+  "The Archival PDF view couldn't load" (or Raw Scans) with a reload link in that view, and
+  the Reader keeps working. The typeahead (`searchbox.js`, `suggest.js`, `casenames.js`) is
+  imported when a search box is first focused (`lazySearchBox` in main.js); without it the
+  boxes still take a citation, through the parser alone. The top bar's editor listens for
+  keys on `#topbar`, not the input, so the typeahead, attached later, still takes Enter and
+  Escape first. That moved about 94 KB (34 KB gzipped) off the reader's first load.
+- **Every served URL is checked against the filter lists**
+  (`web/checks/blocked-urls.test.js`, `mise run check-blockers`, run in CI after the Astro
+  build): each file in `web/dist` with the request types a browser makes for it, and the
+  index and data hosts' path patterns for every reporter in `reporters.json`, through
+  Ghostery's matcher (`@ghostery/adblocker`) against EasyList, EasyPrivacy, uBO's filters,
+  privacy, badware, quick-fixes and unbreak, Peter Lowe's, AdGuard Base and Tracking
+  Protection, and Fanboy's annoyances. The lists are fetched at most daily
+  (`web/checks/filterlists.js`; `~/.cache/stare/filterlists` locally, actions/cache in CI)
+  rather than vendored, since they change daily and total about 25 MB; with a list's hosts
+  down, a copy up to two weeks old is used. A list adding a rule that matches a file fails
+  every build until the file is renamed, which is the point.
+  `web/tests/script-names.test.js` still keeps names that read like analytics or ads out
+  of `public/js`, and new files should avoid such words (pageview, analytics, track,
+  beacon, pixel, stats, ads) anyway.
+
+`web/e2e/resilience.spec.js` blocks modules the way a blocker does (ERR_BLOCKED_BY_CLIENT):
+a page view's, where the Reader must still work and the view show its message; the
+typeahead's; one main.js imports statically, where the guard's message must appear within
+3 seconds; and one held unanswered, where the timer's appears at 10 seconds.
+
 ### WASM module size (#73)
 
 `web/public/wasm/stare_wasm_bg.wasm` is built by wasm-pack with the release profile in
@@ -629,7 +679,7 @@ when the text is first shown, so the words move under a selection made before it
 when the text is shown or hidden; copying is the browser's own. Forced colours keep the browser's own selection. The geometry is tested in
 `web/tests/selectionpaint.test.js`, and `smoke.spec.js` checks that a selected paragraph is
 one colour in both views. The zoom mode is remembered per view in localStorage
-(`stare-page-zoom-pdf`, `-scans`), every access in try/catch. Neither view loads anything
+(`stare-page-zoom-pdf`, `-scans`), every access in try/catch. Neither view loads anything, its own script included (#265),
 until its tab is first opened, and zooming, resizing or rotating fetches nothing more
 (`web/e2e/smoke.spec.js` checks this, and the fit at phone, laptop and large sizes). CourtListener records and the 658 volumes CAP published
 without scans (`web/public/js/scans.js`, from the index's `no_scans`) hide both tabs, and the
