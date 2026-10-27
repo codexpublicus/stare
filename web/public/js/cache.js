@@ -134,3 +134,15 @@ export async function fetchCachedText(store, key, url) {
   await cacheSet(store, key, text);
   return text;
 }
+
+// Whether `bytes` start with gzip's magic number.
+export function isGzip(bytes) {
+  return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
+// `bytes` gunzipped, or as they are when they aren't gzip.
+export async function gunzip(bytes) {
+  if (!isGzip(bytes)) return bytes;
+  const body = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(body).arrayBuffer());
+}

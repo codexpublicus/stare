@@ -18,14 +18,22 @@
 //                   in one parallel wave instead of one level of the import graph at a
 //                   time. Dynamic import()s aren't followed: a lazily loaded module
 //                   stays lazy.
+// casePreloads      Writes the WASM's preloads, by the hashed names fingerprintWasm made,
+//                   into index.html's head script (src/lib/caseroute.js), which adds
+//                   them on a case link only, so a case's WASM download starts with the
+//                   HTML (#262) and the landing keeps loading it late and at low priority.
 import { createHash } from 'node:crypto';
 import { copyFileSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
+
+import { WASM_PRELOADS_MARK } from './caseroute.js';
 
 export const WASM_DIR = 'wasm';
 export const WASM_MODULE = 'stare_wasm_bg.wasm';
 export const WASM_GLUE = 'stare_wasm.js';
 export const WASM_LOADER = 'js/wasm.js';
+export const WASM_INFO = 'stare_wasm_bg.json';
+export const CASE_PAGE = 'index.html';
 
 // Sixteen hex digits of the SHA-256, as citare's data bundle is named.
 export const contentHash = (bytes) => createHash('sha256').update(bytes).digest('hex').slice(0, 16);
@@ -57,6 +65,43 @@ export function fingerprintWasm(distDir) {
   }
   writeFileSync(loaderPath, loader);
   return urls;
+}
+
+/**
+ * The links that start the WASM's load: the module and citare's data bundle as fetch()
+ * preloads, the build info naming the bundle likewise, and the glue as a module.
+ * `urls` is fingerprintWasm's result; `info` the build info (stare_wasm_bg.json).
+ */
+export function wasmPreloads(urls, info) {
+  const links = [
+    { rel: 'preload', as: 'fetch', href: urls.module, crossorigin: true },
+    { rel: 'modulepreload', href: urls.glue },
+    { rel: 'preload', as: 'fetch', href: `/${WASM_DIR}/${WASM_INFO}`, crossorigin: true },
+  ];
+  if (typeof info?.data?.url === 'string') {
+    links.push({ rel: 'preload', as: 'fetch', href: info.data.url, crossorigin: true });
+  }
+  return links;
+}
+
+/**
+ * Writes wasmPreloads into dist/index.html at caseroute.js's WASM_PRELOADS_MARK. Throws
+ * unless the mark is there exactly once, so the head script can't silently lose them.
+ * Returns the links written.
+ */
+export function casePreloads(distDir, urls) {
+  const page = join(distDir, CASE_PAGE);
+  const html = readFileSync(page, 'utf8');
+  const count = html.split(WASM_PRELOADS_MARK).length - 1;
+  if (count !== 1) {
+    throw new Error(`${CASE_PAGE}: expected the mark ${WASM_PRELOADS_MARK} once, found it ${count} times`);
+  }
+  const info = JSON.parse(readFileSync(join(distDir, WASM_DIR, WASM_INFO), 'utf8'));
+  const links = wasmPreloads(urls, info);
+  // JSON in a <script>: "<" escaped, so no URL could close the element.
+  const json = JSON.stringify(links).replace(/</g, '\\u003c');
+  writeFileSync(page, html.replace(WASM_PRELOADS_MARK, () => `/*stare:wasm-preloads*/${json}`));
+  return links;
 }
 
 function htmlFiles(dir) {

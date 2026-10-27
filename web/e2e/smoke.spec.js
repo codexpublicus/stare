@@ -156,9 +156,10 @@ base('/check reports a failed bundle load and retries it', async ({ page }) => {
 for (const path of ['/', '/check']) {
   test(`${path} loads the WASM in the background, after first paint`, async ({ page }) => {
     const wasm = page.waitForResponse(isWasm);
-    const response = await page.goto(path);
-    // Nothing in the HTML asks for it up front.
-    expect(await response.text()).not.toContain('stare_wasm');
+    await page.goto(path);
+    // Nothing in the page asks for it up front: index.html's head script preloads it
+    // on a case link only (caseload.spec.js).
+    expect(await page.locator('link[href*="stare_wasm"]').count()).toBe(0);
     await wasm;
 
     // The resource timing entry appears once the whole body is in, after

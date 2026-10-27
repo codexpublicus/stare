@@ -27,3 +27,37 @@ export function isCaseHash(hash) {
   if (/^\d+$/.test(page)) return Number.isSafeInteger(Number(page));
   return !(/^\d/.test(page) || page.includes(',') || page.startsWith('#') || /\p{Cc}/u.test(page));
 }
+
+// Where the build puts the WASM's preload links in caseRouteScript's output: an empty
+// list until src/lib/assetcache.js's casePreloads writes in the hashed names it made.
+export const WASM_PRELOADS_MARK = '/*stare:wasm-preloads*/[]';
+
+/**
+ * Adds `<link>`s to `doc`'s <head>: each of `links` is `{ rel, href, as?, crossorigin? }`.
+ * Inlined into the head script, so it can't import anything.
+ */
+export function addLinks(links, doc) {
+  for (var i = 0; i < links.length; i++) {
+    var l = doc.createElement('link');
+    l.rel = links[i].rel;
+    if (links[i].as) l.as = links[i].as;
+    if (links[i].crossorigin) l.crossOrigin = 'anonymous';
+    l.href = links[i].href;
+    doc.head.appendChild(l);
+  }
+}
+
+/**
+ * The head script for index.astro: on a case hash, marks <html> data-route="case" and
+ * starts what opening the case will need with the HTML, before main.js and its imports
+ * have loaded (#262): connections to the index and data hosts (`preconnects`, hrefs),
+ * and the WASM module, its glue, its build info and citare's data bundle, which the
+ * build fills in at WASM_PRELOADS_MARK. The fetches' modes match the loader's
+ * (public/js/wasm.js): fetch() with its default credentials, and import() for the glue,
+ * so the browser hands the preloaded responses over instead of fetching again.
+ */
+export function caseRouteScript(preconnects) {
+  const links = preconnects.map((href) => ({ rel: 'preconnect', href, crossorigin: true }));
+  return `try { if ((${isCaseHash})(location.hash)) { document.documentElement.setAttribute('data-route', 'case'); `
+    + `(${addLinks})(${JSON.stringify(links)}.concat(${WASM_PRELOADS_MARK}), document); } } catch (e) {}`;
+}

@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isCaseHash } from '../src/lib/caseroute.js';
+import { WASM_PRELOADS_MARK, caseRouteScript, isCaseHash } from '../src/lib/caseroute.js';
 import { parseHash } from '../public/js/router.js';
 
 // Every form router.js documents, and the ones the site links to.
@@ -100,5 +100,50 @@ describe('isCaseHash', () => {
     }
     // Enough of both kinds for the comparison to mean something.
     assert.ok(cases > 2000 && cases < 18000, `${cases} of 20000 were cases`);
+  });
+});
+
+// The head script index.astro inlines (#262), run against a fake document.
+describe('caseRouteScript', () => {
+  function run(hash, links = null) {
+    let script = caseRouteScript(['https://idx.stare.pub', 'https://data.stare.pub']);
+    if (links) script = script.replace(WASM_PRELOADS_MARK, `/*stare:wasm-preloads*/${JSON.stringify(links)}`);
+    const added = [];
+    const attrs = {};
+    const document = {
+      documentElement: { setAttribute: (k, v) => { attrs[k] = v; } },
+      head: { appendChild: (l) => added.push(l) },
+      createElement: () => ({}),
+    };
+    new Function('location', 'document', script)({ hash }, document);
+    return { attrs, added };
+  }
+
+  test('a case hash marks the route and preconnects to the index and data hosts', () => {
+    const { attrs, added } = run('#a2d/142/148-01');
+    assert.equal(attrs['data-route'], 'case');
+    assert.deepEqual(added, [
+      { rel: 'preconnect', href: 'https://idx.stare.pub', crossOrigin: 'anonymous' },
+      { rel: 'preconnect', href: 'https://data.stare.pub', crossOrigin: 'anonymous' },
+    ]);
+  });
+
+  test('the build\'s WASM preloads follow, fetch()-compatible', () => {
+    const { added } = run('#a2d/142/148-01', [
+      { rel: 'preload', as: 'fetch', href: '/wasm/stare_wasm_bg.0123456789abcdef.wasm', crossorigin: true },
+      { rel: 'modulepreload', href: '/wasm/stare_wasm.0123456789abcdef.js' },
+    ]);
+    assert.deepEqual(added.slice(2), [
+      { rel: 'preload', as: 'fetch', href: '/wasm/stare_wasm_bg.0123456789abcdef.wasm', crossOrigin: 'anonymous' },
+      { rel: 'modulepreload', href: '/wasm/stare_wasm.0123456789abcdef.js' },
+    ]);
+  });
+
+  test('the landing gets neither the mark nor any link', () => {
+    for (const hash of ['', '#', '#about']) {
+      const { attrs, added } = run(hash, [{ rel: 'modulepreload', href: '/x.js' }]);
+      assert.deepEqual(attrs, {});
+      assert.deepEqual(added, []);
+    }
   });
 });
