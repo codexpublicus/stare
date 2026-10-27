@@ -660,3 +660,36 @@ fn check_looks_short_forms_up_through_their_antecedent() {
         (CheckStatus::NotHeld, Some("175"))
     );
 }
+
+/// A case's JSON comes from a whole zip in the cache when there is one, with no
+/// request to the data source; otherwise from the source, and then from the cache.
+#[test]
+fn a_cached_zip_is_read_in_place_of_the_source() {
+    use super::case_text::{read_case, read_entry};
+    let _env = CACHE_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let cache = tempfile::tempdir().unwrap();
+    std::env::set_var("XDG_CACHE_HOME", cache.path());
+    let zip = std::fs::read("../stare/tests/fixtures/a2d-31.zip").unwrap();
+
+    // Nothing listens at port 1, so any request fails.
+    let offline = Sources::new("http://127.0.0.1:1", "http://127.0.0.1:1/cap");
+    assert!(read_case(&offline, "a2d", "31", "0647-01").is_err());
+    config::cache_set("zips", "a2d/31.zip", &zip).unwrap();
+    let case = read_case(&offline, "a2d", "31", "0647-01").unwrap();
+    assert_eq!(case.name_abbreviation, "D'Elia & Marks Co. v. Lyon");
+
+    // A directory source reads the entry from the zip on disk and caches nothing.
+    let fresh = tempfile::tempdir().unwrap();
+    std::env::set_var("XDG_CACHE_HOME", fresh.path());
+    let (_idx, data, src) = idx_fixture(true);
+    let html = read_entry(&src, "a2d", "31", "html/0647-01.html").unwrap();
+    assert!(String::from_utf8(html).unwrap().contains("page-label"));
+    assert!(config::cache_get("zips", "a2d/31/html/0647-01.html").is_none());
+    assert!(config::cache_get("zips", "a2d/31.zip").is_none());
+    assert!(data.path().join("cap/a2d/31.zip").exists());
+
+    // Paths out of the cache or the zip are refused.
+    assert!(read_entry(&src, "a2d", "../31", "json/0647-01.json").is_err());
+    assert!(read_entry(&src, "a2d", "31", "../json/0647-01.json").is_err());
+    assert!(read_entry(&src, "A2D", "31", "json/0647-01.json").is_err());
+}

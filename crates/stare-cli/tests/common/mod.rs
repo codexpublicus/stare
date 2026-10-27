@@ -12,6 +12,8 @@
 //!   again, under the sample's cluster and hash).
 #![allow(dead_code)]
 
+pub mod http;
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 

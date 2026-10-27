@@ -166,8 +166,7 @@ fn print_case(result: &stare::resolve::CaseResult) {
 }
 
 fn list_cases(src: &Sources, reporter: &str, volume: &str, json: bool) -> Result<()> {
-    let zip_data = stare_cli::engine::fetch::fetch_zip(src, reporter, volume)?;
-    let metadata = stare::case::extract_cases_metadata(&zip_data)?;
+    let metadata = stare_cli::engine::case_text::read_cases_metadata(src, reporter, volume)?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&metadata)?);

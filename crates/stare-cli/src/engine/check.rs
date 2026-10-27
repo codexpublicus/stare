@@ -3,12 +3,11 @@
 //! cases start on settled by the citing text's case name (#212), and the citations
 //! grouped by the case they cite (#198).
 
-use super::fetch::{fetch_record, fetch_zip, zip_directory};
+use super::fetch::fetch_record;
 use super::resolve::{cited_page, idx_entries};
 use super::Sources;
 use anyhow::Result;
 use serde::Serialize;
-use stare::config;
 
 /// How a citation in `stare check` resolves, as the site shows it
 /// (`web/public/js/citations.js`, `checkCitation`).
@@ -337,7 +336,6 @@ pub fn names_pick(
     parallels: &std::collections::HashMap<String, ParallelVerdict>,
 ) -> std::collections::HashMap<String, ByName> {
     let mut out = std::collections::HashMap::new();
-    let mut reader = NameReader::default();
     // The official printings picked on their whole page (D90), by raw string.
     let mut official_picks: std::collections::HashMap<String, ByName> = Default::default();
     for c in detected {
@@ -362,7 +360,7 @@ pub fn names_pick(
         };
         // Its parallel citations narrowed the page's cases to these.
         let shared = open.len() < refs.len();
-        let mut candidate = |id: &String, r: &stare::parallel::CaseRef| match reader.names(src, r) {
+        let candidate = |id: &String, r: &stare::parallel::CaseRef| match case_names(src, r) {
             Some(names) => names.candidate(id),
             None => stare::byname::Candidate {
                 id: id.clone(),
@@ -442,64 +440,29 @@ pub fn names_pick(
     out
 }
 
-/// Reads the names of cases at a page: a CAP case's JSON from its volume's zip (the
-/// zip when it is cached or the data source is a directory, else by range requests,
-/// [`stare::ziprange`]), or a CourtListener record. Each zip's directory is read once.
-#[derive(Default)]
-pub struct NameReader {
-    directories: std::collections::HashMap<String, Option<Vec<stare::ziprange::Entry>>>,
-}
-
-impl NameReader {
-    pub fn names(
-        &mut self,
-        src: &Sources,
-        r: &stare::parallel::CaseRef,
-    ) -> Option<stare::byname::CaseNames> {
-        use stare::parallel::CaseRef;
-        match r {
-            CaseRef::Cl { cluster_id, hash } => {
-                let bytes = fetch_record(src, *cluster_id, hash).ok()?;
-                let case = stare::cl::decode_record(&bytes).ok()?;
-                Some(stare::byname::CaseNames {
-                    name: Some(case.name),
-                    name_abbreviation: Some(case.name_abbreviation),
-                    decision_date: Some(case.decision_date),
-                })
-            }
-            CaseRef::Cap {
-                reporter,
-                folder,
-                case_file,
-            } => {
-                let file = format!("json/{case_file}.json");
-                let key = format!("{reporter}/{folder}/{file}");
-                if let Some(bytes) = config::cache_get("zips", &key) {
-                    return stare::byname::CaseNames::parse(&bytes).ok();
-                }
-                let zip_key = format!("{reporter}/{folder}.zip");
-                let bytes = if config::cache_get("zips", &zip_key).is_some()
-                    || !Sources::is_url(&src.data)
-                {
-                    let zip = fetch_zip(src, reporter, folder).ok()?;
-                    stare::case::extract_file_from_zip(&zip, &file)
-                        .ok()?
-                        .into_bytes()
-                } else {
-                    let url = format!("{}/{}", src.data, zip_key);
-                    let entries = self
-                        .directories
-                        .entry(zip_key)
-                        .or_insert_with(|| zip_directory(&url).ok())
-                        .as_ref()?;
-                    let entry = entries.iter().find(|e| e.name == file)?;
-                    let range = format!("bytes={}-{}", entry.start, entry.end.saturating_sub(1));
-                    let (bytes, start) = super::fetch::fetch_range(&url, &range).ok()?;
-                    stare::ziprange::entry(&bytes, start, entry).ok()?
-                };
-                let _ = config::cache_set("zips", &key, &bytes);
-                stare::byname::CaseNames::parse(&bytes).ok()
-            }
+/// The names of a case at a page, for picking it by name (#212): a CAP case's JSON
+/// ([`super::case_text::read_entry`], by range requests when the data source is a URL),
+/// or a CourtListener record.
+pub fn case_names(src: &Sources, r: &stare::parallel::CaseRef) -> Option<stare::byname::CaseNames> {
+    use stare::parallel::CaseRef;
+    match r {
+        CaseRef::Cl { cluster_id, hash } => {
+            let bytes = fetch_record(src, *cluster_id, hash).ok()?;
+            let case = stare::cl::decode_record(&bytes).ok()?;
+            Some(stare::byname::CaseNames {
+                name: Some(case.name),
+                name_abbreviation: Some(case.name_abbreviation),
+                decision_date: Some(case.decision_date),
+            })
+        }
+        CaseRef::Cap {
+            reporter,
+            folder,
+            case_file,
+        } => {
+            let file = format!("json/{case_file}.json");
+            let bytes = super::case_text::read_entry(src, reporter, folder, &file).ok()?;
+            stare::byname::CaseNames::parse(&bytes).ok()
         }
     }
 }

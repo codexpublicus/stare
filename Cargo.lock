@@ -1978,6 +1978,7 @@ dependencies = [
  "serde_json",
  "stare",
  "tempfile",
+ "zip",
 ]
 
 [[package]]
