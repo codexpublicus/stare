@@ -2,6 +2,21 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
+## v2026.10.27.1 - 2026-10-27
+
+### Features
+
+- web: the Codex Publicus look, with metric-matched font fallbacks
+
+### Fixes
+
+- web: boot guard, lazy page views and typeahead, and a filter-list check
+- web: boot guard ignores a blocked Cloudflare beacon; drop "no tracking"
+
+### Performance
+
+- web: cache content-hashed assets for a year, preload the module graph
+
 ## v2026.10.26.6 - 2026-10-26
 
 ### Features

@@ -10,6 +10,11 @@
 // JavaScript, so nothing native is built for it. The lists come from filterlists.js,
 // fetched at most daily and cached.
 //
+// Cloudflare Web Analytics' beacon (static.cloudflareinsights.com/beacon.min.js) isn't
+// checked, and is expected to be blocked: EasyPrivacy lists it. Cloudflare adds its tag to
+// each HTML response at the edge, so it's in no file in web/dist, and the boot guard
+// (src/lib/bootguard.js) ignores another host's script failing to load.
+//
 // Needs the build (`npm --prefix web run build`, into web/dist, or $STARE_DIST) and the
 // network the first time each day. Run it with `mise run check-blockers`; CI runs it
 // after the build (.github/actions/build-site).

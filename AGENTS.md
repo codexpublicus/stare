@@ -313,8 +313,10 @@ keep that from happening again:
 
 - **The boot guard** (`web/src/lib/bootguard.js`), inlined into a classic script in the
   `<head>` of `/`, `/check` and `/data`, after #241's caseroute script. It listens, capturing,
-  for an `error` event on a `<script>` element (the browser fires it at the module script
-  whose graph failed to load) and for an uncaught error from the site's own origin, and
+  for an `error` event on one of the site's own `<script>` elements, inline or from the
+  page's origin (the browser fires it at the module script whose graph failed to load;
+  another host's script, such as Cloudflare Web Analytics' beacon, which EasyPrivacy
+  blocks, doesn't count) and for an uncaught error from the site's own origin, and
   waits 10 seconds (`BOOT_TIMEOUT_MS`) for `stareBoot.ready()`, which main.js calls as its
   last statement and the pages' inline modules call once wired. On the first of those
   before `ready()`, it replaces "Loading..." (the status line on a case route, else
@@ -352,7 +354,9 @@ keep that from happening again:
 `web/e2e/resilience.spec.js` blocks modules the way a blocker does (ERR_BLOCKED_BY_CLIENT):
 a page view's, where the Reader must still work and the view show its message; the
 typeahead's; one main.js imports statically, where the guard's message must appear within
-3 seconds; and one held unanswered, where the timer's appears at 10 seconds.
+3 seconds; one held unanswered, where the timer's appears at 10 seconds; and Cloudflare Web
+Analytics' beacon, put into each page's HTML at the end of `<body>` (where Cloudflare's
+automatic injection puts it) and in `<head>`, where the guard's message must never show.
 
 ### Opening a case (#260, #262)
 
