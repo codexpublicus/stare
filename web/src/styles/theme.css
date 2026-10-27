@@ -1,51 +1,78 @@
 /* web/src/styles/theme.css */
 @import './fonts.css';
+@import './fonts-fallback.css';
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Self-hosted faces (fonts.css, #102); the system fonts after each are for
-     the moment before it loads and for characters it lacks. */
-  --font-text: 'Source Serif 4', Georgia, 'Times New Roman', serif;
-  --font-ui: 'Source Sans 3', -apple-system, system-ui, 'Segoe UI', sans-serif;
-  --font-mono: 'Source Code Pro', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  /* Self-hosted faces (fonts.css, #102), each followed by its metric-matched stand-ins
+     (fonts-fallback.css, #261): local system fonts scaled and given the web font's
+     ascent, descent and line gap, so the text takes the same room before the web font
+     arrives as after. Then the system fonts, for anything the faces lack. */
+  --font-text: 'Source Serif 4', 'Source Serif 4 Georgia', 'Source Serif 4 Times',
+    'Source Serif 4 Noto', 'Source Serif 4 DejaVu', Georgia, 'Times New Roman', serif;
+  --font-ui: 'Source Sans 3', 'Source Sans 3 Arial', 'Source Sans 3 Helvetica',
+    'Source Sans 3 Segoe', 'Source Sans 3 Roboto', 'Source Sans 3 Noto', 'Source Sans 3 DejaVu',
+    -apple-system, system-ui, 'Segoe UI', sans-serif;
+  --font-mono: 'Source Code Pro', 'Source Code Pro Courier', 'Source Code Pro DejaVu',
+    ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  --bg: #f8f7f4; --bg-alt: #f0efec; --bg-surface: #e8e7e3;
-  --text: #1a1a1a; --text-body: #333; --text-secondary: #6b6b6b; --text-tertiary: #999;
-  --border: #ddd; --border-light: #e5e4e0;
-  --topbar-bg: #1a1a1a; --topbar-text: #fff; --topbar-muted: #888;
-  --topbar-divider: #555; --topbar-cite: #ccc; --topbar-edit-border: #444;
-  --link: #2563eb; --link-hover: #1d4ed8;
-  --unresolved: #999; --unresolved-border: #ccc;
-  --status-ok: #22c55e; --status-no: #ddd;
-  --cite-badge-bg: #e8e8e8; --cite-badge-text: #555;
-  --cite-badge-primary-bg: #1a1a1a; --cite-badge-primary-text: #fff;
-  --sidebar-action: #555; --sidebar-meta-strong: #555;
-  --tab-active-border: #1a1a1a; --tab-active-text: #1a1a1a;
-  --footnote-text: #666;
-  --error-bg: #fef2f2; --error-border: #fecaca; --error-text: #dc2626;
-  --status-bg: #f0f7ff; --status-border: #dbeafe; --status-text: #2563eb;
+  /* The Codex Publicus palette (codexpublicus.org's style.css, #257): ground #f8f7f4,
+     ink #1d1b18, muted #5d584f, rule #d9d4ca, accent green #2f6b5f. Every text colour
+     here is at least 4.5:1 on --bg and --bg-alt (web/tests/contrast.test.js). */
+  --bg: #f8f7f4; --bg-alt: #f0eee9; --bg-surface: #e7e3db;
+  --text: #1d1b18; --text-body: #2b2823; --text-secondary: #5d584f; --text-tertiary: #6f695f;
+  --border: #d9d4ca; --border-light: #e6e2da;
+  --topbar-bg: #f8f7f4; --topbar-text: #1d1b18; --topbar-muted: #5d584f;
+  --topbar-divider: #d9d4ca; --topbar-cite: #2b2823; --topbar-edit-border: #d9d4ca;
+  --topbar-hover: #ebe7df;
+  --link: #2f6b5f; --link-hover: #1f4a42;
+  /* Citations keep their own blue (#257), so a link to a case reads apart from the
+     site's green links; this shade passes AA on the sidebar's --bg-alt too. */
+  --cite: #1d4ed8; --cite-hover: #1e40af;
+  --unresolved: #6f695f; --unresolved-border: #c9c3b8;
+  --status-ok: #2f6b5f; --status-no: #d9d4ca;
+  --cite-badge-bg: #ebe7df; --cite-badge-text: #4a463f;
+  --cite-badge-primary-bg: #1d1b18; --cite-badge-primary-text: #f8f7f4;
+  --sidebar-action: #4a463f; --sidebar-meta-strong: #4a463f;
+  --tab-active-border: #1d1b18; --tab-active-text: #1d1b18;
+  --footnote-text: #5d584f;
+  --error-bg: #fdf0ee; --error-border: #f3c7c0; --error-text: #b91c1c;
+  --status-bg: #e6efec; --status-border: #c9ddd7; --status-text: #2f6b5f;
+  /* Solid controls (the landing's Resolve, /check's button, the sidebar toggle) and the
+     citation tooltip: ink on the ground's light, in both themes. */
+  --button-bg: #1d1b18; --button-text: #f8f7f4;
+  --tooltip-bg: #1d1b18; --tooltip-text: #f8f7f4;
+  --focus: #2f6b5f;
+  /* The marks (Brand.astro): the tablet in the text colour, the § in the glyph green. */
+  --mark-ink: #1d1b18; --mark-glyph: #7fbfae;
   /* The page views' text selection (reader.css): a colour, laid over the page at this opacity. */
-  --selection-bg: #2563eb; --selection-opacity: 0.3;
+  --selection-bg: #2f6b5f; --selection-opacity: 0.3;
 }
 
 [data-theme="dark"] {
-  --bg: #181818; --bg-alt: #1e1e1e; --bg-surface: #252525;
-  --text: #e4e4e4; --text-body: #ccc; --text-secondary: #888; --text-tertiary: #555;
-  --border: #333; --border-light: #2a2a2a;
-  --topbar-bg: #111; --topbar-text: #e4e4e4; --topbar-muted: #777;
-  --topbar-divider: #444; --topbar-cite: #aaa; --topbar-edit-border: #555;
-  --link: #60a5fa; --link-hover: #93c5fd;
-  --unresolved: #666; --unresolved-border: #444;
-  --status-ok: #4ade80; --status-no: #444;
-  --cite-badge-bg: #333; --cite-badge-text: #aaa;
+  --bg: #161513; --bg-alt: #1c1b18; --bg-surface: #24221f;
+  --text: #ece8e1; --text-body: #d6d1c8; --text-secondary: #a9a398; --text-tertiary: #8e887d;
+  --border: #3a3731; --border-light: #2a2825;
+  --topbar-bg: #161513; --topbar-text: #ece8e1; --topbar-muted: #a9a398;
+  --topbar-divider: #3a3731; --topbar-cite: #d6d1c8; --topbar-edit-border: #3a3731;
+  --topbar-hover: #2a2825;
+  --link: #7fbfae; --link-hover: #a6d4c7;
+  --cite: #60a5fa; --cite-hover: #93c5fd;
+  --unresolved: #8e887d; --unresolved-border: #4a463f;
+  --status-ok: #7fbfae; --status-no: #3a3731;
+  --cite-badge-bg: #2a2825; --cite-badge-text: #c8c2b7;
   --cite-badge-primary-bg: #2563eb; --cite-badge-primary-text: #fff;
-  --sidebar-action: #aaa; --sidebar-meta-strong: #bbb;
-  --tab-active-border: #e4e4e4; --tab-active-text: #e4e4e4;
-  --footnote-text: #888;
+  --sidebar-action: #c8c2b7; --sidebar-meta-strong: #c8c2b7;
+  --tab-active-border: #ece8e1; --tab-active-text: #ece8e1;
+  --footnote-text: #a9a398;
   --error-bg: #2d1b1b; --error-border: #5c2626; --error-text: #f87171;
-  --status-bg: #1a2332; --status-border: #253344; --status-text: #60a5fa;
-  --selection-bg: #60a5fa; --selection-opacity: 0.4;
+  --status-bg: #1d2a26; --status-border: #2c3f39; --status-text: #7fbfae;
+  --button-bg: #ece8e1; --button-text: #161513;
+  --tooltip-bg: #2a2825; --tooltip-text: #ece8e1;
+  --focus: #7fbfae;
+  --mark-ink: #ece8e1; --mark-glyph: #2f6b5f;
+  --selection-bg: #7fbfae; --selection-opacity: 0.4;
 }
 
 body {
@@ -61,7 +88,7 @@ button, input, textarea, select { font-family: inherit; }
 /* Citations and counts: lining, tabular figures, so volume and page numbers
    line up and don't take the serif's old-style forms. */
 .topbar-cite, .topbar-cite-input, .landing-form input, .landing-example,
-.landing-feature-text strong, .site-footer-build, .sidebar, .page-marker,
+.landing-feature-text strong, .site-footer-data, .sidebar, .page-marker,
 .cite-badge, .cite-link, .cite-unresolved, .cite-lookup, .cite-statute, .cite-tooltip,
 .check-status, .check-summary, .check-cite-panel {
   font-variant-numeric: lining-nums tabular-nums;

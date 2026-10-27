@@ -1,0 +1,40 @@
+---
+// stare.pub's mark: the § tablet (the Codex Publicus tablet with stare.pub's letter,
+// D112) at the wordmark's cap height, beside "stare.pub" in Cinzel. Both are outlines
+// from src/lib/marks.js (web/scripts/marks.py), so the header loads no font and can't
+// shift when one arrives. The visible name is for screen readers too, as text.
+//
+// "bar" is the top bars' size: the small, pixel-grid drawing at 16 px, crisp at 1x.
+// "hero" is the landing's: the full drawing, sized by CSS (.brand--hero).
+import { TABLET_FULL, TABLET_SMALL, WORDMARK } from '../lib/marks.js';
+
+interface Props {
+	variant?: 'bar' | 'hero';
+}
+
+const { variant = 'bar' } = Astro.props;
+const tablet = variant === 'hero' ? TABLET_FULL : TABLET_SMALL;
+const [, , tw, th] = tablet.viewBox.split(' ').map(Number);
+const h = variant === 'hero' ? 48 : 16;
+---
+
+<span class:list={['brand', `brand--${variant}`]}>
+	<svg
+		class="brand-tablet"
+		viewBox={tablet.viewBox}
+		width={Math.round((h * tw) / th)}
+		height={h}
+		shape-rendering={variant === 'bar' ? 'crispEdges' : undefined}
+		aria-hidden="true"
+		focusable="false"
+		set:html={tablet.body}
+	/>
+	<svg
+		class="brand-word"
+		viewBox={WORDMARK.viewBox}
+		width={(h * WORDMARK.aspect).toFixed(1)}
+		height={h}
+		aria-hidden="true"
+		focusable="false"><path d={WORDMARK.d} /></svg>
+	<span class="brand-name">{WORDMARK.text}</span>
+</span>

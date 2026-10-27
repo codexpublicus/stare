@@ -7,13 +7,15 @@ import { BOOT_TIMEOUT_MS, bootGuardScript } from '../lib/bootguard.js';
 import '../styles/theme.css';
 import '../styles/layout.css';
 import '../styles/data.css';
+import Brand from '../components/Brand.astro';
+import SiteHead from '../components/SiteHead.astro';
 ---
 
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<SiteHead />
 		<title>Index data · stare.pub</title>
 		<meta name="description" content="Every published rebuild of the stare.pub citation index: cases indexed, volumes, coverage and exceptions over time." />
 		<meta property="og:title" content="§tare.pub index data" />
@@ -34,7 +36,7 @@ import '../styles/data.css';
 		<script is:inline set:html={bootGuardScript({ targets: ['data-root'], what: 'This page\u2019s charts', timeout: BOOT_TIMEOUT_MS })}></script>
 	</head>
 	<body>
-		<div class="page-topbar"><a href="/">§tare.pub</a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
+		<div class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
 		<div class="page page--data">
 			<h1>Index data</h1>
 			<p>Each time the citation index is rebuilt, the build writes a report: how many cases and volumes it indexed, how many index entries it wrote for them, and every volume that failed or was let through with a known reason. This page charts every published report, from <a href="https://idx.stare.pub/reports/index.json">idx.stare.pub/reports/index.json</a>, and lists the live build&rsquo;s numbers by reporter.</p>

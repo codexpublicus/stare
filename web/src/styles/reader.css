@@ -14,8 +14,8 @@
 .reader-text { font-family: var(--font-text); font-size: 16px; line-height: 1.8; color: var(--text-body); }
 .reader-text p { margin-bottom: 16px; }
 
-.cite-link { color: var(--link); text-decoration: none; border-bottom: 1px dotted var(--link); cursor: pointer; transition: all 0.15s; }
-.cite-link:hover { color: var(--link-hover); border-bottom-style: solid; }
+.cite-link { color: var(--cite); text-decoration: none; border-bottom: 1px dotted var(--cite); cursor: pointer; transition: all 0.15s; }
+.cite-link:hover { color: var(--cite-hover); border-bottom-style: solid; }
 .cite-external { border-bottom-style: dashed; }
 .cite-external::after { content: ' ↗'; font-size: 0.75em; opacity: 0.5; }
 .cite-unresolved { color: var(--unresolved); border-bottom: 1px dotted var(--unresolved-border); cursor: default; }
@@ -42,12 +42,12 @@
 
 .cited-case { padding: 6px 0; display: flex; align-items: center; gap: 6px; }
 .cited-case + .cited-case, .cited-entry + .cited-entry { border-top: 1px solid var(--border-light); }
-.cited-case-link { color: var(--link); text-decoration: none; font-size: 13px; flex: 1; }
+.cited-case-link { color: var(--cite); text-decoration: none; font-size: 13px; flex: 1; }
 .cited-case-link:hover { text-decoration: underline; }
 .cited-case-unresolved { color: var(--unresolved); font-size: 13px; flex: 1; }
 .cited-status { font-size: 11px; width: 14px; text-align: center; }
 .cited-status.ok { color: var(--status-ok); }
-.cited-status.ext { color: var(--link); font-size: 13px; }
+.cited-status.ext { color: var(--cite); font-size: 13px; }
 .cited-status.no { color: var(--status-no); }
 .cited-status.none { color: var(--text-tertiary); }
 .cited-status.unknown { color: var(--text-tertiary); }
@@ -71,7 +71,9 @@
 .multi-notice { padding: 8px 16px; background: var(--status-bg); border-bottom: 1px solid var(--status-border); font-size: 13px; color: var(--status-text); }
 .multi-notice a { color: var(--link); }
 
-.status-line { padding: 6px 16px; font-size: 13px; color: var(--status-text); min-height: 1.4em; }
+/* In the text face: on a case link the loading line is the first text on screen, so the
+   preloaded Source Serif 4 is put to use at the first paint, not when the case arrives. */
+.status-line { padding: 6px 16px; font-family: var(--font-text); font-size: 13px; color: var(--status-text); min-height: 1.4em; }
 .status-line.error { color: var(--error-text); background: var(--error-bg); border-bottom: 1px solid var(--error-border); }
 
 /* The page views (public/js/pageshell.js, #246): the Archival PDF and the Raw Scans fill the
@@ -200,7 +202,7 @@
 
 .cite-tooltip {
   position: fixed; z-index: 100;
-  background: var(--topbar-bg); color: var(--topbar-text);
+  background: var(--tooltip-bg); color: var(--tooltip-text);
   padding: 8px 12px; border-radius: 6px;
   font-family: var(--font-ui);
   font-size: 13px; line-height: 1.4;
@@ -211,8 +213,8 @@
 }
 .cite-tooltip .spinner {
   width: 14px; height: 14px;
-  border: 2px solid rgba(255,255,255,0.2);
-  border-top-color: #fff;
+  border: 2px solid color-mix(in srgb, var(--tooltip-text) 20%, transparent);
+  border-top-color: var(--tooltip-text);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
   flex-shrink: 0;

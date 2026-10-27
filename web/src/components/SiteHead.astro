@@ -1,0 +1,15 @@
+---
+// The icons and the font preload every page's <head> shares (#257, #261).
+//
+// The favicons are the § tablet's small drawing (web/scripts/marks.py), with a 1 px
+// ground-coloured outline so they read on a dark tab bar. Source Serif 4's regular face
+// is the first text on every page (the landing's, a page's, and on a case link the
+// loading line), so it is preloaded: it starts with the HTML instead of after the CSS
+// and the first layout, and is usually in before the text paints. The other faces load
+// when used, behind the metric-matched stand-ins in fonts-fallback.css.
+---
+
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="preload" href="/fonts/source-serif-4/regular-core.woff2" as="font" type="font/woff2" crossorigin />

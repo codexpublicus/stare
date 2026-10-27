@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildInfo, buildLine } from '../src/lib/version.js';
-import { basedOnNames, formatDataLine, loadDataLine, MANIFEST_URL } from '../public/js/dataversion.js';
+import { basedOnNames, formatDataLine, formatDataParts, loadDataLine, MANIFEST_URL } from '../public/js/dataversion.js';
 
 const SHA = '7c42187aa0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5';
 
@@ -139,6 +139,27 @@ describe('loadDataLine', () => {
     const fetchFn = async () => fakeResponse({ json: manifest, lastModified: 'Sat, 03 Oct 2026 17:10:00 GMT' });
     assert.equal(await loadDataLine(el, fetchFn), 'Index v2026.10.03');
     assert.equal(el.textContent, 'Index v2026.10.03');
+  });
+
+  test('shows the index part and puts the sources in the title (#257)', async () => {
+    const el = { textContent: '', hidden: true, title: '' };
+    const manifest = {
+      version: 'v2026.10.22',
+      based_on: [{ name: 'Caselaw Access Project' }, { name: 'CourtListener bulk data' }],
+    };
+    const fetchFn = async () => fakeResponse({ json: manifest });
+    assert.equal(
+      await loadDataLine(el, fetchFn),
+      'Index v2026.10.22 · Sources: Caselaw Access Project, CourtListener bulk data',
+    );
+    assert.equal(el.textContent, 'Index v2026.10.22');
+    assert.equal(el.title, 'Sources: Caselaw Access Project, CourtListener bulk data');
+    assert.deepEqual(formatDataParts(manifest, null), {
+      index: 'Index v2026.10.22',
+      sources: 'Sources: Caselaw Access Project, CourtListener bulk data',
+    });
+    assert.deepEqual(formatDataParts({ version: 'v2026.10.18' }, null), { index: 'Index v2026.10.18', sources: null });
+    assert.equal(formatDataParts({ based_on: manifest.based_on }, null), null);
   });
 
   test('stays hidden when the fetch fails or the response is unusable', async () => {

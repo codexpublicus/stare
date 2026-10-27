@@ -6,13 +6,15 @@ import '../styles/theme.css';
 import '../styles/layout.css';
 
 const releases = parseChangelog(changelog);
+import Brand from '../components/Brand.astro';
+import SiteHead from '../components/SiteHead.astro';
 ---
 
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<SiteHead />
 		<title>Updates · stare.pub</title>
 		<link rel="alternate" type="application/atom+xml" title="stare.pub updates" href="/updates.xml" />
 		<meta name="description" content="Every release of stare.pub, newest first." />
@@ -31,7 +33,7 @@ const releases = parseChangelog(changelog);
 		</script>
 	</head>
 	<body>
-		<div class="page-topbar"><a href="/">§tare.pub</a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
+		<div class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
 		<div class="page">
 			<h1>Updates</h1>
 			<p>Every release of the site, newest first. Each is tagged with the date it went live, and the footer of every page shows the one you're looking at. Follow along with the <a href="/updates.xml">Atom feed</a>.</p>

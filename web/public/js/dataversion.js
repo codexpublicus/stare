@@ -22,26 +22,38 @@ export function basedOnNames(manifest) {
     .filter((name) => name && name.length <= 100);
 }
 
-// Returns the line to show, or null when there's nothing trustworthy to say:
-// "Index v2026.10.22 · Sources: Caselaw Access Project, CourtListener bulk data".
-export function formatDataLine(manifest, lastModified) {
+// The data line in two parts: `index`, which build ("Index v2026.10.22", or "Index
+// updated 2026-03-24" for a manifest without a version), and `sources`, what its
+// `based_on` names ("Sources: Caselaw Access Project, CourtListener bulk data", or null).
+// Returns null when there's nothing trustworthy to say.
+export function formatDataParts(manifest, lastModified) {
   const version = manifest && typeof manifest === 'object' ? manifest.version : undefined;
-  let line = null;
+  let index = null;
   if (typeof version === 'string' && DATA_VERSION.test(version.trim())) {
     const v = version.trim();
-    line = `Index ${v.startsWith('v') ? v : `v${v}`}`;
+    index = `Index ${v.startsWith('v') ? v : `v${v}`}`;
   } else if (lastModified) {
     const date = new Date(lastModified);
     if (!Number.isNaN(date.getTime())) {
-      line = `Index updated ${date.toISOString().slice(0, 10)}`;
+      index = `Index updated ${date.toISOString().slice(0, 10)}`;
     }
   }
-  if (!line) return null;
+  if (!index) return null;
   const names = basedOnNames(manifest);
-  return names.length ? `${line} · Sources: ${names.join(', ')}` : line;
+  return { index, sources: names.length ? `Sources: ${names.join(', ')}` : null };
 }
 
-// Fills `el` with the data line and unhides it; leaves it hidden on any failure.
+// Returns the line to show, or null when there's nothing trustworthy to say:
+// "Index v2026.10.22 · Sources: Caselaw Access Project, CourtListener bulk data".
+export function formatDataLine(manifest, lastModified) {
+  const parts = formatDataParts(manifest, lastModified);
+  if (!parts) return null;
+  return parts.sources ? `${parts.index} · ${parts.sources}` : parts.index;
+}
+
+// Fills `el` with the data line and unhides it; leaves it hidden on any failure. The
+// footer's one line has no room for the sources, so the element shows the index part and
+// carries the sources in its title (#257). Returns the whole line.
 export async function loadDataLine(el, fetchFn = globalThis.fetch) {
   if (!el || typeof fetchFn !== 'function') return null;
   try {
@@ -54,11 +66,12 @@ export async function loadDataLine(el, fetchFn = globalThis.fetch) {
     } catch {
       manifest = null;
     }
-    const line = formatDataLine(manifest, lastModified);
-    if (!line) return null;
-    el.textContent = line;
+    const parts = formatDataParts(manifest, lastModified);
+    if (!parts) return null;
+    el.textContent = parts.index;
+    if (parts.sources) el.title = parts.sources;
     el.hidden = false;
-    return line;
+    return formatDataLine(manifest, lastModified);
   } catch {
     return null;
   }
