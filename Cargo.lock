@@ -1974,6 +1974,7 @@ dependencies = [
  "flate2",
  "mockito",
  "reqwest",
+ "serde",
  "serde_json",
  "stare",
  "tempfile",
