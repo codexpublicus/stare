@@ -22,9 +22,10 @@ const test = base.extend({
       }
     });
     page.on('pageerror', (err) => problems.push(`uncaught: ${err.message}`));
-    // What a content blocker does: the request fails with ERR_BLOCKED_BY_CLIENT.
+    // What a content blocker does: the request fails with ERR_BLOCKED_BY_CLIENT. A path
+    // is one of the site's; a full URL is another host's.
     for (const path of blocked) {
-      await page.route((url) => url.pathname === path, (route) => route.abort('blockedbyclient'));
+      await page.route((url) => url.pathname === path || url.href === path, (route) => route.abort('blockedbyclient'));
     }
     await use(page);
     expect(problems, 'console errors or warnings').toEqual([]);
@@ -159,4 +160,52 @@ test('a module that hangs gets the slow message after 10 seconds, and a late sta
   release();
   await expect(msg).toHaveCount(0);
   await expect(page.locator('#reader .reader-title')).toHaveText("D'Elia & Marks Co. v. Lyon");
+});
+
+// Cloudflare Web Analytics, turned on with automatic injection, adds its beacon to every
+// HTML response at the edge, just before </body>; it isn't in the build. EasyPrivacy
+// blocks static.cloudflareinsights.com, so for anyone running uBlock Origin the beacon's
+// <script> fires an `error` event, and the boot guard must not take that for one of the
+// site's own scripts failing. The beacon's tag is put in here the way Cloudflare does it,
+// and at the top of <head> as well, where its error comes before the page's modules run.
+const BEACON = 'https://static.cloudflareinsights.com/beacon.min.js';
+const BEACON_TAG = `<script defer src="${BEACON}" data-cf-beacon='{"token": "0123456789abcdef0123456789abcdef"}'></script>`;
+
+test.describe('the Cloudflare Web Analytics beacon, blocked', () => {
+  test.use({ blocked: [BEACON] });
+
+  for (const where of ['body', 'head']) {
+    for (const [path, ready] of [
+      ['/#a2d/31/647-01', '#reader .reader-title'],
+      ['/', '#landing-input'],
+      ['/check', '#check-btn'],
+      ['/data', '#data-root'],
+    ]) {
+      test(`${path} starts without the guard's message, with the beacon in <${where}>`, async ({ page }) => {
+        const tried = [];
+        page.on('request', (r) => { if (r.url() === BEACON) tried.push(r.url()); });
+        const site = new URL(test.info().project.use.baseURL).origin;
+        await page.route((url) => url.origin === site, async (route) => {
+          if (route.request().resourceType() !== 'document') return route.fallback();
+          const res = await route.fetch();
+          const html = await res.text();
+          const body = where === 'body' ? html.replace('</body>', `${BEACON_TAG}</body>`) : html.replace('<head>', `<head>${BEACON_TAG}`);
+          expect(body).toContain(BEACON_TAG);
+          await route.fulfill({ response: res, body });
+        });
+        // Records a message that shows and is taken down again by a late ready().
+        await page.addInitScript(() => {
+          globalThis.__bootGuardShown = false;
+          new MutationObserver(() => {
+            if (document.querySelector('[data-boot-guard]')) globalThis.__bootGuardShown = true;
+          }).observe(document, { childList: true, subtree: true });
+        });
+        await page.goto(path);
+        await expect(page.locator(ready)).toBeVisible();
+        await page.waitForLoadState('load');
+        expect(tried, 'the page never asked for the beacon').toEqual([BEACON]);
+        expect(await page.evaluate(() => globalThis.__bootGuardShown)).toBe(false);
+      });
+    }
+  }
 });
