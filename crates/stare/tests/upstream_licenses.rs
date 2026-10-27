@@ -11,20 +11,27 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-/// cargo's metadata for the `citare-core` package stare is built with.
+/// cargo's metadata for the `citare-core` package stare is built with. Offline first;
+/// `cargo metadata` reads every locked package, other platforms' too, and a CI cache that
+/// rust-cache pruned of crates the build never compiles (`anstyle-wincon`) lacks some, so
+/// it falls back to fetching them.
 fn citare_core() -> serde_json::Value {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-    let out = Command::new(cargo)
-        .args([
-            "metadata",
-            "--format-version",
-            "1",
-            "--offline",
-            "--manifest-path",
-        ])
-        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
-        .output()
-        .expect("cargo metadata runs");
+    let metadata = |offline: bool| {
+        let mut cmd = Command::new(&cargo);
+        cmd.args(["metadata", "--format-version", "1"]);
+        if offline {
+            cmd.arg("--offline");
+        }
+        cmd.arg("--manifest-path")
+            .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
+            .output()
+            .expect("cargo metadata runs")
+    };
+    let mut out = metadata(true);
+    if !out.status.success() {
+        out = metadata(false);
+    }
     assert!(
         out.status.success(),
         "{}",
