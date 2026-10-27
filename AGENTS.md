@@ -304,6 +304,24 @@ What each stage suggests, and fetches the first time:
   files in stare-builder would cost 0.2 to 8 KB more per volume compressed (the index
   files grow about threefold) and would replace the range read.
 
+### The browser cache (#269: `web/public/js/cache.js`)
+
+Index files, case zips and CourtListener records are cached in IndexedDB (`stare-cache`,
+version 3), or in memory where it can't be used. The page opens one connection and closes
+it on `versionchange`, so another tab's upgrade isn't blocked; an open that fails, is
+blocked or doesn't answer within `limits.openTimeoutMs` (3 s) falls back to memory for the
+page. Every read and write settles, whether its transaction completes, errors or aborts,
+and a failed write is a miss, so a case still opens from the network. The zips (and
+records) are kept to `limits.zipBytes` (200 MB; 64 MB in memory), the least recently used
+going first, with each one's size, last use and ETag in the `zipmeta` store; a write the
+quota refuses (`QuotaExceededError`, which aborts the transaction) frees at least half of
+them by size and tries once more. A cached CAP zip is checked once a page with a HEAD
+request after it's used, and dropped when data.stare.pub's ETag has changed, so a
+corrected zip is fetched on the next open. Two fetches of one file at once share one
+request. `web/tests/cache.test.js` covers it with a fake IndexedDB, and
+`web/e2e/zipcache.spec.js` opens a case under a 64 KB quota and with an IndexedDB that
+never answers.
+
 ### A script that fails to load (#265)
 
 v2026.10.26.5 shipped `js/pageview.js`, which EasyPrivacy blocks (`/pageview.js`), and with
