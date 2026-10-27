@@ -6,7 +6,7 @@ use stare_cli::engine::resolve::source_line;
 use stare_cli::engine::Sources;
 
 #[derive(Parser)]
-#[command(name = "stare", about = "Look up U.S. case law by citation")]
+#[command(name = "stare", version, about = "Look up U.S. case law by citation")]
 struct Cli {
     /// Override index source (path or URL)
     #[arg(long, global = true, env = "STARE_INDEX")]
@@ -56,6 +56,13 @@ enum Commands {
         /// Reporter slugs to download, comma-separated (e.g. a2d,a3d)
         #[arg(long, value_delimiter = ',', required = true)]
         reporters: Vec<String>,
+    },
+    /// Serve the Model Context Protocol over stdin and stdout, for agents
+    #[cfg(feature = "mcp")]
+    Mcp {
+        /// Read this index build (v2026.10.22) instead of the live one
+        #[arg(long)]
+        index_version: Option<String>,
     },
 }
 
@@ -121,6 +128,12 @@ fn main() -> Result<()> {
             CacheAction::Clear { kind } => cache_clear(&kind)?,
         },
         Commands::Download { reporters } => download_reporters(&src, reporters)?,
+        #[cfg(feature = "mcp")]
+        Commands::Mcp { index_version } => stare_cli::mcp::serve_stdio(stare_cli::mcp::Options {
+            index: cli.index.clone(),
+            data: cli.data.clone(),
+            index_version,
+        })?,
     }
 
     Ok(())
