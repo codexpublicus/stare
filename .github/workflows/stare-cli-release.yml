@@ -89,9 +89,10 @@ jobs:
           esac
           echo "version=$crate" >> "$GITHUB_OUTPUT"
 
+      # cargo's own git fetches citare through the ssh agent, with the GitHub host keys
+      # it knows; the git CLI would need them in known_hosts, as build-site's doesn't.
       - name: Build
         env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
           TARGET: ${{ matrix.target }}
         run: cargo zigbuild --locked -p stare-cli --profile dist --target "$TARGET"
 
