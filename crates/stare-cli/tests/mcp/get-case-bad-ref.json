@@ -1,0 +1,54 @@
+{
+  "arguments": {
+    "case_ref": "a2d 31 647"
+  },
+  "is_error": true,
+  "structured": {
+    "error": {
+      "code": "bad_ref",
+      "message": "not a case_ref: \"a2d 31 647\"; use one from a result, like cap:a2d/31/0647-01 or cl:4893133/62f253f296600fb7"
+    },
+    "meta": {
+      "cached": true,
+      "index_version": "v2026.10.26.2",
+      "server_version": "<server_version>",
+      "sources": [
+        {
+          "based_on": [
+            {
+              "license": {
+                "id": "CC0-1.0",
+                "name": "CC0 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+              },
+              "name": "Caselaw Access Project",
+              "url": "https://case.law/"
+            },
+            {
+              "license": {
+                "id": "CC-PDM-1.0",
+                "name": "Public Domain Mark 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+              },
+              "name": "CourtListener bulk data",
+              "publisher": "Free Law Project",
+              "url": "https://www.courtlistener.com/help/api/bulk-data/"
+            }
+          ],
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "stare.pub citation index",
+          "role": "index",
+          "url": "https://stare.pub",
+          "version": "v2026.10.26.2"
+        }
+      ]
+    }
+  },
+  "text": "bad_ref: not a case_ref: \"a2d 31 647\"; use one from a result, like cap:a2d/31/0647-01 or cl:4893133/62f253f296600fb7",
+  "tool": "get_case"
+}

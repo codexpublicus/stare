@@ -1,0 +1,54 @@
+{
+  "arguments": {
+    "citation": "no citation here"
+  },
+  "is_error": true,
+  "structured": {
+    "error": {
+      "code": "unparsed",
+      "message": "no citation found in \"no citation here\"; write it as cited (\"31 A.2d 647\"), in the slug form (\"a2d 31 647\"), or pass reporter, volume and page"
+    },
+    "meta": {
+      "cached": true,
+      "index_version": "v2026.10.26.2",
+      "server_version": "<server_version>",
+      "sources": [
+        {
+          "based_on": [
+            {
+              "license": {
+                "id": "CC0-1.0",
+                "name": "CC0 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+              },
+              "name": "Caselaw Access Project",
+              "url": "https://case.law/"
+            },
+            {
+              "license": {
+                "id": "CC-PDM-1.0",
+                "name": "Public Domain Mark 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+              },
+              "name": "CourtListener bulk data",
+              "publisher": "Free Law Project",
+              "url": "https://www.courtlistener.com/help/api/bulk-data/"
+            }
+          ],
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "stare.pub citation index",
+          "role": "index",
+          "url": "https://stare.pub",
+          "version": "v2026.10.26.2"
+        }
+      ]
+    }
+  },
+  "text": "unparsed: no citation found in \"no citation here\"; write it as cited (\"31 A.2d 647\"), in the slug form (\"a2d 31 647\"), or pass reporter, volume and page",
+  "tool": "resolve_citation"
+}

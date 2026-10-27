@@ -1,0 +1,110 @@
+{
+  "arguments": {
+    "citation": "250 A.3d 100"
+  },
+  "is_error": false,
+  "structured": {
+    "by_name": null,
+    "case_links": [],
+    "cases": [
+      {
+        "case_ref": "cl:9876543/0f3a9c2e7b1d4a65",
+        "citations": [
+          {
+            "cite": "250 A.3d 100",
+            "type": "official"
+          }
+        ],
+        "court": "Supreme Court of Pennsylvania",
+        "courtlistener": {
+          "blocked_notice": null,
+          "docket_number": "J-12-2021",
+          "export": "2026-09-30",
+          "precedential_status": "Published",
+          "url": "https://www.courtlistener.com/opinion/9876543/smith-v-jones/"
+        },
+        "decision_date": "2021-04-02",
+        "docket_number": "J-12-2021",
+        "first_page": null,
+        "jurisdiction": "Pennsylvania",
+        "last_page": null,
+        "name": "Ellen Smith, Appellant v. Robert Jones and Jones Hauling, LLC",
+        "name_abbreviation": "Smith v. Jones",
+        "provenance": null,
+        "reader_url": "https://stare.pub/#a3d/250/100-01",
+        "source": "courtlistener"
+      }
+    ],
+    "citation": {
+      "page": "100",
+      "raw": "250 A.3d 100",
+      "reporter": "A.3d",
+      "slug": "a3d",
+      "volume": "250"
+    },
+    "conflicts": [],
+    "external_url": null,
+    "meta": {
+      "cached": true,
+      "index_version": "v2026.10.26.2",
+      "server_version": "<server_version>",
+      "sources": [
+        {
+          "based_on": [
+            {
+              "license": {
+                "id": "CC0-1.0",
+                "name": "CC0 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+              },
+              "name": "Caselaw Access Project",
+              "url": "https://case.law/"
+            },
+            {
+              "license": {
+                "id": "CC-PDM-1.0",
+                "name": "Public Domain Mark 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+              },
+              "name": "CourtListener bulk data",
+              "publisher": "Free Law Project",
+              "url": "https://www.courtlistener.com/help/api/bulk-data/"
+            }
+          ],
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "stare.pub citation index",
+          "role": "index",
+          "url": "https://stare.pub",
+          "version": "v2026.10.26.2"
+        },
+        {
+          "attribution": {
+            "export": "2026-09-30",
+            "name": "CourtListener",
+            "publisher": "Free Law Project",
+            "url": "https://www.courtlistener.com/"
+          },
+          "file": "<mirror>/data/cl/c/9876543/0f3a9c2e7b1d4a65.json.gz",
+          "license": {
+            "id": "CC-PDM-1.0",
+            "name": "Public Domain Mark 1.0 Universal",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+          },
+          "name": "CourtListener",
+          "role": "case",
+          "url": "https://www.courtlistener.com/"
+        }
+      ]
+    },
+    "needs_review": false,
+    "status": "found"
+  },
+  "text": "250 A.3d 100: found.\n- Smith v. Jones (2021-04-02), Supreme Court of Pennsylvania cl:9876543/0f3a9c2e7b1d4a65",
+  "tool": "resolve_citation"
+}

@@ -1,0 +1,75 @@
+{
+  "arguments": {
+    "citation": "Roe v. Wade, 410 U.S. 113 (1973)"
+  },
+  "is_error": false,
+  "structured": {
+    "by_name": null,
+    "case_links": [
+      {
+        "kind": "full_text",
+        "source": "courtlistener",
+        "url": "https://www.courtlistener.com/c/U.S./410/113/"
+      },
+      {
+        "kind": "search",
+        "source": "google_scholar",
+        "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%22410+U.S.+113%22"
+      }
+    ],
+    "cases": [],
+    "citation": {
+      "page": "113",
+      "raw": "410 U.S. 113",
+      "reporter": "U.S.",
+      "slug": "us",
+      "volume": "410"
+    },
+    "conflicts": [],
+    "external_url": null,
+    "meta": {
+      "cached": true,
+      "index_version": "v2026.10.26.2",
+      "server_version": "<server_version>",
+      "sources": [
+        {
+          "based_on": [
+            {
+              "license": {
+                "id": "CC0-1.0",
+                "name": "CC0 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+              },
+              "name": "Caselaw Access Project",
+              "url": "https://case.law/"
+            },
+            {
+              "license": {
+                "id": "CC-PDM-1.0",
+                "name": "Public Domain Mark 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+              },
+              "name": "CourtListener bulk data",
+              "publisher": "Free Law Project",
+              "url": "https://www.courtlistener.com/help/api/bulk-data/"
+            }
+          ],
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "stare.pub citation index",
+          "role": "index",
+          "url": "https://stare.pub",
+          "version": "v2026.10.26.2"
+        }
+      ]
+    },
+    "needs_review": false,
+    "status": "not_held"
+  },
+  "text": "410 U.S. 113: not_held. stare.pub doesn't hold this volume; that means unverified, not false. Try the links.\ncourtlistener: https://www.courtlistener.com/c/U.S./410/113/\ngoogle_scholar: https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%22410+U.S.+113%22",
+  "tool": "resolve_citation"
+}

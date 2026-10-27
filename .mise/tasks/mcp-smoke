@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Run stare mcp against the live idx.stare.pub and data.stare.pub (#162)"
+set -euo pipefail
+
+cargo test -p stare-cli --test mcp_live -- --ignored --nocapture
