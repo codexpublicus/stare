@@ -15,6 +15,10 @@ import { PDFJS_BASE } from '../public/js/pdfjs-path.js';
 import { parseSitemap } from '../src/lib/sitemap.js';
 
 const WASM_PATH = '/wasm/stare_wasm_bg.wasm';
+// The built loader asks for the module by its content-hashed name (#266,
+// src/lib/assetcache.js); WASM_PATH is the same file under its plain name.
+const WASM_PATH_RE = /^\/wasm\/stare_wasm_bg(\.[0-9a-f]{16})?\.wasm$/;
+const isWasmUrl = (url) => WASM_PATH_RE.test(new URL(url).pathname);
 const WASM_SIZE_PATH = '/wasm/stare_wasm_bg.json';
 const BUNDLE_DIR = '/data/citare/v1/';
 
@@ -46,7 +50,7 @@ const test = base.extend({
 
 // A request or response for the WASM module.
 function isWasm(message) {
-  return new URL(message.url()).pathname === WASM_PATH;
+  return isWasmUrl(message.url());
 }
 
 async function expectWasmResponse(response) {
@@ -162,9 +166,9 @@ for (const path of ['/', '/check']) {
     const timing = () => page.evaluate((wasmPath) => ({
       fcp: performance.getEntriesByName('first-contentful-paint')[0]?.startTime,
       wasmStart: performance.getEntriesByType('resource')
-        .find((e) => new URL(e.name).pathname === wasmPath)?.startTime,
+        .find((e) => new RegExp(wasmPath).test(new URL(e.name).pathname))?.startTime,
       load: performance.getEntriesByType('navigation')[0].loadEventEnd,
-    }), WASM_PATH);
+    }), WASM_PATH_RE.source);
     await expect.poll(async () => {
       const t = await timing();
       return t.fcp !== undefined && t.wasmStart !== undefined;
@@ -188,7 +192,7 @@ test('/about does not load the WASM', async ({ page }) => {
 async function holdWasm(page) {
   let release;
   const released = new Promise((resolve) => { release = resolve; });
-  await page.route(`**${WASM_PATH}`, async (route) => {
+  await page.route(isWasmUrl, async (route) => {
     await released;
     await route.continue();
   });
@@ -286,7 +290,7 @@ test('a case hash that does not resolve ends on the landing with the error', asy
 // A plain test: the failed loads log console errors on purpose.
 base('a case hash whose WASM fails to load keeps the reader, with Retry, and opens the case on it', async ({ page }) => {
   let failing = true;
-  await page.route(`**${WASM_PATH}`, (route) => (failing ? route.abort() : route.continue()));
+  await page.route(isWasmUrl, (route) => (failing ? route.abort() : route.continue()));
   await page.goto('/#a2d/31/647-01');
 
   const alert = page.getByRole('alert');
@@ -311,7 +315,7 @@ test('going back from a case to the bare URL shows the landing', async ({ page }
 // A plain test: the failed loads log console errors on purpose.
 base('/check reports a failed WASM load and retries it', async ({ page }) => {
   let failing = true;
-  await page.route(`**${WASM_PATH}`, (route) => (failing ? route.abort() : route.continue()));
+  await page.route(isWasmUrl, (route) => (failing ? route.abort() : route.continue()));
   await page.goto('/check');
   await page.fill('#check-input', 'See Barney v. Oelrichs, 138 U.S. 529 (1891).');
   await page.click('#check-btn');
