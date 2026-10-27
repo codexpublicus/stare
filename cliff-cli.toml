@@ -1,0 +1,60 @@
+# git-cliff config for releases of the stare binary (the CLI and `stare mcp`), tagged
+# `stare-cli-vX.Y.Z` (SemVer, #162), apart from the site's CalVer releases, whose
+# cliff.toml reads only `vYYYY.MM.DD.N` tags.
+#
+# Used by .github/workflows/stare-cli-release.yml and by hand:
+#
+#   git cliff --config cliff-cli.toml 9ff6832.. --unreleased --tag stare-cli-v0.1.0
+#
+# The first release counts commits after 9ff6832 (the MCP design, #286); the history
+# before it is summarized by hand below.
+
+[changelog]
+body = """
+{%- if version %}
+## {{ version | trim_start_matches(pat="stare-cli-v") }} - {{ timestamp | date(format="%Y-%m-%d") }}
+{%- else %}
+## Unreleased
+{%- endif %}
+{%- if not previous or not previous.version %}
+
+### What stare is
+- `stare resolve`, `stare list` and `stare check` look U.S. case law up by citation in stare.pub's index (the Caselaw Access Project's cases and CourtListener's records), the same index and rules as the site.
+- `stare mcp` serves the Model Context Protocol over stdio, with the tools `find_citations_in_text`, `resolve_citation`, `get_case`, `check_brief` and `index_info`, for agents that write or review legal text.
+- `stare download` fills a local mirror, which `--index` and `--data` read.
+{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits %}
+- {% if commit.scope %}{{ commit.scope }}: {% endif %}{{ commit.message | split(pat="\n") | first | trim }}
+{%- endfor %}
+{% endfor %}
+"""
+footer = ""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+filter_commits = true
+protect_breaking_commits = false
+# The binary is built from these; the skill ships in its archive.
+include_paths = [
+  "crates/stare/**",
+  "crates/stare-cli/**",
+  "skills/stare-citations/**",
+]
+tag_pattern = "^stare-cli-v[0-9]+\\.[0-9]+\\.[0-9]+$"
+sort_commits = "oldest"
+commit_preprocessors = [
+  { pattern = '(?m)[ \t]*\(#[0-9]+\)[ \t]*$', replace = "" },
+]
+commit_parsers = [
+  { message = "^feat", group = "<!-- 0 -->Features" },
+  { message = "^fix", group = "<!-- 1 -->Fixes" },
+  { message = "^perf", group = "<!-- 2 -->Performance" },
+  { message = "^build\\(deps\\):.*\\bcitare\\b", group = "<!-- 3 -->Dependencies" },
+  { message = "^(docs|chore|ci|test|build|style|refactor)", skip = true },
+  { message = ".*", skip = true },
+]

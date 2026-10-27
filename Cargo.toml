@@ -6,3 +6,11 @@ resolver = "2"
 # build; unoptimized it takes about 20 s on the bundle, optimized about 1 s.
 [profile.dev.package.zopfli]
 opt-level = 3
+
+# The release binaries of `stare` (.github/workflows/stare-cli-release.yml): the
+# release profile, stripped, with fat LTO and one codegen unit for size.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+strip = true
