@@ -8,7 +8,7 @@ import { build, transform } from 'esbuild';
 
 import { PDFJS_DIR, PDFJS_VERSION } from './public/js/pdfjs-path.js';
 import { vendorPdfjs } from './src/lib/pdfjs-vendor.js';
-import { fingerprintWasm, modulePreloads } from './src/lib/assetcache.js';
+import { casePreloads, fingerprintWasm, modulePreloads } from './src/lib/assetcache.js';
 
 import { isAllowed, parseLlmsTxt, parseRobots } from './src/lib/crawlfiles.js';
 import { CASE_PREFIX, ROBOTS_MAX_BYTES, curatedAllows, curatedSet } from './src/lib/robots.js';
@@ -118,15 +118,18 @@ const crawlFiles = {
 // Lets browsers keep what doesn't change (#266; src/lib/assetcache.js says how): copies
 // the WASM module and glue to content-hashed names that _headers marks immutable and
 // points the built /js/wasm.js at them, then adds modulepreload links for each page's
-// static /js/ import graph so the modules that stay revalidated revalidate in parallel.
+// static /js/ import graph so the modules that stay revalidated revalidate in parallel,
+// and has index.html's head script preload the hashed WASM files on a case link (#262).
 const assetCache = {
 	name: 'stare-asset-cache',
 	hooks: {
 		'astro:build:done': async ({ dir, logger }) => {
 			const dist = fileURLToPath(dir);
 			if (existsSync(fileURLToPath(new URL('wasm/stare_wasm_bg.wasm', dir)))) {
-				const { module, glue } = fingerprintWasm(dist);
-				logger.info(`js/wasm.js loads ${module} and ${glue}`);
+				const urls = fingerprintWasm(dist);
+				logger.info(`js/wasm.js loads ${urls.module} and ${urls.glue}`);
+				const links = casePreloads(dist, urls);
+				logger.info(`index.html preloads ${links.length} WASM files on a case link`);
 			}
 			const { pages, modules } = await modulePreloads(dist, { build });
 			logger.info(`modulepreload: ${pages} pages, up to ${modules} modules each`);

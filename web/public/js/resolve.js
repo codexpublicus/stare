@@ -1,11 +1,11 @@
 import { fetchCached, fetchCachedText } from './cache.js';
 import { indexUrl, zipUrl } from './sources.js';
 import { ClRecordError, fetchClRecord } from './cl.js';
-import { idxEntries } from './idx.js';
+import { idxEntries, idxZipHint, readIdx } from './idx.js';
 import {
   citedSlug, foldedInto, hasIdx, indexPath, isVolumeKey, loadManifest, volumeCandidates,
 } from './manifest.js';
-import { loadWasm } from './wasm.js';
+import { loadWasm, WasmLoadError } from './wasm.js';
 import { citedPage, filePage, labelCases, pageKey } from './pagekey.js';
 
 let wasm = null;
@@ -80,6 +80,24 @@ function parseSlugFormat(raw) {
 
 async function ensureWasm() {
   if (!wasm) wasm = await loadWasm();
+  return wasm;
+}
+
+// The volume zip being fetched, or the last one fetched: resolve() guesses the zip from
+// the volume's index (idxZipHint) and starts it before the WASM has loaded (#262), and
+// resolveCap takes it up when it's the zip the lookup settles on, or starts it itself
+// when the guess came later or not at all, so neither fetches it twice. One at a time.
+let zipFetch = null;
+
+function fetchZip(reporter, volume) {
+  const key = `${reporter}/${volume}.zip`;
+  if (zipFetch?.key !== key) {
+    const promise = fetchCached('zips', key, zipUrl(reporter, volume));
+    zipFetch = { key, promise };
+    // A failure is thrown to whoever awaits it, and a later fetch starts afresh.
+    promise.catch(() => { if (zipFetch?.promise === promise) zipFetch = null; });
+  }
+  return zipFetch.promise;
 }
 
 // A volume folder's .bin, or null if it isn't indexed.
@@ -102,6 +120,7 @@ async function locate(reporter, volume, page, onStatus) {
   if (typeof page === 'string') return locateLabel(reporter, volume, page);
   const binData = await fetchBin(reporter, volume);
   onStatus('Looking up page...');
+  await ensureWasm();
   let caseFile = binData && wasm.lookup_page(binData, page);
   if (caseFile) return { volume, binData, caseFile };
 
@@ -147,19 +166,31 @@ async function locateLabel(reporter, volume, label) {
 // that folder's cases. A volume with no `.idx.gz`, or a manifest without `idx`, reads
 // the .bin and .multi files as before. A miss in a volume the index holds is a miss; it
 // never becomes another source's case or a link out.
+//
+// Nothing here waits for the WASM until it's used (#262): the manifest, the index file
+// and the zip the index points to (idxZipHint, a guess the WASM's lookup then confirms)
+// are fetched while it downloads, so on a slow connection they're in by the time it is.
 export async function resolve(reporter, citedVolume, page, onStatus, seq = null) {
   onStatus('Loading...');
-  await ensureWasm();
+  // Started now; a failure is thrown where the WASM is first awaited.
+  ensureWasm().catch(() => {});
 
   const cited = String(citedVolume);
   const manifest = await loadManifest();
   if (hasIdx(manifest)) {
     onStatus('Fetching index...');
     const number = foldedInto(manifest, reporter, cited);
+    readIdx(reporter, number || cited, 0)
+      .then((bytes) => idxZipHint(bytes, page, number ? cited : null))
+      .then((hint) => { if (hint) fetchZip(hint.reporter || reporter, hint.folder || cited); })
+      .catch(() => {});
     let entries;
     try {
       entries = await idxEntries(reporter, number || cited, page);
     } catch (e) {
+      // The lookup is where the WASM is first awaited; its failure is the loading bar's
+      // to report, with a Retry button (main.js), not a network error.
+      if (e instanceof WasmLoadError) throw e;
       throw new Error(`Couldn't reach the server. Check your connection and try again.`);
     }
     if (entries && number) {
@@ -175,6 +206,7 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
   const { volume, binData, caseFile } = located;
   const multiKey = await indexPath(`${reporter}/${volume}.multi`);
   const multiData = await fetchCachedText('multi', multiKey, indexUrl(multiKey));
+  await ensureWasm();
 
   // The .bin's entry, then any more cases at the page from the .multi. A page whose
   // first case's name is too long for the .bin has a "*" there, and all its cases in
@@ -222,11 +254,10 @@ async function resolveEntries(reporter, cited, page, entries, onStatus, seq) {
 // A CAP case from its folder's zip: the `seq`th of `allCases` (the page's case files),
 // or the first.
 async function resolveCap(reporter, volume, page, allCases, onStatus, seq) {
-  const zipKey = `${reporter}/${volume}.zip`;
   onStatus('Fetching case data...');
   let zipData;
   try {
-    zipData = await fetchCached('zips', zipKey, zipUrl(reporter, volume));
+    zipData = await fetchZip(reporter, volume);
   } catch (e) {
     throw new Error(`Couldn't reach the server. Check your connection and try again.`);
   }
@@ -247,6 +278,7 @@ async function resolveCap(reporter, volume, page, allCases, onStatus, seq) {
     activeSeq = seqOf(activeCaseFile) || 1;
   }
 
+  await ensureWasm();
   onStatus('Extracting case...');
   const caseJsonStr = wasm.extract_case(zipData, activeCaseFile);
   const caseData = JSON.parse(caseJsonStr);
@@ -268,6 +300,7 @@ async function resolveCl(reporter, volume, page, entries, onStatus, seq) {
   try {
     caseData = await fetchClRecord(entries[n - 1]);
   } catch (e) {
+    if (e instanceof WasmLoadError) throw e;
     if (e instanceof ClRecordError) throw new Error(`Couldn't read the CourtListener record for this case.`);
     throw new Error(`Couldn't reach the server. Check your connection and try again.`);
   }

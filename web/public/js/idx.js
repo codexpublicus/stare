@@ -11,7 +11,7 @@
 // the alias came from (`cl:8077312`, CourtListener's citation metadata). The volume's
 // own CAP cases come first, then aliases, then CourtListener's records.
 
-import { fetchCached } from './cache.js';
+import { fetchCached, gunzip } from './cache.js';
 import { indexPath } from './manifest.js';
 import { idxPath, indexUrl } from './sources.js';
 import { loadWasm } from './wasm.js';
@@ -59,4 +59,42 @@ export async function idxEntries(reporter, volume, page, deps = {}) {
   const tail = await read(reporter, String(volume), found.part);
   if (!tail) throw new Error(`Missing part ${found.part} of ${reporter} vol. ${volume}'s index`);
   return (await lookup(tail, page)).entries;
+}
+
+/**
+ * Which zip the case at `page` is most likely in, read from part 0 of a volume's index
+ * (`bytes`, as readIdx gives them) without the WASM, so the case viewer can start
+ * fetching the zip while the WASM is still on its way (#262). It's a guess for a
+ * prefetch only: the WASM's `lookup_idx` (idxEntries) still decides what's shown, and a
+ * wrong guess costs a download, never a wrong case.
+ *
+ * It's the first line at `page` (CAP's lines come first), as `{ reporter, folder }`:
+ * `reporter` is null for the volume's own reporter and `folder` null for the folder the
+ * index is named for. `folder` set (`cited`, a CAP folder folded into another volume's
+ * file) takes the first of that folder's own lines instead, as resolve.js does. Null when
+ * that line is a CourtListener record (no zip), when nothing is at the page, and for a
+ * split volume (a `#parts` header), whose page may be in another part.
+ */
+export async function idxZipHint(bytes, page, folder = null) {
+  if (!bytes) return null;
+  const text = new TextDecoder().decode(await gunzip(bytes));
+  const want = String(page);
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (line.startsWith('#parts')) return null;
+    if (!line || line.startsWith('#')) continue;
+    const [at, source, ref] = line.split(',');
+    if (at?.trim().toLowerCase() !== want || !ref) continue;
+    if (source !== 'cap') {
+      if (folder) continue;
+      return null;
+    }
+    const parts = ref.trim().split('/');
+    const hint = parts.length === 3 ? { reporter: parts[0], folder: parts[1] }
+      : parts.length === 2 ? { reporter: null, folder: parts[0] }
+        : { reporter: null, folder: null };
+    if (folder && (hint.reporter || hint.folder !== folder)) continue;
+    return hint;
+  }
+  return null;
 }

@@ -3,7 +3,8 @@ import JsonLd from '../components/JsonLd.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import { casesLabel, yearRange } from '../lib/collection.js';
 import { webSite } from '../lib/jsonld.js';
-import { isCaseHash } from '../lib/caseroute.js';
+import { caseRouteScript } from '../lib/caseroute.js';
+import { DATA_URL, INDEX_URL } from '../../public/js/sources.js';
 import { BOOT_TIMEOUT_MS, bootGuardScript } from '../lib/bootguard.js';
 import '../styles/theme.css';
 import '../styles/layout.css';
@@ -37,8 +38,9 @@ import SiteHead from '../components/SiteHead.astro';
 				}
 			} catch(e) {}
 		</script>
-		<!-- A case in the hash opens on the reader's loading shell, not the landing (layout.css). -->
-		<script is:inline set:html={`try { if ((${isCaseHash})(location.hash)) document.documentElement.setAttribute('data-route', 'case'); } catch (e) {}`}></script>
+		<!-- A case in the hash opens on the reader's loading shell, not the landing (layout.css),
+		     and starts the WASM and the data hosts' connections with the HTML (caseroute.js). -->
+		<script is:inline set:html={caseRouteScript([INDEX_URL, DATA_URL])}></script>
 		<!-- If main.js or a module it imports fails to load, say so instead of "Loading..." forever (#265). -->
 		<script is:inline set:html={bootGuardScript({ targets: ['status-bar', 'landing-status'], what: 'The reader', errorClass: 'error', timeout: BOOT_TIMEOUT_MS })}></script>
 	</head>
@@ -133,19 +135,25 @@ import SiteHead from '../components/SiteHead.astro';
 				<button id="next-btn" class="topbar-nav" title="Next case" disabled>&#9654;</button>
 				<button id="theme-btn" class="theme-toggle" title="Toggle dark mode">&#9790;</button>
 			</div>
-			<div id="status-bar" class="status-line hidden"></div>
-			<div id="wasm-progress"></div>
 			<div class="layout">
 				<div class="main">
+					<!-- The page views' tabs show once the case says it has scans (main.js). -->
 					<div class="view-tabs">
 						<div class="view-tab active" id="tab-reader">Reader</div>
-						<div class="view-tab" id="tab-pdf">Archival PDF</div>
-						<div class="view-tab" id="tab-pages">Raw Scans</div>
+						<div class="view-tab hidden" id="tab-pdf">Archival PDF</div>
+						<div class="view-tab hidden" id="tab-pages">Raw Scans</div>
 					</div>
-					<div class="main-content">
-						<div id="reader"></div>
-						<div id="pdf-viewer" class="hidden"></div>
-						<div id="page-viewer" class="hidden"></div>
+					<div class="main-body">
+						<!-- Over the top of the reader, so showing or hiding them moves nothing (#260). -->
+						<div class="load-status">
+							<div id="status-bar" class="status-line hidden"></div>
+							<div id="wasm-progress"></div>
+						</div>
+						<div class="main-content">
+							<div id="reader"></div>
+							<div id="pdf-viewer" class="hidden"></div>
+							<div id="page-viewer" class="hidden"></div>
+						</div>
 					</div>
 				</div>
 				<div class="sidebar" id="sidebar"></div>

@@ -4,11 +4,12 @@
 // lookup_idx in JS, on plain text (the WASM reads gzip or plain).
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { gzipSync } from 'node:zlib';
 
 import {
   checkAvailability, checkCitation, checkPage, caseLookupLinks, heldVolumeMiss,
 } from '../public/js/citations.js';
-import { idxEntries } from '../public/js/idx.js';
+import { idxEntries, idxZipHint } from '../public/js/idx.js';
 import { hasIdx, holdsVolume, normalizeManifest } from '../public/js/manifest.js';
 import { idxPath } from '../public/js/sources.js';
 
@@ -194,5 +195,49 @@ describe('the page check with the unified index', () => {
     assert.equal(c.resolvable, false);
     assert.equal(heldVolumeMiss(c), 'No case found at this page in A.3d vol. 250');
     assert.deepEqual(caseLookupLinks(c), []);
+  });
+});
+
+// The zip a case link starts fetching before the WASM has loaded (#262).
+describe('idxZipHint', () => {
+  const gz = (text) => new Uint8Array(gzipSync(Buffer.from(text)));
+  const FILE = [
+    `5,cap,0005-01`,
+    `5,cl,7/${H1}`,
+    `7,cl,8/${H1}`,
+    `7,cap,0007-01`,
+    `12,cap,138-2/0012-01`,
+    `12,cap,0012-02`,
+    `287,cap,neb/128/0783-01,via=cl:8077312`,
+    `xxix,cap,xxix-01`,
+    `40,cl,9/${H2}`,
+    '',
+  ].join('\n');
+
+  test('the first line at the page names the zip: the volume\'s own, a folder\'s or an alias\'s', async () => {
+    assert.deepEqual(await idxZipHint(gz(FILE), 5), { reporter: null, folder: null });
+    assert.deepEqual(await idxZipHint(gz(FILE), 12), { reporter: null, folder: '138-2' });
+    assert.deepEqual(await idxZipHint(gz(FILE), 287), { reporter: 'neb', folder: '128' });
+    assert.deepEqual(await idxZipHint(gz(FILE), 'xxix'), { reporter: null, folder: null });
+  });
+
+  test('none for a CourtListener record, a page with nothing, or no file', async () => {
+    assert.equal(await idxZipHint(gz(FILE), 7), null);
+    assert.equal(await idxZipHint(gz(FILE), 40), null);
+    assert.equal(await idxZipHint(gz(FILE), 6), null);
+    assert.equal(await idxZipHint(null, 5), null);
+  });
+
+  test('a folder folded into the file takes that folder\'s own line', async () => {
+    assert.deepEqual(await idxZipHint(gz(FILE), 12, '138-2'), { reporter: null, folder: '138-2' });
+    assert.equal(await idxZipHint(gz(FILE), 5, '138-2'), null);
+  });
+
+  test('none for a split volume, whose page may be in another part', async () => {
+    assert.equal(await idxZipHint(gz(`#parts,900\n${FILE}`), 5), null);
+  });
+
+  test('plain (already gunzipped) bytes read the same', async () => {
+    assert.deepEqual(await idxZipHint(new TextEncoder().encode(FILE), 12), { reporter: null, folder: '138-2' });
   });
 });

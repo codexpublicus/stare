@@ -358,6 +358,34 @@ typeahead's; one main.js imports statically, where the guard's message must appe
 Analytics' beacon, put into each page's HTML at the end of `<body>` (where Cloudflare's
 automatic injection puts it) and in `<head>`, where the guard's message must never show.
 
+### Opening a case (#260, #262)
+
+A case link starts what it needs with the HTML. `caseRouteScript` (`web/src/lib/caseroute.js`),
+inlined in the `<head>` of `/`, marks the case route and adds preconnects to idx.stare.pub and
+data.stare.pub and preloads for the WASM module, its glue, `stare_wasm_bg.json` and citare's
+data bundle. The build writes their hashed names in at `WASM_PRELOADS_MARK` (`casePreloads` in
+`web/src/lib/assetcache.js`) and fails if the mark is gone. The preloads use the loader's own
+request modes (`fetch()` with its default credentials, `import()` for the glue), so each file is
+fetched once; a mismatch fetches twice and logs a console warning. The landing adds none of
+them and still loads the WASM late, at low priority.
+
+`resolve()` (`web/public/js/resolve.js`) awaits the WASM only where it's used: the manifest
+and the volume's `.idx.gz` are fetched straight away, and `idxZipHint` (`idx.js`) reads the
+index file in JS to guess the case's zip and start it, while the WASM's `lookup_idx` still
+decides what's shown. The text itself still waits for the WASM (`extract_case`), so on slow
+4G the WASM's download is most of the wait; rendering a CAP case's text from the zip's HTML
+without it is the next step.
+
+The case view is one flex column the height of the window (`#resolved`, `100dvh`): the top
+bar, then the reader and sidebar in what's left. The loading line and the WASM bar sit over
+the top of the reader (`.load-status`), the bar shows only after 500 ms (`SHOW_AFTER_MS` in
+`wasmbar.js`), the page-view tabs stay hidden until the case says it has scans, the top bar's
+arrows keep to the right whatever the citation's width, and the cited cases are the sidebar's
+last section, so their list arriving moves nothing below it. `web/e2e/caseload.spec.js`
+keeps a case load's layout shifts under 0.05 at phone, laptop and large sizes, with the WASM
+held so the loading line and the bar both show, and checks that the index file and the zip
+are requested while the WASM is held.
+
 ### WASM module size (#73)
 
 `web/public/wasm/stare_wasm_bg.wasm` is built by wasm-pack with the release profile in

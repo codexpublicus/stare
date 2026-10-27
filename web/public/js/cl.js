@@ -6,7 +6,7 @@
 // A record has no page scans, ALTO or page numbers, so the case viewer shows its text
 // with a source line and no Archival PDF or Raw Scans tab.
 
-import { fetchCached } from './cache.js';
+import { fetchCached, gunzip } from './cache.js';
 import { escapeHtml, safeExternalUrl } from './citations.js';
 import { clRecordPath, clRecordUrl } from './sources.js';
 import { loadWasm } from './wasm.js';
@@ -18,17 +18,9 @@ export function isClRecord(caseData) {
   return caseData?.source?.name === COURTLISTENER;
 }
 
-// Whether `bytes` start with gzip's magic number. A server that sets
-// Content-Encoding has the browser gunzip them first, so the record may arrive plain.
-export function isGzip(bytes) {
-  return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
-}
-
-export async function gunzip(bytes) {
-  if (!isGzip(bytes)) return bytes;
-  const body = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
-  return new Uint8Array(await new Response(body).arrayBuffer());
-}
+// A server that sets Content-Encoding has the browser gunzip a record first, so it may
+// arrive plain; gunzip passes plain bytes through (cache.js, which idx.js shares).
+export { gunzip, isGzip } from './cache.js';
 
 /**
  * One record, fetched (and cached under its immutable path), gunzipped and parsed into

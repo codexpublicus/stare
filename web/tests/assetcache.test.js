@@ -5,7 +5,10 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { contentHash, fingerprintWasm, hashedName, modulePreloads, pageEntries, staticGraph } from '../src/lib/assetcache.js';
+import {
+  casePreloads, contentHash, fingerprintWasm, hashedName, modulePreloads, pageEntries, staticGraph, wasmPreloads,
+} from '../src/lib/assetcache.js';
+import { WASM_PRELOADS_MARK } from '../src/lib/caseroute.js';
 
 // esbuild resolves the import graph; CI runs these tests before npm ci, so the graph
 // tests skip without it.
@@ -100,4 +103,36 @@ test('modulePreloads adds links to the pages that load modules, once', async (t)
   assert.equal(readFileSync(join(dir, 'about/index.html'), 'utf8'), '<html><head></head><body>no scripts</body></html>');
   await modulePreloads(dir, { build });
   assert.equal(readFileSync(join(dir, 'index.html'), 'utf8'), html, 'a second run changes nothing');
+});
+
+const URLS = { module: '/wasm/stare_wasm_bg.0123456789abcdef.wasm', glue: '/wasm/stare_wasm.fedcba9876543210.js' };
+const INFO = JSON.stringify({ bytes: 1, data: { url: '/data/citare/v1/citare-data-0000000000000000.bin.gz' } });
+
+test('wasmPreloads names the hashed module and glue, the build info and the bundle', () => {
+  assert.deepEqual(wasmPreloads(URLS, JSON.parse(INFO)), [
+    { rel: 'preload', as: 'fetch', href: URLS.module, crossorigin: true },
+    { rel: 'modulepreload', href: URLS.glue },
+    { rel: 'preload', as: 'fetch', href: '/wasm/stare_wasm_bg.json', crossorigin: true },
+    { rel: 'preload', as: 'fetch', href: '/data/citare/v1/citare-data-0000000000000000.bin.gz', crossorigin: true },
+  ]);
+});
+
+test('casePreloads writes the preloads into index.html\'s head script', (t) => {
+  const dir = site({
+    'index.html': `<head><script>go([].concat(${WASM_PRELOADS_MARK}))</script></head>`,
+    'wasm/stare_wasm_bg.json': INFO,
+  });
+  t.after(() => rmSync(dir, { recursive: true }));
+  const links = casePreloads(dir, URLS);
+  assert.equal(links.length, 4);
+  const html = readFileSync(join(dir, 'index.html'), 'utf8');
+  assert.ok(!html.includes(WASM_PRELOADS_MARK));
+  const written = html.match(/\/\*stare:wasm-preloads\*\/(\[.*?\])\)\)/)[1];
+  assert.deepEqual(JSON.parse(written), links);
+});
+
+test('casePreloads fails when index.html lost the mark', (t) => {
+  const dir = site({ 'index.html': '<head></head>', 'wasm/stare_wasm_bg.json': INFO });
+  t.after(() => rmSync(dir, { recursive: true }));
+  assert.throws(() => casePreloads(dir, URLS), /expected the mark .* once, found it 0 times/);
 });
