@@ -11,7 +11,9 @@
 ```
 crates/stare        — core lookup library (index parsing, zip/case extraction, resolve) and the
                       readers and writers for the published formats
-crates/stare-cli     — the `stare` binary
+crates/stare-cli     — the `stare` binary: `stare_cli::engine` (the lookups behind `stare resolve`
+                      and `stare check`, as a library) and `stare_cli::mcp` (`stare mcp`, #162)
+skills/stare-citations — the agent skill for `stare mcp`, shipped in the release archives
 crates/stare-site    — `stare-site export-citare-data` and `export-reporters`: the site build's
                       citare data bundle and /reporters.json
 crates/stare-wasm    — wasm-bindgen bindings for the website (same core as the CLI)
@@ -872,6 +874,37 @@ Per-case JSON (`data.stare.pub/case/<slug>/<vol>/<page>.json`, the issue's third
 waits on stare-builder: it's a one-time write of about 7M objects from the zips plus the
 CourtListener records, a new data build rather than a site change.
 
+### The `stare` binary and `stare mcp` (#162)
+
+The design is `docs/superpowers/specs/2026-10-27-stare-mcp-design.md` (accepted as D148). The
+orchestration `stare resolve` and `stare check` run is `stare_cli::engine`: `Sources` (the
+index and data locations and the manifest), `fetch` (cache, then source), `resolve`, `check`
+(`check_text` returns a `CheckReport`, whose citations serialize to `stare check --json`
+field for field) and `case_text` (single zip entries: from the cache, a whole cached zip, a
+mirror's zip on disk, or range requests through `stare::ziprange`, cached under
+`zips/<slug>/<folder>/<entry>`). `main.rs` keeps argument parsing and printing.
+`crates/stare-cli/tests/cli_golden.rs` holds the CLI to its golden output byte for byte, from a
+mirror directory and over a loopback HTTP server (`tests/common`).
+
+`stare mcp` (`stare_cli::mcp`, cargo feature `mcp`, default on) serves MCP over stdio with
+rmcp, pinned exactly. The engine stays synchronous; tool calls run on tokio's blocking pool.
+The session pins the live build's own manifest (`v/<version>/manifest.json`) at its first
+lookup, or `--index-version`'s, until `index_info(refresh: true)`; cursors carry the version
+and are refused under another (`stale_cursor`). Every result's `meta` has the index version,
+the server version, whether no request was made, and each source with its stated licence
+(`mcp/meta.rs`). Misses are statuses; tool errors carry a code (`mcp/error.rs`). The tools'
+schemas are `mcp/schema.rs`. `tests/mcp.rs` (protocol, in process), `tests/mcp_golden.rs`
+(vectors in `tests/mcp/`, through a child process) and `tests/mcp_live.rs` (`mise run
+mcp-smoke`, not in CI) test it; `check_brief`'s citations equal `tests/golden/check.json`
+once `case_ref` and `reader_url` are dropped.
+
+The binary is SemVer, `stare-cli-vX.Y.Z` tags, apart from the site's CalVer: pushing one runs
+`.github/workflows/stare-cli-release.yml`, which builds static x86_64 and aarch64 musl
+binaries with cargo-zigbuild (profile `dist`) and attaches them to a GitHub Release on this
+repository, not marked latest (D149), with notes from `cliff-cli.toml`. The site's tooling
+reads only `v*` tags. Bump `crates/stare-cli/Cargo.toml`'s version with the tag; the workflow
+refuses a tag that doesn't match.
+
 ## Current Status
 
 - **Live**: stare.pub serves the Astro site from the `stare-pub` Worker (since 2026-09-29; the
@@ -912,7 +945,7 @@ CourtListener records, a new data build rather than a site change.
 4. **DuckLake** — process zips into Parquet, build catalog, assign stable case IDs
 5. **RoaringBuckets search** — generate bitmaps from DuckLake data, add search to web UI
 6. **Page viewer** — tar range access + ALTO XML rendering in WASM (deferred; not needed for core text resolution)
-7. **MCP server** — thin wrapper around core once CLI/web are proven (much later)
+7. **MCP server** (M1 built, #162) — `stare mcp`, below; M2 adds pin pages, more tools, HTTP on loopback and macOS and Windows builds
 8. **IPFS distribution** — pin tars + PDFs from TrueNAS (alongside Phase 6)
 9. **CourtListener integration** (phase 2) — citation graph first, then post-2018 cases (text-only), then full pre-2018 merge if warranted. See `search-plan.md` for decision rationale. Worth asking Free Law Project about PDFs/scans before committing to text-only tier.
 
