@@ -42,6 +42,18 @@ impl Sources {
         }
     }
 
+    /// Sources at `index` and `data` that read `manifest` (or no manifest) for as long
+    /// as they live: `stare mcp` pins a session to one index build this way.
+    pub fn with_manifest(
+        index: impl Into<String>,
+        data: impl Into<String>,
+        manifest: Option<stare::manifest::Manifest>,
+    ) -> Self {
+        let src = Sources::new(index, data);
+        let _ = src.manifest.set(manifest);
+        src
+    }
+
     /// The sources a flag or the environment names, else the config file's, else the
     /// defaults (idx.stare.pub and data.stare.pub).
     pub fn from_config(index: Option<String>, data: Option<String>) -> Self {

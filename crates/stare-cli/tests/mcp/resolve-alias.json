@@ -1,0 +1,97 @@
+{
+  "arguments": {
+    "citation": "260 N.W. 287"
+  },
+  "is_error": false,
+  "structured": {
+    "by_name": null,
+    "case_links": [],
+    "cases": [
+      {
+        "case_ref": "cap:a2d/31/0647-01",
+        "citations": [
+          {
+            "cite": "31 A.2d 647",
+            "type": "official"
+          }
+        ],
+        "court": "District of Columbia Municipal Court of Appeals",
+        "decision_date": "1943-05-11",
+        "docket_number": "No. 69",
+        "first_page": "647",
+        "jurisdiction": "District of Columbia",
+        "last_page": "649",
+        "name": "D'ELIA & MARKS CO., Inc., v. LYON",
+        "name_abbreviation": "D'Elia & Marks Co. v. Lyon",
+        "provenance": "Resolved through CourtListener's citation metadata (cluster 8077312)",
+        "reader_url": "https://stare.pub/#a2d/31/647-01",
+        "source": "cap"
+      }
+    ],
+    "citation": {
+      "page": "287",
+      "raw": "260 N.W. 287",
+      "reporter": "N.W.",
+      "slug": "n-w",
+      "volume": "260"
+    },
+    "conflicts": [],
+    "external_url": null,
+    "meta": {
+      "cached": true,
+      "index_version": "v2026.10.26.2",
+      "server_version": "<server_version>",
+      "sources": [
+        {
+          "based_on": [
+            {
+              "license": {
+                "id": "CC0-1.0",
+                "name": "CC0 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+              },
+              "name": "Caselaw Access Project",
+              "url": "https://case.law/"
+            },
+            {
+              "license": {
+                "id": "CC-PDM-1.0",
+                "name": "Public Domain Mark 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+              },
+              "name": "CourtListener bulk data",
+              "publisher": "Free Law Project",
+              "url": "https://www.courtlistener.com/help/api/bulk-data/"
+            }
+          ],
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "stare.pub citation index",
+          "role": "index",
+          "url": "https://stare.pub",
+          "version": "v2026.10.26.2"
+        },
+        {
+          "file": "<mirror>/data/cap/a2d/31.zip",
+          "license": {
+            "id": "CC0-1.0",
+            "name": "CC0 1.0 Universal",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+          },
+          "name": "Caselaw Access Project",
+          "role": "case",
+          "url": "https://case.law/"
+        }
+      ]
+    },
+    "needs_review": false,
+    "status": "found_alias"
+  },
+  "text": "260 N.W. 287: found_alias. Found through the provenance below; it is not verified.\n- D'Elia & Marks Co. v. Lyon (1943-05-11), District of Columbia Municipal Court of Appeals. Resolved through CourtListener's citation metadata (cluster 8077312) cap:a2d/31/0647-01",
+  "tool": "resolve_citation"
+}

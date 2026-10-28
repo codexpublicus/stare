@@ -1,0 +1,74 @@
+{
+  "arguments": {
+    "case_ref": "cap:a2d/31/0662-01",
+    "max_chars": 3000,
+    "parts": [
+      "text"
+    ]
+  },
+  "is_error": false,
+  "structured": {
+    "case_ref": "cap:a2d/31/0662-01",
+    "end": 2827,
+    "meta": {
+      "cached": true,
+      "index_version": "v2026.10.26.2",
+      "server_version": "<server_version>",
+      "sources": [
+        {
+          "based_on": [
+            {
+              "license": {
+                "id": "CC0-1.0",
+                "name": "CC0 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+              },
+              "name": "Caselaw Access Project",
+              "url": "https://case.law/"
+            },
+            {
+              "license": {
+                "id": "CC-PDM-1.0",
+                "name": "Public Domain Mark 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+              },
+              "name": "CourtListener bulk data",
+              "publisher": "Free Law Project",
+              "url": "https://www.courtlistener.com/help/api/bulk-data/"
+            }
+          ],
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "stare.pub citation index",
+          "role": "index",
+          "url": "https://stare.pub",
+          "version": "v2026.10.26.2"
+        },
+        {
+          "file": "<mirror>/data/cap/a2d/31.zip",
+          "license": {
+            "id": "CC0-1.0",
+            "name": "CC0 1.0 Universal",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+          },
+          "name": "Caselaw Access Project",
+          "role": "case",
+          "url": "https://case.law/"
+        }
+      ]
+    },
+    "next_cursor": "eyJ0b29sIjoiZ2V0X2Nhc2UiLCJvZiI6ImNhcDphMmQvMzEvMDY2Mi0wMSNhbGwiLCJvZmZzZXQiOjI4MjcsInZlcnNpb24iOiJ2MjAyNi4xMC4yNi4yIn0",
+    "start": 0,
+    "status": "found",
+    "text": "[majority — HOOD, Associate Judge. RICHARDSON, Chief Judge:]\n\nHOOD, Associate Judge.\nPlaintiffs below, Walter A. Jackson, Rebecca M. Jackson, his wife, and Isabell Ware, sued the defendant, Dr. C. O. Knott, for the recovery of alleged usurious interest. The record discloses that in February, 1937, Mr. Jackson sought a loan from Dr. Knott and offered as security a third deed of trust on his home, but the loan was refused on the ground the security offered was insufficient. Later Mr. Jackson, with the consent of his aunt, Isabell Ware, again approached Dr. Knott and offered a second deed of trust on Mrs. Ware’s house as additional security for the loan. Dr. Knott examined her house and approved a loan. The record does not disclose the amount of the loan originally sought nor the amount finally agreed upon but on March 10, 1937 Mr. and Mrs. Jackson and Mrs. Ware executed a joint and several note, payable to the order of Marie Toombs, in the principal amount of $980, with interest at 6% per annum, principal and interest being payable in monthly installments of $40 each. This note was secured by a single deed of trust executed by the three makers of the note and covering both the Jackson and Ware homes.\nIt was contended by plaintiffs, and not denied by defendant, that the payee of the note was but a straw party for Dr. Knott; and though the principal amount of the note was $980 it is conceded by all parties that the amount actually advanced by Dr. Knott was only $697.90. The latter amount was advanced by Dr. Knott in the following amounts and for the following purposes: a check for $112.50 to Mr. Sager as payment on a second trust on the property of the Jacksons, a check for $120.00 to the Bank of Commerce & Savings in payment of a debt of Mr. Jackson, a check for $37.43 to L. P. Stewart to pay a bill owed by Mr. Jackson, checks for $72.74 and $65.01 in payment of taxes on the Jacksons’ property, a check for $68.06 in payment of taxes on the Ware property, a check for $209.19 in payment of a bill owing by Mrs. Ware, and the balance in cash which was handed to Mrs. Jackson. The record offers no explanation why the payments were made in the manner above stated rather than by one check to the plaintiffs, though apparently it was by agreement of all parties.\nThe note and deed of trust were executed in the office of Herman E. Miller, an attorney representing Dr. Knott. Dr. Knott paid him the sum of $50 on account of expenses and fees in this transaction.\nThereafter, up to and including February 8, 1939, the sum of $555.30 was paid on account of the note, $476.34 being applied to principal and $78.96 to interest. This sum was paid by Mr. Jackson and Mrs. Ware, but neither could testify as to the exact amount he or she paid, though Mrs. Ware testified that she paid more than Mr. Jackson.\n",
+    "total_chars": 28055,
+    "truncated": true
+  },
+  "text": "Showing characters 0 to 2,827 of 28,055; pass next_cursor for more.\n\n[majority — HOOD, Associate Judge. RICHARDSON, Chief Judge:]\n\nHOOD, Associate Judge.\nPlaintiffs below, Walter A. Jackson, Rebecca M. Jackson, his wife, and Isabell Ware, sued the defendant, Dr. C. O. Knott, for the recovery of alleged usurious interest. The record discloses that in February, 1937, Mr. Jackson sought a loan from Dr. Knott and offered as security a third deed of trust on his home, but the loan was refused on the ground the security offered was insufficient. Later Mr. Jackson, with the consent of his aunt, Isabell Ware, again approached Dr. Knott and offered a second deed of trust on Mrs. Ware’s house as additional security for the loan. Dr. Knott examined her house and approved a loan. The record does not disclose the amount of the loan originally sought nor the amount finally agreed upon but on March 10, 1937 Mr. and Mrs. Jackson and Mrs. Ware executed a joint and several note, payable to the order of Marie Toombs, in the principal amount of $980, with interest at 6% per annum, principal and interest being payable in monthly installments of $40 each. This note was secured by a single deed of trust executed by the three makers of the note and covering both the Jackson and Ware homes.\nIt was contended by plaintiffs, and not denied by defendant, that the payee of the note was but a straw party for Dr. Knott; and though the principal amount of the note was $980 it is conceded by all parties that the amount actually advanced by Dr. Knott was only $697.90. The latter amount was advanced by Dr. Knott in the following amounts and for the following purposes: a check for $112.50 to Mr. Sager as payment on a second trust on the property of the Jacksons, a check for $120.00 to the Bank of Commerce & Savings in payment of a debt of Mr. Jackson, a check for $37.43 to L. P. Stewart to pay a bill owed by Mr. Jackson, checks for $72.74 and $65.01 in payment of taxes on the Jacksons’ property, a check for $68.06 in payment of taxes on the Ware property, a check for $209.19 in payment of a bill owing by Mrs. Ware, and the balance in cash which was handed to Mrs. Jackson. The record offers no explanation why the payments were made in the manner above stated rather than by one check to the plaintiffs, though apparently it was by agreement of all parties.\nThe note and deed of trust were executed in the office of Herman E. Miller, an attorney representing Dr. Knott. Dr. Knott paid him the sum of $50 on account of expenses and fees in this transaction.\nThereafter, up to and including February 8, 1939, the sum of $555.30 was paid on account of the note, $476.34 being applied to principal and $78.96 to interest. This sum was paid by Mr. Jackson and Mrs. Ware, but neither could testify as to the exact amount he or she paid, though Mrs. Ware testified that she paid more than Mr. Jackson.\n\nText: Caselaw Access Project, CC0 1.0. Citation index: stare.pub, CC BY-NC-ND 4.0.",
+  "tool": "get_case"
+}

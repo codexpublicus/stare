@@ -9,6 +9,22 @@ use std::path::PathBuf;
 /// The User-Agent every request sends.
 pub const USER_AGENT: &str = "stare/0.1.0 (case law tool; github.com/codexpublicus/stare)";
 
+/// How many HTTP requests this process has sent. `stare mcp` compares it before and
+/// after a call to say whether the call was answered from the cache and mirror alone.
+pub fn requests_sent() -> u64 {
+    REQUESTS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+static REQUESTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// [`crate::http::send_with_retry`], counted.
+fn send(
+    build: impl Fn() -> reqwest::blocking::RequestBuilder,
+) -> reqwest::Result<reqwest::blocking::Response> {
+    REQUESTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    crate::http::send_with_retry(build)
+}
+
 /// The one HTTP client, so the many small requests range reads make share connections.
 /// It is never dropped, which reqwest's blocking client must not be inside an async
 /// runtime.
@@ -85,8 +101,8 @@ pub fn fetch_optional_index(src: &Sources, path: &str) -> Result<Option<Vec<u8>>
     let data = if Sources::is_url(source) {
         let url = format!("{}/{}", source, key);
         let client = client()?;
-        let response = crate::http::send_with_retry(|| client.get(&url))
-            .with_context(|| format!("failed to fetch {}", url))?;
+        let response =
+            send(|| client.get(&url)).with_context(|| format!("failed to fetch {}", url))?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }
@@ -126,8 +142,7 @@ pub fn fetch_record(src: &Sources, cluster_id: u64, hash: &str) -> Result<Vec<u8
 
 pub fn fetch_url(url: &str) -> Result<Vec<u8>> {
     let client = client()?;
-    let response = crate::http::send_with_retry(|| client.get(url))
-        .with_context(|| format!("failed to fetch {}", url))?;
+    let response = send(|| client.get(url)).with_context(|| format!("failed to fetch {}", url))?;
     if !response.status().is_success() {
         bail!("HTTP {} fetching {}", response.status(), url);
     }
@@ -179,9 +194,8 @@ pub fn zip_directory(url: &str) -> Result<Vec<stare::ziprange::Entry>> {
 /// offset they start at.
 pub fn fetch_range(url: &str, range: &str) -> Result<(Vec<u8>, u64)> {
     let client = client()?;
-    let response =
-        crate::http::send_with_retry(|| client.get(url).header(reqwest::header::RANGE, range))
-            .with_context(|| format!("failed to fetch {}", url))?;
+    let response = send(|| client.get(url).header(reqwest::header::RANGE, range))
+        .with_context(|| format!("failed to fetch {}", url))?;
     let status = response.status();
     if status == reqwest::StatusCode::OK {
         // A server that ignores Range sends the whole file.

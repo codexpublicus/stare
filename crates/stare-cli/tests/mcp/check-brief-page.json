@@ -1,0 +1,296 @@
+{
+  "arguments": {
+    "max_items": 3,
+    "text": "@brief"
+  },
+  "is_error": false,
+  "structured": {
+    "citations": [
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 0,
+        "needs_review": false,
+        "page": null,
+        "partner": null,
+        "pin": "5",
+        "raw": "Id.",
+        "reader_url": null,
+        "reporter": null,
+        "resolvable": false,
+        "slug": null,
+        "status": "no_antecedent",
+        "type": "IdCitation",
+        "via": null,
+        "volume": null
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": "a2d/31/647",
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/A.2d/31/647/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%2231+A.2d+647%22"
+          }
+        ],
+        "case_ref": "cap:a2d/31/0647-01",
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 1,
+        "needs_review": false,
+        "page": "647",
+        "partner": null,
+        "pin": null,
+        "raw": "31 A.2d 647",
+        "reader_url": "https://stare.pub/#a2d/31/647-01",
+        "reporter": "A.2d",
+        "resolvable": true,
+        "slug": "a2d",
+        "status": "found",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 31
+      },
+      {
+        "antecedent": "31 A.2d 647",
+        "by_name": null,
+        "case": null,
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/A.2d/31/647/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%2231+A.2d+647%22"
+          }
+        ],
+        "case_ref": null,
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 1,
+        "needs_review": false,
+        "page": "647",
+        "partner": null,
+        "pin": "648",
+        "raw": "Id.",
+        "reader_url": null,
+        "reporter": "A.2d",
+        "resolvable": true,
+        "slug": "a2d",
+        "status": "found",
+        "type": "IdCitation",
+        "via": null,
+        "volume": 31
+      }
+    ],
+    "cited_cases": [
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "no_antecedent",
+            "text": "Id."
+          }
+        ],
+        "group": 0,
+        "name": null,
+        "needs_review": false,
+        "reader_url": null,
+        "status": "no_antecedent"
+      },
+      {
+        "also_cited_as": {
+          "id": 1,
+          "short": 0,
+          "supra": 0
+        },
+        "case": "a2d/31/647",
+        "case_links": [],
+        "case_ref": "cap:a2d/31/0647-01",
+        "count": 3,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "found",
+            "text": "31 A.2d 647"
+          },
+          {
+            "count": 1,
+            "status": "found_partner",
+            "text": "128 Neb. 783"
+          },
+          {
+            "count": 1,
+            "status": "found_alias",
+            "text": "260 N.W. 287"
+          }
+        ],
+        "group": 1,
+        "name": "D'Elia & Marks Co. v. Lyon",
+        "needs_review": false,
+        "reader_url": "https://stare.pub/#a2d/31/647-01",
+        "status": "found_alias"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 1
+        },
+        "case": "a2d/31/657-2",
+        "case_links": [],
+        "case_ref": "cap:a2d/31/0657-02",
+        "count": 3,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 2,
+            "status": "found",
+            "text": "31 A.2d 657"
+          }
+        ],
+        "group": 2,
+        "name": "Waterman v. Railway Express Agency, Inc.",
+        "needs_review": false,
+        "reader_url": "https://stare.pub/#a2d/31/657-02",
+        "status": "found"
+      }
+    ],
+    "meta": {
+      "cached": true,
+      "index_version": "v2026.10.26.2",
+      "server_version": "<server_version>",
+      "sources": [
+        {
+          "based_on": [
+            {
+              "license": {
+                "id": "CC0-1.0",
+                "name": "CC0 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+              },
+              "name": "Caselaw Access Project",
+              "url": "https://case.law/"
+            },
+            {
+              "license": {
+                "id": "CC-PDM-1.0",
+                "name": "Public Domain Mark 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+              },
+              "name": "CourtListener bulk data",
+              "publisher": "Free Law Project",
+              "url": "https://www.courtlistener.com/help/api/bulk-data/"
+            }
+          ],
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "stare.pub citation index",
+          "role": "index",
+          "url": "https://stare.pub",
+          "version": "v2026.10.26.2"
+        },
+        {
+          "commit": "e095e6bf914ffd0a7b272f3764179cf3dbdf246c",
+          "copyright": "Copyright (c) 2014, Free Law Project",
+          "license": {
+            "id": "BSD-2-Clause",
+            "name": "BSD 2-Clause \"Simplified\" License",
+            "url": "https://spdx.org/licenses/BSD-2-Clause.html"
+          },
+          "name": "reporters-db",
+          "publisher": "Free Law Project",
+          "role": "detection",
+          "url": "https://github.com/freelawproject/reporters-db"
+        },
+        {
+          "commit": "5a7a532bb030aad955d73461735e92287cc3c066",
+          "copyright": "Copyright (c) 2020, Free Law Project",
+          "license": {
+            "id": "BSD-2-Clause",
+            "name": "BSD 2-Clause \"Simplified\" License",
+            "url": "https://spdx.org/licenses/BSD-2-Clause.html"
+          },
+          "name": "courts-db",
+          "publisher": "Free Law Project",
+          "role": "detection",
+          "url": "https://github.com/freelawproject/courts-db"
+        },
+        {
+          "commit": "8986d6832ab4ed7def8fc6664be7585e6f3e92da",
+          "copyright": null,
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "citare",
+          "publisher": "Codex Publicus",
+          "role": "detection",
+          "url": "https://github.com/codexpublicus/citare"
+        },
+        {
+          "file": "<mirror>/data/cap/a2d/31.zip",
+          "license": {
+            "id": "CC0-1.0",
+            "name": "CC0 1.0 Universal",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+          },
+          "name": "Caselaw Access Project",
+          "role": "case",
+          "url": "https://case.law/"
+        }
+      ]
+    },
+    "next_cursor": "eyJ0b29sIjoiY2hlY2tfYnJpZWYiLCJvZiI6IjQ1MGYzOGIzYmJlNTliOTgiLCJvZmZzZXQiOjMsInZlcnNpb24iOiJ2MjAyNi4xMC4yNi4yIn0",
+    "summary": {
+      "citations": 22,
+      "cited_cases": 14,
+      "found": 9,
+      "found_partner": 0,
+      "held_miss": 2,
+      "line": "14 cited cases found (9 resolvable), 3 statutes, 1 needs review",
+      "needs_review": 1,
+      "not_held": 1,
+      "resolvable": 9,
+      "statutes": 3,
+      "unchecked": 2
+    }
+  },
+  "text": "14 cited cases found (9 resolvable), 3 statutes, 1 needs review.\n\nCited cases 1 to 3 of 17:\n- Id. [no_antecedent]\n- 31 A.2d 647, 128 Neb. 783, 260 N.W. 287 [found_alias] D'Elia & Marks Co. v. Lyon cap:a2d/31/0647-01\n- 31 A.2d 657 [found] Waterman v. Railway Express Agency, Inc. cap:a2d/31/0657-02\n\nCitations 1 to 3 of 22 are in the structured result.\nMore follow: pass next_cursor.\nA found case exists and is the one cited; nothing here says whether it is still good law.",
+  "tool": "check_brief"
+}

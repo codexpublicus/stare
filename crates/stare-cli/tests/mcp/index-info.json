@@ -1,0 +1,159 @@
+{
+  "arguments": {},
+  "is_error": false,
+  "structured": {
+    "based_on": [
+      {
+        "license": {
+          "id": "CC0-1.0",
+          "name": "CC0 1.0 Universal",
+          "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+        },
+        "name": "Caselaw Access Project",
+        "url": "https://case.law/"
+      },
+      {
+        "license": {
+          "id": "CC-PDM-1.0",
+          "name": "Public Domain Mark 1.0 Universal",
+          "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+        },
+        "name": "CourtListener bulk data",
+        "publisher": "Free Law Project",
+        "url": "https://www.courtlistener.com/help/api/bulk-data/"
+      }
+    ],
+    "cache": "<cache>",
+    "counts": {
+      "alias_reporters": 1,
+      "entries": 38,
+      "reporters": 12,
+      "volumes": 1
+    },
+    "data_source": "<mirror>/data/cap",
+    "format": {
+      "idx": 1,
+      "manifest": 2
+    },
+    "index_version": "v2026.10.26.2",
+    "license": {
+      "id": "CC-BY-NC-ND-4.0",
+      "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+      "source": "https://stare.pub",
+      "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+    },
+    "licenses": [
+      {
+        "applies_to": "the citation index, the manifest and the provenance labels",
+        "license": {
+          "id": "CC-BY-NC-ND-4.0",
+          "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+          "source": "https://stare.pub",
+          "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+        }
+      },
+      {
+        "applies_to": "CAP case text and metadata, as the Caselaw Access Project published them",
+        "license": {
+          "id": "CC0-1.0",
+          "name": "CC0 1.0 Universal",
+          "source": "https://stare.pub",
+          "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+        }
+      },
+      {
+        "applies_to": "CourtListener records, as each record states",
+        "license": {
+          "id": "CC-PDM-1.0",
+          "name": "Public Domain Mark 1.0 Universal",
+          "source": "https://stare.pub",
+          "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+        }
+      }
+    ],
+    "live_version": "v2026.10.26.2",
+    "meta": {
+      "cached": true,
+      "index_version": "v2026.10.26.2",
+      "server_version": "<server_version>",
+      "sources": [
+        {
+          "based_on": [
+            {
+              "license": {
+                "id": "CC0-1.0",
+                "name": "CC0 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+              },
+              "name": "Caselaw Access Project",
+              "url": "https://case.law/"
+            },
+            {
+              "license": {
+                "id": "CC-PDM-1.0",
+                "name": "Public Domain Mark 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+              },
+              "name": "CourtListener bulk data",
+              "publisher": "Free Law Project",
+              "url": "https://www.courtlistener.com/help/api/bulk-data/"
+            }
+          ],
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "stare.pub citation index",
+          "role": "index",
+          "url": "https://stare.pub",
+          "version": "v2026.10.26.2"
+        },
+        {
+          "commit": "e095e6bf914ffd0a7b272f3764179cf3dbdf246c",
+          "copyright": "Copyright (c) 2014, Free Law Project",
+          "license": {
+            "id": "BSD-2-Clause",
+            "name": "BSD 2-Clause \"Simplified\" License",
+            "url": "https://spdx.org/licenses/BSD-2-Clause.html"
+          },
+          "name": "reporters-db",
+          "publisher": "Free Law Project",
+          "role": "detection",
+          "url": "https://github.com/freelawproject/reporters-db"
+        },
+        {
+          "commit": "5a7a532bb030aad955d73461735e92287cc3c066",
+          "copyright": "Copyright (c) 2020, Free Law Project",
+          "license": {
+            "id": "BSD-2-Clause",
+            "name": "BSD 2-Clause \"Simplified\" License",
+            "url": "https://spdx.org/licenses/BSD-2-Clause.html"
+          },
+          "name": "courts-db",
+          "publisher": "Free Law Project",
+          "role": "detection",
+          "url": "https://github.com/freelawproject/courts-db"
+        },
+        {
+          "commit": "8986d6832ab4ed7def8fc6664be7585e6f3e92da",
+          "copyright": null,
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "citare",
+          "publisher": "Codex Publicus",
+          "role": "detection",
+          "url": "https://github.com/codexpublicus/citare"
+        }
+      ]
+    },
+    "pinned_at": "<pinned_at>",
+    "source": "<mirror>/idx"
+  },
+  "text": "Index v2026.10.26.2 (pinned <pinned_at>), from <mirror>/idx.\n12 reporters, 1 CAP volume folders, 38 entries.\nCitation index: stare.pub, CC BY-NC-ND 4.0. CAP case text: CC0 1.0. CourtListener records: Public Domain Mark 1.0, credit CourtListener (Free Law Project).",
+  "tool": "index_info"
+}

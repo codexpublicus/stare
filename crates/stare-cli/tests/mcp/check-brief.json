@@ -1,0 +1,1351 @@
+{
+  "arguments": {
+    "text": "@brief"
+  },
+  "is_error": false,
+  "structured": {
+    "citations": [
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 0,
+        "needs_review": false,
+        "page": null,
+        "partner": null,
+        "pin": "5",
+        "raw": "Id.",
+        "reader_url": null,
+        "reporter": null,
+        "resolvable": false,
+        "slug": null,
+        "status": "no_antecedent",
+        "type": "IdCitation",
+        "via": null,
+        "volume": null
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": "a2d/31/647",
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/A.2d/31/647/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%2231+A.2d+647%22"
+          }
+        ],
+        "case_ref": "cap:a2d/31/0647-01",
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 1,
+        "needs_review": false,
+        "page": "647",
+        "partner": null,
+        "pin": null,
+        "raw": "31 A.2d 647",
+        "reader_url": "https://stare.pub/#a2d/31/647-01",
+        "reporter": "A.2d",
+        "resolvable": true,
+        "slug": "a2d",
+        "status": "found",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 31
+      },
+      {
+        "antecedent": "31 A.2d 647",
+        "by_name": null,
+        "case": null,
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/A.2d/31/647/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%2231+A.2d+647%22"
+          }
+        ],
+        "case_ref": null,
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 1,
+        "needs_review": false,
+        "page": "647",
+        "partner": null,
+        "pin": "648",
+        "raw": "Id.",
+        "reader_url": null,
+        "reporter": "A.2d",
+        "resolvable": true,
+        "slug": "a2d",
+        "status": "found",
+        "type": "IdCitation",
+        "via": null,
+        "volume": 31
+      },
+      {
+        "antecedent": null,
+        "by_name": {
+          "among": 2,
+          "note": "matched by case name among the 2 cases on this page",
+          "official": null,
+          "shared": false
+        },
+        "case": "a2d/31/657-2",
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/A.2d/31/657/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%2231+A.2d+657%22"
+          }
+        ],
+        "case_ref": "cap:a2d/31/0657-02",
+        "conflicts": [],
+        "count": 2,
+        "external_url": null,
+        "group": 2,
+        "needs_review": false,
+        "page": "657",
+        "partner": null,
+        "pin": null,
+        "raw": "31 A.2d 657",
+        "reader_url": "https://stare.pub/#a2d/31/657-02",
+        "reporter": "A.2d",
+        "resolvable": true,
+        "slug": "a2d",
+        "status": "found",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 31
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": null,
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/A.2d/31/650/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%2231+A.2d+650%22"
+          }
+        ],
+        "case_ref": null,
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 3,
+        "needs_review": false,
+        "page": "650",
+        "partner": null,
+        "pin": null,
+        "raw": "31 A.2d 650",
+        "reader_url": null,
+        "reporter": "A.2d",
+        "resolvable": false,
+        "slug": "a2d",
+        "status": "held_miss",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 31
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": "a2d/31/659",
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/A.2d/31/659/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%2231+A.2d+659%22"
+          }
+        ],
+        "case_ref": "cap:a2d/31/0659-01",
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 4,
+        "needs_review": false,
+        "page": "659",
+        "partner": null,
+        "pin": null,
+        "raw": "31 A.2d 659",
+        "reader_url": "https://stare.pub/#a2d/31/659-01",
+        "reporter": "A.2d",
+        "resolvable": true,
+        "slug": "a2d",
+        "status": "found",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 31
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 5,
+        "needs_review": false,
+        "page": null,
+        "partner": null,
+        "pin": "649",
+        "raw": "31 A.2d at 649",
+        "reader_url": null,
+        "reporter": null,
+        "resolvable": false,
+        "slug": null,
+        "status": "no_antecedent",
+        "type": "ShortCaseCitation",
+        "via": null,
+        "volume": null
+      },
+      {
+        "antecedent": "31 A.2d 657",
+        "by_name": null,
+        "case": null,
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/A.2d/31/657/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%2231+A.2d+657%22"
+          }
+        ],
+        "case_ref": null,
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 2,
+        "needs_review": false,
+        "page": "657",
+        "partner": null,
+        "pin": "658",
+        "raw": "supra,",
+        "reader_url": null,
+        "reporter": "A.2d",
+        "resolvable": true,
+        "slug": "a2d",
+        "status": "found",
+        "type": "SupraCitation",
+        "via": null,
+        "volume": 31
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": "a2d/31/647",
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/Neb./128/783/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%22128+Neb.+783%22"
+          }
+        ],
+        "case_ref": "cap:a2d/31/0647-01",
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 1,
+        "needs_review": false,
+        "page": "783",
+        "partner": "260 N.W. 287",
+        "pin": null,
+        "raw": "128 Neb. 783",
+        "reader_url": "https://stare.pub/#a2d/31/647-01",
+        "reporter": "Neb.",
+        "resolvable": true,
+        "slug": "neb",
+        "status": "found_partner",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 128
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": "a2d/31/647",
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/N.W./260/287/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%22260+N.W.+287%22"
+          }
+        ],
+        "case_ref": "cap:a2d/31/0647-01",
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 1,
+        "needs_review": false,
+        "page": "287",
+        "partner": null,
+        "pin": null,
+        "raw": "260 N.W. 287",
+        "reader_url": "https://stare.pub/#a2d/31/647-01",
+        "reporter": "N.W.",
+        "resolvable": true,
+        "slug": "n-w",
+        "status": "found_alias",
+        "type": "FullCaseCitation",
+        "via": "cl:8077312",
+        "volume": 260
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": "a3d/250/100",
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/A.3d/250/100/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%22250+A.3d+100%22"
+          }
+        ],
+        "case_ref": "cl:9876543/0f3a9c2e7b1d4a65",
+        "conflicts": [
+          "31 A.2d 660"
+        ],
+        "count": 1,
+        "external_url": null,
+        "group": 6,
+        "needs_review": true,
+        "page": "100",
+        "partner": null,
+        "pin": null,
+        "raw": "250 A.3d 100",
+        "reader_url": "https://stare.pub/#a3d/250/100-01",
+        "reporter": "A.3d",
+        "resolvable": true,
+        "slug": "a3d",
+        "status": "found",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 250
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": "a2d/31/660",
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/A.2d/31/660/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%2231+A.2d+660%22"
+          }
+        ],
+        "case_ref": "cap:a2d/31/0660-01",
+        "conflicts": [
+          "250 A.3d 100"
+        ],
+        "count": 1,
+        "external_url": null,
+        "group": 7,
+        "needs_review": true,
+        "page": "660",
+        "partner": null,
+        "pin": null,
+        "raw": "31 A.2d 660",
+        "reader_url": "https://stare.pub/#a2d/31/660-01",
+        "reporter": "A.2d",
+        "resolvable": true,
+        "slug": "a2d",
+        "status": "found",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 31
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": "ny-slip-op/2021/1234",
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/NY%20Slip%20Op/2021/01234/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%222021+NY+Slip+Op+01234%22"
+          }
+        ],
+        "case_ref": "cl:900001/5d41402abc4b2a76",
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 8,
+        "needs_review": false,
+        "page": "01234",
+        "partner": null,
+        "pin": null,
+        "raw": "2021 NY Slip Op 01234",
+        "reader_url": "https://stare.pub/#ny-slip-op/2021/1234-01",
+        "reporter": "NY Slip Op",
+        "resolvable": true,
+        "slug": "ny-slip-op",
+        "status": "found",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 2021
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": "f-4th/10/100",
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/F.4th/10/100/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%2210+F.4th+100%22"
+          }
+        ],
+        "case_ref": "cl:900002/5d41402abc4b2a76",
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 9,
+        "needs_review": false,
+        "page": "100",
+        "partner": null,
+        "pin": null,
+        "raw": "10 F.4th 100",
+        "reader_url": "https://stare.pub/#f-4th/10/100-01",
+        "reporter": "F.4th",
+        "resolvable": true,
+        "slug": "f-4th",
+        "status": "found",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 10
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": "t-c-memo/2019/123",
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/T.C.%20Memo./2019/123/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%222019+T.C.+Memo.+123%22"
+          }
+        ],
+        "case_ref": "cl:900004/5d41402abc4b2a76",
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 10,
+        "needs_review": false,
+        "page": "123",
+        "partner": null,
+        "pin": null,
+        "raw": "T.C. Memo. 2019-123",
+        "reader_url": "https://stare.pub/#t-c-memo/2019/123-01",
+        "reporter": "T.C. Memo.",
+        "resolvable": true,
+        "slug": "t-c-memo",
+        "status": "found",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 2019
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": "ohio/2019/1234",
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/Ohio/2019/1234/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%222019+Ohio+1234%22"
+          }
+        ],
+        "case_ref": "cl:900008/5d41402abc4b2a76",
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 11,
+        "needs_review": false,
+        "page": "1234",
+        "partner": null,
+        "pin": null,
+        "raw": "2019-Ohio-1234",
+        "reader_url": "https://stare.pub/#ohio/2019/1234-01",
+        "reporter": "Ohio",
+        "resolvable": true,
+        "slug": "ohio",
+        "status": "found",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 2019
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": null,
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/A.3d/250/101/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%22250+A.3d+101%22"
+          }
+        ],
+        "case_ref": null,
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 12,
+        "needs_review": false,
+        "page": "101",
+        "partner": null,
+        "pin": null,
+        "raw": "250 A.3d 101",
+        "reader_url": null,
+        "reporter": "A.3d",
+        "resolvable": false,
+        "slug": "a3d",
+        "status": "held_miss",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 250
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": null,
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/U.S./410/113/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%22410+U.S.+113%22"
+          }
+        ],
+        "case_ref": null,
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 13,
+        "needs_review": false,
+        "page": "113",
+        "partner": null,
+        "pin": null,
+        "raw": "410 U.S. 113",
+        "reader_url": null,
+        "reporter": "U.S.",
+        "resolvable": false,
+        "slug": "us",
+        "status": "not_held",
+        "type": "FullCaseCitation",
+        "via": null,
+        "volume": 410
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "conflicts": [],
+        "count": 1,
+        "external_url": "https://www.law.cornell.edu/uscode/text/42/1983",
+        "group": 14,
+        "needs_review": false,
+        "page": null,
+        "partner": null,
+        "pin": null,
+        "raw": "42 U.S.C. § 1983",
+        "reader_url": null,
+        "reporter": "U.S.C.",
+        "resolvable": false,
+        "slug": "usc",
+        "status": "external",
+        "type": "FullLawCitation",
+        "via": null,
+        "volume": null
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "conflicts": [],
+        "count": 1,
+        "external_url": null,
+        "group": 15,
+        "needs_review": false,
+        "page": null,
+        "partner": null,
+        "pin": null,
+        "raw": "Conn. Gen. Stat. § 52-584",
+        "reader_url": null,
+        "reporter": "Conn. Gen. Stat.",
+        "resolvable": false,
+        "slug": "conngenstat",
+        "status": "statute",
+        "type": "FullLawCitation",
+        "via": null,
+        "volume": null
+      },
+      {
+        "antecedent": null,
+        "by_name": null,
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "conflicts": [],
+        "count": 1,
+        "external_url": "https://www.revisor.mn.gov/statutes/cite/609.185",
+        "group": 16,
+        "needs_review": false,
+        "page": null,
+        "partner": null,
+        "pin": null,
+        "raw": "Minn. Stat. § 609.185",
+        "reader_url": null,
+        "reporter": "Minn. Stat.",
+        "resolvable": false,
+        "slug": "minnstat",
+        "status": "external",
+        "type": "FullLawCitation",
+        "via": null,
+        "volume": null
+      },
+      {
+        "antecedent": "Minn. Stat. § 609.185",
+        "by_name": null,
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "conflicts": [],
+        "count": 1,
+        "external_url": "https://www.revisor.mn.gov/statutes/cite/609.185",
+        "group": 16,
+        "needs_review": false,
+        "page": null,
+        "partner": null,
+        "pin": null,
+        "raw": "Id.",
+        "reader_url": null,
+        "reporter": "Minn. Stat.",
+        "resolvable": false,
+        "slug": "minnstat",
+        "status": "external",
+        "type": "IdCitation",
+        "via": null,
+        "volume": null
+      }
+    ],
+    "cited_cases": [
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "no_antecedent",
+            "text": "Id."
+          }
+        ],
+        "group": 0,
+        "name": null,
+        "needs_review": false,
+        "reader_url": null,
+        "status": "no_antecedent"
+      },
+      {
+        "also_cited_as": {
+          "id": 1,
+          "short": 0,
+          "supra": 0
+        },
+        "case": "a2d/31/647",
+        "case_links": [],
+        "case_ref": "cap:a2d/31/0647-01",
+        "count": 3,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "found",
+            "text": "31 A.2d 647"
+          },
+          {
+            "count": 1,
+            "status": "found_partner",
+            "text": "128 Neb. 783"
+          },
+          {
+            "count": 1,
+            "status": "found_alias",
+            "text": "260 N.W. 287"
+          }
+        ],
+        "group": 1,
+        "name": "D'Elia & Marks Co. v. Lyon",
+        "needs_review": false,
+        "reader_url": "https://stare.pub/#a2d/31/647-01",
+        "status": "found_alias"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 1
+        },
+        "case": "a2d/31/657-2",
+        "case_links": [],
+        "case_ref": "cap:a2d/31/0657-02",
+        "count": 3,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 2,
+            "status": "found",
+            "text": "31 A.2d 657"
+          }
+        ],
+        "group": 2,
+        "name": "Waterman v. Railway Express Agency, Inc.",
+        "needs_review": false,
+        "reader_url": "https://stare.pub/#a2d/31/657-02",
+        "status": "found"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "held_miss",
+            "text": "31 A.2d 650"
+          }
+        ],
+        "group": 3,
+        "name": null,
+        "needs_review": false,
+        "reader_url": null,
+        "status": "held_miss"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": "a2d/31/659",
+        "case_links": [],
+        "case_ref": "cap:a2d/31/0659-01",
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "found",
+            "text": "31 A.2d 659"
+          }
+        ],
+        "group": 4,
+        "name": "Raaen v. Southern Hotel Supply Co.",
+        "needs_review": false,
+        "reader_url": "https://stare.pub/#a2d/31/659-01",
+        "status": "found"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "no_antecedent",
+            "text": "31 A.2d at 649"
+          }
+        ],
+        "group": 5,
+        "name": null,
+        "needs_review": false,
+        "reader_url": null,
+        "status": "no_antecedent"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": "a3d/250/100",
+        "case_links": [],
+        "case_ref": "cl:9876543/0f3a9c2e7b1d4a65",
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "found",
+            "text": "250 A.3d 100"
+          }
+        ],
+        "group": 6,
+        "name": "Smith v. Jones",
+        "needs_review": true,
+        "reader_url": "https://stare.pub/#a3d/250/100-01",
+        "status": "found"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": "a2d/31/660",
+        "case_links": [],
+        "case_ref": "cap:a2d/31/0660-01",
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "found",
+            "text": "31 A.2d 660"
+          }
+        ],
+        "group": 7,
+        "name": "Mazo v. Ed. L. Stock, Inc.",
+        "needs_review": true,
+        "reader_url": "https://stare.pub/#a2d/31/660-01",
+        "status": "found"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": "ny-slip-op/2021/1234",
+        "case_links": [],
+        "case_ref": "cl:900001/5d41402abc4b2a76",
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "found",
+            "text": "2021 NY Slip Op 01234"
+          }
+        ],
+        "group": 8,
+        "name": "Smith v. Jones",
+        "needs_review": false,
+        "reader_url": "https://stare.pub/#ny-slip-op/2021/1234-01",
+        "status": "found"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": "f-4th/10/100",
+        "case_links": [],
+        "case_ref": "cl:900002/5d41402abc4b2a76",
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "found",
+            "text": "10 F.4th 100"
+          }
+        ],
+        "group": 9,
+        "name": "Smith v. Jones",
+        "needs_review": false,
+        "reader_url": "https://stare.pub/#f-4th/10/100-01",
+        "status": "found"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": "t-c-memo/2019/123",
+        "case_links": [],
+        "case_ref": "cl:900004/5d41402abc4b2a76",
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "found",
+            "text": "T.C. Memo. 2019-123"
+          }
+        ],
+        "group": 10,
+        "name": "Smith v. Jones",
+        "needs_review": false,
+        "reader_url": "https://stare.pub/#t-c-memo/2019/123-01",
+        "status": "found"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": "ohio/2019/1234",
+        "case_links": [],
+        "case_ref": "cl:900008/5d41402abc4b2a76",
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "found",
+            "text": "2019-Ohio-1234"
+          }
+        ],
+        "group": 11,
+        "name": "Smith v. Jones",
+        "needs_review": false,
+        "reader_url": "https://stare.pub/#ohio/2019/1234-01",
+        "status": "found"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "held_miss",
+            "text": "250 A.3d 101"
+          }
+        ],
+        "group": 12,
+        "name": null,
+        "needs_review": false,
+        "reader_url": null,
+        "status": "held_miss"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": null,
+        "case_links": [
+          {
+            "kind": "full_text",
+            "source": "courtlistener",
+            "url": "https://www.courtlistener.com/c/U.S./410/113/"
+          },
+          {
+            "kind": "search",
+            "source": "google_scholar",
+            "url": "https://scholar.google.com/scholar?hl=en&as_sdt=2006&q=%22410+U.S.+113%22"
+          }
+        ],
+        "case_ref": null,
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "not_held",
+            "text": "410 U.S. 113"
+          }
+        ],
+        "group": 13,
+        "name": null,
+        "needs_review": false,
+        "reader_url": null,
+        "status": "not_held"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "count": 1,
+        "external_url": "https://www.law.cornell.edu/uscode/text/42/1983",
+        "forms": [
+          {
+            "count": 1,
+            "status": "external",
+            "text": "42 U.S.C. § 1983"
+          }
+        ],
+        "group": 14,
+        "name": null,
+        "needs_review": false,
+        "reader_url": null,
+        "status": "external"
+      },
+      {
+        "also_cited_as": {
+          "id": 0,
+          "short": 0,
+          "supra": 0
+        },
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "count": 1,
+        "external_url": null,
+        "forms": [
+          {
+            "count": 1,
+            "status": "statute",
+            "text": "Conn. Gen. Stat. § 52-584"
+          }
+        ],
+        "group": 15,
+        "name": null,
+        "needs_review": false,
+        "reader_url": null,
+        "status": "statute"
+      },
+      {
+        "also_cited_as": {
+          "id": 1,
+          "short": 0,
+          "supra": 0
+        },
+        "case": null,
+        "case_links": [],
+        "case_ref": null,
+        "count": 2,
+        "external_url": "https://www.revisor.mn.gov/statutes/cite/609.185",
+        "forms": [
+          {
+            "count": 1,
+            "status": "external",
+            "text": "Minn. Stat. § 609.185"
+          }
+        ],
+        "group": 16,
+        "name": null,
+        "needs_review": false,
+        "reader_url": null,
+        "status": "external"
+      }
+    ],
+    "meta": {
+      "cached": true,
+      "index_version": "v2026.10.26.2",
+      "server_version": "<server_version>",
+      "sources": [
+        {
+          "based_on": [
+            {
+              "license": {
+                "id": "CC0-1.0",
+                "name": "CC0 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+              },
+              "name": "Caselaw Access Project",
+              "url": "https://case.law/"
+            },
+            {
+              "license": {
+                "id": "CC-PDM-1.0",
+                "name": "Public Domain Mark 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+              },
+              "name": "CourtListener bulk data",
+              "publisher": "Free Law Project",
+              "url": "https://www.courtlistener.com/help/api/bulk-data/"
+            }
+          ],
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "stare.pub citation index",
+          "role": "index",
+          "url": "https://stare.pub",
+          "version": "v2026.10.26.2"
+        },
+        {
+          "commit": "e095e6bf914ffd0a7b272f3764179cf3dbdf246c",
+          "copyright": "Copyright (c) 2014, Free Law Project",
+          "license": {
+            "id": "BSD-2-Clause",
+            "name": "BSD 2-Clause \"Simplified\" License",
+            "url": "https://spdx.org/licenses/BSD-2-Clause.html"
+          },
+          "name": "reporters-db",
+          "publisher": "Free Law Project",
+          "role": "detection",
+          "url": "https://github.com/freelawproject/reporters-db"
+        },
+        {
+          "commit": "5a7a532bb030aad955d73461735e92287cc3c066",
+          "copyright": "Copyright (c) 2020, Free Law Project",
+          "license": {
+            "id": "BSD-2-Clause",
+            "name": "BSD 2-Clause \"Simplified\" License",
+            "url": "https://spdx.org/licenses/BSD-2-Clause.html"
+          },
+          "name": "courts-db",
+          "publisher": "Free Law Project",
+          "role": "detection",
+          "url": "https://github.com/freelawproject/courts-db"
+        },
+        {
+          "commit": "8986d6832ab4ed7def8fc6664be7585e6f3e92da",
+          "copyright": null,
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "citare",
+          "publisher": "Codex Publicus",
+          "role": "detection",
+          "url": "https://github.com/codexpublicus/citare"
+        },
+        {
+          "file": "<mirror>/data/cap/a2d/31.zip",
+          "license": {
+            "id": "CC0-1.0",
+            "name": "CC0 1.0 Universal",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+          },
+          "name": "Caselaw Access Project",
+          "role": "case",
+          "url": "https://case.law/"
+        },
+        {
+          "attribution": {
+            "export": "2026-09-30",
+            "name": "CourtListener",
+            "publisher": "Free Law Project",
+            "url": "https://www.courtlistener.com/"
+          },
+          "file": "<mirror>/data/cl/c/9876543/0f3a9c2e7b1d4a65.json.gz",
+          "license": {
+            "id": "CC-PDM-1.0",
+            "name": "Public Domain Mark 1.0 Universal",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+          },
+          "name": "CourtListener",
+          "role": "case",
+          "url": "https://www.courtlistener.com/"
+        },
+        {
+          "attribution": {
+            "export": "2026-09-30",
+            "name": "CourtListener",
+            "publisher": "Free Law Project",
+            "url": "https://www.courtlistener.com/"
+          },
+          "file": "<mirror>/data/cl/c/900001/5d41402abc4b2a76.json.gz",
+          "license": {
+            "id": "CC-PDM-1.0",
+            "name": "Public Domain Mark 1.0 Universal",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+          },
+          "name": "CourtListener",
+          "role": "case",
+          "url": "https://www.courtlistener.com/"
+        },
+        {
+          "attribution": {
+            "export": "2026-09-30",
+            "name": "CourtListener",
+            "publisher": "Free Law Project",
+            "url": "https://www.courtlistener.com/"
+          },
+          "file": "<mirror>/data/cl/c/900002/5d41402abc4b2a76.json.gz",
+          "license": {
+            "id": "CC-PDM-1.0",
+            "name": "Public Domain Mark 1.0 Universal",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+          },
+          "name": "CourtListener",
+          "role": "case",
+          "url": "https://www.courtlistener.com/"
+        },
+        {
+          "attribution": {
+            "export": "2026-09-30",
+            "name": "CourtListener",
+            "publisher": "Free Law Project",
+            "url": "https://www.courtlistener.com/"
+          },
+          "file": "<mirror>/data/cl/c/900004/5d41402abc4b2a76.json.gz",
+          "license": {
+            "id": "CC-PDM-1.0",
+            "name": "Public Domain Mark 1.0 Universal",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+          },
+          "name": "CourtListener",
+          "role": "case",
+          "url": "https://www.courtlistener.com/"
+        },
+        {
+          "attribution": {
+            "export": "2026-09-30",
+            "name": "CourtListener",
+            "publisher": "Free Law Project",
+            "url": "https://www.courtlistener.com/"
+          },
+          "file": "<mirror>/data/cl/c/900008/5d41402abc4b2a76.json.gz",
+          "license": {
+            "id": "CC-PDM-1.0",
+            "name": "Public Domain Mark 1.0 Universal",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+          },
+          "name": "CourtListener",
+          "role": "case",
+          "url": "https://www.courtlistener.com/"
+        }
+      ]
+    },
+    "next_cursor": null,
+    "summary": {
+      "citations": 22,
+      "cited_cases": 14,
+      "found": 9,
+      "found_partner": 0,
+      "held_miss": 2,
+      "line": "14 cited cases found (9 resolvable), 3 statutes, 1 needs review",
+      "needs_review": 1,
+      "not_held": 1,
+      "resolvable": 9,
+      "statutes": 3,
+      "unchecked": 2
+    }
+  },
+  "text": "14 cited cases found (9 resolvable), 3 statutes, 1 needs review.\n\nCited cases 1 to 17 of 17:\n- Id. [no_antecedent]\n- 31 A.2d 647, 128 Neb. 783, 260 N.W. 287 [found_alias] D'Elia & Marks Co. v. Lyon cap:a2d/31/0647-01\n- 31 A.2d 657 [found] Waterman v. Railway Express Agency, Inc. cap:a2d/31/0657-02\n- 31 A.2d 650 [held_miss]\n- 31 A.2d 659 [found] Raaen v. Southern Hotel Supply Co. cap:a2d/31/0659-01\n- 31 A.2d at 649 [no_antecedent]\n- 250 A.3d 100 [found] Smith v. Jones cl:9876543/0f3a9c2e7b1d4a65 (needs review)\n- 31 A.2d 660 [found] Mazo v. Ed. L. Stock, Inc. cap:a2d/31/0660-01 (needs review)\n- 2021 NY Slip Op 01234 [found] Smith v. Jones cl:900001/5d41402abc4b2a76\n- 10 F.4th 100 [found] Smith v. Jones cl:900002/5d41402abc4b2a76\n- T.C. Memo. 2019-123 [found] Smith v. Jones cl:900004/5d41402abc4b2a76\n- 2019-Ohio-1234 [found] Smith v. Jones cl:900008/5d41402abc4b2a76\n- 250 A.3d 101 [held_miss]\n- 410 U.S. 113 [not_held]\n- 42 U.S.C. § 1983 [external]\n- Conn. Gen. Stat. § 52-584 [statute]\n- Minn. Stat. § 609.185 [external]\n\nCitations 1 to 22 of 22 are in the structured result.\nA found case exists and is the one cited; nothing here says whether it is still good law.",
+  "tool": "check_brief"
+}

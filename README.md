@@ -60,6 +60,9 @@ stare check brief.txt
 # Download a reporter's index + case data for offline use
 stare download --reporters a2d,a3d
 
+# Serve the Model Context Protocol over stdio, for agents
+stare mcp
+
 # Configuration and cache
 stare config show
 stare config set index /path/to/local/index
@@ -77,6 +80,23 @@ throttle requests to stare.pub's own hosts; against any other data source (stati
 mirror) it waits 700 ms between requests. A 429, or a 503 with a Retry-After, is waited out and
 retried up to three times.
 
+### `stare mcp`
+
+`stare mcp` is an MCP server over stdin and stdout for agents that write or review legal text
+(#162; the design is `docs/superpowers/specs/2026-10-27-stare-mcp-design.md`). Its tools are
+`check_brief` (every citation in a document, as `stare check --json` gives them, with the cited
+cases), `get_case` (a case's metadata and text in windows, or excerpts around a quotation with
+`find`), `resolve_citation`, `find_citations_in_text` and `index_info`. It reads the same
+sources and cache as the CLI, pins a session to one index build (`--index-version` names one),
+and every result names the index version and the licence of each source it used. Register it
+with a client as `{"command": "stare", "args": ["mcp"]}`, or `claude mcp add stare -- stare mcp`
+in Claude Code. `skills/stare-citations/SKILL.md` tells an agent when and how to use it, and
+`mise run mcp-smoke` runs it against the live hosts.
+
+Linux binaries (x86_64 and aarch64, static) are attached to the `stare-cli-vX.Y.Z` releases of
+this repository, built by `.github/workflows/stare-cli-release.yml`; each archive has the
+binary, the reporters-db and courts-db licences and the skill.
+
 ## Status
 
 - [x] Data source analysis (`static-case-law-mirror.md`)
@@ -86,7 +106,7 @@ retried up to three times.
 - [x] CourtListener records for cases CAP doesn't hold, and its parallel citations (index v2026.10.22)
 - [ ] DuckLake database
 - [ ] RoaringBuckets search index
-- [ ] MCP server (`stare mcp`, #162)
+- [x] MCP server (`stare mcp`, #162): stdio, five tools; pin pages, more tools and HTTP come in M2
 - [ ] IPFS distribution
 
 ## Documentation

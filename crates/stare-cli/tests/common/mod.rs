@@ -63,10 +63,16 @@ fn write(path: &Path, bytes: &[u8]) {
 
 /// Build the mirror in a new temporary directory.
 pub fn mirror() -> Mirror {
+    mirror_at(VERSION)
+}
+
+/// The mirror as build `version`: a test that breaks a file in it uses a version of its
+/// own, since index files are cached by their versioned path.
+pub fn mirror_at(version: &str) -> Mirror {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let idx = root.join("idx");
-    let v = idx.join("v").join(VERSION);
+    let v = idx.join("v").join(version);
     let data = root.join("data");
 
     let fixtures = fixtures();
@@ -134,7 +140,7 @@ pub fn mirror() -> Mirror {
     let manifest = |base: Option<&str>| {
         let mut m = serde_json::json!({
             "format": 2,
-            "version": VERSION,
+            "version": version,
             "generated_at": "2026-10-26T12:00:00Z",
             "volumes": 1,
             "entries": names.len(),
@@ -151,7 +157,7 @@ pub fn mirror() -> Mirror {
     };
     write(
         &idx.join("manifest.json"),
-        &manifest(Some(&format!("v/{VERSION}/"))),
+        &manifest(Some(&format!("v/{version}/"))),
     );
     write(&v.join("manifest.json"), &manifest(None));
 

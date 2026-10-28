@@ -1,0 +1,93 @@
+{
+  "arguments": {
+    "case_ref": "cap:a2d/31/0647-01",
+    "parts": [
+      "metadata"
+    ]
+  },
+  "is_error": false,
+  "structured": {
+    "case_ref": "cap:a2d/31/0647-01",
+    "meta": {
+      "cached": true,
+      "index_version": "v2026.10.26.2",
+      "server_version": "<server_version>",
+      "sources": [
+        {
+          "based_on": [
+            {
+              "license": {
+                "id": "CC0-1.0",
+                "name": "CC0 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+              },
+              "name": "Caselaw Access Project",
+              "url": "https://case.law/"
+            },
+            {
+              "license": {
+                "id": "CC-PDM-1.0",
+                "name": "Public Domain Mark 1.0 Universal",
+                "url": "https://creativecommons.org/publicdomain/mark/1.0/"
+              },
+              "name": "CourtListener bulk data",
+              "publisher": "Free Law Project",
+              "url": "https://www.courtlistener.com/help/api/bulk-data/"
+            }
+          ],
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "stare.pub citation index",
+          "role": "index",
+          "url": "https://stare.pub",
+          "version": "v2026.10.26.2"
+        },
+        {
+          "file": "<mirror>/data/cap/a2d/31.zip",
+          "license": {
+            "id": "CC0-1.0",
+            "name": "CC0 1.0 Universal",
+            "source": "https://stare.pub",
+            "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+          },
+          "name": "Caselaw Access Project",
+          "role": "case",
+          "url": "https://case.law/"
+        }
+      ]
+    },
+    "metadata": {
+      "case_ref": "cap:a2d/31/0647-01",
+      "citations": [
+        {
+          "cite": "31 A.2d 647",
+          "type": "official"
+        }
+      ],
+      "court": "District of Columbia Municipal Court of Appeals",
+      "decision_date": "1943-05-11",
+      "docket_number": "No. 69",
+      "first_page": "647",
+      "jurisdiction": "District of Columbia",
+      "last_page": "649",
+      "name": "D'ELIA & MARKS CO., Inc., v. LYON",
+      "name_abbreviation": "D'Elia & Marks Co. v. Lyon",
+      "opinions": [
+        {
+          "author": "HOOD, Associate Judge.",
+          "type": "majority"
+        }
+      ],
+      "provenance": null,
+      "reader_url": null,
+      "source": "cap"
+    },
+    "status": "found"
+  },
+  "text": "D'Elia & Marks Co. v. Lyon\n31 A.2d 647  |  1943-05-11  |  District of Columbia Municipal Court of Appeals\n\nText: Caselaw Access Project, CC0 1.0. Citation index: stare.pub, CC BY-NC-ND 4.0.",
+  "tool": "get_case"
+}

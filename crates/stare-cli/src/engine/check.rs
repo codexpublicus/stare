@@ -619,6 +619,20 @@ pub struct CheckedCitation {
     /// The alias it resolved through (`cl:8077312`).
     pub via: Option<String>,
     pub volume: Option<u32>,
+    /// Where the case it resolves to is read from, when the unified index names it.
+    /// Not in `stare check --json`.
+    #[serde(skip)]
+    pub case_ref: Option<stare::parallel::CaseRef>,
+    /// Every case that starts at its page (its antecedent's, for a short form), with
+    /// where each is read from, the first the one a reader opens (#204); empty when it
+    /// isn't found or the build has no unified index. Not in `stare check --json`.
+    #[serde(skip)]
+    pub page_cases: Vec<(String, stare::parallel::CaseRef)>,
+    /// The cases its parallel run leaves it (#204, #212): the one its printings agree
+    /// on, or the several they share; empty when it is in no run that agrees. Not in
+    /// `stare check --json`.
+    #[serde(skip)]
+    pub run_cases: Vec<String>,
 }
 
 /// What checking a text found.
@@ -728,6 +742,16 @@ pub fn check_text(src: &Sources, text: &str) -> CheckReport {
             via = check_case_via(src, c, case).or(fallback);
         }
         let needs_review = !conflicts.is_empty();
+        let page_cases = if matches!(status, CheckStatus::Found | CheckStatus::FoundAlias) {
+            check_case_refs(src, c)
+        } else {
+            Vec::new()
+        };
+        let run_cases = match own.and_then(|v| v.case.as_ref().map(|case| (case, v))) {
+            Some((case, v)) if v.tied.is_empty() => vec![case.clone()],
+            Some((_, v)) => v.tied.clone(),
+            None => Vec::new(),
+        };
         cited.push(cited_entry(c, status, case.clone(), needs_review));
         citations.push(CheckedCitation {
             antecedent,
@@ -762,6 +786,9 @@ pub fn check_text(src: &Sources, text: &str) -> CheckReport {
             citation_type: c.citation_type.clone(),
             via,
             volume: target.as_ref().and_then(|t| t.volume),
+            case_ref: None,
+            page_cases,
+            run_cases,
         });
         // The entry a cited case is listed by: a run's preferred printing, an official
         // reporter's printing found on its own, one found on its own, one found
@@ -795,6 +822,16 @@ pub fn check_text(src: &Sources, text: &str) -> CheckReport {
         })
         .collect();
     let grouping = stare::cited::group(&cited, &places);
+    // Where each case is read from, from every page that names it: a citation found
+    // through its partner, or picked on its official printing's page (D90), opens a
+    // case at another citation's page.
+    let refs: std::collections::HashMap<String, stare::parallel::CaseRef> = citations
+        .iter()
+        .flat_map(|c| c.page_cases.iter().cloned())
+        .collect();
+    for c in &mut citations {
+        c.case_ref = c.case.as_ref().and_then(|id| refs.get(id).cloned());
+    }
     for ((c, g), n) in citations
         .iter_mut()
         .zip(&grouping.entries)

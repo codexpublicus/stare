@@ -1,0 +1,188 @@
+name: stare-cli release
+
+# Releases of the stare binary, the CLI and `stare mcp` (#162), apart from the site's:
+# a `stare-cli-vX.Y.Z` tag (SemVer) builds static Linux binaries for x86_64 and
+# aarch64 (musl, cross-compiled with cargo-zigbuild on the homelab runners) and
+# attaches them to a GitHub Release on this repository (D149: release assets here
+# until the repository is public). The site's release tooling reads only `v*` tags,
+# so these tags and releases don't touch it, and the release isn't marked latest.
+#
+# Each archive holds the binary, the
+# reporters-db and courts-db LICENSE files (BSD 2-Clause asks that binary
+# redistributions reproduce them; citare's data bundle is compiled in), the agent
+# skill and a SHA256SUMS.
+#
+# A pull request that changes this file builds both archives and stops, so the
+# workflow is proven before a tag needs it. Nothing else runs it.
+
+on:
+  push:
+    tags:
+      - "stare-cli-v*"
+  pull_request:
+    paths:
+      - .github/workflows/stare-cli-release.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: homelab
+    strategy:
+      fail-fast: true
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/homelab-setup
+        with:
+          packages: build-essential pkg-config openssh-client
+
+      - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.CITARE_DEPLOY_KEY }}
+
+      - name: Read the pinned Rust toolchain
+        id: toolchain
+        run: |
+          set -euo pipefail
+          channel=$(sed -n 's/^channel *= *"\(.*\)"$/\1/p' rust-toolchain.toml)
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          targets: ${{ matrix.target }}
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      # cargo-zigbuild links with zig, which the ziglang wheel carries.
+      - name: Install cargo-zigbuild and zig
+        run: |
+          set -euo pipefail
+          uv tool install --with ziglang==0.17.0 cargo-zigbuild==0.24.0
+          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
+          zig=$("$(uv tool dir)/cargo-zigbuild/bin/python" -c \
+            'import os, ziglang; print(os.path.join(os.path.dirname(ziglang.__file__), "zig"))')
+          echo "CARGO_ZIGBUILD_ZIG_PATH=$zig" >> "$GITHUB_ENV"
+
+      - name: Version
+        id: version
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          crate=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "stare-cli") | .version')
+          case "$REF" in
+            refs/tags/stare-cli-v*)
+              tag=${REF#refs/tags/}
+              if [ "${tag#stare-cli-v}" != "$crate" ]; then
+                echo "::error::$tag doesn't match crates/stare-cli/Cargo.toml's version $crate"
+                exit 1
+              fi ;;
+          esac
+          echo "version=$crate" >> "$GITHUB_OUTPUT"
+
+      # cargo's own git fetches citare through the ssh agent, with the GitHub host keys
+      # it knows; the git CLI would need them in known_hosts, as build-site's doesn't.
+      - name: Build
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo zigbuild --locked -p stare-cli --profile dist --target "$TARGET"
+
+      - name: Package
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          name="stare-$VERSION-$TARGET"
+          dir="$RUNNER_TEMP/$name"
+          mkdir -p "$dir/licenses" "$RUNNER_TEMP/dist"
+          cp "target/$TARGET/dist/stare" "$dir/stare"
+          cp crates/stare/src/licenses/reporters-db.LICENSE crates/stare/src/licenses/courts-db.LICENSE "$dir/licenses/"
+          cp skills/stare-citations/SKILL.md "$dir/SKILL.md"
+          (cd "$dir" && find . -type f ! -name SHA256SUMS | sort | xargs sha256sum > SHA256SUMS)
+          tar -C "$RUNNER_TEMP" --owner=0 --group=0 -czf "$RUNNER_TEMP/dist/$name.tar.gz" "$name"
+
+          ls -l "$dir/stare" "$RUNNER_TEMP/dist/$name.tar.gz"
+          echo "$name: $(stat -c %s "$dir/stare") bytes" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          "target/$TARGET/dist/stare" --version
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | timeout 30 "target/$TARGET/dist/stare" mcp > "$RUNNER_TEMP/mcp.out"
+          jq -e 'select(.id == 2) | .result.tools | length == 5' "$RUNNER_TEMP/mcp.out"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stare-${{ matrix.target }}
+          path: ${{ runner.temp }}/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/stare-cli-v')
+    needs: build
+    runs-on: homelab
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: stare-*
+          path: ${{ runner.temp }}/dist
+          merge-multiple: true
+
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        with:
+          tool: git-cliff@2.14.2
+
+      - name: Notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if prev=$(git describe --tags --abbrev=0 --match 'stare-cli-v*' "$TAG^" 2>/dev/null); then
+            range="$prev..$TAG"
+          else
+            range="9ff6832..$TAG"
+          fi
+          git cliff --config cliff-cli.toml "$range" --strip all > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/dist"
+          sha256sum stare-*.tar.gz > SHA256SUMS
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" -R "$GITHUB_REPOSITORY" --clobber stare-*.tar.gz SHA256SUMS
+          else
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --latest=false \
+              --title "stare ${TAG#stare-cli-v}" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              stare-*.tar.gz SHA256SUMS
+          fi

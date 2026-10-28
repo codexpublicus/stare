@@ -1,0 +1,664 @@
+{
+  "arguments": {
+    "text": "@brief"
+  },
+  "is_error": false,
+  "structured": {
+    "citations": [
+      {
+        "antecedent": null,
+        "case_name": null,
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 0,
+        "kind": "short",
+        "law": null,
+        "official": false,
+        "page": null,
+        "parallel_of": null,
+        "pin": "5",
+        "raw": "Id.",
+        "reporter": null,
+        "slug": null,
+        "span": {
+          "end": 146,
+          "start": 138
+        },
+        "type": "IdCitation",
+        "volume": null,
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": "Marks\nCo. v. Lyon",
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 1,
+        "kind": "case",
+        "law": null,
+        "official": false,
+        "page": "647",
+        "parallel_of": null,
+        "pin": null,
+        "raw": "31 A.2d 647",
+        "reporter": "A.2d",
+        "slug": "a2d",
+        "span": {
+          "end": 248,
+          "start": 237
+        },
+        "type": "FullCaseCitation",
+        "volume": "31",
+        "year": 1943
+      },
+      {
+        "antecedent": {
+          "index": 1,
+          "raw": "31 A.2d 647"
+        },
+        "case_name": null,
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 2,
+        "kind": "short",
+        "law": null,
+        "official": false,
+        "page": null,
+        "parallel_of": null,
+        "pin": "648",
+        "raw": "Id.",
+        "reporter": null,
+        "slug": null,
+        "span": {
+          "end": 286,
+          "start": 276
+        },
+        "type": "IdCitation",
+        "volume": null,
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": "Waterman v. Railway Express Agency",
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 3,
+        "kind": "case",
+        "law": null,
+        "official": false,
+        "page": "657",
+        "parallel_of": null,
+        "pin": null,
+        "raw": "31 A.2d 657",
+        "reporter": "A.2d",
+        "slug": "a2d",
+        "span": {
+          "end": 359,
+          "start": 348
+        },
+        "type": "FullCaseCitation",
+        "volume": "31",
+        "year": 1943
+      },
+      {
+        "antecedent": null,
+        "case_name": "Brooks v. District of Columbia",
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 4,
+        "kind": "case",
+        "law": null,
+        "official": false,
+        "page": "657",
+        "parallel_of": null,
+        "pin": null,
+        "raw": "31 A.2d 657",
+        "reporter": "A.2d",
+        "slug": "a2d",
+        "span": {
+          "end": 437,
+          "start": 426
+        },
+        "type": "FullCaseCitation",
+        "volume": "31",
+        "year": 1943
+      },
+      {
+        "antecedent": null,
+        "case_name": null,
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 5,
+        "kind": "case",
+        "law": null,
+        "official": false,
+        "page": "650",
+        "parallel_of": null,
+        "pin": null,
+        "raw": "31 A.2d 650",
+        "reporter": "A.2d",
+        "slug": "a2d",
+        "span": {
+          "end": 466,
+          "start": 455
+        },
+        "type": "FullCaseCitation",
+        "volume": "31",
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": null,
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 6,
+        "kind": "case",
+        "law": null,
+        "official": false,
+        "page": "659",
+        "parallel_of": null,
+        "pin": null,
+        "raw": "31 A.2d 659",
+        "reporter": "A.2d",
+        "slug": "a2d",
+        "span": {
+          "end": 479,
+          "start": 468
+        },
+        "type": "FullCaseCitation",
+        "volume": "31",
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": null,
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 7,
+        "kind": "short",
+        "law": null,
+        "official": false,
+        "page": null,
+        "parallel_of": null,
+        "pin": "649",
+        "raw": "31 A.2d at 649",
+        "reporter": "A.2d",
+        "slug": "a2d",
+        "span": {
+          "end": 503,
+          "start": 489
+        },
+        "type": "ShortCaseCitation",
+        "volume": "31",
+        "year": null
+      },
+      {
+        "antecedent": {
+          "index": 3,
+          "raw": "31 A.2d 657"
+        },
+        "case_name": null,
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 8,
+        "kind": "short",
+        "law": null,
+        "official": false,
+        "page": null,
+        "parallel_of": null,
+        "pin": "658",
+        "raw": "supra,",
+        "reporter": null,
+        "slug": null,
+        "span": {
+          "end": 528,
+          "start": 515
+        },
+        "type": "SupraCitation",
+        "volume": null,
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": "Pettegrew v. Pettegrew",
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 9,
+        "kind": "case",
+        "law": null,
+        "official": true,
+        "page": "783",
+        "parallel_of": null,
+        "pin": null,
+        "raw": "128 Neb. 783",
+        "reporter": "Neb.",
+        "slug": "neb",
+        "span": {
+          "end": 602,
+          "start": 590
+        },
+        "type": "FullCaseCitation",
+        "volume": "128",
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": "Pettegrew v. Pettegrew",
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 10,
+        "kind": "case",
+        "law": null,
+        "official": false,
+        "page": "287",
+        "parallel_of": 9,
+        "pin": null,
+        "raw": "260 N.W. 287",
+        "reporter": "N.W.",
+        "slug": "n-w",
+        "span": {
+          "end": 616,
+          "start": 604
+        },
+        "type": "FullCaseCitation",
+        "volume": "260",
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": "Smith v. Jones",
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 11,
+        "kind": "case",
+        "law": null,
+        "official": false,
+        "page": "100",
+        "parallel_of": null,
+        "pin": null,
+        "raw": "250 A.3d 100",
+        "reporter": "A.3d",
+        "slug": "a3d",
+        "span": {
+          "end": 678,
+          "start": 666
+        },
+        "type": "FullCaseCitation",
+        "volume": "250",
+        "year": 2021
+      },
+      {
+        "antecedent": null,
+        "case_name": "Smith v. Jones",
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 12,
+        "kind": "case",
+        "law": null,
+        "official": false,
+        "page": "660",
+        "parallel_of": 11,
+        "pin": null,
+        "raw": "31 A.2d 660",
+        "reporter": "A.2d",
+        "slug": "a2d",
+        "span": {
+          "end": 691,
+          "start": 680
+        },
+        "type": "FullCaseCitation",
+        "volume": "31",
+        "year": 2021
+      },
+      {
+        "antecedent": null,
+        "case_name": "Doe",
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 13,
+        "kind": "case",
+        "law": null,
+        "official": true,
+        "page": "01234",
+        "parallel_of": null,
+        "pin": null,
+        "raw": "2021 NY Slip Op 01234",
+        "reporter": "NY Slip Op",
+        "slug": "ny-slip-op",
+        "span": {
+          "end": 765,
+          "start": 744
+        },
+        "type": "FullCaseCitation",
+        "volume": "2021",
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": "Doe v. United\nStates",
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 14,
+        "kind": "case",
+        "law": null,
+        "official": false,
+        "page": "100",
+        "parallel_of": null,
+        "pin": null,
+        "raw": "10 F.4th 100",
+        "reporter": "F.4th",
+        "slug": "f-4th",
+        "span": {
+          "end": 805,
+          "start": 793
+        },
+        "type": "FullCaseCitation",
+        "volume": "10",
+        "year": 2021
+      },
+      {
+        "antecedent": null,
+        "case_name": "Roe v. Commissioner",
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 15,
+        "kind": "case",
+        "law": null,
+        "official": false,
+        "page": "123",
+        "parallel_of": null,
+        "pin": null,
+        "raw": "T.C. Memo. 2019-123",
+        "reporter": "T.C. Memo.",
+        "slug": "t-c-memo",
+        "span": {
+          "end": 871,
+          "start": 852
+        },
+        "type": "FullCaseCitation",
+        "volume": "2019",
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": "State v. Roe",
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 16,
+        "kind": "case",
+        "law": null,
+        "official": false,
+        "page": "1234",
+        "parallel_of": null,
+        "pin": null,
+        "raw": "2019-Ohio-1234",
+        "reporter": "Ohio",
+        "slug": "ohio",
+        "span": {
+          "end": 901,
+          "start": 887
+        },
+        "type": "FullCaseCitation",
+        "volume": "2019",
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": null,
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 17,
+        "kind": "case",
+        "law": null,
+        "official": false,
+        "page": "101",
+        "parallel_of": null,
+        "pin": null,
+        "raw": "250 A.3d 101",
+        "reporter": "A.3d",
+        "slug": "a3d",
+        "span": {
+          "end": 936,
+          "start": 924
+        },
+        "type": "FullCaseCitation",
+        "volume": "250",
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": "Elsewhere: Roe v. Wade",
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 18,
+        "kind": "case",
+        "law": null,
+        "official": true,
+        "page": "113",
+        "parallel_of": null,
+        "pin": null,
+        "raw": "410 U.S. 113",
+        "reporter": "U.S.",
+        "slug": "us",
+        "span": {
+          "end": 974,
+          "start": 962
+        },
+        "type": "FullCaseCitation",
+        "volume": "410",
+        "year": 1973
+      },
+      {
+        "antecedent": null,
+        "case_name": null,
+        "corrected_reporter": null,
+        "external_url": "https://www.law.cornell.edu/uscode/text/42/1983",
+        "history_name": null,
+        "index": 19,
+        "kind": "law",
+        "law": {
+          "chapter": null,
+          "code": "U.S.C.",
+          "jurisdiction": "United States",
+          "section": "1983",
+          "subject": null,
+          "title": "42"
+        },
+        "official": false,
+        "page": null,
+        "parallel_of": null,
+        "pin": null,
+        "raw": "42 U.S.C. § 1983",
+        "reporter": "U.S.C.",
+        "slug": null,
+        "span": {
+          "end": 1010,
+          "start": 994
+        },
+        "type": "FullLawCitation",
+        "volume": null,
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": null,
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 20,
+        "kind": "law",
+        "law": {
+          "chapter": null,
+          "code": "Conn. Gen. Stat.",
+          "jurisdiction": "Connecticut",
+          "section": "52-584",
+          "subject": null,
+          "title": null
+        },
+        "official": false,
+        "page": null,
+        "parallel_of": null,
+        "pin": null,
+        "raw": "Conn. Gen. Stat. § 52-584",
+        "reporter": "Conn. Gen. Stat.",
+        "slug": null,
+        "span": {
+          "end": 1037,
+          "start": 1012
+        },
+        "type": "FullLawCitation",
+        "volume": null,
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": null,
+        "corrected_reporter": null,
+        "external_url": "https://www.revisor.mn.gov/statutes/cite/609.185",
+        "history_name": null,
+        "index": 21,
+        "kind": "law",
+        "law": {
+          "chapter": null,
+          "code": "Minn. Stat.",
+          "jurisdiction": "Minnesota",
+          "section": "609.185",
+          "subject": null,
+          "title": null
+        },
+        "official": false,
+        "page": null,
+        "parallel_of": null,
+        "pin": null,
+        "raw": "Minn. Stat. § 609.185",
+        "reporter": "Minn. Stat.",
+        "slug": null,
+        "span": {
+          "end": 1060,
+          "start": 1039
+        },
+        "type": "FullLawCitation",
+        "volume": null,
+        "year": null
+      },
+      {
+        "antecedent": {
+          "index": 21,
+          "raw": "Minn. Stat. § 609.185"
+        },
+        "case_name": null,
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 22,
+        "kind": "short",
+        "law": null,
+        "official": false,
+        "page": null,
+        "parallel_of": null,
+        "pin": null,
+        "raw": "Id.",
+        "reporter": null,
+        "slug": null,
+        "span": {
+          "end": 1065,
+          "start": 1062
+        },
+        "type": "IdCitation",
+        "volume": null,
+        "year": null
+      },
+      {
+        "antecedent": null,
+        "case_name": null,
+        "corrected_reporter": null,
+        "external_url": null,
+        "history_name": null,
+        "index": 23,
+        "kind": "other",
+        "law": null,
+        "official": false,
+        "page": null,
+        "parallel_of": null,
+        "pin": null,
+        "raw": "§",
+        "reporter": null,
+        "slug": null,
+        "span": {
+          "end": 1067,
+          "start": 1066
+        },
+        "type": "UnknownCitation",
+        "volume": null,
+        "year": null
+      }
+    ],
+    "meta": {
+      "cached": true,
+      "index_version": "v2026.10.26.2",
+      "server_version": "<server_version>",
+      "sources": [
+        {
+          "commit": "e095e6bf914ffd0a7b272f3764179cf3dbdf246c",
+          "copyright": "Copyright (c) 2014, Free Law Project",
+          "license": {
+            "id": "BSD-2-Clause",
+            "name": "BSD 2-Clause \"Simplified\" License",
+            "url": "https://spdx.org/licenses/BSD-2-Clause.html"
+          },
+          "name": "reporters-db",
+          "publisher": "Free Law Project",
+          "role": "detection",
+          "url": "https://github.com/freelawproject/reporters-db"
+        },
+        {
+          "commit": "5a7a532bb030aad955d73461735e92287cc3c066",
+          "copyright": "Copyright (c) 2020, Free Law Project",
+          "license": {
+            "id": "BSD-2-Clause",
+            "name": "BSD 2-Clause \"Simplified\" License",
+            "url": "https://spdx.org/licenses/BSD-2-Clause.html"
+          },
+          "name": "courts-db",
+          "publisher": "Free Law Project",
+          "role": "detection",
+          "url": "https://github.com/freelawproject/courts-db"
+        },
+        {
+          "commit": "8986d6832ab4ed7def8fc6664be7585e6f3e92da",
+          "copyright": null,
+          "license": {
+            "id": "CC-BY-NC-ND-4.0",
+            "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+          },
+          "name": "citare",
+          "publisher": "Codex Publicus",
+          "role": "detection",
+          "url": "https://github.com/codexpublicus/citare"
+        }
+      ]
+    }
+  },
+  "text": "Found 24 citations in 1,076 characters (15 case, 3 law, 1 other, 5 short).\n[0] Id. (IdCitation) at 138-146\n[1] 31 A.2d 647 (FullCaseCitation) at 237-248\n[2] Id. (IdCitation) at 276-286\n[3] 31 A.2d 657 (FullCaseCitation) at 348-359\n[4] 31 A.2d 657 (FullCaseCitation) at 426-437\n[5] 31 A.2d 650 (FullCaseCitation) at 455-466\n[6] 31 A.2d 659 (FullCaseCitation) at 468-479\n[7] 31 A.2d at 649 (ShortCaseCitation) at 489-503\n[8] supra, (SupraCitation) at 515-528\n[9] 128 Neb. 783 (FullCaseCitation) at 590-602\n[10] 260 N.W. 287 (FullCaseCitation) at 604-616\n[11] 250 A.3d 100 (FullCaseCitation) at 666-678\n[12] 31 A.2d 660 (FullCaseCitation) at 680-691\n[13] 2021 NY Slip Op 01234 (FullCaseCitation) at 744-765\n[14] 10 F.4th 100 (FullCaseCitation) at 793-805\n[15] T.C. Memo. 2019-123 (FullCaseCitation) at 852-871\n[16] 2019-Ohio-1234 (FullCaseCitation) at 887-901\n[17] 250 A.3d 101 (FullCaseCitation) at 924-936\n[18] 410 U.S. 113 (FullCaseCitation) at 962-974\n[19] 42 U.S.C. § 1983 (FullLawCitation) at 994-1010\n[20] Conn. Gen. Stat. § 52-584 (FullLawCitation) at 1012-1037\n[21] Minn. Stat. § 609.185 (FullLawCitation) at 1039-1060\n[22] Id. (IdCitation) at 1062-1065\n[23] § (UnknownCitation) at 1066-1067\nNothing was looked up; check_brief or resolve_citation says whether each case exists.",
+  "tool": "find_citations_in_text"
+}
