@@ -68,7 +68,11 @@ stare cache status
 
 `--index`/`--data` flags (or `STARE_INDEX`/`STARE_DATA` env vars, or `stare config set`)
 override the default sources (`https://idx.stare.pub` and `https://data.stare.pub/cap`).
-Downloaded and resolved files are cached under `~/.cache/stare/`. `stare download` doesn't
+Downloaded and resolved files are cached under `~/.cache/stare/`. `stare resolve`, `stare list`
+and `stare check` read the one file they need out of a volume's zip (a case's JSON, the
+volume's `metadata/CasesMetadata.json`) by range requests, cached under
+`zips/<slug>/<volume>/`, and read a whole zip in the cache, or in a mirror directory, in place
+of the requests. `stare download` doesn't
 throttle requests to stare.pub's own hosts; against any other data source (static.case.law, a
 mirror) it waits 700 ms between requests. A 429, or a 503 with a Retry-After, is waited out and
 retried up to three times.

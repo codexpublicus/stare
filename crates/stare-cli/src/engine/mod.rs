@@ -7,12 +7,14 @@
 //! The engine is synchronous. A caller on an async runtime runs it on a blocking
 //! thread.
 
+pub mod case_text;
 pub mod check;
 pub mod fetch;
 pub mod resolve;
 
 use stare::config;
-use std::sync::OnceLock;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// Where the index and the case data are read from, after the config file, the
 /// environment and the flags are merged, and the index manifest once it's fetched.
@@ -24,6 +26,9 @@ pub struct Sources {
     pub data: String,
     /// The index manifest, fetched on first use (see [`Sources::manifest`]).
     manifest: OnceLock<Option<stare::manifest::Manifest>>,
+    /// The central directories of the zips read by range requests, by URL
+    /// ([`case_text`]).
+    zip_directories: Mutex<HashMap<String, Arc<Vec<stare::ziprange::Entry>>>>,
 }
 
 impl Sources {
@@ -33,6 +38,7 @@ impl Sources {
             index: index.into(),
             data: data.into(),
             manifest: OnceLock::new(),
+            zip_directories: Mutex::default(),
         }
     }
 

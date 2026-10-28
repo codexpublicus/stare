@@ -9,6 +9,20 @@ use std::path::PathBuf;
 /// The User-Agent every request sends.
 pub const USER_AGENT: &str = "stare/0.1.0 (case law tool; github.com/codexpublicus/stare)";
 
+/// The one HTTP client, so the many small requests range reads make share connections.
+/// It is never dropped, which reqwest's blocking client must not be inside an async
+/// runtime.
+pub fn client() -> Result<&'static reqwest::blocking::Client> {
+    static CLIENT: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
+    if let Some(c) = CLIENT.get() {
+        return Ok(c);
+    }
+    let c = reqwest::blocking::Client::builder()
+        .user_agent(USER_AGENT)
+        .build()?;
+    Ok(CLIENT.get_or_init(|| c))
+}
+
 pub fn fetch_bin(src: &Sources, reporter: &str, volume: &str) -> Result<Vec<u8>> {
     let key = src.index_key(&format!("{}/{}.bin", reporter, volume));
 
@@ -70,9 +84,7 @@ pub fn fetch_optional_index(src: &Sources, path: &str) -> Result<Option<Vec<u8>>
     let source = &src.index;
     let data = if Sources::is_url(source) {
         let url = format!("{}/{}", source, key);
-        let client = reqwest::blocking::Client::builder()
-            .user_agent(USER_AGENT)
-            .build()?;
+        let client = client()?;
         let response = crate::http::send_with_retry(|| client.get(&url))
             .with_context(|| format!("failed to fetch {}", url))?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
@@ -91,25 +103,6 @@ pub fn fetch_optional_index(src: &Sources, path: &str) -> Result<Option<Vec<u8>>
     };
     let _ = config::cache_set("bins", &key, &data);
     Ok(Some(data))
-}
-
-pub fn fetch_zip(src: &Sources, reporter: &str, volume: &str) -> Result<Vec<u8>> {
-    let key = format!("{}/{}.zip", reporter, volume);
-
-    if let Some(data) = config::cache_get("zips", &key) {
-        return Ok(data);
-    }
-
-    let source = &src.data;
-    let data = if Sources::is_url(source) {
-        fetch_url(&format!("{}/{}", source, key))?
-    } else {
-        let path = PathBuf::from(source).join(&key);
-        std::fs::read(&path).with_context(|| format!("zip not found: {}", path.display()))?
-    };
-
-    let _ = config::cache_set("zips", &key, &data);
-    Ok(data)
 }
 
 /// A CourtListener record's bytes (gzip, as stored), from the data bucket's `cl/`
@@ -132,9 +125,7 @@ pub fn fetch_record(src: &Sources, cluster_id: u64, hash: &str) -> Result<Vec<u8
 }
 
 pub fn fetch_url(url: &str) -> Result<Vec<u8>> {
-    let client = reqwest::blocking::Client::builder()
-        .user_agent(USER_AGENT)
-        .build()?;
+    let client = client()?;
     let response = crate::http::send_with_retry(|| client.get(url))
         .with_context(|| format!("failed to fetch {}", url))?;
     if !response.status().is_success() {
@@ -187,9 +178,7 @@ pub fn zip_directory(url: &str) -> Result<Vec<stare::ziprange::Entry>> {
 /// The bytes of `url` that `range` (a Range header, `bytes=-65536`) asks for, and the
 /// offset they start at.
 pub fn fetch_range(url: &str, range: &str) -> Result<(Vec<u8>, u64)> {
-    let client = reqwest::blocking::Client::builder()
-        .user_agent(USER_AGENT)
-        .build()?;
+    let client = client()?;
     let response =
         crate::http::send_with_retry(|| client.get(url).header(reqwest::header::RANGE, range))
             .with_context(|| format!("failed to fetch {}", url))?;

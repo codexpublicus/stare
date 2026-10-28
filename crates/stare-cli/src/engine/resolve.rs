@@ -1,7 +1,8 @@
 //! Resolving one citation to the case it names: reading what `stare resolve` is given,
 //! looking the page up in the index, and reading the case from its source.
 
-use super::fetch::{fetch_bin, fetch_idx, fetch_multi, fetch_record, fetch_zip};
+use super::case_text::read_case;
+use super::fetch::{fetch_bin, fetch_idx, fetch_multi, fetch_record};
 use super::Sources;
 use anyhow::{bail, Context, Result};
 
@@ -142,8 +143,7 @@ pub fn resolve_case(
             .with_context(|| format!("no case at page {} in {}", page, located.volume))?
             .to_string();
     }
-    let zip_data = fetch_zip(src, reporter, &located.volume)?;
-    let case = stare::case::extract_from_zip(&zip_data, &case_file)?;
+    let case = read_case(src, reporter, &located.volume, &case_file)?;
     Ok(stare::resolve::CaseResult {
         case_file,
         case,
@@ -206,8 +206,7 @@ pub fn resolve_entries(
         .first()
         .with_context(|| format!("no case at page {} in {} vol. {}", page, reporter, volume))?;
     if let Some((folder, case_file)) = entry.cap_case() {
-        let zip_data = fetch_zip(src, reporter, folder.unwrap_or(volume))?;
-        let case = stare::case::extract_from_zip(&zip_data, case_file)?;
+        let case = read_case(src, reporter, folder.unwrap_or(volume), case_file)?;
         return Ok(stare::resolve::CaseResult {
             case_file: case_file.to_string(),
             case,
@@ -215,8 +214,7 @@ pub fn resolve_entries(
         });
     }
     if let Some((target, folder, case_file)) = entry.alias_target() {
-        let zip_data = fetch_zip(src, target, folder)?;
-        let case = stare::case::extract_from_zip(&zip_data, case_file)
+        let case = read_case(src, target, folder, case_file)
             .with_context(|| format!("alias {}", entry.line()))?;
         return Ok(stare::resolve::CaseResult {
             case_file: format!("{}/{}/{}", target, folder, case_file),
@@ -287,8 +285,7 @@ pub fn resolve_label(
         .first()
         .with_context(|| format!("no case at page {} in {}/{}", label, reporter, volume))?
         .to_string();
-    let zip_data = fetch_zip(src, reporter, volume)?;
-    let case = stare::case::extract_from_zip(&zip_data, &case_file)?;
+    let case = read_case(src, reporter, volume, &case_file)?;
     Ok(stare::resolve::CaseResult {
         case_file,
         case,

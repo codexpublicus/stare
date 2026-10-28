@@ -1,21 +1,18 @@
 //! The CLI's output on the fixture mirror, byte for byte (#162). These files were
 //! written before the orchestration moved out of `main.rs`, and the refactored CLI
-//! must keep matching them. `UPDATE_GOLDEN=1 cargo test -p stare-cli --test
-//! cli_golden` rewrites them for review.
+//! must keep matching them, from a directory and over HTTP. `UPDATE_GOLDEN=1 cargo
+//! test -p stare-cli --test cli_golden` rewrites them for review.
 
 mod common;
 
 use std::process::{Command, Stdio};
 
-/// Run `stare` with `args` against `mirror`, in a cache and config of its own, and
-/// return its stdout, or for a failing run its exit code and stderr, with the mirror's
-/// path masked.
-fn run(mirror: &common::Mirror, home: &std::path::Path, args: &[&str]) -> String {
+/// Run `stare` with `args` against the index and data sources given, in a cache and
+/// config of its own under `home`, and return its stdout, or for a failing run its
+/// exit code and stderr, with `mask` replaced by `<mirror>`.
+fn run(index: &str, data: &str, mask: &str, home: &std::path::Path, args: &[&str]) -> String {
     let out = Command::new(env!("CARGO_BIN_EXE_stare"))
-        .arg("--index")
-        .arg(mirror.index())
-        .arg("--data")
-        .arg(mirror.data())
+        .args(["--index", index, "--data", data])
         .args(args)
         .env("XDG_CACHE_HOME", home.join("cache"))
         .env("XDG_CONFIG_HOME", home.join("config"))
@@ -25,10 +22,7 @@ fn run(mirror: &common::Mirror, home: &std::path::Path, args: &[&str]) -> String
         .stdin(Stdio::null())
         .output()
         .unwrap();
-    let mask = |s: &[u8]| {
-        String::from_utf8_lossy(s)
-            .replace(&mirror.root().to_string_lossy().into_owned(), "<mirror>")
-    };
+    let mask = |s: &[u8]| String::from_utf8_lossy(s).replace(mask, "<mirror>");
     if out.status.success() {
         mask(&out.stdout)
     } else {
@@ -42,7 +36,7 @@ fn run(mirror: &common::Mirror, home: &std::path::Path, args: &[&str]) -> String
 }
 
 /// Every command the goldens cover: (golden file, arguments).
-pub const CASES: &[(&str, &[&str])] = &[
+const CASES: &[(&str, &[&str])] = &[
     ("check.json", &["--json", "check", "fixtures/brief.txt"]),
     ("check.txt", &["check", "fixtures/brief.txt"]),
     ("resolve-cite.json", &["--json", "resolve", "31 A.2d 647"]),
@@ -64,9 +58,50 @@ pub const CASES: &[(&str, &[&str])] = &[
 #[test]
 fn cli_output_matches_the_golden_files() {
     let mirror = common::mirror();
+    let root = mirror.root().to_string_lossy().into_owned();
+    let (index, data) = (
+        mirror.index().to_string_lossy().into_owned(),
+        mirror.data().to_string_lossy().into_owned(),
+    );
     for (name, args) in CASES {
         // A fresh cache for each, so none reads what another fetched.
         let home = tempfile::tempdir().unwrap();
-        common::golden(name, &run(&mirror, home.path(), args));
+        common::golden(name, &run(&index, &data, &root, home.path(), args));
+    }
+}
+
+/// The same output with the mirror served over HTTP, and no zip fetched whole: each
+/// case's JSON and the volume's metadata are read out of it by range requests.
+#[test]
+fn cli_output_over_http_matches_the_golden_files() {
+    let mirror = common::mirror();
+    let server = common::http::Server::start(mirror.root());
+    let (index, data) = (
+        format!("{}/idx", server.url),
+        format!("{}/data/cap", server.url),
+    );
+    for (name, args) in CASES {
+        let home = tempfile::tempdir().unwrap();
+        common::golden(name, &run(&index, &data, &server.url, home.path(), args));
+        let requests = server.take();
+        let whole: Vec<_> = requests
+            .iter()
+            .filter(|r| r.path.ends_with(".zip") && r.range.is_none())
+            .collect();
+        assert!(whole.is_empty(), "{name} fetched whole zips: {whole:?}");
+        if name.starts_with("resolve-cite") || name.starts_with("list") {
+            assert!(
+                requests.iter().any(|r| r.path.ends_with(".zip")),
+                "{name} read no zip"
+            );
+        }
+        // The same command again reads its zip entries from the cache.
+        run(&index, &data, &server.url, home.path(), args);
+        let again: Vec<_> = server
+            .take()
+            .into_iter()
+            .filter(|r| r.path.ends_with(".zip"))
+            .collect();
+        assert!(again.is_empty(), "{name} read zips again: {again:?}");
     }
 }
