@@ -1,0 +1,24 @@
+Found 14 cited cases (9 resolvable), 3 statutes, 1 needs review
+
+  ✓ 260 N.W. 287 (1×)  (Resolved through CourtListener's citation metadata (cluster 8077312))  (3× in the text)
+      ✓ 31 A.2d 647 (1×)
+      ✓ Id. (1×)  (refers to 31 A.2d 647, at 648)
+      ✓ 128 Neb. 783 (1×)  (reported at 260 N.W. 287, inferred from the citing text)
+  ✓ 31 A.2d 657 (2×)  (matched by case name among the 2 cases on this page)  (3× in the text)
+      ✓ supra, (1×)  (refers to 31 A.2d 657, at 658)
+  ✓ 31 A.2d 659
+  ✓ 250 A.3d 100  (cited in parallel with 31 A.2d 660, which opens a different case; needs review)
+  ✓ 31 A.2d 660  (cited in parallel with 250 A.3d 100, which opens a different case; needs review)
+  ✓ 2021 NY Slip Op 01234
+  ✓ 10 F.4th 100
+  ✓ T.C. Memo. 2019-123
+  ✓ 2019-Ohio-1234
+  ↗ 42 U.S.C. § 1983  → https://www.law.cornell.edu/uscode/text/42/1983
+  ↗ Minn. Stat. § 609.185 (1×)  → https://www.revisor.mn.gov/statutes/cite/609.185  (2× in the text)
+      ↗ Id. (1×)  (refers to Minn. Stat. § 609.185)  → https://www.revisor.mn.gov/statutes/cite/609.185
+  ↗ 410 U.S. 113  → not in stare.pub, may be at https://www.courtlistener.com/c/U.S./410/113/
+  ✗ Conn. Gen. Stat. § 52-584  (statute; no free source linked yet)
+  · Id.  (refers to an earlier citation that couldn't be identified)
+  ✗ 31 A.2d 650  → no case found at this page in A.2d vol. 31
+  · 31 A.2d at 649  (refers to an earlier citation that couldn't be identified)
+  ✗ 250 A.3d 101  → no case found at this page in A.3d vol. 250

@@ -1,0 +1,19 @@
+Fixture brief for stare's golden tests. The citations resolve against the fixture
+mirror in tests/common; the propositions are invented.
+
+Id. at 5. A residence, not a mailing address, is the test of domicile. D'Elia & Marks
+Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App. 1943). Id. at 648. The rule was applied in
+Waterman v. Railway Express Agency, 31 A.2d 657 (D.C. Mun. Ct. App. 1943), and in
+Brooks v. District of Columbia, 31 A.2d 657 (1943). See also 31 A.2d 650; 31 A.2d 659.
+D'Elia, 31 A.2d at 649. Waterman, supra, at 658.
+
+The same case in another reporter: Pettegrew v. Pettegrew, 128 Neb. 783, 260 N.W. 287
+(1935). Printings that disagree: Smith v. Jones, 250 A.3d 100, 31 A.2d 660 (Pa. 2021).
+
+Records from CourtListener: In re Doe, 2021 NY Slip Op 01234. See Doe v. United
+States, 10 F.4th 100 (2d Cir. 2021). See also Roe v. Commissioner, T.C. Memo. 2019-123.
+State v. Roe, 2019-Ohio-1234. A page with no case: 250 A.3d 101. Elsewhere: Roe v.
+Wade, 410 U.S. 113 (1973).
+
+Statutes: 42 U.S.C. § 1983; Conn. Gen. Stat. § 52-584; Minn. Stat. § 609.185. Id.
+§ 609.19.

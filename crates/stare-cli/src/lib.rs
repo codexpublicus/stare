@@ -1,4 +1,5 @@
 pub mod download;
+pub mod engine;
 pub mod http;
 
 /// Where the last index manifest fetched is saved, under the cache's `bins` directory.
