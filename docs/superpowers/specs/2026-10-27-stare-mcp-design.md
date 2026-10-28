@@ -478,8 +478,7 @@ The text rendering of `get_case` ends with one credit line ("Text: Caselaw Acces
 CC0 1.0. Citation index: stare.pub, CC BY-NC-ND 4.0."), and `stare://licenses` has the full
 statement, written from `llms.txt`'s Licences section so the two can't drift. The release
 archives include `crates/stare/src/licenses/` (the reporters-db and courts-db LICENSE files),
-since BSD 2-Clause asks that binary redistributions reproduce the notice, and the binary's own
-code licence (PolyForm Shield 1.0.0).
+since BSD 2-Clause asks that binary redistributions reproduce the notice.
 
 Every tool description also says what the data can't tell an agent: a found case exists and is
 the one cited, and the server has no treatment, history or citator data and says nothing

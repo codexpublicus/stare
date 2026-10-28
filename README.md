@@ -95,7 +95,7 @@ in Claude Code. `skills/stare-citations/SKILL.md` tells an agent when and how to
 
 Linux binaries (x86_64 and aarch64, static) are attached to the `stare-cli-vX.Y.Z` releases of
 this repository, built by `.github/workflows/stare-cli-release.yml`; each archive has the
-binary, its licence, the reporters-db and courts-db licences and the skill.
+binary, the reporters-db and courts-db licences and the skill.
 
 ## Status
 

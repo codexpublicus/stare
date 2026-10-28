@@ -7,7 +7,7 @@ name: stare-cli release
 # until the repository is public). The site's release tooling reads only `v*` tags,
 # so these tags and releases don't touch it, and the release isn't marked latest.
 #
-# Each archive holds the binary, its code licence (PolyForm Shield 1.0.0), the
+# Each archive holds the binary, the
 # reporters-db and courts-db LICENSE files (BSD 2-Clause asks that binary
 # redistributions reproduce them; citare's data bundle is compiled in), the agent
 # skill and a SHA256SUMS.
@@ -106,7 +106,6 @@ jobs:
           dir="$RUNNER_TEMP/$name"
           mkdir -p "$dir/licenses" "$RUNNER_TEMP/dist"
           cp "target/$TARGET/dist/stare" "$dir/stare"
-          cp crates/stare-cli/LICENSE "$dir/LICENSE"
           cp crates/stare/src/licenses/reporters-db.LICENSE crates/stare/src/licenses/courts-db.LICENSE "$dir/licenses/"
           cp skills/stare-citations/SKILL.md "$dir/SKILL.md"
           (cd "$dir" && find . -type f ! -name SHA256SUMS | sort | xargs sha256sum > SHA256SUMS)
