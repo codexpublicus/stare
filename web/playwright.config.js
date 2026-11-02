@@ -18,6 +18,10 @@ export default defineConfig({
   // workers. Without this smoke.spec.js, most of the suite, ran on one worker while
   // the others sat idle after the small files (#294).
   fullyParallel: true,
+  // At most 8 at once in CI, the most the suite ran before fullyParallel: the tests
+  // read the live index and data hosts, and at 16 workers a fetch from idx.stare.pub
+  // came back without its CORS header (a flake on a run with no retries fails main).
+  workers: process.env.CI ? 8 : undefined,
   // The previews are public and shared; one retry absorbs a network blip
   // in CI without hiding a deterministic failure. The main preview's run
   // passes --retries=0 (site.yml), so flakiness shows up there.
