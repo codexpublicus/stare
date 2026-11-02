@@ -32,7 +32,9 @@ cli.main(["build", "--work", str(work), "--out", str(out), "--index", str(c["ind
 
 run with `uv run python` from `pipelines/search-index/` (on `sys.path`, for `tests`).
 
-`search-expected.json` is what stare-builder's own client at that commit returned for each
+`search-expected.json` is what stare-builder's own client at the commit
+`../../src/vendor/search-client.json` pins (049b435b1f3d512c61551e3b8ec1c48b57842b64; the
+format and the build didn't change between the two, so the tree stands) returned for each
 query in `search-queries.json` on the tree: the totals, stage and flags, the whole ranking
 with scores, and the first 20 cards. `web/scripts/search-expected.mjs` writes it, given
 that client directory with roaringbuckets' client linked in as

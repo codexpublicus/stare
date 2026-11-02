@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { SEARCH_CLIENT_DIR } from '../public/js/searchclient-path.js';
-import { clientFilters, encodeRoaring, rangeDataset } from '../public/js/searchquery.js';
+import { clientFilters } from '../public/js/searchquery.js';
 import { clientDirName, readPins, verifyVendored } from '../src/lib/searchvendor.js';
 import { EXPECTED, TREE_PATH, treeFetch } from './fixtures/searchtree.js';
 
@@ -43,9 +43,7 @@ async function loadClient() {
   cpSync(join(VENDOR, 'roaringbuckets-client'), pkg, { recursive: true });
   writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@roaringbuckets/client', type: 'module', exports: { '.': './index.js' } }));
   writeFileSync(join(dir, 'client', 'package.json'), JSON.stringify({ type: 'module' }));
-  const search = await import(pathToFileURL(join(dir, 'client', 'search.mjs')).href);
-  const rb = await import(pathToFileURL(join(pkg, 'index.js')).href);
-  return { ...search, decodeRoaring: rb.decodeRoaring };
+  return import(pathToFileURL(join(dir, 'client', 'search.mjs')).href);
 }
 
 const clientPromise = loadClient();
@@ -66,30 +64,12 @@ for (const want of EXPECTED) {
   });
 }
 
-test('encodeRoaring writes what decodeRoaring reads', async () => {
-  const { decodeRoaring } = await clientPromise;
-  const cases = [
-    [],
-    [0],
-    [1, 2, 3, 65535, 65536, 70000, 4294967295],
-    Array.from({ length: 5000 }, (_, i) => i * 3), // past 4096 in the first container: a bitmap
-    Array.from({ length: 9000 }, (_, i) => 131072 + i),
-  ];
-  for (const values of cases) {
-    const u = Uint32Array.from(values);
-    assert.deepEqual([...decodeRoaring(encodeRoaring(u))], values);
-  }
-});
-
 const FACETS = JSON.parse((await import('node:fs')).readFileSync(new URL('./fixtures/search-tree/v/v2026.10.26/search/facets.json', import.meta.url), 'utf8'));
 
 async function rangeSearch(q, state, limit = 20) {
   const client = await clientPromise;
   const s = await client.openSearch(BASE, { fetch: treeFetch() });
-  const years = FACETS.years.map((y) => y.key).sort();
-  const byKey = new Map(FACETS.courts.map((c) => [c.key, c.years]));
-  const ranged = { ...s, ds: rangeDataset(s.ds, { years, courtYears: (k) => byKey.get(k) ?? null, decode: client.decodeRoaring }) };
-  return client.search(ranged, q, { filters: clientFilters(state, FACETS), limit });
+  return client.search(s, q, { filters: clientFilters(state, FACETS), limit });
 }
 
 async function cardYears(ids) {

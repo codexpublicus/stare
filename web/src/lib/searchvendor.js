@@ -4,8 +4,8 @@
 // tokenizer (tokenize.mjs), and src/vendor/roaringbuckets-client/ the roaringbuckets JS
 // client they read the tree with, each a byte-for-byte copy at the commit
 // src/vendor/search-client.json names, with each file's SHA-256. The ranking is that file's
-// and nobody else's: the page calls its `openSearch`, `search` and `readRanges` and adds
-// only the year-range keys (public/js/searchquery.js). `verifyVendored` fails the build and
+// and nobody else's: the page calls its `openSearch`, `search` and `readRanges`, and adds
+// nothing to them. `verifyVendored` fails the build and
 // web/tests/searchclient.test.js if a copy has been edited, and the same test runs the
 // copies on a fixture tree against what stare-builder's own client returned for it.
 //
@@ -52,7 +52,7 @@ export function clientDirName(pins) {
 
 /**
  * Bundle search.mjs with the roaringbuckets client into one minified ES module at
- * `outFile` (src/lib/searchclient-entry.js: search.mjs's own exports, and decodeRoaring).
+ * `outFile` (src/lib/searchclient-entry.js: search.mjs's own exports).
  * `build` is esbuild's.
  */
 export async function bundleSearchClient({ build, vendorDir, outFile }) {

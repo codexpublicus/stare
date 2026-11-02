@@ -332,14 +332,11 @@ stare-builder's own client returned at that commit, ranking and scores included;
 means copying the files in again, updating the hashes, the directory name and the expected
 results (`web/tests/fixtures/README.md`).
 
-The page adds one thing to the client: a year range. The format has a `year` key per year
-and a `court_year` key per court and year, and the client filters on one of each; a range is
-the union of the keys of the years facets.json lists (within the court's own years, with a
-court), which `rangeDataset` (`public/js/searchquery.js`) answers for a made-up key
-(`1920..1929`, `ny/1920..1929`) as one roaring bitmap, so the client's facet step reads it
-like any other. A single year is the format's own key, and a range over every year is no
-filter. The client calls the fetch it's given as `s.fetch(...)`, which a browser refuses for
-the unbound global, so the page passes a wrapper.
+The page adds nothing to the client. A year range is the client's own `year_from` and
+`year_to` filter (the union of the years' `year` keys, or of the court's `court_year` keys
+with a court); the page closes an open range at the first or last year facets.json lists
+(within the court's own years, with a court), so the client reads only those years' keys. A
+single year is the format's own key, and a range over every year is no filter.
 
 What it fetches, and when:
 

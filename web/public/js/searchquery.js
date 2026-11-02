@@ -3,12 +3,9 @@
 // reads. Nothing here fetches; web/tests/searchquery.test.js covers it.
 //
 // The ranking is stare-builder's reference client, vendored unchanged
-// (src/vendor/stare-search/, src/lib/searchvendor.js). The one thing the page adds is a
-// year range: the format has a `year` key per year and a `court_year` key per court and
-// year (docs/search-index.md in stare-builder, "Facets"), and the client filters on one
-// of each. A range is the union of those keys, which `rangeDataset` answers for a
-// made-up key (`1920..1929`, `ny/1920..1929`) as one bitmap, so the client's own facet
-// step reads it like any other.
+// (src/vendor/stare-search/, src/lib/searchvendor.js). The client filters on a year range
+// itself (`year_from` and `year_to`, the union of the years' keys); the page closes the
+// range at the years facets.json says exist, so the client reads only those years' keys.
 
 export const PAGE_SIZE = 20;
 // Past this many pages the links stop; a query that broad is better narrowed.
@@ -18,7 +15,6 @@ const YEAR = /^\d{4}$/;
 // Facet keys are short codes (`nyappdiv`, `cap-8800`) or, for a CourtListener
 // jurisdiction, its name (`United States`).
 const FACET_KEY = /^[\p{L}\p{N}][\p{L}\p{N} .,'&()/-]{0,99}$/u;
-const RANGE_KEY = /^(?:(.+)\/)?(\d{4})\.\.(\d{4})$/;
 
 const clean = (v) => (typeof v === 'string' ? v.trim() : '');
 
@@ -62,25 +58,10 @@ export function sameQuery(a, b) {
 }
 
 /**
- * The years a range covers, of those the index has (`years`, facets.json's keys, sorted),
- * between `from` and `to` (either may be empty for an open end); for a court, only the
- * years it has decisions in (`courtYears`, its first and last).
- */
-export function yearsBetween(years, from, to, courtYears = null) {
-  let lo = from || '0000';
-  let hi = to || '9999';
-  if (courtYears) {
-    if (courtYears[0] > lo) lo = courtYears[0];
-    if (courtYears[1] < hi) hi = courtYears[1];
-  }
-  return years.filter((y) => y >= lo && y <= hi);
-}
-
-/**
- * The reference client's `filters` for a state: `jurisdiction`, `court`, and `year`, one
- * year as the format's own key, or a range as `<from>..<to>` for rangeDataset. `facets`
- * is facets.json once read; a range needs it, to know which years exist, and a range
- * covering every year the index (or the court) has is no filter at all.
+ * The reference client's `filters` for a state: `jurisdiction`, `court`, and `year` for
+ * one year, or `year_from` and `year_to` for a range, closed at the first and last years
+ * the index (or the court) has. `facets` is facets.json once read; a range needs it, to
+ * know which years exist, and a range covering every one of them is no filter at all.
  */
 export function clientFilters(state, facets = null) {
   const f = {};
@@ -96,75 +77,15 @@ export function clientFilters(state, facets = null) {
     const span = court?.years ?? [years[0], years[years.length - 1]];
     const lo = from && from > span[0] ? from : span[0];
     const hi = to && to < span[1] ? to : span[1];
-    if (lo !== span[0] || hi !== span[1]) f.year = lo === hi ? lo : `${lo}..${hi}`;
+    if (lo !== span[0] || hi !== span[1]) {
+      if (lo === hi) f.year = lo;
+      else {
+        f.year_from = lo;
+        f.year_to = hi;
+      }
+    }
   }
   return f;
-}
-
-/**
- * A roaring bitmap of sorted, distinct u32 values, in the portable serialization
- * (array and bitmap containers, no runs) that roaringbuckets' decodeRoaring reads.
- */
-export function encodeRoaring(values) {
-  const containers = [];
-  let i = 0;
-  while (i < values.length) {
-    const key = values[i] >>> 16;
-    let j = i;
-    while (j < values.length && values[j] >>> 16 === key) j++;
-    containers.push({ key, lows: values.slice(i, j) });
-    i = j;
-  }
-  const n = containers.length;
-  const sizes = containers.map((c) => (c.lows.length > 4096 ? 8192 : c.lows.length * 2));
-  const header = 8 + n * 8;
-  const out = new Uint8Array(header + sizes.reduce((a, b) => a + b, 0));
-  const view = new DataView(out.buffer);
-  view.setUint32(0, 12346, true);
-  view.setUint32(4, n, true);
-  let offset = header;
-  containers.forEach((c, k) => {
-    view.setUint16(8 + k * 4, c.key, true);
-    view.setUint16(8 + k * 4 + 2, c.lows.length - 1, true);
-    view.setUint32(8 + n * 4 + k * 4, offset, true);
-    if (c.lows.length > 4096) {
-      for (const v of c.lows) {
-        const low = v & 0xffff;
-        out[offset + (low >>> 3)] |= 1 << (low & 7);
-      }
-    } else {
-      c.lows.forEach((v, m) => view.setUint16(offset + m * 2, v & 0xffff, true));
-    }
-    offset += sizes[k];
-  });
-  return out;
-}
-
-/**
- * `ds` (a roaringbuckets Dataset) with year ranges: `searchExact('year', '1920..1929')`
- * and `searchExact('court_year', 'ny/1920..1929')` answer one entry, the union of the
- * years' own keys that exist (`years`, sorted; for a court, within `courtYears(court)`).
- * Every other call goes to `ds` as it is. `decode` is the client's decodeRoaring.
- */
-export function rangeDataset(ds, { years, courtYears = () => null, decode }) {
-  return {
-    searchPrefix: (dimension, prefix) => ds.searchPrefix(dimension, prefix),
-    async searchExact(dimension, key) {
-      const m = (dimension === 'year' || dimension === 'court_year') ? RANGE_KEY.exec(key) : null;
-      if (!m) return ds.searchExact(dimension, key);
-      const [, court, from, to] = m;
-      const span = yearsBetween(years, from, to, court ? courtYears(court) : null);
-      const keys = span.map((y) => (court ? `${court}/${y}` : y));
-      const found = await Promise.all(keys.map((k) => ds.searchExact(dimension, k)));
-      const ids = new Set();
-      for (const entries of found) {
-        if (entries.length) for (const id of decode(entries[0].bitmapBytes)) ids.add(id);
-      }
-      if (!ids.size) return [];
-      const sorted = Uint32Array.from(ids).sort();
-      return [{ key, bitmapBytes: encodeRoaring(sorted) }];
-    },
-  };
 }
 
 // A reader route (`a2d/142/148-02`, `cal-app-4th/15/supp.%201`): slug, volume, page,

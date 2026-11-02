@@ -42,7 +42,10 @@ const NARROW_ROUNDS = 2;
 
 /** Open a search tree at `base` (the URL of `.../v/<version>/search`). */
 // `manifest`: the manifest's JSON when the caller has it already (a warm session).
-export async function openSearch(base, { fetch: fetchFn = globalThis.fetch, manifest } = {}) {
+// `fetch`: the fetch to read with. The default calls the global one through a wrapper,
+// because the session keeps it as `s.fetch` and a browser's fetch, called with any `this`
+// but the window, throws "Illegal invocation".
+export async function openSearch(base, { fetch: fetchFn = (...args) => globalThis.fetch(...args), manifest } = {}) {
   const url = base.replace(/\/$/, '');
   let raw = manifest;
   if (!raw) {
@@ -213,10 +216,59 @@ async function fetchLow(s, wants) {
   }
 }
 
+const YEAR = /^\d{4}$/;
+// A closed year range up to this many years long reads its years' keys one by one, which
+// touches only the year index shards that hold them; a longer or open one reads the
+// whole year index (13 shards, about 400 KB, on all of CAP and CourtListener).
+const YEAR_KEYS_MAX = 500;
+
+function yearBound(v, name) {
+  if (v === undefined || v === null || v === '') return null;
+  const y = String(v);
+  if (!YEAR.test(y)) throw new Error(`filters.${name} must be a four-digit year, not ${JSON.stringify(v)}`);
+  return y;
+}
+
+/**
+ * The ids of the decisions from `from` to `to` (either null for an open end), as the union
+ * of the years' own keys: in `court_year`, every `<court>/<year>` key of the court (one
+ * prefix read, so only the years the court has), and otherwise the `year` keys.
+ */
+async function yearRangeIds(s, court, from, to) {
+  const lo = from ?? '0000';
+  const hi = to ?? '9999';
+  if (lo > hi) return [];
+  let entries;
+  if (court) {
+    const prefix = `${court}/`;
+    entries = (await s.ds.searchPrefix('court_year', prefix)).filter((e) => {
+      const y = e.key.slice(prefix.length);
+      return y >= lo && y <= hi;
+    });
+  } else if (from && to && Number(to) - Number(from) < YEAR_KEYS_MAX) {
+    const keys = [];
+    for (let y = Number(from); y <= Number(to); y++) keys.push(String(y).padStart(4, '0'));
+    entries = (await Promise.all(keys.map((k) => s.ds.searchExact('year', k)))).map((found) => found[0]).filter(Boolean);
+  } else {
+    entries = (await s.ds.searchPrefix('year', '')).filter((e) => e.key >= lo && e.key <= hi);
+  }
+  const ids = new Set();
+  for (const e of entries) for (const id of decodeRoaring(e.bitmapBytes)) ids.add(id);
+  return Uint32Array.from(ids).sort();
+}
+
 async function facetIds(s, filters) {
   const f = { ...filters };
+  const from = yearBound(f.year_from, 'year_from');
+  const to = yearBound(f.year_to, 'year_to');
+  delete f.year_from;
+  delete f.year_to;
   const lookups = [];
-  if (f.court && f.year) {
+  if (from || to) {
+    if (f.year) throw new Error('filters: give year, or year_from and year_to, not both');
+    lookups.push(yearRangeIds(s, f.court, from, to));
+    delete f.court;
+  } else if (f.court && f.year) {
     lookups.push(['court_year', `${f.court}/${f.year}`]);
     delete f.court;
     delete f.year;
@@ -224,7 +276,9 @@ async function facetIds(s, filters) {
   for (const dim of ['jurisdiction', 'court', 'year', 'reporter']) if (f[dim]) lookups.push([dim, String(f[dim])]);
   if (!lookups.length) return null;
   const sets = await Promise.all(
-    lookups.map(async ([dim, key]) => {
+    lookups.map(async (l) => {
+      if (!Array.isArray(l)) return l;
+      const [dim, key] = l;
       const found = await s.ds.searchExact(dim, key);
       return found.length ? decodeRoaring(found[0].bitmapBytes) : [];
     })
@@ -239,7 +293,9 @@ async function facetIds(s, filters) {
 
 /**
  * Search. Returns { hits: [{ id, score, card }], total, exact, stage, relaxed, tokens }.
- * `filters`: { jurisdiction, court, year, reporter } (facet keys from facets.json).
+ * `filters`: { jurisdiction, court, year, reporter } (facet keys from facets.json), and
+ * `year_from` and `year_to` for a range of years (either alone for an open end; with
+ * `court`, the court's years in the range), in place of `year`.
  */
 export async function search(s, query, { filters = {}, limit = 20, cards = true } = {}) {
   const words = [...new Set(tokens(query))];

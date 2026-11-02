@@ -20,7 +20,7 @@ import { SEARCH_CLIENT_URL } from './searchclient-path.js';
 import { indexUrl } from './sources.js';
 import {
   PAGE_SIZE, caseHref, cardFields, clientFilters, formatDate, pageCount, pageLinks,
-  parseSearchState, rangeDataset, sameQuery, searchString, summaryText,
+  parseSearchState, sameQuery, searchString, summaryText,
 } from './searchquery.js';
 
 const form = document.getElementById('search-form');
@@ -91,9 +91,7 @@ function openTree() {
       ]);
       let s;
       try {
-        // fetch bound to the window: the client calls it as `s.fetch(...)`, which a browser
-        // refuses for the unbound global ("Illegal invocation").
-        s = await client.openSearch(base, { manifest: raw, fetch: (url, init) => globalThis.fetch(url, init) });
+        s = await client.openSearch(base, { manifest: raw });
       } catch (e) {
         throw Object.assign(new Error('This search index is in a format this page doesn’t read'), { cause: e });
       }
@@ -257,17 +255,6 @@ async function readCards(tree, ids) {
   });
 }
 
-// The client's session with its Dataset answering year ranges (`1920..1929`), for a query
-// with one; facets.json says which years exist.
-function rangeSession(tree) {
-  const years = facets.years.map((y) => y.key).sort();
-  const byKey = new Map(facets.courts.map((c) => [c.key, c.years]));
-  return {
-    ...tree.s,
-    ds: rangeDataset(tree.s.ds, { years, courtYears: (k) => byKey.get(k) ?? null, decode: tree.client.decodeRoaring }),
-  };
-}
-
 // The court and jurisdiction lists, once the filters are open; after any query under way,
 // so facets.json never competes with a query's own reads.
 function fillFiltersWhenOpen() {
@@ -317,8 +304,7 @@ async function runQuery(state, { focus = false } = {}) {
         if (id === runId) fillFilters(state);
       }
       const f = clientFilters(state, facets);
-      const s = f.year?.includes('..') ? rangeSession(tree) : tree.s;
-      result = await tree.client.search(s, state.q, { filters: f, limit: PAGE_SIZE, cards: false });
+      result = await tree.client.search(tree.s, state.q, { filters: f, limit: PAGE_SIZE, cards: false });
       if (id !== runId) return;
       last = { state, result };
     }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   MAX_PAGE, caseHref, cardFields, clientFilters, formatDate, pageCount, pageLinks,
-  parseSearchState, sameQuery, searchString, summaryText, yearsBetween,
+  parseSearchState, sameQuery, searchString, summaryText,
 } from '../public/js/searchquery.js';
 
 test('the URL\'s state round-trips, dropping what is malformed', () => {
@@ -32,24 +32,17 @@ const FACETS = {
   courts: [{ key: 'ny', years: ['1920', '1930'] }, { key: 'ca1', years: ['2010', '2010'] }],
 };
 
-test('filters: one year is the format\'s key, a range a made-up key, and a range over everything none', () => {
+test('filters: one year is the format\'s key, a range year_from and year_to, and a range over everything none', () => {
   assert.deepEqual(clientFilters({ court: 'ny', from: '1925', to: '1925' }), { court: 'ny', year: '1925' });
-  assert.deepEqual(clientFilters({ jurisdiction: 'ny', from: '1921', to: '1925' }, FACETS), { jurisdiction: 'ny', year: '1921..1925' });
-  assert.deepEqual(clientFilters({ from: '1925' }, FACETS), { year: '1925..2010' });
-  assert.deepEqual(clientFilters({ to: '1921' }, FACETS), { year: '1920..1921' });
+  assert.deepEqual(clientFilters({ jurisdiction: 'ny', from: '1921', to: '1925' }, FACETS), { jurisdiction: 'ny', year_from: '1921', year_to: '1925' });
+  assert.deepEqual(clientFilters({ from: '1925' }, FACETS), { year_from: '1925', year_to: '2010' });
+  assert.deepEqual(clientFilters({ to: '1921' }, FACETS), { year_from: '1920', year_to: '1921' });
   assert.deepEqual(clientFilters({ from: '1900', to: '2026' }, FACETS), {});
   // the court's own years bound it: from 1925 on is 1925..1930 for ny, and all of ca1
-  assert.deepEqual(clientFilters({ court: 'ny', from: '1925' }, FACETS), { court: 'ny', year: '1925..1930' });
+  assert.deepEqual(clientFilters({ court: 'ny', from: '1925' }, FACETS), { court: 'ny', year_from: '1925', year_to: '1930' });
   assert.deepEqual(clientFilters({ court: 'ca1', from: '2000' }, FACETS), { court: 'ca1' });
   assert.deepEqual(clientFilters({ court: 'ny', from: '1930', to: '1999' }, FACETS), { court: 'ny', year: '1930' });
   assert.throws(() => clientFilters({ from: '1920', to: '1930' }, null), /facets/);
-});
-
-test('a range covers the years that exist, within a court\'s', () => {
-  const years = FACETS.years.map((y) => y.key);
-  assert.deepEqual(yearsBetween(years, '1921', '1930'), ['1921', '1925', '1930']);
-  assert.deepEqual(yearsBetween(years, '', '1921'), ['1920', '1921']);
-  assert.deepEqual(yearsBetween(years, '1900', '', ['1925', '1930']), ['1925', '1930']);
 });
 
 test('a card links to the reader by its route, and nothing else', () => {
