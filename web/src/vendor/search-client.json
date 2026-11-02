@@ -1,0 +1,32 @@
+{
+  "stare-search": {
+    "repo": "codexpublicus/stare-builder",
+    "commit": "3513dff244ebf09628838447f5ec16ce4dd09810",
+    "path": "pipelines/search-index/client",
+    "files": {
+      "search.mjs": "a2bb790e5255edbea591dedc055a6d6de1722665fd96768c5a3bba224f0128bd",
+      "tokenize.mjs": "463deb58aa7f76a97fb66c09f8725b9c83f96d1c35532dd4b26a95ad137e3f60"
+    }
+  },
+  "roaringbuckets-client": {
+    "repo": "lokkju/roaringbuckets",
+    "tag": "v0.3.0",
+    "commit": "075b4fd1a7b0bb57d3145ddf1b682df7e91c4465",
+    "path": "packages/client/src",
+    "files": {
+      "blob-reader.js": "ce45ecf530a4b4d79b22811441443492fc96e80830f16e4d60d6a3143054f14f",
+      "dataset.js": "c58be4ea6b862a4ef4977d68e9b6d7c9b5886ca442f87ca30609ef05bcfa013a",
+      "index-reader.js": "7448dc47774137d557a6ba70151ec5229c8cfa5f2058726b4d32c1e5660b485c",
+      "index.js": "72d44779d7b8f73b35adf12e74cd344e338c1fc44e49fae2571ec1dbf354adea",
+      "keys.js": "cc8342000b2a8fe2066a0201df10f312880e74d79ae772aa53888f7f1e8ececd",
+      "location-table.js": "ad46053a47607eb56d523ff2522f2c8ab464fdd9e9bca39666e10e56d8f36131",
+      "manifest.js": "f80261e4e9706e6d0658867012a49db236a0830e28313b62c4a1ac4073cc3eac",
+      "ranges.js": "e440315573f96fbaaea742f3a237a6b4c812539dc4a2c9f323959607766c503a",
+      "roaring.js": "2b66673881f97e639fbf8691d3bb8887e32fab65322b6a57c6d1845b17230fa9",
+      "sharded-index-reader.js": "320dbec85f7d4d3142cbfc06a97f5dbc05c3b452335a97b1a1017d225d4cce51",
+      "types.js": "f5c52d7c3eaada562b5e6226fb65aaf900b22b6cfaef84597d546177910c3428",
+      "varint.js": "99473a5159f5d1c492cc3178539d0c1de00a9addfbb5f77dd8456f2c67c7ee81",
+      "LICENSE": "cbdcaed95b32cab03bce3b6a7bfcde50c18b5e1d6da71d99dbd6018b0e4126e3"
+    }
+  }
+}
