@@ -121,23 +121,147 @@ export function pageCount(total) {
   return Math.min(MAX_PAGE, Math.max(1, Math.ceil(total / PAGE_SIZE)));
 }
 
-const plural = (n, one, many) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
+const num = (n) => n.toLocaleString('en-US');
+const plural = (n, one, many) => `${num(n)} ${n === 1 ? one : many}`;
 
 /**
- * What the live region says about a result: how many matched, which page, and whether
- * the count is every match or the best of the ones read (the rank tiers, below the
- * client's read caps, see only the top of a common word's postings).
+ * A result's count, plainly: `137 matches`, `1 match`, or `Top 4,352 matches` when the
+ * count is the best of what the rank tiers read rather than every match (below the
+ * client's read caps, a common word's tiers hold only the top of its postings). Empty for
+ * no match, or a query with no word to search for.
  */
-export function summaryText({ total, exact, relaxed, tokens }, page) {
-  if (!tokens.length) return 'Every word in that query is too common to search for. Try more specific words.';
-  if (!total) return 'No decisions match.';
-  const pages = pageCount(total);
-  const count = exact
-    ? plural(total, 'decision matches', 'decisions match')
-    : `The best ${plural(total, 'match', 'matches')} found`;
-  const relax = relaxed ? ' No decision has every word; these have all but one.' : '';
-  const where = pages > 1 ? ` Page ${page} of ${pages.toLocaleString('en-US')}.` : '';
-  return `${count}.${relax}${where}`;
+export function countText({ total, exact, tokens }) {
+  if (!tokens.length || !total) return '';
+  return exact ? plural(total, 'match', 'matches') : `Top ${plural(total, 'match', 'matches')}`;
+}
+
+/** The status line for a page of a result: `137 matches, page 2 of 7`. */
+export function statusText(result, page) {
+  if (!result.tokens.length) return 'Nothing to search for';
+  if (!result.total) return 'No matches';
+  const pages = pageCount(result.total);
+  return pages > 1 ? `${countText(result)}, page ${page} of ${num(pages)}` : countText(result);
+}
+
+/**
+ * The note under the count, or '': why the count isn't every match, or that the results
+ * have all but one of the words.
+ */
+export function noteText({ total, exact, relaxed, tokens }) {
+  if (!tokens.length || !total) return '';
+  if (relaxed) return 'No decision has every word, so these have all but one.';
+  if (!exact) return 'Some of these words are in a great many decisions, so these are the best matches found, not every one.';
+  return '';
+}
+
+/**
+ * What the live region says once per result set: the count and the page, or that
+ * nothing matched.
+ */
+export function summaryText(result, page) {
+  if (!result.tokens.length) return 'Every word in that query is too common to search for. Try more specific words.';
+  if (!result.total) return 'No decisions match.';
+  const pages = pageCount(result.total);
+  const where = pages > 1 ? ` Page ${page} of ${num(pages)}.` : '';
+  const note = noteText(result);
+  return `${countText(result)}.${where}${note ? ` ${note}` : ''}`;
+}
+
+// The search tokenizer's folding (src/vendor/stare-search/tokenize.mjs `normalize`), for
+// marking a case name's words; the ranking never sees it. searchquery.test.js checks it
+// against the vendored tokenizer.
+const DOTTED = /\b(?:[a-z]\.){2,}[a-z0-9]*/g;
+function fold(text) {
+  let s = String(text).normalize('NFKD').replace(/[^\x00-\x7f]/g, '').toLowerCase();
+  s = s.replace(DOTTED, (m) => m.replaceAll('.', ''));
+  return s.replace(/'s\b/g, '').replace(/(?<=\d),(?=\d{3})/g, '');
+}
+const foldedWords = (text) => fold(text).split(/[^a-z0-9]+/).filter(Boolean);
+
+/**
+ * A case name cut into runs, `{ text, hit }` each, `hit` for a word the query's tokens
+ * (the client's `tokens`) matched, so the page can mark them.
+ */
+export function nameSegments(name, tokens) {
+  const want = new Set(tokens);
+  const out = [];
+  if (!want.size) return name ? [{ text: name, hit: false }] : [];
+  for (const part of String(name).split(/([\p{L}\p{N}](?:[\p{L}\p{N}'\u2019.]|,(?=\d{3}))*)/u)) {
+    if (!part) continue;
+    const hit = /^[\p{L}\p{N}]/u.test(part) && foldedWords(part.replace(/\u2019/g, "'")).some((w) => want.has(w));
+    const prev = out[out.length - 1];
+    if (prev && prev.hit === hit && !hit) prev.text += part;
+    else out.push({ text: part, hit });
+  }
+  return out;
+}
+
+/** The query's words the search left out (stopwords, single letters), in order, once each. */
+export function droppedWords(q, tokens) {
+  const kept = new Set(tokens);
+  const out = [];
+  for (const w of foldedWords(q)) if (!kept.has(w) && !out.includes(w)) out.push(w);
+  return out;
+}
+
+// A citation as typed: `347 U.S. 483`, `31 A.2d 647, 650 (1943)`, or a reader slug's
+// `a2d 31 647` and `a2d/31/647`.
+const CITED = /^\d{1,4}\s+[A-Za-z][A-Za-z0-9.' &]{0,40}?\s+\d{1,5}(?:\s*,\s*\d{1,5})?(?:\s*\([^)]{0,40}\))?$/;
+const SLUG = /^[a-z][a-z0-9-]{0,30}[\s/]+\d{1,4}(?:-\d+)?[\s/]+\d{1,5}(?:-\d{1,2})?$/i;
+
+/** Whether a query reads like a citation, worth offering to open in the reader. */
+export function looksLikeCitation(q) {
+  const t = String(q).trim();
+  return CITED.test(t) || SLUG.test(t);
+}
+
+/**
+ * The filters a state has, as chips: `{ key, label, text }`, `key` the state's field to
+ * clear (`years` clears from and to). Names come from facets.json when it's in, else from
+ * `hint` (`{ court }`, a result card's court), else the key.
+ */
+export function filterChips(state, facets = null, hint = {}) {
+  const out = [];
+  if (state.jurisdiction) {
+    const j = facets?.jurisdictions?.find((x) => x.key === state.jurisdiction);
+    out.push({ key: 'jurisdiction', label: 'Jurisdiction', text: j?.name || state.jurisdiction });
+  }
+  if (state.court) {
+    const c = facets?.courts?.find((x) => x.key === state.court);
+    out.push({ key: 'court', label: 'Court', text: c?.name || hint.court || state.court });
+  }
+  const { from, to } = state;
+  if (from || to) {
+    let text;
+    if (from && from === to) text = from;
+    else if (from && to) text = `${from} to ${to}`;
+    else if (from) text = `${from} and later`;
+    else text = `${to} and earlier`;
+    out.push({ key: 'years', label: 'Decided', text });
+  }
+  return out;
+}
+
+/** Whether a state has any filter. */
+export const hasFilters = (state) => Boolean(state.jurisdiction || state.court || state.from || state.to);
+
+/**
+ * Decisions a year, from facets.json's `years`, in at most `max` bins of whole years over
+ * `[lo, hi]`: `[{ from, to, decisions }]`, years as numbers.
+ */
+export function yearBins(years, lo, hi, max = 60) {
+  const a = Number(lo);
+  const b = Number(hi);
+  if (!(b >= a)) return [];
+  const width = Math.max(1, Math.ceil((b - a + 1) / max));
+  const bins = [];
+  for (let y = a; y <= b; y += width) bins.push({ from: y, to: Math.min(b, y + width - 1), decisions: 0 });
+  for (const { key, decisions } of years) {
+    const y = Number(key);
+    if (y < a || y > b) continue;
+    bins[Math.floor((y - a) / width)].decisions += decisions || 0;
+  }
+  return bins;
 }
 
 /**

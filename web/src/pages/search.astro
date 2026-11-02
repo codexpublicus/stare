@@ -47,29 +47,46 @@ const tree = import.meta.env.PUBLIC_SEARCH_TREE || '';
 				</div>
 				<p id="search-help" class="search-help">Finds decisions with every word, in the opinion text or the case name. Words are matched as written: <i>negligent</i> doesn&rsquo;t find <i>negligence</i>.</p>
 				<details id="search-filters" class="search-filters">
-					<summary>Filters</summary>
-					<div class="search-filter-grid">
-						<label class="search-field">
+					<summary>Filters<span id="search-filter-count" class="search-filter-count"></span></summary>
+					<div class="search-filter-panel">
+						<label class="search-field search-field-jur">
 							<span>Jurisdiction</span>
 							<select id="search-jurisdiction" name="jurisdiction"><option value="">Any</option></select>
 						</label>
-						<label class="search-field">
-							<span>Court</span>
+						<div class="search-field search-field-court">
+							<label for="search-court">Court</label>
+							<input id="search-court-find" class="search-court-find" type="search" autocomplete="off" spellcheck="false" placeholder="Type to narrow the list" aria-label="Narrow the court list" aria-controls="search-court" hidden />
 							<select id="search-court" name="court"><option value="">Any</option></select>
-						</label>
+						</div>
 						<fieldset class="search-years">
 							<legend>Decided</legend>
-							<label class="search-field"><span>From year</span><input id="search-from" name="from" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" /></label>
-							<label class="search-field"><span>To year</span><input id="search-to" name="to" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" /></label>
+							<div id="search-year-chart" class="search-year-chart" aria-hidden="true"></div>
+							<div class="search-year-inputs">
+								<label class="search-field"><span>From year</span><input id="search-from" name="from" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" /></label>
+								<span class="search-year-dash" aria-hidden="true">to</span>
+								<label class="search-field"><span>To year</span><input id="search-to" name="to" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" /></label>
+							</div>
 						</fieldset>
+						<div class="search-filter-actions">
+							<button type="submit" class="search-apply">Apply</button>
+							<button type="button" id="search-clear" class="search-clear" hidden>Clear filters</button>
+						</div>
 					</div>
-					<p id="search-filter-note" class="search-filter-note" aria-live="polite"></p>
+					<p id="search-filter-note" class="search-filter-note"></p>
 				</details>
+				<ul id="search-chips" class="search-chips" aria-label="Filters in use" hidden></ul>
 			</form>
 
-			<p id="search-status" class="search-status" role="status" aria-live="polite" aria-atomic="true"></p>
-			<h2 id="search-results-heading" class="sr-only" tabindex="-1">Results</h2>
-			<ol id="search-results" class="search-results" aria-labelledby="search-results-heading"></ol>
+			<p id="search-cite" class="search-cite" hidden></p>
+			<p id="search-status" class="search-status"></p>
+			<p id="search-note" class="search-note" hidden></p>
+			<div id="search-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+			<div class="search-results-wrap">
+				<div id="search-progress" class="search-progress" hidden></div>
+				<h2 id="search-results-heading" class="sr-only" tabindex="-1">Results</h2>
+				<ol id="search-results" class="search-results" aria-labelledby="search-results-heading"></ol>
+				<div id="search-empty" class="search-empty" hidden></div>
+			</div>
 			<nav id="search-pages" class="search-pages" aria-label="Result pages" hidden></nav>
 			<noscript><p class="search-help">Search runs in your browser and needs JavaScript.</p></noscript>
 		</main>
