@@ -1,15 +1,27 @@
 {
-  "cases": 6920598,
-  "volumes": 40622,
-  "indexed_volumes": 40622,
+  "index_version": "v2026.10.26.2",
+  "index_generated_at": "2026-10-26T12:54:50Z",
+  "decisions": 7820940,
   "first_year": 1658,
-  "last_year": 2020,
-  "source": "Counted from the Codex Publicus mirror of static.case.law: one metadata/CasesMetadata.json entry per case (and one json/ file) in each of the 40,622 volume zips listed in VolumesMetadata.json, with decision years from decision_date. indexed_volumes is the manifest's `volumes` in idx.stare.pub/manifest.json (build v2026.10.22, checked 2026-10-22), the CAP volume folders, whose report counts the same 6,920,598 cases. See codexpublicus/stare#92.",
+  "last_year": 2026,
+  "cap": {
+    "cases": 6920598,
+    "volumes": 40622,
+    "indexed_volumes": 40622,
+    "first_year": 1658,
+    "last_year": 2020,
+    "release": "VolumesMetadata.json sha256:df5da71c76b6d75b59cfbb07387c71fb255e7a9f8d095c8a676559527532204d"
+  },
   "courtlistener": {
-    "index_version": "v2026.10.22",
     "export": "2026-09-30",
     "records": 900342,
-    "source": "From idx.stare.pub/v/v2026.10.22/report.json, checked 2026-10-22: `idx.cl_input.export` and `idx.cl_input.records`, the CourtListener records the build took from that export, published under data.stare.pub/cl/c/. 17,232 of them (`records_without_lines`) have no `cl` line in this build."
+    "records_without_lines": 16059
   },
-  "as_of": "2026-10-22"
+  "years_ignored": [
+    {
+      "year": 2028,
+      "decisions": 1
+    }
+  ],
+  "source": "Read from idx.stare.pub/v/v2026.10.26.2/ by web/scripts/collection.mjs: decisions is CAP's cases (report.json totals.cases) plus the CourtListener records the build published (idx.cl_input.records); first_year and last_year are the range of search/facets.json years, over both sources, up to the CourtListener export's year; indexed_volumes is manifest.json volumes. CAP's volumes and years are CAP_RELEASE in web/src/lib/collection-read.js, counted from the release that report.json's build.cap_release names."
 }

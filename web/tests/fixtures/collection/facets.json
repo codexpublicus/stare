@@ -1,0 +1,1366 @@
+{
+ "format_version": 2,
+ "version": "v2026.10.26.2",
+ "years": [
+  {
+   "key": "1658",
+   "decisions": 1
+  },
+  {
+   "key": "1659",
+   "decisions": 1
+  },
+  {
+   "key": "1662",
+   "decisions": 1
+  },
+  {
+   "key": "1666",
+   "decisions": 2
+  },
+  {
+   "key": "1671",
+   "decisions": 34
+  },
+  {
+   "key": "1672",
+   "decisions": 48
+  },
+  {
+   "key": "1673",
+   "decisions": 13
+  },
+  {
+   "key": "1674",
+   "decisions": 9
+  },
+  {
+   "key": "1675",
+   "decisions": 134
+  },
+  {
+   "key": "1676",
+   "decisions": 105
+  },
+  {
+   "key": "1677",
+   "decisions": 158
+  },
+  {
+   "key": "1678",
+   "decisions": 174
+  },
+  {
+   "key": "1679",
+   "decisions": 124
+  },
+  {
+   "key": "1680",
+   "decisions": 53
+  },
+  {
+   "key": "1682",
+   "decisions": 8
+  },
+  {
+   "key": "1683",
+   "decisions": 2
+  },
+  {
+   "key": "1689",
+   "decisions": 1
+  },
+  {
+   "key": "1692",
+   "decisions": 1
+  },
+  {
+   "key": "1700",
+   "decisions": 4
+  },
+  {
+   "key": "1701",
+   "decisions": 2
+  },
+  {
+   "key": "1702",
+   "decisions": 2
+  },
+  {
+   "key": "1704",
+   "decisions": 3
+  },
+  {
+   "key": "1705",
+   "decisions": 2
+  },
+  {
+   "key": "1709",
+   "decisions": 1
+  },
+  {
+   "key": "1712",
+   "decisions": 1
+  },
+  {
+   "key": "1713",
+   "decisions": 4
+  },
+  {
+   "key": "1714",
+   "decisions": 13
+  },
+  {
+   "key": "1715",
+   "decisions": 4
+  },
+  {
+   "key": "1716",
+   "decisions": 11
+  },
+  {
+   "key": "1717",
+   "decisions": 14
+  },
+  {
+   "key": "1718",
+   "decisions": 12
+  },
+  {
+   "key": "1719",
+   "decisions": 10
+  },
+  {
+   "key": "1720",
+   "decisions": 3
+  },
+  {
+   "key": "1721",
+   "decisions": 15
+  },
+  {
+   "key": "1722",
+   "decisions": 96
+  },
+  {
+   "key": "1723",
+   "decisions": 34
+  },
+  {
+   "key": "1724",
+   "decisions": 59
+  },
+  {
+   "key": "1725",
+   "decisions": 9
+  },
+  {
+   "key": "1726",
+   "decisions": 55
+  },
+  {
+   "key": "1727",
+   "decisions": 49
+  },
+  {
+   "key": "1728",
+   "decisions": 27
+  },
+  {
+   "key": "1729",
+   "decisions": 40
+  },
+  {
+   "key": "1730",
+   "decisions": 14
+  },
+  {
+   "key": "1731",
+   "decisions": 62
+  },
+  {
+   "key": "1732",
+   "decisions": 26
+  },
+  {
+   "key": "1733",
+   "decisions": 74
+  },
+  {
+   "key": "1734",
+   "decisions": 15
+  },
+  {
+   "key": "1735",
+   "decisions": 36
+  },
+  {
+   "key": "1736",
+   "decisions": 48
+  },
+  {
+   "key": "1737",
+   "decisions": 21
+  },
+  {
+   "key": "1738",
+   "decisions": 16
+  },
+  {
+   "key": "1739",
+   "decisions": 21
+  },
+  {
+   "key": "1740",
+   "decisions": 20
+  },
+  {
+   "key": "1741",
+   "decisions": 15
+  },
+  {
+   "key": "1742",
+   "decisions": 47
+  },
+  {
+   "key": "1743",
+   "decisions": 51
+  },
+  {
+   "key": "1744",
+   "decisions": 21
+  },
+  {
+   "key": "1745",
+   "decisions": 36
+  },
+  {
+   "key": "1746",
+   "decisions": 22
+  },
+  {
+   "key": "1747",
+   "decisions": 63
+  },
+  {
+   "key": "1748",
+   "decisions": 36
+  },
+  {
+   "key": "1749",
+   "decisions": 44
+  },
+  {
+   "key": "1750",
+   "decisions": 64
+  },
+  {
+   "key": "1751",
+   "decisions": 37
+  },
+  {
+   "key": "1752",
+   "decisions": 60
+  },
+  {
+   "key": "1753",
+   "decisions": 6
+  },
+  {
+   "key": "1754",
+   "decisions": 16
+  },
+  {
+   "key": "1755",
+   "decisions": 9
+  },
+  {
+   "key": "1756",
+   "decisions": 8
+  },
+  {
+   "key": "1757",
+   "decisions": 24
+  },
+  {
+   "key": "1758",
+   "decisions": 22
+  },
+  {
+   "key": "1759",
+   "decisions": 21
+  },
+  {
+   "key": "1760",
+   "decisions": 20
+  },
+  {
+   "key": "1761",
+   "decisions": 11
+  },
+  {
+   "key": "1762",
+   "decisions": 58
+  },
+  {
+   "key": "1763",
+   "decisions": 79
+  },
+  {
+   "key": "1764",
+   "decisions": 119
+  },
+  {
+   "key": "1765",
+   "decisions": 57
+  },
+  {
+   "key": "1766",
+   "decisions": 51
+  },
+  {
+   "key": "1767",
+   "decisions": 20
+  },
+  {
+   "key": "1768",
+   "decisions": 34
+  },
+  {
+   "key": "1769",
+   "decisions": 21
+  },
+  {
+   "key": "1770",
+   "decisions": 33
+  },
+  {
+   "key": "1771",
+   "decisions": 78
+  },
+  {
+   "key": "1772",
+   "decisions": 107
+  },
+  {
+   "key": "1773",
+   "decisions": 115
+  },
+  {
+   "key": "1774",
+   "decisions": 40
+  },
+  {
+   "key": "1775",
+   "decisions": 12
+  },
+  {
+   "key": "1776",
+   "decisions": 9
+  },
+  {
+   "key": "1777",
+   "decisions": 4
+  },
+  {
+   "key": "1778",
+   "decisions": 13
+  },
+  {
+   "key": "1779",
+   "decisions": 13
+  },
+  {
+   "key": "1780",
+   "decisions": 19
+  },
+  {
+   "key": "1781",
+   "decisions": 27
+  },
+  {
+   "key": "1782",
+   "decisions": 32
+  },
+  {
+   "key": "1783",
+   "decisions": 28
+  },
+  {
+   "key": "1784",
+   "decisions": 71
+  },
+  {
+   "key": "1785",
+   "decisions": 128
+  },
+  {
+   "key": "1786",
+   "decisions": 190
+  },
+  {
+   "key": "1787",
+   "decisions": 165
+  },
+  {
+   "key": "1788",
+   "decisions": 245
+  },
+  {
+   "key": "1789",
+   "decisions": 193
+  },
+  {
+   "key": "1790",
+   "decisions": 402
+  },
+  {
+   "key": "1791",
+   "decisions": 429
+  },
+  {
+   "key": "1792",
+   "decisions": 469
+  },
+  {
+   "key": "1793",
+   "decisions": 955
+  },
+  {
+   "key": "1794",
+   "decisions": 396
+  },
+  {
+   "key": "1795",
+   "decisions": 511
+  },
+  {
+   "key": "1796",
+   "decisions": 480
+  },
+  {
+   "key": "1797",
+   "decisions": 407
+  },
+  {
+   "key": "1798",
+   "decisions": 408
+  },
+  {
+   "key": "1799",
+   "decisions": 807
+  },
+  {
+   "key": "1800",
+   "decisions": 679
+  },
+  {
+   "key": "1801",
+   "decisions": 761
+  },
+  {
+   "key": "1802",
+   "decisions": 915
+  },
+  {
+   "key": "1803",
+   "decisions": 1200
+  },
+  {
+   "key": "1804",
+   "decisions": 1203
+  },
+  {
+   "key": "1805",
+   "decisions": 1093
+  },
+  {
+   "key": "1806",
+   "decisions": 1257
+  },
+  {
+   "key": "1807",
+   "decisions": 1169
+  },
+  {
+   "key": "1808",
+   "decisions": 1603
+  },
+  {
+   "key": "1809",
+   "decisions": 1376
+  },
+  {
+   "key": "1810",
+   "decisions": 1309
+  },
+  {
+   "key": "1811",
+   "decisions": 1433
+  },
+  {
+   "key": "1812",
+   "decisions": 1370
+  },
+  {
+   "key": "1813",
+   "decisions": 1252
+  },
+  {
+   "key": "1814",
+   "decisions": 1438
+  },
+  {
+   "key": "1815",
+   "decisions": 1249
+  },
+  {
+   "key": "1816",
+   "decisions": 1411
+  },
+  {
+   "key": "1817",
+   "decisions": 1625
+  },
+  {
+   "key": "1818",
+   "decisions": 1735
+  },
+  {
+   "key": "1819",
+   "decisions": 1631
+  },
+  {
+   "key": "1820",
+   "decisions": 1710
+  },
+  {
+   "key": "1821",
+   "decisions": 1713
+  },
+  {
+   "key": "1822",
+   "decisions": 2087
+  },
+  {
+   "key": "1823",
+   "decisions": 2081
+  },
+  {
+   "key": "1824",
+   "decisions": 2936
+  },
+  {
+   "key": "1825",
+   "decisions": 1821
+  },
+  {
+   "key": "1826",
+   "decisions": 2104
+  },
+  {
+   "key": "1827",
+   "decisions": 2659
+  },
+  {
+   "key": "1828",
+   "decisions": 2376
+  },
+  {
+   "key": "1829",
+   "decisions": 2643
+  },
+  {
+   "key": "1830",
+   "decisions": 2773
+  },
+  {
+   "key": "1831",
+   "decisions": 2742
+  },
+  {
+   "key": "1832",
+   "decisions": 2650
+  },
+  {
+   "key": "1833",
+   "decisions": 2881
+  },
+  {
+   "key": "1834",
+   "decisions": 2997
+  },
+  {
+   "key": "1835",
+   "decisions": 2516
+  },
+  {
+   "key": "1836",
+   "decisions": 3356
+  },
+  {
+   "key": "1837",
+   "decisions": 2594
+  },
+  {
+   "key": "1838",
+   "decisions": 3018
+  },
+  {
+   "key": "1839",
+   "decisions": 3187
+  },
+  {
+   "key": "1840",
+   "decisions": 3673
+  },
+  {
+   "key": "1841",
+   "decisions": 4329
+  },
+  {
+   "key": "1842",
+   "decisions": 4217
+  },
+  {
+   "key": "1843",
+   "decisions": 4291
+  },
+  {
+   "key": "1844",
+   "decisions": 4482
+  },
+  {
+   "key": "1845",
+   "decisions": 4433
+  },
+  {
+   "key": "1846",
+   "decisions": 4824
+  },
+  {
+   "key": "1847",
+   "decisions": 4797
+  },
+  {
+   "key": "1848",
+   "decisions": 5016
+  },
+  {
+   "key": "1849",
+   "decisions": 5051
+  },
+  {
+   "key": "1850",
+   "decisions": 5704
+  },
+  {
+   "key": "1851",
+   "decisions": 5331
+  },
+  {
+   "key": "1852",
+   "decisions": 5391
+  },
+  {
+   "key": "1853",
+   "decisions": 6127
+  },
+  {
+   "key": "1854",
+   "decisions": 5811
+  },
+  {
+   "key": "1855",
+   "decisions": 6655
+  },
+  {
+   "key": "1856",
+   "decisions": 6489
+  },
+  {
+   "key": "1857",
+   "decisions": 6716
+  },
+  {
+   "key": "1858",
+   "decisions": 7040
+  },
+  {
+   "key": "1859",
+   "decisions": 8075
+  },
+  {
+   "key": "1860",
+   "decisions": 7579
+  },
+  {
+   "key": "1861",
+   "decisions": 5790
+  },
+  {
+   "key": "1862",
+   "decisions": 4885
+  },
+  {
+   "key": "1863",
+   "decisions": 4714
+  },
+  {
+   "key": "1864",
+   "decisions": 4566
+  },
+  {
+   "key": "1865",
+   "decisions": 4530
+  },
+  {
+   "key": "1866",
+   "decisions": 5917
+  },
+  {
+   "key": "1867",
+   "decisions": 7416
+  },
+  {
+   "key": "1868",
+   "decisions": 7509
+  },
+  {
+   "key": "1869",
+   "decisions": 7367
+  },
+  {
+   "key": "1870",
+   "decisions": 8312
+  },
+  {
+   "key": "1871",
+   "decisions": 10048
+  },
+  {
+   "key": "1872",
+   "decisions": 10302
+  },
+  {
+   "key": "1873",
+   "decisions": 11192
+  },
+  {
+   "key": "1874",
+   "decisions": 12806
+  },
+  {
+   "key": "1875",
+   "decisions": 12066
+  },
+  {
+   "key": "1876",
+   "decisions": 11723
+  },
+  {
+   "key": "1877",
+   "decisions": 11655
+  },
+  {
+   "key": "1878",
+   "decisions": 12013
+  },
+  {
+   "key": "1879",
+   "decisions": 11600
+  },
+  {
+   "key": "1880",
+   "decisions": 14505
+  },
+  {
+   "key": "1881",
+   "decisions": 14685
+  },
+  {
+   "key": "1882",
+   "decisions": 14791
+  },
+  {
+   "key": "1883",
+   "decisions": 14528
+  },
+  {
+   "key": "1884",
+   "decisions": 14999
+  },
+  {
+   "key": "1885",
+   "decisions": 15941
+  },
+  {
+   "key": "1886",
+   "decisions": 17484
+  },
+  {
+   "key": "1887",
+   "decisions": 17146
+  },
+  {
+   "key": "1888",
+   "decisions": 19135
+  },
+  {
+   "key": "1889",
+   "decisions": 22370
+  },
+  {
+   "key": "1890",
+   "decisions": 22289
+  },
+  {
+   "key": "1891",
+   "decisions": 22560
+  },
+  {
+   "key": "1892",
+   "decisions": 23300
+  },
+  {
+   "key": "1893",
+   "decisions": 24789
+  },
+  {
+   "key": "1894",
+   "decisions": 26709
+  },
+  {
+   "key": "1895",
+   "decisions": 28182
+  },
+  {
+   "key": "1896",
+   "decisions": 26520
+  },
+  {
+   "key": "1897",
+   "decisions": 24311
+  },
+  {
+   "key": "1898",
+   "decisions": 24598
+  },
+  {
+   "key": "1899",
+   "decisions": 25789
+  },
+  {
+   "key": "1900",
+   "decisions": 25012
+  },
+  {
+   "key": "1901",
+   "decisions": 25194
+  },
+  {
+   "key": "1902",
+   "decisions": 24737
+  },
+  {
+   "key": "1903",
+   "decisions": 25888
+  },
+  {
+   "key": "1904",
+   "decisions": 25949
+  },
+  {
+   "key": "1905",
+   "decisions": 27118
+  },
+  {
+   "key": "1906",
+   "decisions": 29075
+  },
+  {
+   "key": "1907",
+   "decisions": 31476
+  },
+  {
+   "key": "1908",
+   "decisions": 32301
+  },
+  {
+   "key": "1909",
+   "decisions": 33665
+  },
+  {
+   "key": "1910",
+   "decisions": 34082
+  },
+  {
+   "key": "1911",
+   "decisions": 36434
+  },
+  {
+   "key": "1912",
+   "decisions": 37129
+  },
+  {
+   "key": "1913",
+   "decisions": 38744
+  },
+  {
+   "key": "1914",
+   "decisions": 38125
+  },
+  {
+   "key": "1915",
+   "decisions": 38165
+  },
+  {
+   "key": "1916",
+   "decisions": 36071
+  },
+  {
+   "key": "1917",
+   "decisions": 30755
+  },
+  {
+   "key": "1918",
+   "decisions": 27285
+  },
+  {
+   "key": "1919",
+   "decisions": 26722
+  },
+  {
+   "key": "1920",
+   "decisions": 27171
+  },
+  {
+   "key": "1921",
+   "decisions": 28298
+  },
+  {
+   "key": "1922",
+   "decisions": 31121
+  },
+  {
+   "key": "1923",
+   "decisions": 34413
+  },
+  {
+   "key": "1924",
+   "decisions": 34346
+  },
+  {
+   "key": "1925",
+   "decisions": 38849
+  },
+  {
+   "key": "1926",
+   "decisions": 38948
+  },
+  {
+   "key": "1927",
+   "decisions": 38764
+  },
+  {
+   "key": "1928",
+   "decisions": 38288
+  },
+  {
+   "key": "1929",
+   "decisions": 38401
+  },
+  {
+   "key": "1930",
+   "decisions": 40968
+  },
+  {
+   "key": "1931",
+   "decisions": 42710
+  },
+  {
+   "key": "1932",
+   "decisions": 38595
+  },
+  {
+   "key": "1933",
+   "decisions": 38136
+  },
+  {
+   "key": "1934",
+   "decisions": 37497
+  },
+  {
+   "key": "1935",
+   "decisions": 37833
+  },
+  {
+   "key": "1936",
+   "decisions": 34714
+  },
+  {
+   "key": "1937",
+   "decisions": 33904
+  },
+  {
+   "key": "1938",
+   "decisions": 35256
+  },
+  {
+   "key": "1939",
+   "decisions": 36155
+  },
+  {
+   "key": "1940",
+   "decisions": 35363
+  },
+  {
+   "key": "1941",
+   "decisions": 33840
+  },
+  {
+   "key": "1942",
+   "decisions": 31180
+  },
+  {
+   "key": "1943",
+   "decisions": 28270
+  },
+  {
+   "key": "1944",
+   "decisions": 25125
+  },
+  {
+   "key": "1945",
+   "decisions": 23340
+  },
+  {
+   "key": "1946",
+   "decisions": 23988
+  },
+  {
+   "key": "1947",
+   "decisions": 25780
+  },
+  {
+   "key": "1948",
+   "decisions": 26683
+  },
+  {
+   "key": "1949",
+   "decisions": 28273
+  },
+  {
+   "key": "1950",
+   "decisions": 28314
+  },
+  {
+   "key": "1951",
+   "decisions": 27927
+  },
+  {
+   "key": "1952",
+   "decisions": 28078
+  },
+  {
+   "key": "1953",
+   "decisions": 29428
+  },
+  {
+   "key": "1954",
+   "decisions": 30334
+  },
+  {
+   "key": "1955",
+   "decisions": 31532
+  },
+  {
+   "key": "1956",
+   "decisions": 31444
+  },
+  {
+   "key": "1957",
+   "decisions": 32346
+  },
+  {
+   "key": "1958",
+   "decisions": 34229
+  },
+  {
+   "key": "1959",
+   "decisions": 35743
+  },
+  {
+   "key": "1960",
+   "decisions": 37837
+  },
+  {
+   "key": "1961",
+   "decisions": 38837
+  },
+  {
+   "key": "1962",
+   "decisions": 40040
+  },
+  {
+   "key": "1963",
+   "decisions": 36248
+  },
+  {
+   "key": "1964",
+   "decisions": 36260
+  },
+  {
+   "key": "1965",
+   "decisions": 37853
+  },
+  {
+   "key": "1966",
+   "decisions": 39799
+  },
+  {
+   "key": "1967",
+   "decisions": 41488
+  },
+  {
+   "key": "1968",
+   "decisions": 43429
+  },
+  {
+   "key": "1969",
+   "decisions": 44876
+  },
+  {
+   "key": "1970",
+   "decisions": 48937
+  },
+  {
+   "key": "1971",
+   "decisions": 52532
+  },
+  {
+   "key": "1972",
+   "decisions": 55539
+  },
+  {
+   "key": "1973",
+   "decisions": 58277
+  },
+  {
+   "key": "1974",
+   "decisions": 60610
+  },
+  {
+   "key": "1975",
+   "decisions": 64867
+  },
+  {
+   "key": "1976",
+   "decisions": 63152
+  },
+  {
+   "key": "1977",
+   "decisions": 64491
+  },
+  {
+   "key": "1978",
+   "decisions": 66336
+  },
+  {
+   "key": "1979",
+   "decisions": 69114
+  },
+  {
+   "key": "1980",
+   "decisions": 75516
+  },
+  {
+   "key": "1981",
+   "decisions": 77965
+  },
+  {
+   "key": "1982",
+   "decisions": 81227
+  },
+  {
+   "key": "1983",
+   "decisions": 82933
+  },
+  {
+   "key": "1984",
+   "decisions": 84048
+  },
+  {
+   "key": "1985",
+   "decisions": 84603
+  },
+  {
+   "key": "1986",
+   "decisions": 87475
+  },
+  {
+   "key": "1987",
+   "decisions": 86563
+  },
+  {
+   "key": "1988",
+   "decisions": 86107
+  },
+  {
+   "key": "1989",
+   "decisions": 86646
+  },
+  {
+   "key": "1990",
+   "decisions": 91750
+  },
+  {
+   "key": "1991",
+   "decisions": 95563
+  },
+  {
+   "key": "1992",
+   "decisions": 101110
+  },
+  {
+   "key": "1993",
+   "decisions": 101711
+  },
+  {
+   "key": "1994",
+   "decisions": 105226
+  },
+  {
+   "key": "1995",
+   "decisions": 104014
+  },
+  {
+   "key": "1996",
+   "decisions": 104612
+  },
+  {
+   "key": "1997",
+   "decisions": 97235
+  },
+  {
+   "key": "1998",
+   "decisions": 91228
+  },
+  {
+   "key": "1999",
+   "decisions": 84528
+  },
+  {
+   "key": "2000",
+   "decisions": 81576
+  },
+  {
+   "key": "2001",
+   "decisions": 95404
+  },
+  {
+   "key": "2002",
+   "decisions": 95297
+  },
+  {
+   "key": "2003",
+   "decisions": 95816
+  },
+  {
+   "key": "2004",
+   "decisions": 101639
+  },
+  {
+   "key": "2005",
+   "decisions": 110262
+  },
+  {
+   "key": "2006",
+   "decisions": 112103
+  },
+  {
+   "key": "2007",
+   "decisions": 116118
+  },
+  {
+   "key": "2008",
+   "decisions": 128528
+  },
+  {
+   "key": "2009",
+   "decisions": 125854
+  },
+  {
+   "key": "2010",
+   "decisions": 126192
+  },
+  {
+   "key": "2011",
+   "decisions": 120865
+  },
+  {
+   "key": "2012",
+   "decisions": 97942
+  },
+  {
+   "key": "2013",
+   "decisions": 94601
+  },
+  {
+   "key": "2014",
+   "decisions": 94845
+  },
+  {
+   "key": "2015",
+   "decisions": 90922
+  },
+  {
+   "key": "2016",
+   "decisions": 107315
+  },
+  {
+   "key": "2017",
+   "decisions": 118693
+  },
+  {
+   "key": "2018",
+   "decisions": 103348
+  },
+  {
+   "key": "2019",
+   "decisions": 67192
+  },
+  {
+   "key": "2020",
+   "decisions": 30427
+  },
+  {
+   "key": "2021",
+   "decisions": 26316
+  },
+  {
+   "key": "2022",
+   "decisions": 24074
+  },
+  {
+   "key": "2023",
+   "decisions": 22483
+  },
+  {
+   "key": "2024",
+   "decisions": 27741
+  },
+  {
+   "key": "2025",
+   "decisions": 25486
+  },
+  {
+   "key": "2026",
+   "decisions": 15872
+  },
+  {
+   "key": "2028",
+   "decisions": 1
+  }
+ ]
+}

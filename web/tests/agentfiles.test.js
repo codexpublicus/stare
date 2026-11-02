@@ -29,8 +29,8 @@ describe('JSON-LD', () => {
     const d = dataset();
     assert.equal(d['@type'], 'Dataset');
     assert.equal(d.isPartOf['@id'], webSite()['@id']);
-    assert.equal(d.temporalCoverage, `${collection.first_year}/..`);
-    assert.equal(d.temporalCoverage, '1658/..');
+    assert.equal(d.temporalCoverage, `${collection.first_year}/${collection.last_year}`);
+    assert.match(d.temporalCoverage, /^1658\/20\d\d$/);
     assert.ok(d.name && d.description && d.url);
     for (const dist of d.distribution) {
       assert.equal(dist['@type'], 'DataDownload');

@@ -2,7 +2,7 @@
 // and a Dataset on /data, built at build time and embedded as
 // <script type="application/ld+json"> by components/JsonLd.astro. The figures
 // come from collection.json, like every other figure on the site.
-import { casesLabel, collection, courtListener, formatCount } from './collection.js';
+import { capCasesLabel, collection, courtListener, coverage, formatCount } from './collection.js';
 import { CC0, CC_BY_NC_ND, CITARE, COURTS_DB, FREE_LAW_PROJECT, PUBLIC_DOMAIN_MARK, REPORTERS_DB, SOURCE } from './license.js';
 
 export const SITE = 'https://stare.pub';
@@ -88,7 +88,7 @@ function parts() {
       '@id': `${SITE}/data/#cap-case-files`,
       name: 'Caselaw Access Project case files',
       description:
-        `${casesLabel} from the Harvard Caselaw Access Project, one zip per reporter volume, ` +
+        `${capCasesLabel} from the Harvard Caselaw Access Project, one zip per reporter volume, ` +
         'republished under CAP’s CC0 terms.',
       url: 'https://data.stare.pub/cap/',
       license: CC0.url,
@@ -163,7 +163,7 @@ function parts() {
           '@type': 'DataDownload',
           name: 'A volume’s citation index (Atlantic Reporter, Second Series, volume 31)',
           description: 'One file per volume at https://idx.stare.pub/<base><slug>/<volume>.idx.gz; lines are page,source,ref.',
-          contentUrl: `https://idx.stare.pub/v/${courtListener.index_version}/a2d/31.idx.gz`,
+          contentUrl: `https://idx.stare.pub/v/${collection.index_version}/a2d/31.idx.gz`,
           encodingFormat: 'application/gzip',
           license: CC_BY_NC_ND.url,
         },
@@ -222,8 +222,7 @@ export function dataset() {
     '@id': `${SITE}/data/#dataset`,
     name: 'stare.pub U.S. case law citation index and case text',
     description:
-      `A citation index over U.S. case law, ${casesLabel} from the Harvard Caselaw Access Project and ` +
-      `${formatCount(courtListener.records)} case records from CourtListener’s bulk data, with the case text, ` +
+      `A citation index over U.S. case law, ${coverage}, with the case text, ` +
       'published as static files: one gzipped index file per reporter volume mapping first pages to cases, ' +
       'the CAP volumes’ case files as zips, and one gzipped JSON file per CourtListener record. The CAP case ' +
       'files are CC0 1.0, under CAP’s terms; each CourtListener record states the Public Domain Mark 1.0 ' +
@@ -233,8 +232,9 @@ export function dataset() {
     inLanguage: 'en-US',
     keywords: ['case law', 'legal citations', 'United States', 'court opinions', 'Caselaw Access Project', 'CourtListener'],
     spatialCoverage: { '@type': 'Place', name: 'United States' },
-    // Open-ended (schema.org's "1658/.."), so it doesn't go stale as the sources grow.
-    temporalCoverage: `${collection.first_year}/..`,
+    // The decision years the index build holds (web/scripts/collection.mjs reads them
+    // before each site build), as a schema.org interval: "1658/2026".
+    temporalCoverage: `${collection.first_year}/${collection.last_year}`,
     creator: publisher,
     publisher,
     isPartOf: { '@id': `${SITE}/#website` },

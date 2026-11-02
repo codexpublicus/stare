@@ -170,6 +170,7 @@ describe('sitemap', () => {
       'web/src/components/SiteHead.astro',
       'web/src/data/collection.json',
       'web/src/lib/changelog.js',
+      'web/src/lib/collection-figures.js',
       'web/src/lib/collection.js',
       'web/src/lib/marks.js',
       'web/src/lib/version.js',
