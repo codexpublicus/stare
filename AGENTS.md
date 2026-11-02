@@ -232,8 +232,37 @@ from CourtListener's 2026-09-30 export, at `data.stare.pub/cl/c/` (the exports u
 `data.stare.pub/cl/exports/` are not served, 403, and nothing links them). The e2e tests that
 need a fixed case serve a hand-made record (`crates/stare/tests/fixtures/cl-record.json`)
 through routes. The site credits CourtListener on /about, /data, `llms.txt`, `openapi.json`,
-the `/data` JSON-LD and the README (#206), with the record count, the export date and the
-index version from `web/src/data/collection.json`'s `courtlistener`.
+the `/data` JSON-LD and the README (#206), with the record count and the export date from
+`web/src/data/collection.json`'s `courtlistener` and the index version from its
+`index_version`.
+
+### The collection's figures (#92, #297: `web/src/data/collection.json`, `web/scripts/collection.mjs`)
+
+Every page, social description, `llms.txt`'s summary, the `/data` JSON-LD
+(`temporalCoverage` included) and the OG image state the collection's size and range from
+`web/src/data/collection.json`, through `web/src/lib/collection.js`: "7.8 million decisions
+from 1658 to 2026, from the Caselaw Access Project and CourtListener" for index v2026.10.26.2.
+`npm --prefix web run build` runs `web/scripts/collection.mjs` first (the prebuild script),
+which reads the live index build's `report.json` (CAP's cases, `totals.cases`, plus the
+CourtListener records it published, `idx.cl_input.records`), `manifest.json` (CAP's indexed
+volumes) and `search/facets.json` (the decision years over both sources, since the report
+has no dates; years after the CourtListener export's are left out as typos and listed in
+`years_ignored`), rewrites `collection.json` and `llms.txt`'s summary line, and renders
+`og-image.svg` and, when the SVG changed, `og-image.png` in Playwright's Chromium (so
+`build-web` installs it). It fails the build if any of that can't be read. CAP's own volume
+count and its 1658 to 2020 range are `CAP_RELEASE` in `web/src/lib/collection-read.js`,
+tied to the report's `build.cap_release` hash; text about CAP's finished scan uses them
+(`capCasesLabel`, `cap.first_year`, `cap.last_year`), and nothing else does.
+
+The copies in git are a snapshot the JS tests run on without the network; `npm --prefix web
+run collection` brings it up to date, and `build-site` warns when the live index has moved
+past it. `web/tests/collection.test.js` fails on a count typed anywhere else and checks the
+OG image and `llms.txt` against the data file; `web/tests/stale-figures.test.js` scans the
+built site block by block (a paragraph, a list item, a meta description, a JSON-LD string, a
+line of `llms.txt`) for CAP's count or 2020 as an end year outside a block that names CAP
+and not CourtListener, and `build-web` runs both after the build. The landing's figure
+carries the index build it was read from (`data-index-version`), and the smoke suite checks
+the deployed pages against that build's own files (`readCollection({ version })`).
 
 ### Index builds and publishing
 

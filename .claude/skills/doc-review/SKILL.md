@@ -60,8 +60,10 @@ features, URLs, paths, limits, headers and licences:
 
 - Site pages: `web/src/pages/` (`index.astro`, `about.astro`, `data.astro`, `check.astro`
   and its help text, `updates.astro`), the components in `web/src/components/`, and the
-  figures in `web/src/data/collection.json` and `web/src/lib/` (`jsonld.js`, `license.js`,
-  `robots.js`, `sitemap.js`).
+  figures in `web/src/lib/` (`jsonld.js`, `license.js`, `robots.js`, `sitemap.js`).
+  `web/src/data/collection.json` and `llms.txt`'s summary line are generated from the live
+  index by `web/scripts/collection.mjs` at build time; a stale count there means running
+  `npm --prefix web run collection`, not editing by hand.
 - Agent files: `web/public/llms.txt`, `web/public/openapi.json`, the JSON-LD
   (`web/src/lib/jsonld.js`), `schemas/*.schema.json` (`title`, `description`, `x-license`),
   and what `crates/stare/src/reporters.rs` writes into `reporters.json`.
