@@ -27,7 +27,7 @@ function parseRanges(header, size) {
 }
 
 /**
- * The response for `path` under the tree (`v/<version>/search/cards.bin`) with an optional
+ * The response for `path` under the tree (`v/<version>/search/cards/0.bin`) with an optional
  * Range header: { status, headers, body } (body a Buffer), or a 404.
  */
 export function treeResponse(path, range) {

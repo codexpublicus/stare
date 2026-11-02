@@ -22,6 +22,63 @@ import {
 } from './ranges.js';
 import { BLOB_HEADER_SIZE, BLOB_MAGIC, BLOB_VERSION } from './types.js';
 
+/** A `200` to a range request is read only up to this many times the range's size... */
+const WHOLE_FILE_FACTOR = 4;
+/** ...plus this many bytes (BlobReaderOptions.maxWholeFileBytes can raise it). */
+const WHOLE_FILE_SLACK = 64 * 1024;
+
+/**
+ * A response's body, or null once it passes `limit` bytes: then the request is aborted and
+ * the body cancelled as soon as Content-Length or the bytes read so far show it, so a
+ * multi-gigabyte file is never downloaded.
+ *
+ * @param {Response} response - A `200` answer
+ * @param {number} limit - Most bytes to read
+ * @param {AbortController} controller - The request's controller
+ * @returns {Promise<Uint8Array | null>}
+ */
+async function readBounded(response, limit, controller) {
+  const stop = async (cancel) => {
+    controller.abort();
+    try {
+      await cancel();
+    } catch {
+      // already aborted
+    }
+    return null;
+  };
+  const declared = Number(response.headers.get('Content-Length'));
+  if (Number.isFinite(declared) && declared > limit) return stop(() => response.body?.cancel());
+  if (!response.body?.getReader) {
+    const all = new Uint8Array(await response.arrayBuffer());
+    return all.length > limit ? null : all;
+  }
+  const reader = response.body.getReader();
+  /** @type {Uint8Array[]} */
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    let step;
+    try {
+      step = await reader.read();
+    } catch (error) {
+      if (controller.signal.aborted) return null;
+      throw error;
+    }
+    if (step.done) break;
+    total += step.value.length;
+    if (total > limit) return stop(() => reader.cancel());
+    chunks.push(step.value);
+  }
+  const all = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    all.set(chunk, at);
+    at += chunk.length;
+  }
+  return all;
+}
+
 /**
  * Blob reader for accessing blob data from RoaringBuckets datasets.
  */
@@ -40,6 +97,8 @@ export class BlobReader {
   #cache;
   /** @type {number} */
   #maxRangesPerRequest;
+  /** @type {number} */
+  #maxWholeFileBytes;
   /**
    * False once the host has answered a multi-range request with the whole file; from
    * then on every range gets its own request.
@@ -72,6 +131,7 @@ export class BlobReader {
       throw new Error(`maxRangesPerRequest must be a positive integer, not ${cap}`);
     }
     this.#maxRangesPerRequest = cap;
+    this.#maxWholeFileBytes = options?.maxWholeFileBytes ?? 0;
 
     if (config.locations) {
       this.#table = new LocationTable(
@@ -198,7 +258,12 @@ export class BlobReader {
   /**
    * Fetch bytes `[start, end)` of a file with an HTTP range request.
    *
-   * Falls back to slicing the full body when the server ignores the Range header.
+   * A host that ignores the Range header answers `200` with the whole file, and so does
+   * Cloudflare on a cold cache miss for an object too big for it to cache. The body is read
+   * and sliced only while it stays within `WHOLE_FILE_FACTOR` times the range plus
+   * `WHOLE_FILE_SLACK` bytes (or `maxWholeFileBytes`, when that is more). A bigger one is
+   * aborted as soon as its Content-Length or the bytes read so far show it, and the request
+   * is sent once more; a second such answer throws.
    *
    * @param {string} url - File URL
    * @param {number} start - First byte (inclusive)
@@ -206,18 +271,33 @@ export class BlobReader {
    * @returns {Promise<Uint8Array>} The requested bytes
    */
   async #fetchRange(url, start, end) {
-    const init = { headers: { Range: `bytes=${start}-${end - 1}` } };
-    const response = this.#fetchFn ? await this.#fetchFn(url, init) : await fetch(url, init);
+    const limit = Math.max(
+      (end - start) * WHOLE_FILE_FACTOR + WHOLE_FILE_SLACK,
+      this.#maxWholeFileBytes
+    );
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const controller = new AbortController();
+      const init = { headers: { Range: `bytes=${start}-${end - 1}` }, signal: controller.signal };
+      const response = this.#fetchFn ? await this.#fetchFn(url, init) : await fetch(url, init);
 
-    if (response.status === 206) {
-      return new Uint8Array(await response.arrayBuffer());
+      if (response.status === 206) {
+        return new Uint8Array(await response.arrayBuffer());
+      }
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+      }
+      // The host sent the whole file: slice it if it's small enough to read
+      const full = await readBounded(response, limit, controller);
+      if (full) {
+        if (full.length < end) {
+          throw new Error(`Short response from ${url}: ${full.length} bytes, range ends at ${end}`);
+        }
+        return full.slice(start, end);
+      }
     }
-    if (response.ok) {
-      // Server ignored the Range header and sent the whole file
-      const full = new Uint8Array(await response.arrayBuffer());
-      return full.slice(start, end);
-    }
-    throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `${url} answered a range request for ${end - start} bytes with the whole file, twice; not reading it`
+    );
   }
 
   /**
@@ -621,6 +701,10 @@ export class BlobReader {
  * @property {number} [maxRangesPerRequest=100] - Most byte ranges sent in one multi-range
  *   request; more ranges are split across requests. The cap keeps the `Range` header
  *   under servers' request header limits. 1 sends one range per request.
+ * @property {number} [maxWholeFileBytes=0] - A `200` with the whole file, from a host that
+ *   ignores Range, is read and sliced when it is at most this many bytes, or at most four
+ *   times the range plus 64 KiB, whichever is more. A bigger one is aborted and retried
+ *   once, then the read fails.
  */
 
 /**

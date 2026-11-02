@@ -75,8 +75,9 @@ async function rangeSearch(q, state, limit = 20) {
 async function cardYears(ids) {
   const client = await clientPromise;
   const s = await client.openSearch(BASE, { fetch: treeFetch() });
-  const { path, stride } = s.meta.files.cards;
-  const get = await client.readRanges(s, path, ids.map((id) => ({ start: id * stride, end: (id + 1) * stride })));
+  const cards = s.meta.files.cards;
+  const { stride } = cards;
+  const get = await client.readRanges(s, cards, ids.map((id) => ({ start: id * stride, end: (id + 1) * stride })));
   const dec = new TextDecoder();
   return new Map(ids.map((id) => [id, JSON.parse(dec.decode(get(id * stride, (id + 1) * stride)).trimEnd())]));
 }

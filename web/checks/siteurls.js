@@ -78,7 +78,7 @@ export function dataUrls(reporters) {
   add(`${PDF_URL}/manifest.json`, xhr, 'pdf manifest');
   add(clRecordUrl(...CL_RECORD), xhr, 'cl record');
   // the full-text search tree the search page reads (stare-builder's docs/search-index.md)
-  for (const file of ['manifest.json', 'facets.json', 'cards.bin', 'low.bin', 'indexes/terms/0.eidx',
+  for (const file of ['manifest.json', 'facets.json', 'cards/0.bin', 'low/0.bin', 'low/176.bin', 'indexes/terms/0.eidx',
     'indexes/terms/70658.eidx', 'indexes/jurisdiction/0.eidx', 'indexes/court/0.eidx', 'indexes/year/0.eidx',
     'indexes/reporter/0.eidx', 'indexes/court_year/0.eidx']) {
     add(indexUrl(`${BASE}search/${file}`), xhr, 'search');

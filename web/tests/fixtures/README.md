@@ -1,11 +1,13 @@
 # Search fixtures
 
-`search-tree/v/v2026.10.26/search/` is a full-text search tree in stare-builder's format
+`search-tree/v/v2026.10.26/search/` is a full-text search tree in stare-builder's format 2
 (its `docs/search-index.md`), built from the made-up corpus in stare-builder's
 `pipelines/search-index/tests/fixture.py`: 149 decisions in three CAP volumes and a
 CourtListener volume, with the tiers made small (h 4, m 8, m2 to 20) so its words land in
-every tier, as stare-builder's own tests build it (`tests/conftest.py`). It was built at
-stare-builder 3513dff244ebf09628838447f5ec16ce4dd09810 with:
+every tier, and the segments made small (1,000 bytes: 25 cards segments of six cards each,
+and six low segments that term parts straddle), as stare-builder's own tests build it
+(`tests/conftest.py`). It was built at stare-builder d419b9eb2754b6f124d14bad0eab874c03c962e9
+with:
 
 ```python
 import sys
@@ -21,6 +23,7 @@ mp = pytest.MonkeyPatch()
 mp.setattr(fmt, "TIER_H", 4)
 mp.setattr(fmt, "TIER_M", 8)
 mp.setattr(fmt, "TIER_M2_END", 20)
+mp.setattr(fmt, "SEGMENT_BYTES", 1000)
 work, out = root / "work", root / "out" / "v" / "v2026.10.26" / "search"
 cli.main(["extract", "--mirror", str(c["mirror"]), "--work", str(work),
           "--cl-export", str(c["cl_export"]), "--cl-records", str(c["cl_records"]), "--jobs", "2"])
@@ -32,9 +35,7 @@ cli.main(["build", "--work", str(work), "--out", str(out), "--index", str(c["ind
 
 run with `uv run python` from `pipelines/search-index/` (on `sys.path`, for `tests`).
 
-`search-expected.json` is what stare-builder's own client at the commit
-`../../src/vendor/search-client.json` pins (049b435b1f3d512c61551e3b8ec1c48b57842b64; the
-format and the build didn't change between the two, so the tree stands) returned for each
+`search-expected.json` is what stare-builder's own client at that commit returned for each
 query in `search-queries.json` on the tree: the totals, stage and flags, the whole ranking
 with scores, and the first 20 cards. `web/scripts/search-expected.mjs` writes it, given
 that client directory with roaringbuckets' client linked in as

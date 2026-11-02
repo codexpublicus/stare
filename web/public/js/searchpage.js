@@ -11,8 +11,8 @@
 // - facets.json, only for the filters (the court and jurisdiction lists, and which years
 //   exist for a year range).
 // Each query then costs what the client reads for it: the words' term shards, a facet's
-// shard, low.bin when the top tiers can't fill a page, and the page's cards in one
-// multi-range request. A query's ranking is kept, so the next page reads only its cards.
+// shard, the low tiers' segments when the top tiers can't fill a page, and the page's
+// cards, one multi-range request per cards segment they fall in. A query's ranking is kept, so the next page reads only its cards.
 // Pages and new queries change the URL with pushState and run in place; Back and Forward
 // run the URL they land on.
 
@@ -239,12 +239,14 @@ function clearResults() {
   pagesNav.replaceChildren();
 }
 
-// The cards for decision ids, in one multi-range request on cards.bin, parsed the way the
-// client parses its own (docs/search-index.md, "Cards").
+// The cards for decision ids, one multi-range request per cards segment they fall in (the
+// client's readRanges), parsed the way the client parses its own (docs/search-index.md,
+// "Cards").
 async function readCards(tree, ids) {
   if (!ids.length) return [];
-  const { path, stride } = tree.s.meta.files.cards;
-  const get = await tree.client.readRanges(tree.s, path, ids.map((id) => ({ start: id * stride, end: (id + 1) * stride })));
+  const cards = tree.s.meta.files.cards;
+  const { stride } = cards;
+  const get = await tree.client.readRanges(tree.s, cards, ids.map((id) => ({ start: id * stride, end: (id + 1) * stride })));
   const dec = new TextDecoder();
   return ids.map((id) => {
     try {

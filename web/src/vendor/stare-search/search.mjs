@@ -6,10 +6,11 @@
 // case name, with optional facet filters. It reads:
 //   1. manifest.json (once per session);
 //   2. each token's shard of the term index, and each facet's shard, in parallel;
-//   3. low.bin, by multi-range requests, only when the h and m tiers can't give a full
-//      page: m2 parts and the id chunks a bound needs, narrowing the bound over at most two
-//      rounds (docs/search-index.md, "Running a query");
-//   4. one multi-range request on cards.bin for the page's cards.
+//   3. the low tiers, by multi-range requests (one per low segment touched, in parallel),
+//      only when the h and m tiers can't give a full page: m2 parts and the id chunks a
+//      bound needs, narrowing the bound over at most two rounds (docs/search-index.md,
+//      "Running a query");
+//   4. the page's cards, one multi-range request per cards segment they fall in.
 
 import {
   Dataset,
@@ -22,13 +23,21 @@ import {
 import { tokens } from './tokenize.mjs';
 
 const MAX_RANGES = 100;
+// A host that ignores Range answers 200 with the whole file. idx.stare.pub did that for
+// format 1's low.bin and cards.bin on a cold cache miss, since Cloudflare won't cache an
+// object over 512 MB on this zone's plan and fetches it without the Range header first
+// (docs/search-index.md, "Where it lives"); format 2's segments are cacheable. A 200 is read only while its body stays within
+// FULL_BODY_FACTOR times the bytes asked for, plus FULL_BODY_SLACK; past that it is cancelled
+// and the request sent once more, and a second such answer fails the read.
+const FULL_BODY_FACTOR = 4;
+const FULL_BODY_SLACK = 64 * 1024;
 // Fetch a term's whole low tier along with the m2 tier when it's at most this big.
 const LOW_ALL_BYTES = 128 * 1024;
-// Read about this much of low.bin per narrowing round (the cheapest token always goes,
+// Read about this much of the low tiers per narrowing round (the cheapest token always goes,
 // within LOW_CAP). A token left unread is partial: it doesn't filter the candidates, and
 // scores only what was read.
 const LOW_BUDGET = 512 * 1024;
-// At most this much of low.bin in a query's narrowing: a token whose chunks would pass it
+// At most this much of the low tiers in a query's narrowing: a token whose chunks would pass it
 // stays partial. Without it a six-word phrase read up to 3.5 MB, most of a common word's
 // low tier, for one more of the 50 known answers in the first ten.
 const LOW_CAP = 1_000_000;
@@ -55,42 +64,164 @@ export async function openSearch(base, { fetch: fetchFn = (...args) => globalThi
   }
   const meta = raw.metadata?.search;
   if (!meta) throw new Error('not a stare search tree: the manifest has no metadata.search');
-  if (meta.format !== 'stare-search' || meta.format_version !== 1) {
+  if (meta.format !== 'stare-search' || meta.format_version !== 2) {
     throw new Error(`unsupported search format ${meta.format} ${meta.format_version}`);
   }
   const ds = new Dataset(url, parseManifest(raw), fetchFn);
   return { ds, meta, url, fetch: fetchFn, manifest: raw };
 }
 
-/** Byte ranges of one file, by multi-range requests of at most MAX_RANGES ranges. */
-export async function readRanges(s, path, ranges) {
-  const merged = coalesceRanges(ranges.map((r) => ({ start: r.start, end: r.end })));
-  const parts = [];
-  for (let i = 0; i < merged.length; i += MAX_RANGES) {
-    const group = merged.slice(i, i + MAX_RANGES);
-    const res = await s.fetch(`${s.url}/${path}`, { headers: { Range: multiRangeHeader(group) } });
-    if (res.status === 200) {
-      const all = new Uint8Array(await res.arrayBuffer());
-      for (const g of group) parts.push({ start: g.start, end: g.end, bytes: all.subarray(g.start, g.end) });
-    } else if (res.status === 206) {
-      const body = new Uint8Array(await res.arrayBuffer());
-      const type = res.headers.get('content-type') || '';
-      if (type.toLowerCase().startsWith('multipart/byteranges')) {
-        parts.push(...parseMultipartByteranges(body, type));
-      } else {
-        const m = /bytes (\d+)-(\d+)/.exec(res.headers.get('content-range') || '');
-        parts.push({ start: Number(m[1]), end: Number(m[2]) + 1, bytes: body });
+/**
+ * A 200's body, or null when it passes `limit` bytes: then the request is aborted and the
+ * body cancelled as soon as that shows, from Content-Length or while streaming, so a
+ * multi-gigabyte file is never downloaded.
+ */
+async function boundedBody(res, limit, ctl) {
+  const stop = async () => {
+    ctl.abort();
+    try {
+      await res.body?.cancel();
+    } catch {
+      // already aborted
+    }
+    return null;
+  };
+  const declared = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > limit) return stop();
+  if (!res.body?.getReader) {
+    const all = new Uint8Array(await res.arrayBuffer());
+    return all.length > limit ? null : all;
+  }
+  const reader = res.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    let step;
+    try {
+      step = await reader.read();
+    } catch (e) {
+      if (ctl.signal.aborted) return null;
+      throw e;
+    }
+    if (step.done) break;
+    total += step.value.length;
+    if (total > limit) {
+      ctl.abort();
+      try {
+        await reader.cancel();
+      } catch {
+        // already aborted
       }
-    } else {
-      throw new Error(`HTTP ${res.status} reading ${path}`);
+      return null;
+    }
+    chunks.push(step.value);
+  }
+  const all = new Uint8Array(total);
+  let pos = 0;
+  for (const c of chunks) {
+    all.set(c, pos);
+    pos += c.length;
+  }
+  return all;
+}
+
+/**
+ * One ranged request for `group`: { status, type, contentRange, body }. A 200 whose body
+ * is far bigger than the ranges is abandoned and the request retried once (see
+ * FULL_BODY_FACTOR).
+ */
+async function fetchGroup(s, path, group) {
+  const want = group.reduce((n, g) => n + (g.end - g.start), 0);
+  const limit = want * FULL_BODY_FACTOR + FULL_BODY_SLACK;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const ctl = new AbortController();
+    const res = await s.fetch(`${s.url}/${path}`, {
+      headers: { Range: multiRangeHeader(group) },
+      signal: ctl.signal,
+    });
+    const head = {
+      status: res.status,
+      type: res.headers.get('content-type') || '',
+      contentRange: res.headers.get('content-range') || '',
+    };
+    if (res.status !== 200) return { ...head, body: new Uint8Array(await res.arrayBuffer()) };
+    const body = await boundedBody(res, limit, ctl);
+    if (body) return { ...head, body };
+  }
+  throw new Error(
+    `${path} answered a range request for ${want} bytes with the whole file, twice; not reading it`
+  );
+}
+
+/**
+ * Byte ranges of a segmented file (`metadata.search.files.low` or `.cards`): one address
+ * space stored as segments of `segment_bytes`, segment n at `segments` with `{segment}`
+ * replaced by n. The ranges are coalesced, cut at segment edges and read by multi-range
+ * requests of at most MAX_RANGES ranges per segment, every segment's in parallel. Returns
+ * get(start, end) for any range inside one asked for, joined across segments where needed.
+ */
+export async function readRanges(s, file, ranges) {
+  const size = file.segment_bytes;
+  const bySegment = new Map();
+  for (const r of coalesceRanges(ranges.map((x) => ({ start: x.start, end: x.end })))) {
+    for (let a = r.start; a < r.end; ) {
+      const n = Math.floor(a / size);
+      const b = Math.min(r.end, (n + 1) * size);
+      if (!bySegment.has(n)) bySegment.set(n, []);
+      bySegment.get(n).push({ start: a - n * size, end: b - n * size });
+      a = b;
     }
   }
-  return (start, end) => {
-    for (const p of parts) {
-      if (p.start <= start && end <= p.end) return p.bytes.subarray(start - p.start, end - p.start);
+  const requests = [];
+  for (const [n, local] of bySegment) {
+    const path = file.segments.replace('{segment}', String(n));
+    for (let i = 0; i < local.length; i += MAX_RANGES) {
+      requests.push(readSegment(s, path, local.slice(i, i + MAX_RANGES), n * size));
     }
-    throw new Error(`range ${start}-${end} of ${path} was not read`);
+  }
+  const parts = (await Promise.all(requests)).flat().sort((x, y) => x.start - y.start);
+  return (start, end) => {
+    const first = parts.findIndex((p) => p.start <= start && start < p.end);
+    if (first >= 0 && end <= parts[first].end) {
+      const p = parts[first];
+      return p.bytes.subarray(start - p.start, end - p.start);
+    }
+    // straddles segments: join the consecutive parts that cover it
+    const out = new Uint8Array(end - start);
+    let at = start;
+    for (let i = first; i >= 0 && i < parts.length && at < end; i++) {
+      const p = parts[i];
+      if (p.start > at || p.end <= at) break;
+      const take = p.bytes.subarray(at - p.start, Math.min(end, p.end) - p.start);
+      out.set(take, at - start);
+      at += take.length;
+    }
+    if (at < end) throw new Error(`range ${start}-${end} of ${file.segments} was not read`);
+    return out;
   };
+}
+
+/** One multi-range request on one segment; its parts, at `base` + their offsets. */
+async function readSegment(s, path, group, base) {
+  const res = await fetchGroup(s, path, group);
+  const parts = [];
+  if (res.status === 200) {
+    for (const g of group) {
+      if (g.end > res.body.length) throw new Error(`${path} is ${res.body.length} bytes, short of ${g.end}`);
+      parts.push({ start: g.start, end: g.end, bytes: res.body.subarray(g.start, g.end) });
+    }
+  } else if (res.status === 206) {
+    if (res.type.toLowerCase().startsWith('multipart/byteranges')) {
+      parts.push(...parseMultipartByteranges(res.body, res.type));
+    } else {
+      const m = /bytes (\d+)-(\d+)/.exec(res.contentRange);
+      if (!m) throw new Error(`${path} answered 206 with no Content-Range`);
+      parts.push({ start: Number(m[1]), end: Number(m[2]) + 1, bytes: res.body });
+    }
+  } else {
+    throw new Error(`HTTP ${res.status} reading ${path}`);
+  }
+  return parts.map((p) => ({ start: base + p.start, end: base + p.end, bytes: p.bytes }));
 }
 
 function idf(n, df) {
@@ -121,7 +252,7 @@ function parseTerm(term, entries) {
   return t;
 }
 
-/** Frames of a low.bin part, (code, bitmap) each, into a term's text map. */
+/** Frames of a low-tier part, (code, bitmap) each, into a term's text map. */
 function addFrames(t, bytes) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let pos = 0;
@@ -210,7 +341,7 @@ async function fetchLow(s, wants) {
   const ranges = [];
   for (const { refs } of wants) for (const r of refs) ranges.push({ start: r.offset, end: r.offset + r.length });
   if (!ranges.length) return;
-  const get = await readRanges(s, s.meta.files.low.path, ranges);
+  const get = await readRanges(s, s.meta.files.low, ranges);
   for (const { term, refs } of wants) {
     for (const r of refs) addFrames(term, get(r.offset, r.offset + r.length));
   }
@@ -394,10 +525,10 @@ export async function search(s, query, { filters = {}, limit = 20, cards = true 
   scored.sort((a, b) => b.score - a.score || a.id - b.id);
   const top = scored.slice(0, limit);
   if (cards && top.length) {
-    const { path, stride } = meta.files.cards;
+    const { stride } = meta.files.cards;
     const get = await readRanges(
       s,
-      path,
+      meta.files.cards,
       top.map((h) => ({ start: h.id * stride, end: (h.id + 1) * stride }))
     );
     const dec = new TextDecoder();

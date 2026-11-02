@@ -73,7 +73,7 @@ export async function bundleSearchClient({ build, vendorDir, outFile }) {
     legalComments: 'none',
     banner: {
       js: `/* stare.pub's search client: ${ss.repo} ${ss.commit} ${ss.path}/search.mjs and tokenize.mjs, `
-        + `with ${rb.repo} ${rb.tag} (${rb.commit}) ${rb.path} (PolyForm Shield 1.0.0) */`,
+        + `with ${rb.repo}${rb.tag ? ` ${rb.tag}` : ''} ${rb.commit} ${rb.path} (PolyForm Shield 1.0.0) */`,
     },
     logLevel: 'warning',
   });

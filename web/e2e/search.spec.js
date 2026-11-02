@@ -63,12 +63,21 @@ const test = base.extend({
 });
 
 const treeRequests = (page, end) => page.searchRequests.filter((r) => new URL(r.url).pathname.endsWith(end));
+// The requests on a segmented file's segments (`cards/<n>.bin`, `low/<n>.bin`).
+const segmentRequests = (page, dir) => page.searchRequests.filter((r) => new RegExp(`/search/${dir}/\\d+\\.bin$`).test(new URL(r.url).pathname));
 const status = (page) => page.locator('#search-status');
 
-// The cards of decision ids, read from the fixture's cards.bin.
-const CARDS = readFileSync(`${TREE_ROOT}${TREE_PATH}/cards.bin`);
-const STRIDE = 160;
-const cardOf = (id) => JSON.parse(CARDS.subarray(id * STRIDE, (id + 1) * STRIDE).toString('utf8').trimEnd());
+// The cards of decision ids, read from the fixture's cards segments.
+const CARDS_META = JSON.parse(readFileSync(`${TREE_ROOT}${TREE_PATH}/manifest.json`, 'utf8')).metadata.search.files.cards;
+const STRIDE = CARDS_META.stride;
+const SEGMENT_CARDS = CARDS_META.segment_bytes / STRIDE;
+const cardOf = (id) => {
+  const seg = readFileSync(`${TREE_ROOT}${TREE_PATH}/${CARDS_META.segments.replace('{segment}', Math.floor(id / SEGMENT_CARDS))}`);
+  const at = (id % SEGMENT_CARDS) * STRIDE;
+  return JSON.parse(seg.subarray(at, at + STRIDE).toString('utf8').trimEnd());
+};
+// The cards segments a page of ranked ids falls in, as file names (`3.bin`), sorted.
+const cardSegments = (ids) => [...new Set(ids.map((id) => `${Math.floor(id / SEGMENT_CARDS)}.bin`))].sort();
 const expected = (q, filters) => EXPECTED.find((e) => e.q === q && !e.limit && JSON.stringify(e.filters ?? {}) === JSON.stringify(filters ?? {}));
 
 test('the empty page fetches nothing from the index, and no search client', async ({ page }) => {
@@ -95,14 +104,14 @@ test('a query shows 20 cards ranked as stare-builder\'s client ranks them, linke
   await expect(cards.first().locator('a')).toHaveAttribute('href', `/#${first.r}`);
   await expect(cards.first().locator('.search-card-cite')).toHaveText(first.c);
   await expect(cards.first().locator('.search-card-court')).toHaveText(first.ct);
-  // the session's reads: the tree's manifest, the word's shard, low.bin as the client's stage
-  // needed, and the page's cards in one multi-range request; no facets
+  // the session's reads: the tree's manifest, the word's shard, the low tiers as the client's
+  // stage needed, and the page's cards, one multi-range request per cards segment; no facets
   expect(treeRequests(page, 'search/manifest.json')).toHaveLength(1);
   expect(treeRequests(page, '.eidx').length).toBe(1);
   expect(treeRequests(page, 'facets.json')).toEqual([]);
-  const cardReads = treeRequests(page, 'cards.bin');
-  expect(cardReads).toHaveLength(1);
-  expect(cardReads[0].range).toMatch(/^bytes=\d+-\d+(,\d+-\d+)*$/);
+  const cardReads = segmentRequests(page, 'cards');
+  expect(cardReads.map((r) => new URL(r.url).pathname.split('/').pop()).sort()).toEqual(cardSegments(want.ranked.slice(0, 20).map(([id]) => id)));
+  for (const r of cardReads) expect(r.range).toMatch(/^bytes=\d+-\d+(,\d+-\d+)*$/);
 });
 
 test('the next page reads only its cards, and Back shows the first again', async ({ page }) => {
@@ -117,7 +126,8 @@ test('the next page reads only its cards, and Back shows the first again', async
   const names = await page.locator('#search-results .search-card-name').allTextContents();
   expect(names).toEqual(want.ranked.slice(20, 40).map(([id]) => cardOf(id).n));
   const added = page.searchRequests.slice(before);
-  expect(added.map((r) => new URL(r.url).pathname.split('/').pop())).toEqual(['cards.bin']);
+  expect(added.every((r) => /\/search\/cards\/\d+\.bin$/.test(new URL(r.url).pathname))).toBe(true);
+  expect(added.map((r) => new URL(r.url).pathname.split('/').pop()).sort()).toEqual(cardSegments(want.ranked.slice(20, 40).map(([id]) => id)));
   // keyboard users land on the new results
   await expect(page.locator('#search-results-heading')).toBeFocused();
   await page.goBack();

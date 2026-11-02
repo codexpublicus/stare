@@ -319,7 +319,9 @@ and a page.
 
 The ranking is stare-builder's reference client and nobody else's.
 `web/src/vendor/stare-search/` holds `search.mjs` and `tokenize.mjs`, and
-`web/src/vendor/roaringbuckets-client/` roaringbuckets' JS client (v0.3.0), byte for byte
+`web/src/vendor/roaringbuckets-client/` roaringbuckets' JS client (v0.3.0 and
+[roaringbuckets#61](https://github.com/lokkju/roaringbuckets/pull/61), which aborts a ranged read
+answered with the whole file), byte for byte
 at the commits `web/src/vendor/search-client.json` pins with each file's SHA-256. The
 `stare-search-client` hook in `astro.config.mjs` (`src/lib/searchvendor.js`) bundles them
 into one module at `/vendor/stare-search-<stare-builder commit>-rb<roaringbuckets
