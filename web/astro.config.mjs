@@ -9,6 +9,8 @@ import { build, transform } from 'esbuild';
 import { PDFJS_DIR, PDFJS_VERSION } from './public/js/pdfjs-path.js';
 import { vendorPdfjs } from './src/lib/pdfjs-vendor.js';
 import { casePreloads, fingerprintWasm, modulePreloads } from './src/lib/assetcache.js';
+import { SEARCH_CLIENT_DIR, SEARCH_CLIENT_URL } from './public/js/searchclient-path.js';
+import { bundleSearchClient, clientDirName, readPins } from './src/lib/searchvendor.js';
 
 import { isAllowed, parseLlmsTxt, parseRobots } from './src/lib/crawlfiles.js';
 import { CASE_PREFIX, ROBOTS_MAX_BYTES, curatedAllows, curatedSet } from './src/lib/robots.js';
@@ -156,9 +158,29 @@ const pdfjs = {
 	},
 };
 
+// Bundles the search page's client (stare-builder's reference query and the roaringbuckets
+// JS client, vendored unchanged in src/vendor/) into public/vendor/ (gitignored), before
+// the dev server or the build reads public/ (src/lib/searchvendor.js). Fails if a vendored
+// file differs from its pin, or if SEARCH_CLIENT_DIR doesn't name the pinned commits.
+const searchClient = {
+	name: 'stare-search-client',
+	hooks: {
+		'astro:config:setup': async ({ logger }) => {
+			const vendorDir = fileURLToPath(new URL('./src/vendor/', import.meta.url));
+			const dirName = clientDirName(readPins(vendorDir));
+			if (dirName !== SEARCH_CLIENT_DIR) {
+				throw new Error(`public/js/searchclient-path.js names ${SEARCH_CLIENT_DIR}; the pins in src/vendor/search-client.json make it ${dirName}`);
+			}
+			const outFile = fileURLToPath(new URL(`./public${SEARCH_CLIENT_URL}`, import.meta.url));
+			await bundleSearchClient({ build, vendorDir, outFile });
+			logger.info(`public${SEARCH_CLIENT_URL}: ${statSync(outFile).size} bytes`);
+		},
+	},
+};
+
 // https://astro.build/config
 export default defineConfig({
-	integrations: [pdfjs, wasmSize, crawlFiles, assetCache],
+	integrations: [pdfjs, searchClient, wasmSize, crawlFiles, assetCache],
 	vite: {
 		server: {
 			// /about imports the repo-root CHANGELOG.md (?raw); let the dev server

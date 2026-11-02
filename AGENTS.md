@@ -306,6 +306,88 @@ What each stage suggests, and fetches the first time:
   files in stare-builder would cost 0.2 to 8 KB more per volume compressed (the index
   files grow about threefold) and would replace the range read.
 
+### The search page (D155 (6): `web/src/pages/search.astro`, `web/public/js/searchpage.js`)
+
+`/search/?q=...&jurisdiction=...&court=...&from=...&to=...&page=...` searches the full-text
+tree stare-builder builds under an index build, `idx.stare.pub/v/<version>/search/`
+(stare-builder's `docs/search-index.md`; D143, D155). It is a real page, not a hash route,
+and runs in place: a new query or page changes the URL with `pushState`, and Back and
+Forward run the URL they land on. The landing's box and the top bar's editor hand text
+they can't read as a citation to it (`searchUrl` in main.js); text with no digit goes
+straight there, without waiting for the parser's WASM, since a citation always has a volume
+and a page.
+
+The ranking is stare-builder's reference client and nobody else's.
+`web/src/vendor/stare-search/` holds `search.mjs` and `tokenize.mjs`, and
+`web/src/vendor/roaringbuckets-client/` roaringbuckets' JS client (v0.3.0 and
+[roaringbuckets#61](https://github.com/lokkju/roaringbuckets/pull/61), which aborts a ranged
+read answered with the whole file), byte for byte at the commits
+`web/src/vendor/search-client.json` pins with each file's SHA-256. The
+`stare-search-client` hook in `astro.config.mjs` (`src/lib/searchvendor.js`) bundles them
+into one module at `/vendor/stare-search-<stare-builder commit>-rb<roaringbuckets
+commit>/search.js` (`SEARCH_CLIENT_URL` in `public/js/searchclient-path.js`), which
+`_headers` serves immutable, and fails the build if a copy differs from its pin.
+`web/tests/searchclient.test.js` checks the pins and runs the copies on a fixture tree
+(`web/tests/fixtures/`, built from stare-builder's made-up corpus) against what
+stare-builder's own client returned at that commit, ranking and scores included;
+`web/e2e/search.spec.js` runs the bundle on the same queries in the browser. Moving the pin
+means copying the files in again, updating the hashes, the directory name and the expected
+results (`web/tests/fixtures/README.md`).
+
+The page adds nothing to the client. A year range is the client's own `year_from` and
+`year_to` filter (the union of the years' `year` keys, or of the court's `court_year` keys
+with a court); the page closes an open range at the first or last year facets.json lists
+(within the court's own years, with a court), so the client reads only those years' keys. A
+single year is the format's own key, and a range over every year is no filter.
+
+What it fetches, and when:
+
+- Nothing until there is a query or the filters are opened; the page's own modules are
+  `searchpage.js`, `searchquery.js` and `searchclient-path.js` (about 9 KB gzipped).
+- Then, once a page: the index manifest (`loadManifest`, for `base`; `PUBLIC_SEARCH_TREE` at
+  build time pins a tree instead, for the dev server and local measurements), then the
+  search client (12.4 KB gzipped) and the tree's `manifest.json` in parallel. A tree that
+  answers 404 or 403 says "Search isn't available for this index yet", a note, not an error;
+  a client a content blocker refuses says so. Neither breaks the boot guard, which watches
+  `#search-status`.
+- Each query: what the client reads (the words' term shards, a facet's shard, the low
+  tiers when the top tiers can't fill a page, and the page's 20 cards). Search format 2
+  stores the cards and the low tiers as 32 MiB segments (`cards/<n>.bin`, `low/<n>.bin`),
+  so Cloudflare caches them and answers a range of a cold one with the range; the client
+  sends one multi-range request per segment a read touches, in parallel. A query's ranking
+  is kept, so another page of it reads only its cards.
+- `facets.json` (62 KB gzipped for v2026.10.26.2) only for the filters' lists, after any
+  query under way, or on the query path for a year range, to know which years exist.
+
+Measured on 2026-11-02 on the PR preview against idx.stare.pub's format-2 tree for
+v2026.10.26.2 (7.8M decisions), Chromium with its cache off, the tree's own requests and
+their bytes over the wire: one word (`negligence`) 3 requests and 309 KB, `chevron` 10 and
+312 KB, two words (`chevron deference`) 5 and 343 KB, `palsgraf railroad` 18 and 1,036 KB
+(695 KB of the low tiers, in one segment), a name (`miranda arizona`) 10 and 682 KB, a word
+with a court and one year 6 and 546 KB (facets.json's 70 KB included), with a court and a
+ten-year range 6 and 547 KB, with a ten-year range and no court 9 and 414 KB, a three-word
+phrase (`proximate cause foreseeability`) 18 and 366 KB. The tree's manifest is 269 to
+272 KB of each: Cloudflare sends it as zstd, 37 KB more than the 232 KB gzip of the same
+704 KB. The next page was 1 to 14 requests of 2.1 to 9.4 KB in all. No ranged read came
+back as a whole-file 200. Add the index manifest (about 40 KB on a first visit, fetched
+by both `dataversion.js` and `manifest.js` when the cache is off) and the client module
+(15 KB).
+
+The bytes are format 1's but for the manifest's encoding (format 1, served locally with
+gzip: 3 and 271 KB for `negligence`, 5 and 993 KB for `palsgraf railroad`); the requests
+went up, since a page's 20 cards fall in
+up to 20 cards segments and each is its own request. The owner accepted that for now
+(D162); [stare-builder#86](https://github.com/codexpublicus/stare-builder/issues/86) tracks
+numbering decisions so a query's top cards share segments.
+
+The status line is a polite live region that says how many decisions matched, and whether
+that's every match or the best of what the tiers read ("The best 4,352 matches found" for a
+word past the term index's 4,352 postings); the form is `role="search"` and works as a
+plain GET without the module; the pagination is a `nav` with `aria-current`, and a page
+change moves focus to the results' heading. The page is at least the window's height, so
+results arriving move nothing on screen; `search.spec.js` keeps a query's layout shifts
+under 0.05 at phone and laptop sizes.
+
 ### The browser cache (#269: `web/public/js/cache.js`)
 
 Index files, case zips and CourtListener records are cached in IndexedDB (`stare-cache`,

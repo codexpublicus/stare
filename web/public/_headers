@@ -36,6 +36,11 @@
 /vendor/pdfjs-*
   Cache-Control: public, max-age=31536000, immutable
 
+# The search page's client (src/lib/searchvendor.js), likewise named for the stare-builder
+# and roaringbuckets commits it was bundled from (public/js/searchclient-path.js).
+/vendor/stare-search-*
+  Cache-Control: public, max-age=31536000, immutable
+
 # Long caching for everything whose URL changes when its content does (#266), and
 # nothing else. Every other file keeps Workers' default, public, max-age=0,
 # must-revalidate: the pages, /js/*.js (plain names that import each other, so a

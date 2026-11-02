@@ -63,7 +63,7 @@ const CL_RECORD = [4893133, '62f253f296600fb7'];
 
 /**
  * `{ url, type, from }` for the index host's and data hosts' files: the manifest and
- * reports, and for every reporter in `reporters` (reporters.json's `reporters`), a
+ * reports, the search tree's files, and for every reporter in `reporters` (reporters.json's `reporters`), a
  * volume's index files (unified, split, and the older .bin and .multi), zip, tar and
  * .tar.csv, archival PDF and its manifest.
  */
@@ -77,6 +77,12 @@ export function dataUrls(reporters) {
   add(indexUrl(`${BASE}report.json`), xhr, 'reports');
   add(`${PDF_URL}/manifest.json`, xhr, 'pdf manifest');
   add(clRecordUrl(...CL_RECORD), xhr, 'cl record');
+  // the full-text search tree the search page reads (stare-builder's docs/search-index.md)
+  for (const file of ['manifest.json', 'facets.json', 'cards/0.bin', 'low/0.bin', 'low/176.bin', 'indexes/terms/0.eidx',
+    'indexes/terms/70658.eidx', 'indexes/jurisdiction/0.eidx', 'indexes/court/0.eidx', 'indexes/year/0.eidx',
+    'indexes/reporter/0.eidx', 'indexes/court_year/0.eidx']) {
+    add(indexUrl(`${BASE}search/${file}`), xhr, 'search');
+  }
   for (const [slug, r] of Object.entries(reporters)) {
     const first = String(r?.volumes?.first ?? '1');
     const volume = /^\d(?:[0-9a-z-]*[0-9a-z])?$/.test(first) ? first : '1';

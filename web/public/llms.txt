@@ -31,6 +31,7 @@ Index files under `v/<version>/` and the case files never change once published;
 
 - [stare.pub](https://stare.pub/): look up a citation; the case viewer opens a case at `https://stare.pub/#<slug>/<volume>/<page>`, such as `https://stare.pub/#a2d/31/647`
 - [Brief checker](https://stare.pub/check/): paste a brief and check every citation in it
+- [Search](https://stare.pub/search/): find decisions by the words in their opinion text or case name, filtered by jurisdiction, court and years (`https://stare.pub/search/?q=palsgraf+railroad`). It runs in the browser on static search files under the live index build on idx.stare.pub, and says so when the live build has none yet
 - [About](https://stare.pub/about/): what stare is, where the data comes from and what's new
 - [Data](https://stare.pub/data/): the sources, the index and case files, and every index build's counts
 - [Updates](https://stare.pub/updates/): every site release ([Atom feed](https://stare.pub/updates.xml))
