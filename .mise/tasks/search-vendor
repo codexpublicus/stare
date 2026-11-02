@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+#MISE description="Compare the vendored search client with its pinned commits, and say whether stare-builder's main has changed it since"
+#USAGE flag "--ref <ref>" help="The stare-builder ref to compare the pin with" default="origin/main"
+set -euo pipefail
+
+# The search page's client is vendored byte for byte (web/src/lib/searchvendor.js):
+# stare-builder's pipelines/search-index/client/{search,tokenize}.mjs and roaringbuckets'
+# packages/client/src, at the commits web/src/vendor/search-client.json pins. Both repos
+# are private, so CI can't run this; it clones them with your git credentials. It fails if a
+# copy differs from its pinned commit, and lists the files stare-builder changed between the
+# pin and --ref, which mean the pin is behind.
+root="${MISE_PROJECT_ROOT}"
+vendor="$root/web/src/vendor"
+ref="${usage_ref:-origin/main}"
+pins="$vendor/search-client.json"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+pin() { node -e "const p=require('$pins'); console.log(p['$1'].$2)"; }
+files() { node -e "console.log(Object.keys(require('$pins')['$1'].files).join(' '))"; }
+
+git -c url."https://github.com/".insteadOf=git@github.com: clone --quiet --filter=blob:none \
+  "https://github.com/$(pin stare-search repo).git" "$tmp/sb"
+git -c url."https://github.com/".insteadOf=git@github.com: clone --quiet --filter=blob:none \
+  "https://github.com/$(pin roaringbuckets-client repo).git" "$tmp/rb"
+
+status=0
+sb_commit="$(pin stare-search commit)"
+sb_path="$(pin stare-search path)"
+for f in $(files stare-search); do
+  if ! git -C "$tmp/sb" show "$sb_commit:$sb_path/$f" | cmp -s - "$vendor/stare-search/$f"; then
+    echo "stare-search/$f differs from $sb_commit" >&2
+    status=1
+  fi
+done
+rb_commit="$(pin roaringbuckets-client commit)"
+rb_path="$(pin roaringbuckets-client path)"
+for f in $(files roaringbuckets-client); do
+  src="$rb_path/$f"
+  [ "$f" = LICENSE ] && src=LICENSE
+  if ! git -C "$tmp/rb" show "$rb_commit:$src" | cmp -s - "$vendor/roaringbuckets-client/$f"; then
+    echo "roaringbuckets-client/$f differs from $rb_commit" >&2
+    status=1
+  fi
+done
+[ "$status" = 0 ] && echo "the vendored copies match their pins"
+
+changed="$(git -C "$tmp/sb" diff --name-only "$sb_commit" "$ref" -- "$sb_path/search.mjs" "$sb_path/tokenize.mjs")"
+if [ -n "$changed" ]; then
+  echo "stare-builder $ref has changed the client since the pin:"
+  echo "$changed"
+else
+  echo "stare-builder $ref has the pinned client"
+fi
+exit "$status"
