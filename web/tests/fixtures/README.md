@@ -37,14 +37,40 @@ run with `uv run python` from `pipelines/search-index/` (on `sys.path`, for `tes
 
 `search-expected.json` is what stare-builder's own client at that commit returned for each
 query in `search-queries.json` on the tree: the totals, stage and flags, the whole ranking
-with scores, and the first 20 cards. `web/scripts/search-expected.mjs` writes it, given
-that client directory with roaringbuckets' client linked in as
-`node_modules/@roaringbuckets/client`. `web/tests/searchclient.test.js` runs stare's
-vendored copy on the same queries and compares; `web/e2e/search.spec.js` serves the tree
-through routes, so the browser tests need no R2. Rebuild both when the client's pin moves.
+with scores, and the first 20 cards.
 
-`searchtree.js` answers the tree's files as idx.stare.pub does (single and multi-range
-206s) for both.
+`search-tree-format3/v/v2026.10.26/search/` is the same corpus in format 3, built at
+stare-builder 6098a43072a3366c4c8c90e6a63553f59b7addd0 (stare-builder#90) with the script
+above plus the citation counts step, run between `extract` and `build`:
+
+```python
+cli.main(["citations", "--work", str(work), "--cl-clusters", str(c["cl_clusters"]),
+          "--cl-crosswalk", str(c["cl_crosswalk"]), "--jobs", "2"])
+```
+
+as stare-builder's `tests/conftest.py` does at that commit. The corpus there gains
+CourtListener's opinion-clusters table and the export's crosswalk: ny/1/0013-02, Palsgraf v.
+Elevator Co., is cited 5,000 times and ny/1/0001-01 700. `search-expected-format3.json` is
+that commit's client on `search-queries-format3.json`, format 2's queries plus three party
+names (`palsgraf elevator`, `Palsgraf v. Elevator Co.`, `jones kale`).
+
+`web/scripts/search-expected.mjs` writes both, given a client directory
+(`pipelines/search-index/client` at the commit) with roaringbuckets' client linked in as
+`node_modules/@roaringbuckets/client`, the tree, the queries and the output:
+
+```
+node web/scripts/search-expected.mjs <client dir> web/tests/fixtures/search-tree-format3 \
+  web/tests/fixtures/search-queries-format3.json web/tests/fixtures/search-expected-format3.json
+```
+
+`web/tests/searchclient.test.js` runs stare's vendored copy for each format on its tree and
+compares; `web/e2e/search.spec.js` serves the trees through routes, format 2's unless a test
+asks for format 3's, so the browser tests need no R2. Rebuild a format's tree and expected
+results when its client's pin moves; the format-2 tree and its files go when that client
+does (`src/vendor/stare-search-format2/README.md`).
+
+`searchtree.js` answers either tree's files as idx.stare.pub does (single and multi-range
+206s) for both test files.
 
 # Collection fixtures
 

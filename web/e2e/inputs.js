@@ -56,10 +56,7 @@ export const SHARED = [
 ];
 
 // Files a SHARED glob takes in that only some specs need.
-export const SHARED_EXCLUDE = [
-  // The search client's entry point, which src/lib/searchvendor.js bundles (SEARCH)
-  'web/src/lib/searchclient-entry.js',
-];
+export const SHARED_EXCLUDE = [];
 
 // The search page's own files, which nothing else loads.
 const SEARCH_ONLY_JS = [
@@ -105,19 +102,22 @@ const PAGES = [
   'schemas/*.schema.json',
 ];
 
-// The search page, its bundled client (src/lib/searchvendor.js bundles src/vendor/ into
-// public/vendor/ at build time) and the search tree fixture search.spec.js serves.
+// The search page, its bundled clients, one per search format (src/lib/searchvendor.js
+// bundles src/vendor/ into public/vendor/ at build time), and the search tree fixtures
+// search.spec.js serves, one per format.
 const SEARCH = [
   'web/src/pages/search.astro',
   'web/src/styles/search.css',
   ...SEARCH_ONLY_JS,
-  'web/src/lib/searchclient-entry.js',
   'web/src/vendor/search-client.json',
   'web/src/vendor/roaringbuckets-client/**',
   'web/src/vendor/stare-search/**',
+  'web/src/vendor/stare-search-format2/**',
   'web/tests/fixtures/searchtree.js',
   'web/tests/fixtures/search-expected.json',
   'web/tests/fixtures/search-tree/**',
+  'web/tests/fixtures/search-expected-format3.json',
+  'web/tests/fixtures/search-tree-format3/**',
 ];
 
 // sitemap.xml lists every page in src/pages/ (undated in a PR's shallow build), so a
