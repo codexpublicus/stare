@@ -514,12 +514,23 @@ async function parseBox(box, input) {
   return b?.kept() || await parseInput(input.value) || await b?.parse() || null;
 }
 
+// Text a search box can't read as a citation goes to the full-text search (search.astro,
+// searchpage.js). A citation always has a volume and a page, so text without a digit goes
+// there straight away, without waiting for the parser's WASM.
+const searchUrl = (text) => `/search/?q=${encodeURIComponent(text.trim())}`;
+const isSearchText = (text) => !/\d/.test(text);
+
 // Landing form submit
 landingForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   landingBox.close();
   setStatus('', false);
-  if (landingInput.value.trim()) showWasmBar(() => landingForm.requestSubmit());
+  const text = landingInput.value.trim();
+  if (text && isSearchText(text)) {
+    location.assign(searchUrl(text));
+    return;
+  }
+  if (text) showWasmBar(() => landingForm.requestSubmit());
   let parsed;
   try {
     parsed = await parseBox(landingBox, landingInput);
@@ -528,7 +539,8 @@ landingForm.addEventListener('submit', async (e) => {
     return;
   }
   if (!parsed) {
-    setStatus('Enter a citation (e.g., 31 A.2d 647 or a2d 31 647)', true);
+    if (text) location.assign(searchUrl(text));
+    else setStatus('Enter a citation (e.g., 31 A.2d 647 or a2d 31 647), or words to search for', true);
     return;
   }
   doResolve(parsed.reporter, parsed.volume, parsed.page, parsed.seq);
@@ -582,6 +594,11 @@ document.getElementById('topbar').addEventListener('keydown', async (e) => {
   if (e.target !== topbarCiteInput) return;
   if (e.key === 'Enter') {
     e.preventDefault();
+    const text = topbarCiteInput.value.trim();
+    if (text && isSearchText(text)) {
+      location.assign(searchUrl(text));
+      return;
+    }
     let parsed;
     showWasmBar(null);
     try {
@@ -596,6 +613,8 @@ document.getElementById('topbar').addEventListener('keydown', async (e) => {
       stopEditing();
       doResolve(parsed.reporter, parsed.volume, parsed.page, parsed.seq);
       editSubmitting = false;
+    } else if (text) {
+      location.assign(searchUrl(text));
     }
   }
   if (e.key === 'Escape') {

@@ -54,7 +54,7 @@ import SiteHead from '../components/SiteHead.astro';
 				<p class="landing-desc">Resolve legal citations to full case text and original scanned pages.<br>No server. No account. Just static files and your browser.</p>
 			</div>
 
-			<p class="landing-input-hint">Enter a citation</p>
+			<p class="landing-input-hint">Enter a citation, or words to search for</p>
 			<form id="landing-form" class="landing-form">
 				<div class="suggest-anchor">
 					<input id="landing-input" type="text" placeholder="31 A.2d 647" autocomplete="off" spellcheck="false" aria-label="Citation" />
@@ -103,6 +103,13 @@ import SiteHead from '../components/SiteHead.astro';
 					<div class="landing-tool-text">
 						<strong>Check a brief</strong>
 						<span>Paste any legal text. We'll find every citation and tell you which ones we can resolve to the full case.</span>
+					</div>
+				</a>
+				<a href="/search/" class="landing-tool">
+					<div class="landing-tool-icon">&#128269;</div>
+					<div class="landing-tool-text">
+						<strong>Search case law</strong>
+						<span>Find decisions by the words in their text or their names, filtered by court and year.</span>
 					</div>
 				</a>
 				<a href="mailto:info@codexpublicus.org?subject=stare.pub%20CLI%20%2F%20AI%20skill%20alpha%20access&body=I'd%20like%20to%20try%20the%20CLI%20%2F%20AI%20skill%20when%20available." class="landing-tool coming-soon">

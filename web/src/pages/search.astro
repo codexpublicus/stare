@@ -1,0 +1,92 @@
+---
+import SiteFooter from '../components/SiteFooter.astro';
+import { BOOT_TIMEOUT_MS, bootGuardScript } from '../lib/bootguard.js';
+import '../styles/theme.css';
+import '../styles/layout.css';
+import '../styles/search.css';
+import Brand from '../components/Brand.astro';
+import SiteHead from '../components/SiteHead.astro';
+
+// A search tree to read instead of the live index's (`http://127.0.0.1:8765/v/<version>/search`),
+// for the dev server and local measurements; release and preview builds leave it unset.
+const tree = import.meta.env.PUBLIC_SEARCH_TREE || '';
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<SiteHead />
+		<title>Search case law · stare.pub</title>
+		<meta name="description" content="Search the text of U.S. court decisions on stare.pub, in your browser, from static files." />
+		<meta property="og:title" content="Search case law · §tare.pub" />
+		<meta property="og:description" content="Search the text of U.S. court decisions from the Caselaw Access Project and CourtListener, in your browser." />
+		<meta property="og:type" content="website" />
+		<meta property="og:url" content="https://stare.pub/search" />
+		<meta property="og:image" content="https://stare.pub/og-image.png" />
+		<script is:inline>
+			try {
+				var theme = localStorage.getItem('stare-theme');
+				if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+					document.documentElement.setAttribute('data-theme', 'dark');
+				}
+			} catch(e) {}
+		</script>
+		<!-- If the page's module fails to load, say so (#265). -->
+		<script is:inline set:html={bootGuardScript({ targets: ['search-status'], what: 'Search', errorClass: 'search-error', timeout: BOOT_TIMEOUT_MS })}></script>
+	</head>
+	<body data-search-tree={tree}>
+		<div class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
+		<main class="search-page">
+			<h1>Search case law</h1>
+			<form id="search-form" class="search-form" role="search" action="/search/" method="get">
+				<label for="search-q" class="search-label">Words in the decision or its name</label>
+				<div class="search-row">
+					<input id="search-q" name="q" type="search" autocomplete="off" spellcheck="false" maxlength="500" placeholder="palsgraf railroad" aria-describedby="search-help" />
+					<button type="submit" id="search-btn">Search</button>
+				</div>
+				<p id="search-help" class="search-help">Finds decisions with every word, in the opinion text or the case name. Words are matched as written: <i>negligent</i> doesn&rsquo;t find <i>negligence</i>.</p>
+				<details id="search-filters" class="search-filters">
+					<summary>Filters</summary>
+					<div class="search-filter-grid">
+						<label class="search-field">
+							<span>Jurisdiction</span>
+							<select id="search-jurisdiction" name="jurisdiction"><option value="">Any</option></select>
+						</label>
+						<label class="search-field">
+							<span>Court</span>
+							<select id="search-court" name="court"><option value="">Any</option></select>
+						</label>
+						<fieldset class="search-years">
+							<legend>Decided</legend>
+							<label class="search-field"><span>From year</span><input id="search-from" name="from" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" /></label>
+							<label class="search-field"><span>To year</span><input id="search-to" name="to" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" /></label>
+						</fieldset>
+					</div>
+					<p id="search-filter-note" class="search-filter-note" aria-live="polite"></p>
+				</details>
+			</form>
+
+			<p id="search-status" class="search-status" role="status" aria-live="polite" aria-atomic="true"></p>
+			<h2 id="search-results-heading" class="sr-only" tabindex="-1">Results</h2>
+			<ol id="search-results" class="search-results" aria-labelledby="search-results-heading"></ol>
+			<nav id="search-pages" class="search-pages" aria-label="Result pages" hidden></nav>
+			<noscript><p class="search-help">Search runs in your browser and needs JavaScript.</p></noscript>
+		</main>
+		<SiteFooter />
+		<script is:inline type="module" src="/js/searchpage.js"></script>
+		<script is:inline>
+			(function() {
+				var btn = document.getElementById('page-theme-btn');
+				if (!btn) return;
+				try { if (localStorage.getItem('stare-theme') === 'dark' || (!localStorage.getItem('stare-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) btn.textContent = '☀'; } catch(e) {}
+				btn.addEventListener('click', function(e) {
+					e.preventDefault();
+					var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+					if (isDark) { document.documentElement.removeAttribute('data-theme'); btn.textContent = '☾'; try { localStorage.setItem('stare-theme', 'light'); } catch(e) {} }
+					else { document.documentElement.setAttribute('data-theme', 'dark'); btn.textContent = '☀'; try { localStorage.setItem('stare-theme', 'dark'); } catch(e) {} }
+				});
+			})();
+		</script>
+	</body>
+</html>
