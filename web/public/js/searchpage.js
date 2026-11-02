@@ -52,7 +52,7 @@ const noteEl = $('search-note');
 const live = $('search-live');
 const progress = $('search-progress');
 const heading = $('search-results-heading');
-const list = $('search-results');
+let list = $('search-results');
 const empty = $('search-empty');
 const pagesNav = $('search-pages');
 
@@ -365,6 +365,15 @@ function renderPages(state, total) {
   pagesNav.hidden = false;
 }
 
+// A result set goes in as a new list element in place of the old one: new content, not
+// the old list moved, when the note above it appears or goes with the same results.
+function swapList(items) {
+  const ol = list.cloneNode(false);
+  ol.append(...items);
+  list.replaceWith(ol);
+  list = ol;
+}
+
 function clearResults() {
   list.replaceChildren();
   empty.hidden = true;
@@ -559,7 +568,7 @@ async function runQuery(state, { focus = false, scrollY = null } = {}) {
     const fields = cards.map(cardFields);
     if (state.court && fields[0]?.court) chipHint = { court: fields[0].court };
     renderChips(state, chipHint);
-    list.replaceChildren(...fields.map((c) => card(c, result.tokens)));
+    swapList(fields.map((c) => card(c, result.tokens)));
     empty.hidden = true;
     if (!fields.length) renderEmpty(state, result);
     renderPages({ ...state, page }, result.total);
