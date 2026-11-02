@@ -228,3 +228,5 @@ html[data-route="case"] #status-bar:empty::before { content: 'Loading...'; }
   .wasm-progress-fill { transition: none; }
   .wasm-progress-indeterminate .wasm-progress-fill { animation: none; width: 100%; opacity: 0.4; }
 }
+
+/* throwaway timing edit */
