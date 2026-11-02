@@ -62,7 +62,7 @@ export const SHARED_EXCLUDE = [
 ];
 
 // The search page's own files, which nothing else loads.
-const SEARCH_ONLY_JS = ['web/public/js/searchpage.js', 'web/public/js/searchquery.js'];
+const SEARCH_ONLY_JS = ['web/public/js/searchpage.js', 'web/public/js/searchquery.js', 'web/public/js/searchfilters.js'];
 // The /data page's own module.
 const DATA_ONLY_JS = ['web/public/js/datapage.js'];
 
@@ -130,6 +130,7 @@ export const SPECS = {
   'web/e2e/cache.spec.js': group(READER, CHECK, PAGES, SITEMAP),
   'web/e2e/caseload.spec.js': group(READER),
   'web/e2e/caseswitch.spec.js': group(READER),
+  'web/e2e/onebox.spec.js': group(READER, SEARCH),
   'web/e2e/resilience.spec.js': group(READER, CHECK, PAGES),
   'web/e2e/search.spec.js': group(READER, SEARCH),
   'web/e2e/smoke.spec.js': group(READER, CHECK, PAGES, SITEMAP, [
