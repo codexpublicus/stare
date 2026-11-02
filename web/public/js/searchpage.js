@@ -8,36 +8,59 @@
 // - the search client (searchclient-path.js), one module, and the tree's manifest.json, in
 //   parallel. A build with no search/ answers 404, and the page says search isn't
 //   available for it yet;
-// - facets.json, only for the filters (the court and jurisdiction lists, and which years
-//   exist for a year range).
+// - facets.json and the filter panel's module (searchfilters.js), only for the filters (the
+//   court and jurisdiction lists with their decisions, and the years for a year range).
 // Each query then costs what the client reads for it: the words' term shards, a facet's
 // shard, the low tiers' segments when the top tiers can't fill a page, and the page's
-// cards, one multi-range request per cards segment they fall in. A query's ranking is kept, so the next page reads only its cards.
+// cards, one multi-range request per cards segment they fall in. A query's ranking is kept,
+// so the next page reads only its cards.
+//
+// While a query runs, the previous results stay on screen, dimmed; the first query shows
+// a skeleton of the list at its final height instead, and says what it's loading. A new
+// query aborts the reads of the one it replaces (the session's fetch carries the current
+// query's signal). One announcement per result set goes to the live region (#search-live);
+// the status line itself isn't live, so its progress messages aren't read out.
 // Pages and new queries change the URL with pushState and run in place; Back and Forward
-// run the URL they land on.
+// run the URL they land on, and go back to where the page was scrolled.
 
 import { SEARCH_CLIENT_URL } from './searchclient-path.js';
 import { indexUrl } from './sources.js';
 import {
-  PAGE_SIZE, caseHref, cardFields, clientFilters, formatDate, pageCount, pageLinks,
-  parseSearchState, sameQuery, searchString, summaryText,
+  PAGE_SIZE, caseHref, cardFields, clientFilters, droppedWords, filterChips, formatDate,
+  hasFilters, looksLikeCitation, nameSegments, noteText, pageCount, pageLinks,
+  parseSearchState, sameQuery, searchString, statusText, summaryText,
 } from './searchquery.js';
 
-const form = document.getElementById('search-form');
-const input = document.getElementById('search-q');
-const button = document.getElementById('search-btn');
-const filters = document.getElementById('search-filters');
-const jurisdictionSel = document.getElementById('search-jurisdiction');
-const courtSel = document.getElementById('search-court');
-const fromInput = document.getElementById('search-from');
-const toInput = document.getElementById('search-to');
-const filterNote = document.getElementById('search-filter-note');
-const statusEl = document.getElementById('search-status');
-const heading = document.getElementById('search-results-heading');
-const list = document.getElementById('search-results');
-const pagesNav = document.getElementById('search-pages');
+const $ = (id) => document.getElementById(id);
+const form = $('search-form');
+const input = $('search-q');
+const button = $('search-btn');
+const filters = $('search-filters');
+const filterCount = $('search-filter-count');
+const jurisdictionSel = $('search-jurisdiction');
+const courtSel = $('search-court');
+const courtFind = $('search-court-find');
+const yearChart = $('search-year-chart');
+const fromInput = $('search-from');
+const toInput = $('search-to');
+const clearBtn = $('search-clear');
+const filterNote = $('search-filter-note');
+const chips = $('search-chips');
+const citeEl = $('search-cite');
+const statusEl = $('search-status');
+const noteEl = $('search-note');
+const live = $('search-live');
+const progress = $('search-progress');
+const heading = $('search-results-heading');
+let list = $('search-results');
+const empty = $('search-empty');
+const pagesNav = $('search-pages');
 
 const pinnedTree = document.body.dataset.searchTree || '';
+// A query still running after this long says so, with a way to try again.
+const SLOW_MS = 8000;
+// The progress bar shows only for a query that takes longer than this.
+const PROGRESS_AFTER_MS = 150;
 
 // Thrown when the index build has no search tree; shown as a note, not an error.
 class NoTree extends Error {}
@@ -46,16 +69,43 @@ let basePromise = null;
 let treePromise = null;
 let facetsPromise = null;
 let facets = null;
+let panel = null;
+let panelPromise = null;
 // The last query's result: its state and the client's ranking, so another page of it
 // reads only that page's cards.
 let last = null;
 // Each run checks it's still the latest before it touches the page.
 let runId = 0;
+// The running query's abort controller; the session's fetch reads its signal.
+let current = null;
 
-function setStatus(text, kind = '') {
-  statusEl.textContent = text;
+history.scrollRestoration = 'manual';
+
+function setStatus(text, kind = '', retry = null) {
+  const parts = [text];
+  if (retry) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'search-retry';
+    b.textContent = 'Try again';
+    b.addEventListener('click', retry);
+    parts.push(' ', b);
+  }
+  statusEl.replaceChildren(...parts);
   statusEl.classList.toggle('search-error', kind === 'error');
-  statusEl.classList.toggle('search-note', kind === 'note');
+  statusEl.classList.toggle('search-note-status', kind === 'note');
+  statusEl.classList.toggle('search-working', kind === 'working');
+}
+
+function setNote(text) {
+  noteEl.textContent = text;
+  noteEl.hidden = !text;
+}
+
+// One message per result set; cleared first, so the same words twice are read twice.
+function announce(text) {
+  live.textContent = '';
+  requestAnimationFrame(() => { live.textContent = text; });
 }
 
 // The tree's URL: `https://idx.stare.pub/v/<version>/search`.
@@ -74,7 +124,16 @@ function treeBase() {
   return basePromise;
 }
 
-// The client and the opened tree, once a page.
+// The session's fetch: the running query's signal, with any of the client's own.
+function queryFetch(url, init = {}) {
+  const signal = current?.signal;
+  if (!signal) return fetch(url, init);
+  const both = init.signal && AbortSignal.any ? AbortSignal.any([init.signal, signal]) : (init.signal || signal);
+  return fetch(url, { ...init, signal: both });
+}
+
+// The client and the opened tree, once a page. Not aborted by a newer query: the next one
+// needs it too.
 function openTree() {
   if (!treePromise) {
     treePromise = (async () => {
@@ -91,7 +150,7 @@ function openTree() {
       ]);
       let s;
       try {
-        s = await client.openSearch(base, { manifest: raw });
+        s = await client.openSearch(base, { manifest: raw, fetch: queryFetch });
       } catch (e) {
         throw Object.assign(new Error('This search index is in a format this page doesn’t read'), { cause: e });
       }
@@ -119,6 +178,20 @@ function loadFacets() {
   return facetsPromise;
 }
 
+// facets.json and the panel's module, then the panel; once a page.
+function loadPanel() {
+  if (!panelPromise) {
+    panelPromise = Promise.all([loadFacets(), import('./searchfilters.js')]).then(([f, mod]) => {
+      panel = mod.mountFilters(f, {
+        jurisdiction: jurisdictionSel, court: courtSel, courtFind, chart: yearChart, from: fromInput, to: toInput,
+      });
+      return panel;
+    });
+    panelPromise.catch(() => { panelPromise = null; });
+  }
+  return panelPromise;
+}
+
 function option(value, label, selected) {
   const o = document.createElement('option');
   o.value = value;
@@ -127,24 +200,68 @@ function option(value, label, selected) {
   return o;
 }
 
-// The filter lists, from facets.json when it's in; until then each holds "Any" and the
-// URL's value, so the form still submits it.
+// The filter lists: the panel's, once facets.json is in; until then each holds "Any" and
+// the URL's value, so the form still submits it.
 function fillFilters(state) {
-  const jur = state.jurisdiction;
-  const court = state.court;
-  if (!facets) {
-    jurisdictionSel.replaceChildren(option('', 'Any', !jur), ...(jur ? [option(jur, jur, true)] : []));
-    courtSel.replaceChildren(option('', 'Any', !court), ...(court ? [option(court, court, true)] : []));
+  if (panel) {
+    panel.fill(state);
     return;
   }
-  const jurs = [...facets.jurisdictions].sort((a, b) => (a.name || a.key).localeCompare(b.name || b.key));
-  jurisdictionSel.replaceChildren(option('', 'Any', !jur),
-    ...jurs.map((j) => option(j.key, j.name || j.key, j.key === jur)));
-  const courts = facets.courts
-    .filter((c) => !jur || c.jurisdiction === jur || c.key === court)
-    .sort((a, b) => (a.name || a.key).localeCompare(b.name || b.key));
-  courtSel.replaceChildren(option('', 'Any', !court),
-    ...courts.map((c) => option(c.key, `${c.name || c.key}${c.years ? ` (${c.years[0]}–${c.years[1]})` : ''}`, c.key === court)));
+  const jur = state.jurisdiction;
+  const court = state.court;
+  jurisdictionSel.replaceChildren(option('', 'Any', !jur), ...(jur ? [option(jur, jur, true)] : []));
+  courtSel.replaceChildren(option('', 'Any', !court), ...(court ? [option(court, court, true)] : []));
+}
+
+// The chips for the filters in use, each a button that drops its filter, and the count on
+// the Filters toggle. `hint` names a court before facets.json is in (a card's court).
+function renderChips(state, hint = {}) {
+  const items = filterChips(state, facets, hint);
+  filterCount.textContent = items.length ? ` (${items.length})` : '';
+  clearBtn.hidden = !items.length;
+  chips.hidden = !items.length;
+  // The same chips again (a query's results naming the court) keep their buttons, and
+  // with them the focus.
+  const sig = JSON.stringify(items);
+  if (sig === chips.dataset.sig) return;
+  chips.dataset.sig = sig;
+  // A chip's name can change under the focus (the court's key, then its name from a card
+  // or facets.json); the focus stays on the same chip.
+  const focused = [...chips.querySelectorAll('button')].indexOf(document.activeElement);
+  if (!items.length) {
+    chips.replaceChildren();
+    return;
+  }
+  const lis = items.map((c) => {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'search-chip';
+    b.dataset.remove = c.key;
+    b.setAttribute('aria-label', `Remove filter: ${c.label}, ${c.text}`);
+    const label = document.createElement('span');
+    label.className = 'search-chip-label';
+    label.textContent = `${c.label}: `;
+    const x = document.createElement('span');
+    x.className = 'search-chip-x';
+    x.setAttribute('aria-hidden', 'true');
+    x.textContent = '×';
+    b.append(label, c.text, x);
+    li.append(b);
+    return li;
+  });
+  if (items.length > 1) {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'search-chip-clear';
+    b.dataset.remove = 'all';
+    b.textContent = 'Clear all';
+    li.append(b);
+    lis.push(li);
+  }
+  chips.replaceChildren(...lis);
+  if (focused >= 0) chips.querySelectorAll('button')[Math.min(focused, lis.length - 1)]?.focus();
 }
 
 function fillForm(state) {
@@ -152,7 +269,7 @@ function fillForm(state) {
   fromInput.value = state.from;
   toInput.value = state.to;
   fillFilters(state);
-  if (state.jurisdiction || state.court || state.from || state.to) filters.open = true;
+  renderChips(state);
 }
 
 function formState() {
@@ -166,37 +283,52 @@ function formState() {
   }));
 }
 
-function card(fields) {
+function card(fields, tokens) {
   const li = document.createElement('li');
   li.className = 'search-card';
   const title = document.createElement('h3');
   title.className = 'search-card-name';
   const href = caseHref(fields.route);
   const name = fields.name || fields.citation || 'Untitled decision';
-  if (href) {
-    const a = document.createElement('a');
-    a.href = href;
-    a.textContent = name;
-    title.append(a);
-  } else {
-    title.textContent = name;
+  const target = href ? Object.assign(document.createElement('a'), { href }) : title;
+  for (const seg of nameSegments(name, fields.name ? tokens : [])) {
+    if (seg.hit) {
+      const m = document.createElement('mark');
+      m.textContent = seg.text;
+      target.append(m);
+    } else {
+      target.append(seg.text);
+    }
   }
+  if (href) title.append(target);
+  const cite = document.createElement('span');
+  cite.className = 'search-card-cite';
+  cite.textContent = fields.citation;
+  const court = document.createElement('span');
+  court.className = 'search-card-court';
+  court.textContent = fields.court;
+  const date = document.createElement('span');
+  date.className = 'search-card-date';
+  date.textContent = formatDate(fields.date);
   const meta = document.createElement('p');
   meta.className = 'search-card-meta';
-  const parts = [
-    ['search-card-cite', fields.citation],
-    ['search-card-court', fields.court],
-    ['search-card-date', formatDate(fields.date)],
-  ].filter(([, text]) => text);
-  parts.forEach(([cls, text], i) => {
-    if (i) meta.append(' · ');
-    const span = document.createElement('span');
-    span.className = cls;
-    span.textContent = text;
-    meta.append(span);
-  });
-  li.append(title, meta);
+  meta.append(...[cite, court].filter((el) => el.textContent));
+  li.append(title, date, meta);
   return li;
+}
+
+// Placeholder cards for a list being filled for the first time, as tall as cards are.
+function skeleton() {
+  const out = [];
+  for (let i = 0; i < PAGE_SIZE; i++) {
+    const li = document.createElement('li');
+    li.className = 'search-card search-card-skel';
+    li.setAttribute('aria-hidden', 'true');
+    li.innerHTML = '<div class="search-card-name"><span></span></div><span class="search-card-date"><span></span></span><p class="search-card-meta"><span></span></p>';
+    li.firstChild.firstChild.style.width = `${40 + ((i * 37) % 45)}%`;
+    out.push(li);
+  }
+  return out;
 }
 
 function renderPages(state, total) {
@@ -233,10 +365,89 @@ function renderPages(state, total) {
   pagesNav.hidden = false;
 }
 
+// A result set goes in as a new list element in place of the old one: new content, not
+// the old list moved, when the note above it appears or goes with the same results.
+function swapList(items) {
+  const ol = list.cloneNode(false);
+  ol.append(...items);
+  list.replaceWith(ol);
+  list = ol;
+}
+
 function clearResults() {
   list.replaceChildren();
+  empty.hidden = true;
+  empty.replaceChildren();
   pagesNav.hidden = true;
   pagesNav.replaceChildren();
+  setNote('');
+}
+
+// What the results area says when nothing matched, or there was nothing to search for.
+function renderEmpty(state, result) {
+  const h = document.createElement('p');
+  h.className = 'search-empty-title';
+  const tips = [];
+  if (!result.tokens.length) {
+    h.textContent = 'Every word in that query is too common to search for.';
+    tips.push('Add a more specific word, such as a party’s name or a term of art.');
+  } else {
+    h.textContent = `No decisions match ${state.q}.`;
+    if (looksLikeCitation(state.q)) tips.push('To open the case that citation names, use Open in the reader above.');
+    tips.push('Words are matched as written: negligent doesn’t find negligence.');
+    if (result.tokens.length > 1) tips.push('Try fewer words. Every word has to be in the decision or its name.');
+  }
+  const ul = document.createElement('ul');
+  for (const t of tips) ul.append(Object.assign(document.createElement('li'), { textContent: t }));
+  const parts = [h, ul];
+  if (hasFilters(state)) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'search-empty-clear';
+    b.textContent = 'Search without the filters';
+    b.addEventListener('click', () => go({ ...state, jurisdiction: '', court: '', from: '', to: '', page: 1 }));
+    parts.push(b);
+  }
+  empty.replaceChildren(...parts);
+  empty.hidden = false;
+}
+
+// A query that reads like a citation offers to open it in the reader. The parser (the
+// reader's WASM, through resolve.js) loads only when that's clicked.
+function renderCite(state) {
+  if (!looksLikeCitation(state.q)) {
+    citeEl.hidden = true;
+    citeEl.replaceChildren();
+    return;
+  }
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'search-cite-open';
+  b.textContent = `Open ${state.q} in the reader`;
+  const msg = document.createElement('span');
+  msg.className = 'search-cite-msg';
+  msg.setAttribute('role', 'status');
+  b.addEventListener('click', async () => {
+    b.disabled = true;
+    msg.textContent = ' Reading the citation…';
+    try {
+      const [{ parseInput }, { pageSegment }] = await Promise.all([import('./resolve.js'), import('./pagekey.js')]);
+      const p = await parseInput(state.q);
+      if (!p) {
+        msg.textContent = ' stare.pub can’t read that as a citation.';
+        return;
+      }
+      const seq = p.seq ? `-${String(p.seq).padStart(2, '0')}` : '';
+      location.assign(`/#${p.reporter}/${p.volume}/${pageSegment(p.page)}${seq}`);
+    } catch (e) {
+      console.warn(e);
+      msg.textContent = ' The citation reader couldn’t load. Try it on the home page.';
+    } finally {
+      b.disabled = false;
+    }
+  });
+  citeEl.replaceChildren('That looks like a citation. ', b, msg);
+  citeEl.hidden = false;
 }
 
 // The cards for decision ids, one multi-range request per cards segment they fall in (the
@@ -257,26 +468,32 @@ async function readCards(tree, ids) {
   });
 }
 
-// The court and jurisdiction lists, once the filters are open; after any query under way,
-// so facets.json never competes with a query's own reads.
+// The filter panel, once the filters are open; after any query under way, so facets.json
+// never competes with a query's own reads.
 function fillFiltersWhenOpen() {
-  if (!filters.open || facets) return;
+  if (!filters.open || panel) return;
   inflight.then(() => {
-    if (!filters.open) return;
+    if (!filters.open || panel) return;
     filterNote.textContent = 'Loading the courts…';
-    return loadFacets().then(() => {
+    yearChart.textContent = 'Loading the years…';
+    return loadPanel().then(() => {
       filterNote.textContent = '';
-      fillFilters(formState());
+      fillFilters(parseSearchState(location.search));
+      renderChips(parseSearchState(location.search), chipHint);
     }, (e) => {
+      if (e && !(e instanceof NoTree)) console.warn(e);
+      yearChart.textContent = '';
       filterNote.textContent = e instanceof NoTree
         ? 'Search isn’t available for this index yet.'
-        : 'The court list couldn’t load. Reload the page to try again.';
+        : 'The court list couldn’t load. Close and open Filters to try again.';
     });
   });
 }
 
 // The query under way, settled or not.
 let inflight = Promise.resolve();
+// A court's name before facets.json is in, from the results' cards.
+let chipHint = {};
 
 function run(state, opts) {
   const p = runQuery(state, opts);
@@ -284,9 +501,15 @@ function run(state, opts) {
   return p;
 }
 
-async function runQuery(state, { focus = false } = {}) {
+const isAbort = (e) => e?.name === 'AbortError';
+
+async function runQuery(state, { focus = false, scrollY = null } = {}) {
   const id = ++runId;
+  current?.abort();
+  const ctl = new AbortController();
+  current = ctl;
   fillForm(state);
+  renderCite(state);
   if (!state.q) {
     clearResults();
     setStatus('');
@@ -294,53 +517,101 @@ async function runQuery(state, { focus = false } = {}) {
     return;
   }
   document.title = `${state.q} · Search · stare.pub`;
-  button.disabled = true;
+  // The previous results stay, dimmed; a first query gets the skeleton.
+  if (!list.querySelector('.search-card:not(.search-card-skel)')) {
+    empty.hidden = true;
+    setNote('');
+    list.replaceChildren(...skeleton());
+  }
   list.setAttribute('aria-busy', 'true');
-  setStatus('Searching…');
+  const showProgress = setTimeout(() => { if (id === runId) progress.hidden = false; }, PROGRESS_AFTER_MS);
+  const retry = () => run(parseSearchState(location.search));
+  const slow = setTimeout(() => {
+    if (id === runId) setStatus('Still searching. A broad query or a slow connection can take a while.', 'working', retry);
+  }, SLOW_MS);
+  const fresh = !treePromise;
+  setStatus(fresh ? 'Loading the search index, once per visit…' : 'Searching…', 'working');
   try {
-    const tree = await openTree();
-    let result = last && sameQuery(last.state, state) ? last.result : null;
-    if (!result) {
-      if ((state.from || state.to) && state.from !== state.to && !facets) {
-        await loadFacets();
-        if (id === runId) fillFilters(state);
+    let result = null;
+    let cards = null;
+    let page = 1;
+    // A read a superseded query shared with this one (a shard both asked for) can fail
+    // with its abort; the client drops a failed load from its cache, so this one tries again.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const tree = await openTree();
+        if (id !== runId) return;
+        if (fresh) setStatus('Searching…', 'working');
+        result = last && sameQuery(last.state, state) ? last.result : null;
+        if (!result) {
+          if ((state.from || state.to) && state.from !== state.to && !facets) {
+            await loadFacets();
+          }
+          const f = clientFilters(state, facets);
+          result = await tree.client.search(tree.s, state.q, { filters: f, limit: PAGE_SIZE, cards: false });
+          if (id !== runId) return;
+          last = { state, result };
+        }
+        const pages = pageCount(result.total);
+        page = Math.min(state.page, pages);
+        // (a query whose words are all stopwords returns no `ranked`)
+        const ids = (result.ranked ?? []).slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((h) => h.id);
+        cards = await readCards(tree, ids);
+        break;
+      } catch (e) {
+        if (id !== runId) return;
+        if (isAbort(e) && !ctl.signal.aborted && attempt < 1) continue;
+        throw e;
       }
-      const f = clientFilters(state, facets);
-      result = await tree.client.search(tree.s, state.q, { filters: f, limit: PAGE_SIZE, cards: false });
-      if (id !== runId) return;
-      last = { state, result };
     }
-    const pages = pageCount(result.total);
-    const page = Math.min(state.page, pages);
-    // (a query whose words are all stopwords returns no `ranked`)
-    const ids = (result.ranked ?? []).slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((h) => h.id);
-    const cards = await readCards(tree, ids);
     if (id !== runId) return;
-    list.replaceChildren(...cards.map((c) => card(cardFields(c))));
+    const fields = cards.map(cardFields);
+    if (state.court && fields[0]?.court) chipHint = { court: fields[0].court };
+    renderChips(state, chipHint);
+    swapList(fields.map((c) => card(c, result.tokens)));
+    empty.hidden = true;
+    if (!fields.length) renderEmpty(state, result);
     renderPages({ ...state, page }, result.total);
-    setStatus(summaryText(result, page));
-    if (focus) heading.focus({ preventScroll: true });
-    if (focus) heading.scrollIntoView({ block: 'start' });
+    setStatus(statusText(result, page));
+    const dropped = result.tokens.length ? droppedWords(state.q, result.tokens) : [];
+    const note = noteText(result);
+    setNote([note, dropped.length ? `Left out as too common to search for: ${dropped.join(', ')}.` : ''].filter(Boolean).join(' '));
+    announce(summaryText(result, page));
+    if (focus) {
+      heading.focus({ preventScroll: true });
+      if (heading.getBoundingClientRect().top < 0) heading.scrollIntoView({ block: 'start' });
+    }
+    if (scrollY !== null) window.scrollTo(0, scrollY);
   } catch (e) {
     if (id !== runId) return;
     clearResults();
     if (e instanceof NoTree) {
       setStatus('Search isn’t available for this index yet. You can still open a case by its citation on the home page.', 'note');
+      announce(statusEl.textContent);
     } else {
-      if (e?.cause) console.warn(e.cause);
-      setStatus(`${e?.message || 'Search failed'}. Reload the page to try again.`, 'error');
+      console.warn(e?.cause ?? e);
+      const why = isAbort(e) ? 'The search was interrupted' : (e?.message || 'Search failed');
+      setStatus(`${why}.`, 'error', retry);
+      announce(`${why}.`);
     }
   } finally {
+    clearTimeout(showProgress);
+    clearTimeout(slow);
     if (id === runId) {
-      button.disabled = false;
+      progress.hidden = true;
       list.removeAttribute('aria-busy');
+      if (current === ctl) current = null;
     }
   }
 }
 
+// Remember where this entry was scrolled, then push the new one.
 function go(state, opts) {
   const url = `/search/${searchString(state)}`;
-  if (url !== `${location.pathname}${location.search}`) history.pushState(null, '', url);
+  if (url !== `${location.pathname}${location.search}`) {
+    history.replaceState({ scrollY: window.scrollY }, '');
+    history.pushState(null, '', url);
+  }
   run(state, opts);
 }
 
@@ -351,8 +622,27 @@ form.addEventListener('submit', (e) => {
 
 filters.addEventListener('toggle', fillFiltersWhenOpen);
 
-jurisdictionSel.addEventListener('change', () => {
-  if (facets) fillFilters({ ...formState(), court: '' });
+jurisdictionSel.addEventListener('change', () => panel?.jurisdictionChanged());
+
+clearBtn.addEventListener('click', () => {
+  go({ ...formState(), jurisdiction: '', court: '', from: '', to: '' });
+});
+
+// A chip drops its filter and runs the query; focus goes to the chip after it, or the
+// Filters toggle when none is left.
+chips.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-remove]');
+  if (!b) return;
+  const state = parseSearchState(location.search);
+  const key = b.dataset.remove;
+  const next = { ...state, page: 1 };
+  if (key === 'all') Object.assign(next, { jurisdiction: '', court: '', from: '', to: '' });
+  else if (key === 'years') Object.assign(next, { from: '', to: '' });
+  else next[key] = '';
+  const at = [...chips.querySelectorAll('button')].indexOf(b);
+  go(next);
+  const left = chips.querySelectorAll('button');
+  (left[Math.min(at, left.length - 1)] ?? filters.querySelector('summary')).focus();
 });
 
 pagesNav.addEventListener('click', (e) => {
@@ -363,7 +653,14 @@ pagesNav.addEventListener('click', (e) => {
   go(state, { focus: true });
 });
 
-window.addEventListener('popstate', () => run(parseSearchState(location.search)));
+window.addEventListener('popstate', (e) => run(parseSearchState(location.search), { scrollY: e.state?.scrollY ?? null }));
 
-run(parseSearchState(location.search));
+// Filters in the URL open the panel on a wide screen; on a phone the chips show them and
+// the panel stays shut until asked for.
+const initial = parseSearchState(location.search);
+// The year chart's room, kept from the start so facets.json arriving moves nothing; with
+// no script there's no chart.
+yearChart.classList.add('search-year-chart-on');
+if (hasFilters(initial) && window.matchMedia('(min-width: 700px)').matches) filters.open = true;
+run(initial);
 globalThis.stareBoot?.ready();

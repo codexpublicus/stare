@@ -66,6 +66,7 @@ const treeRequests = (page, end) => page.searchRequests.filter((r) => new URL(r.
 // The requests on a segmented file's segments (`cards/<n>.bin`, `low/<n>.bin`).
 const segmentRequests = (page, dir) => page.searchRequests.filter((r) => new RegExp(`/search/${dir}/\\d+\\.bin$`).test(new URL(r.url).pathname));
 const status = (page) => page.locator('#search-status');
+const live = (page) => page.locator('#search-live');
 
 // The cards of decision ids, read from the fixture's cards segments.
 const CARDS_META = JSON.parse(readFileSync(`${TREE_ROOT}${TREE_PATH}/manifest.json`, 'utf8')).metadata.search.files.cards;
@@ -95,7 +96,8 @@ test('the empty page fetches nothing from the index, and no search client', asyn
 test('a query shows 20 cards ranked as stare-builder\'s client ranks them, linked to the reader', async ({ page }) => {
   const want = expected('contract');
   await page.goto('/search/?q=contract');
-  await expect(status(page)).toHaveText('137 decisions match. Page 1 of 7.');
+  await expect(status(page)).toHaveText('137 matches, page 1 of 7');
+  await expect(live(page)).toHaveText('137 matches. Page 1 of 7.');
   const cards = page.locator('#search-results > li');
   await expect(cards).toHaveCount(20);
   const names = await page.locator('#search-results .search-card-name').allTextContents();
@@ -117,11 +119,11 @@ test('a query shows 20 cards ranked as stare-builder\'s client ranks them, linke
 test('the next page reads only its cards, and Back shows the first again', async ({ page }) => {
   const want = expected('contract');
   await page.goto('/search/?q=contract');
-  await expect(status(page)).toHaveText('137 decisions match. Page 1 of 7.');
+  await expect(status(page)).toHaveText('137 matches, page 1 of 7');
   const before = page.searchRequests.length;
   await page.getByRole('link', { name: 'Next page, 2' }).click();
   await expect(page).toHaveURL(/\/search\/\?q=contract&page=2$/);
-  await expect(status(page)).toHaveText('137 decisions match. Page 2 of 7.');
+  await expect(status(page)).toHaveText('137 matches, page 2 of 7');
   await expect(page.locator('#search-pages a[aria-current="page"]')).toHaveText('2');
   const names = await page.locator('#search-results .search-card-name').allTextContents();
   expect(names).toEqual(want.ranked.slice(20, 40).map(([id]) => cardOf(id).n));
@@ -131,16 +133,20 @@ test('the next page reads only its cards, and Back shows the first again', async
   // keyboard users land on the new results
   await expect(page.locator('#search-results-heading')).toBeFocused();
   await page.goBack();
-  await expect(status(page)).toHaveText('137 decisions match. Page 1 of 7.');
+  await expect(status(page)).toHaveText('137 matches, page 1 of 7');
   expect(treeRequests(page, '.eidx').length).toBe(1);
 });
 
 test('a query of stopwords only, or a word nothing has, says so', async ({ page }) => {
   await page.goto('/search/?q=the+of+and');
-  await expect(status(page)).toHaveText('Every word in that query is too common to search for. Try more specific words.');
+  await expect(status(page)).toHaveText('Nothing to search for');
+  await expect(page.locator('#search-empty')).toContainText('Every word in that query is too common to search for.');
+  await expect(live(page)).toHaveText('Every word in that query is too common to search for. Try more specific words.');
   await page.fill('#search-q', 'zebra');
   await page.press('#search-q', 'Enter');
-  await expect(status(page)).toHaveText('No decisions match.');
+  await expect(status(page)).toHaveText('No matches');
+  await expect(page.locator('#search-empty')).toContainText('No decisions match zebra.');
+  await expect(live(page)).toHaveText('No decisions match.');
   await expect(page.locator('#search-results > li')).toHaveCount(0);
   await expect(page.locator('#search-pages')).toBeHidden();
 });
@@ -151,7 +157,7 @@ test('the landing hands words that aren\'t a citation to the search', async ({ p
   await page.click('#landing-btn');
   await expect(page).toHaveURL(/\/search\/\?q=kale%20marauders$/);
   await expect(page.locator('#search-q')).toHaveValue('kale marauders');
-  await expect(status(page)).toHaveText(`${expected('kale marauders').total} decisions match. Page 1 of 3.`);
+  await expect(status(page)).toHaveText(`${expected('kale marauders').total} matches, page 1 of 3`);
 });
 
 test('keyboard: type, Enter, and Tab reaches the first result', async ({ page }) => {
@@ -160,9 +166,11 @@ test('keyboard: type, Enter, and Tab reaches the first result', async ({ page })
   await page.keyboard.type('palsgraf');
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/search\/\?q=palsgraf$/);
-  await expect(status(page)).toHaveText('22 decisions match. Page 1 of 2.');
-  await expect(status(page)).toHaveAttribute('role', 'status');
-  await expect(status(page)).toHaveAttribute('aria-live', 'polite');
+  await expect(status(page)).toHaveText('22 matches, page 1 of 2');
+  await expect(live(page)).toHaveText('22 matches. Page 1 of 2.');
+  await expect(live(page)).toHaveAttribute('role', 'status');
+  await expect(live(page)).toHaveAttribute('aria-live', 'polite');
+  await expect(status(page)).not.toHaveAttribute('aria-live');
   await page.keyboard.press('Tab'); // the button
   await page.keyboard.press('Tab'); // Filters
   await page.keyboard.press('Tab');
@@ -171,10 +179,11 @@ test('keyboard: type, Enter, and Tab reaches the first result', async ({ page })
 
 test('filters: a court and one year, from facets.json, read once the filters open', async ({ page }) => {
   await page.goto('/search/?q=contract');
-  await expect(status(page)).toHaveText('137 decisions match. Page 1 of 7.');
+  await expect(status(page)).toHaveText('137 matches, page 1 of 7');
   expect(treeRequests(page, 'facets.json')).toEqual([]);
   await page.locator('#search-filters summary').click();
-  await expect(page.locator('#search-court option[value="ny"]')).toHaveText('New York Court of Appeals (1920–1959)');
+  await expect(page.locator('#search-court option[value="ny"]')).toHaveText('New York Court of Appeals, 1920–1959, 80 decisions');
+  await expect(page.locator('#search-jurisdiction option[value="ny"]')).toHaveText('New York, 80 decisions');
   expect(treeRequests(page, 'facets.json')).toHaveLength(1);
   await page.selectOption('#search-court', 'ny');
   await page.fill('#search-from', '1925');
@@ -182,7 +191,7 @@ test('filters: a court and one year, from facets.json, read once the filters ope
   await page.click('#search-btn');
   await expect(page).toHaveURL(/\/search\/\?q=contract&court=ny&from=1925&to=1925$/);
   const want = expected('contract', { court: 'ny', year: '1925' });
-  await expect(status(page)).toHaveText(`${want.total} decisions match.`);
+  await expect(status(page)).toHaveText(`${want.total} ${want.total === 1 ? 'match' : 'matches'}`);
   expect(await page.locator('#search-results .search-card-name a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))))
     .toEqual(want.cards.map((c) => `/#${c.r}`));
 });
@@ -194,8 +203,9 @@ test('a year range finds the decisions of those years', async ({ page }) => {
     return c.r.startsWith('ny/') && c.d.slice(0, 4) >= '1925' && c.d.slice(0, 4) <= '1934';
   });
   await page.goto('/search/?q=contract&court=ny&from=1925&to=1934');
-  await expect(status(page)).toHaveText(`${inRange.length} decisions match.`);
+  await expect(status(page)).toHaveText(`${inRange.length} matches`);
   await expect(page.locator('#search-filters')).toHaveAttribute('open', '');
+  await expect(page.locator('#search-chips button.search-chip')).toHaveText(['Court: New York Court of Appeals×', 'Decided: 1925 to 1934×']);
   const dates = await page.locator('#search-results .search-card-date').allTextContents();
   expect(dates.length).toBe(Math.min(20, inRange.length));
   for (const d of dates) expect(Number(d.slice(-4))).toBeGreaterThanOrEqual(1925);
@@ -251,6 +261,266 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['laptop
     await page.goto('/search/?q=contract');
     await expect(page.locator('#search-results > li')).toHaveCount(20);
     await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.__cls)).toBeLessThan(0.05);
+  });
+}
+
+// Holds the tree's requests matching `re` until release() is called.
+function holdRequests(page, re) {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const held = [];
+  let holding = true;
+  return {
+    async install() {
+      await page.route((url) => re.test(url.pathname), async (route) => {
+        if (!holding) return route.fallback();
+        held.push(route.request().url());
+        await gate;
+        await route.fallback().catch(() => {});
+      });
+    },
+    held,
+    // later requests go straight through; the held ones wait for release()
+    stop: () => { holding = false; },
+    release: () => release(),
+  };
+}
+
+test('the first query shows a skeleton at the list\'s height and says it is loading the index', async ({ page }) => {
+  const hold = holdRequests(page, /\/search\/manifest\.json$/);
+  await hold.install();
+  await page.goto('/search/?q=contract');
+  await expect(status(page)).toHaveText('Loading the search index, once per visit…');
+  await expect(page.locator('#search-results > li.search-card-skel')).toHaveCount(20);
+  await expect(page.locator('#search-progress')).toBeVisible();
+  const skelHeight = await page.locator('#search-results').evaluate((el) => el.getBoundingClientRect().height);
+  hold.release();
+  await expect(status(page)).toHaveText('137 matches, page 1 of 7');
+  await expect(page.locator('#search-results > li.search-card-skel')).toHaveCount(0);
+  await expect(page.locator('#search-progress')).toBeHidden();
+  const height = await page.locator('#search-results').evaluate((el) => el.getBoundingClientRect().height);
+  // the skeleton is within a few pixels a card of the real list's height
+  expect(Math.abs(height - skelHeight) / 20).toBeLessThan(12);
+});
+
+test('a new query keeps the previous results on screen until its own arrive', async ({ page }) => {
+  await page.goto('/search/?q=contract');
+  await expect(status(page)).toHaveText('137 matches, page 1 of 7');
+  const hold = holdRequests(page, /\/search\/cards\/\d+\.bin$/);
+  await hold.install();
+  await page.fill('#search-q', 'palsgraf');
+  await page.press('#search-q', 'Enter');
+  await expect(status(page)).toHaveText('Searching…');
+  await expect(page.locator('#search-results')).toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('#search-results > li.search-card:not(.search-card-skel)')).toHaveCount(20);
+  await expect(page.locator('#search-results > li.search-card-skel')).toHaveCount(0);
+  hold.release();
+  await expect(status(page)).toHaveText('22 matches, page 1 of 2');
+  await expect(page.locator('#search-results')).not.toHaveAttribute('aria-busy');
+});
+
+test('a query replaced by another is cancelled, and only the last one\'s results show', async ({ page }) => {
+  await page.goto('/search/?q=contract');
+  await expect(status(page)).toHaveText('137 matches, page 1 of 7');
+  const aborted = [];
+  page.on('requestfailed', (r) => { if (r.url().includes('/search/cards/')) aborted.push(r.failure()?.errorText); });
+  // jiffy's cards are held, then palsgraf replaces it
+  const hold = holdRequests(page, /\/search\/cards\/\d+\.bin$/);
+  await hold.install();
+  await page.fill('#search-q', 'jiffy');
+  await page.press('#search-q', 'Enter');
+  await expect.poll(() => hold.held.length).toBeGreaterThan(0);
+  hold.stop();
+  await page.fill('#search-q', 'palsgraf');
+  await page.press('#search-q', 'Enter');
+  await expect(status(page)).toHaveText('22 matches, page 1 of 2');
+  hold.release();
+  await page.waitForTimeout(300);
+  await expect(status(page)).toHaveText('22 matches, page 1 of 2');
+  const names = await page.locator('#search-results .search-card-name').allTextContents();
+  expect(names).toEqual(expected('palsgraf').cards.map((c) => c.n));
+  expect(aborted.length).toBeGreaterThan(0);
+});
+
+test.describe('a query that fails', () => {
+  test.use({ allowedConsole: ['status of 503', 'HTTP 503'] });
+
+  test('says so, and Try again runs it again', async ({ page }) => {
+    let fail = true;
+    await page.route((url) => /\/search\/cards\/\d+\.bin$/.test(url.pathname), (route) => (fail
+      ? route.fulfill({ status: 503, headers: { 'access-control-allow-origin': '*' }, body: 'unavailable' })
+      : route.fallback()));
+    await page.goto('/search/?q=contract');
+    await expect(status(page)).toHaveClass(/search-error/);
+    await expect(status(page)).toContainText('503');
+    await expect(live(page)).toContainText('503');
+    fail = false;
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await expect(status(page)).toHaveText('137 matches, page 1 of 7');
+    await expect(status(page)).not.toHaveClass(/search-error/);
+  });
+});
+
+test('a slow query says so, with a way to try again', async ({ page }) => {
+  await page.clock.install();
+  const hold = holdRequests(page, /\/search\/cards\/\d+\.bin$/);
+  await hold.install();
+  await page.goto('/search/?q=contract');
+  await expect.poll(() => hold.held.length).toBeGreaterThan(0);
+  await page.clock.runFor(9000);
+  await expect(status(page)).toContainText('Still searching');
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+  hold.release();
+  await expect(status(page)).toHaveText('137 matches, page 1 of 7');
+});
+
+test('the live region speaks once per result set', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__said = [];
+    document.addEventListener('DOMContentLoaded', () => {
+      const el = document.getElementById('search-live');
+      new MutationObserver(() => { if (el.textContent) window.__said.push(el.textContent); })
+        .observe(el, { childList: true, characterData: true, subtree: true });
+    });
+  });
+  await page.goto('/search/?q=contract');
+  await expect(status(page)).toHaveText('137 matches, page 1 of 7');
+  await page.getByRole('link', { name: 'Next page, 2' }).click();
+  await expect(status(page)).toHaveText('137 matches, page 2 of 7');
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(() => window.__said)).toEqual(['137 matches. Page 1 of 7.', '137 matches. Page 2 of 7.']);
+});
+
+test('the query\'s words are marked in the case names', async ({ page }) => {
+  await page.goto('/search/?q=kale+marauders');
+  await expect(page.locator('#search-results > li')).toHaveCount(20);
+  const first = page.locator('#search-results > li').first();
+  await expect(first.locator('.search-card-name')).toHaveText(expected('kale marauders').cards[0].n);
+  await expect(first.locator('.search-card-name mark')).toHaveText(['Kale', 'Marauders']);
+  // the mark is inside the link, which keeps the whole name
+  await expect(first.locator('.search-card-name a')).toHaveText('Kale v. Marauders');
+});
+
+test('common words left out of a query are named', async ({ page }) => {
+  await page.goto('/search/?q=the+palsgraf');
+  await expect(status(page)).toHaveText('22 matches, page 1 of 2');
+  await expect(page.locator('#search-note')).toHaveText('Left out as too common to search for: the.');
+});
+
+test('a citation typed into search offers to open it in the reader', async ({ page }) => {
+  // the reader itself isn't under test here: its page is answered with a stub
+  await page.route((url) => url.pathname === '/' && url.port === new URL(page.url() || 'http://x').port, (route) => (route.request().resourceType() === 'document'
+    ? route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>reader</title>' })
+    : route.fallback()));
+  await page.goto('/search/?q=ny+248+339');
+  const offer = page.locator('#search-cite');
+  await expect(offer).toBeVisible();
+  await expect(offer).toContainText('That looks like a citation.');
+  await offer.getByRole('button', { name: 'Open ny 248 339 in the reader' }).click();
+  await expect(page).toHaveURL(/\/#ny\/248\/339$/);
+});
+
+test('a query that isn\'t a citation offers nothing', async ({ page }) => {
+  await page.goto('/search/?q=1983+nys2d');
+  await expect(status(page)).not.toHaveText('');
+  await expect(page.locator('#search-cite')).toBeHidden();
+});
+
+test('filters show as chips; a chip removes its filter, and Clear all removes them all', async ({ page }) => {
+  await page.goto('/search/?q=contract&court=ny&from=1925&to=1934');
+  await expect(page.locator('#search-chips button.search-chip')).toHaveCount(2);
+  await expect(page.locator('#search-filter-count')).toHaveText(' (2)');
+  await page.getByRole('button', { name: 'Remove filter: Decided, 1925 to 1934' }).click();
+  await expect(page).toHaveURL(/\/search\/\?q=contract&court=ny$/);
+  const nyTotal = EXPECTED.find((e) => e.q === 'contract' && e.limit === 10000).ranked.filter(([id]) => cardOf(id).r.startsWith('ny/')).length;
+  await expect(status(page)).toHaveText(`${nyTotal} matches, page 1 of ${Math.ceil(nyTotal / 20)}`);
+  await expect(page.locator('#search-chips button.search-chip')).toHaveCount(1);
+  // focus stays on the chips
+  await expect(page.locator('#search-chips button.search-chip')).toBeFocused();
+  await page.goBack();
+  await expect(page).toHaveURL(/from=1925&to=1934$/);
+  await expect(page.locator('#search-chips button.search-chip')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Clear all' }).click();
+  await expect(page).toHaveURL(/\/search\/\?q=contract$/);
+  await expect(page.locator('#search-chips')).toBeHidden();
+  await expect(status(page)).toHaveText('137 matches, page 1 of 7');
+});
+
+test('on a phone the filters stay shut, chips show them, and facets.json waits until they open', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/search/?q=contract&court=ny');
+  await expect(status(page)).not.toHaveText(/Searching|Loading/);
+  await expect(page.locator('#search-filters')).not.toHaveAttribute('open', '');
+  // the court's name, from the results' cards, until facets.json is in
+  await expect(page.locator('#search-chips button.search-chip')).toHaveCount(1);
+  expect(treeRequests(page, 'facets.json')).toEqual([]);
+  await page.locator('#search-filters summary').click();
+  await expect(page.locator('#search-court option[value="ny"]')).toHaveText('New York Court of Appeals, 1920–1959, 80 decisions');
+  expect(treeRequests(page, 'facets.json')).toHaveLength(1);
+  await expect(page.locator('#search-chips button.search-chip')).toHaveText('Court: New York Court of Appeals×');
+});
+
+test('the year range: a chart of decisions a year, with sliders tied to the From and To boxes', async ({ page }) => {
+  await page.goto('/search/?q=contract');
+  await expect(status(page)).toHaveText('137 matches, page 1 of 7');
+  await page.locator('#search-filters summary').click();
+  const bars = page.locator('#search-year-chart .search-year-bars > span');
+  await expect(bars).not.toHaveCount(0);
+  // every year in range to start with
+  expect(await page.locator('#search-year-chart .search-year-bars > span.in').count()).toBe(await bars.count());
+  await page.fill('#search-from', '1930');
+  await page.fill('#search-to', '1939');
+  const marked = await page.locator('#search-year-chart .search-year-bars > span.in').count();
+  expect(marked).toBeGreaterThan(0);
+  expect(marked).toBeLessThan(await bars.count());
+  await expect(page.locator('#search-year-chart input[type=range]').first()).toHaveValue('1930');
+  // a slider moves the boxes; an end at the edge of the years leaves that end open
+  const lo = page.locator('#search-year-chart input[type=range]').first();
+  await lo.evaluate((el) => { el.value = el.min; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  await expect(page.locator('#search-from')).toHaveValue('');
+  await expect(page.locator('#search-to')).toHaveValue('1939');
+  // the court list narrows as it's typed into
+  await page.fill('#search-court-find', 'first');
+  await expect(page.locator('#search-court option')).toHaveText(['Any', 'First Circuit, 2010, 29 decisions']);
+  await page.fill('#search-court-find', '');
+  await page.getByRole('button', { name: 'Apply' }).click();
+  await expect(page).toHaveURL(/\/search\/\?q=contract&to=1939$/);
+  await expect(page.locator('#search-chips button.search-chip')).toHaveText('Decided: 1939 and earlier×');
+});
+
+test('a page change keeps the place: focus on the results, and Back returns to where the page was scrolled', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/search/?q=contract');
+  await expect(status(page)).toHaveText('137 matches, page 1 of 7');
+  await page.getByRole('link', { name: 'Next page, 2' }).scrollIntoViewIfNeeded();
+  const y = await page.evaluate(() => window.scrollY);
+  expect(y).toBeGreaterThan(300);
+  await page.getByRole('link', { name: 'Next page, 2' }).click();
+  await expect(status(page)).toHaveText('137 matches, page 2 of 7');
+  await expect(page.locator('#search-results-heading')).toBeFocused();
+  // the top of the new results is on screen
+  const top = await page.locator('#search-results').evaluate((el) => el.getBoundingClientRect().top);
+  expect(top).toBeGreaterThanOrEqual(-5);
+  expect(top).toBeLessThan(200);
+  await page.goBack();
+  await expect(status(page)).toHaveText('137 matches, page 1 of 7');
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(y - 5);
+});
+
+for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['laptop', { width: 1366, height: 768 }]]) {
+  test(`a query with filters and a note under the count moves nothing on screen either (${name})`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.addInitScript(() => {
+      window.__cls = 0;
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) if (!e.hadRecentInput) window.__cls += e.value;
+      }).observe({ type: 'layout-shift', buffered: true });
+    });
+    await page.goto('/search/?q=the+contract&court=ny&from=1925&to=1934');
+    await expect(page.locator('#search-results > li:not(.search-card-skel)')).not.toHaveCount(0);
+    await expect(page.locator('#search-note')).toHaveText('Left out as too common to search for: the.');
+    await page.waitForTimeout(500);
     expect(await page.evaluate(() => window.__cls)).toBeLessThan(0.05);
   });
 }
