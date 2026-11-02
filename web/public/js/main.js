@@ -9,6 +9,7 @@ import { showWasmProgress } from './wasmbar.js';
 import { filePage } from './pagekey.js';
 import { hasScans, pdfPage } from './scans.js';
 import { generations } from './generation.js';
+import { attachRouteLabel, markNotCitation, routeNoteHtml, routeOf, searchHref, takeHandOff } from './boxroute.js';
 
 // The reader's own modules are imported above; the page views (scanviewer.js, pdfviewer.js
 // and pageshell.js with theirs) and the search boxes' typeahead (searchbox.js, suggest.js,
@@ -53,11 +54,16 @@ const pdfViewerEl = document.getElementById('pdf-viewer');
 const pageViewerEl = document.getElementById('page-viewer');
 const landingWasmSlot = document.getElementById('landing-wasm-progress');
 const resolvedWasmSlot = document.getElementById('wasm-progress');
+// Each box's one button says where Enter takes its text, a citation or words (D163,
+// boxroute.js); its label follows the text as it's typed.
+const landingRoute = attachRouteLabel(landingInput, landingBtn, document.getElementById('landing-route-status'));
 // A search box with its typeahead (searchbox.js, #248), loaded the first time the input is
 // focused. Until it loads, or if it can't, the input is a plain text box: `fill` puts the
-// citation in it and parseBox reads it with the parser alone. `fill`s before the load are
+// citation in it and routeBox reads it with the parser alone. `fill`s before the load are
 // passed on once it's in, if the text is still theirs, so the box still remembers the case.
 function lazySearchBox(input, listbox, status, opts) {
+  // The button's label follows text the typeahead puts in the box too.
+  opts = { ...opts, onText: () => opts.route?.update() };
   let box = null;
   let loading = null;
   let early = null;
@@ -66,7 +72,10 @@ function lazySearchBox(input, listbox, status, opts) {
       loading = import('./searchbox.js').then((m) => {
         box = m.attachSearchBox(input, listbox, status, opts);
         const focused = document.activeElement === input;
-        if (early && input.value === early.text) box.fill(early.cite, early.target);
+        if (early && input.value === early.text) {
+          box.fill(early.cite, early.target);
+          opts.onText();
+        }
         else if (focused && input.value) input.dispatchEvent(new Event('input'));
         early = null;
         // The box fetches what it suggests from on focus; the focus that loaded it came first.
@@ -84,11 +93,13 @@ function lazySearchBox(input, listbox, status, opts) {
     fill(cite, target) {
       if (box) {
         box.fill(cite, target);
+        opts.onText();
         return;
       }
       const text = typeof cite === 'string' ? cite.trim() : '';
       input.value = text;
       early = { cite, target, text };
+      opts.onText();
     },
     close: () => box?.close(),
     // The box once loaded, or null when it can't be.
@@ -101,6 +112,7 @@ function lazySearchBox(input, listbox, status, opts) {
 const landingBox = lazySearchBox(landingInput, document.getElementById('landing-suggest'),
   document.getElementById('landing-suggest-status'), {
     onPick: (t) => doResolve(t.reporter, t.volume, t.page, t.seq),
+    route: landingRoute,
   });
 let pageViewerLoaded = false;
 let pdfViewerLoaded = false;
@@ -288,7 +300,7 @@ function resetPageViews() {
 
 // Show a resolved case. `load` is the case load it came from (generation.js); its
 // citation pass writes nothing once another load has started.
-async function showResolved(result, pin, cite, load) {
+async function showResolved(result, pin, cite, load, fromText = null) {
   citeNav?.destroy();
   citeNav = null;
   pendingCite = cite;
@@ -315,6 +327,8 @@ async function showResolved(result, pin, cite, load) {
   // A citation that resolved through an alias (#151) says what was cited and where the
   // link came from.
   if (result.alias) reader.insertAdjacentHTML('beforeend', aliasNoteHtml(result.alias));
+  // A case opened from text typed in a box offers to search for that text instead (D163).
+  if (fromText) reader.insertAdjacentHTML('beforeend', routeNoteHtml(fromText));
   reader.appendChild(multiEl);
   const readerContent = document.createElement('div');
   readerContent.className = 'reader';
@@ -469,13 +483,15 @@ function setStatus(msg, isError) {
   }
 }
 
-async function doResolve(reporter, volume, page, seq = null, pin = null, cite = null, view = null) {
+// `fromText` is the text a box opened the case from, for the reader's "Search for this text
+// instead"; null when the case came from a link, a suggestion or the arrows.
+async function doResolve(reporter, volume, page, seq = null, pin = null, cite = null, view = null, fromText = null) {
   // Ends any load still under way: from here on only this one sets the hash, the status
   // line and the case shown (#267).
   const load = loads.start();
   landingBtn.disabled = true;
   setStatus('', false);
-  showWasmBar(() => doResolve(reporter, volume, page, seq, pin, cite, view));
+  showWasmBar(() => doResolve(reporter, volume, page, seq, pin, cite, view, fromText));
 
   try {
     const result = await resolve(reporter, volume, page, (msg) => { if (load.current()) setStatus(msg, false); }, seq);
@@ -488,7 +504,7 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
     else setHash(reporter, result.volume, page, result.seq, pin, cite, cite ? null : view);
     lastResolvedHash = window.location.hash;
     pendingView = result.alias || cite ? null : view;
-    showResolved(result, result.alias ? null : pin, result.alias ? null : cite, load);
+    showResolved(result, result.alias ? null : pin, result.alias ? null : cite, load, fromText);
   } catch (err) {
     if (!load.current()) return;
     if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
@@ -498,27 +514,35 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
     if (landing.classList.contains('hidden') && !currentResult && !(err instanceof WasmLoadError)) {
       showLanding();
       setStatus(err.message, true);
-      landingBox.fill('', { reporter, volume, page, seq });
+      landingBox.fill(fromText || '', { reporter, volume, page, seq });
     }
   } finally {
     if (load.current()) landingBtn.disabled = false;
   }
 }
 
-// The citation a search box's text names: the case it was filled with while the text is
-// unchanged (searchbox.js), else what the parser reads, else a reporter typed first by
-// its abbreviation (`Misc. 32 426`), which only the typeahead's reporter list knows.
-// Without the typeahead (lazySearchBox), only the parser.
-async function parseBox(box, input) {
+// Where a box's text goes (D163): `{ cite, text }` for a case to open, `{ search }` for the
+// full-text search (search.astro). Text routeOf reads as words goes straight to the search,
+// without loading the typeahead or the parser's WASM. Text it reads as a citation opens the
+// case the box was filled with while the text is unchanged (searchbox.js), else what the
+// parser reads, else a reporter typed first by its abbreviation (`Misc. 32 426`), which only
+// the typeahead's reporter list knows; a citation none of them reads goes to the search,
+// which then doesn't ask "Did you mean". `onParse` runs before the parser is awaited. A WASM
+// that fails to load throws (WasmLoadError).
+async function routeBox(box, input, onParse) {
+  const text = input.value.trim();
+  if (routeOf(text) !== 'cite') return { search: text };
   const b = await box.load();
-  return b?.kept() || await parseInput(input.value) || await b?.parse() || null;
+  const kept = b?.kept();
+  if (kept) return { cite: kept, text };
+  onParse?.();
+  const parsed = await parseInput(text) || await b?.parse() || null;
+  if (parsed) return { cite: parsed, text };
+  markNotCitation(text);
+  return { search: text };
 }
 
-// Text a search box can't read as a citation goes to the full-text search (search.astro,
-// searchpage.js). A citation always has a volume and a page, so text without a digit goes
-// there straight away, without waiting for the parser's WASM.
-const searchUrl = (text) => `/search/?q=${encodeURIComponent(text.trim())}`;
-const isSearchText = (text) => !/\d/.test(text);
+const EMPTY_BOX = 'Enter a citation (e.g., 31 A.2d 647 or a2d 31 647), or words to search for';
 
 // Landing form submit
 landingForm.addEventListener('submit', async (e) => {
@@ -526,29 +550,30 @@ landingForm.addEventListener('submit', async (e) => {
   landingBox.close();
   setStatus('', false);
   const text = landingInput.value.trim();
-  if (text && isSearchText(text)) {
-    location.assign(searchUrl(text));
+  if (!text) {
+    setStatus(EMPTY_BOX, true);
     return;
   }
-  if (text) showWasmBar(() => landingForm.requestSubmit());
-  let parsed;
+  let to;
   try {
-    parsed = await parseBox(landingBox, landingInput);
+    to = await routeBox(landingBox, landingInput, () => showWasmBar(() => landingForm.requestSubmit()));
   } catch (err) {
     if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
     return;
   }
-  if (!parsed) {
-    if (text) location.assign(searchUrl(text));
-    else setStatus('Enter a citation (e.g., 31 A.2d 647 or a2d 31 647), or words to search for', true);
+  if (to.search) {
+    location.assign(searchHref(to.search));
     return;
   }
-  doResolve(parsed.reporter, parsed.volume, parsed.page, parsed.seq);
+  const p = to.cite;
+  doResolve(p.reporter, p.volume, p.page, p.seq, null, null, null, to.text);
 });
 
 // Inline citation editing in topbar
 const topbarCiteInput = document.getElementById('topbar-cite-input');
 const topbarSuggest = document.getElementById('topbar-suggest');
+const topbarGo = document.getElementById('topbar-go');
+const topbarRoute = attachRouteLabel(topbarCiteInput, topbarGo, document.getElementById('topbar-route-status'));
 
 // The top bar's editor suggests citations as it is typed in (#248); a page suggestion
 // opens its case. Attached before the editor's own keys below, so it takes Enter and
@@ -562,11 +587,13 @@ const topbarBox = lazySearchBox(topbarCiteInput, topbarSuggest, document.getElem
   },
   // Under the editor; at phone width the stylesheet spans it across the screen instead.
   position: (list) => list.style.setProperty('--suggest-left', `${topbarCiteInput.offsetLeft}px`),
+  route: topbarRoute,
 });
 
 function startEditing() {
   topbarCite.classList.add('hidden');
   topbarCiteInput.classList.remove('hidden');
+  topbarGo.classList.remove('hidden');
   // Pre-fill with the citation as written (#248), remembering the case shown, so the
   // same text reopens it even on a page several cases start on.
   if (currentResult) {
@@ -581,6 +608,7 @@ function startEditing() {
 function stopEditing() {
   topbarBox.close();
   topbarCiteInput.classList.add('hidden');
+  topbarGo.classList.add('hidden');
   topbarCite.classList.remove('hidden');
 }
 
@@ -588,42 +616,51 @@ let editSubmitting = false;
 
 topbarCite.addEventListener('click', startEditing);
 
+// The top bar's box routes its text like the landing's (routeBox): a citation opens, words
+// go to the search.
+async function submitTopbar() {
+  if (!topbarCiteInput.value.trim()) return;
+  let to;
+  try {
+    to = await routeBox(topbarBox, topbarCiteInput, () => showWasmBar(null));
+  } catch (err) {
+    stopEditing();
+    if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
+    return;
+  }
+  if (to.search) {
+    location.assign(searchHref(to.search));
+    return;
+  }
+  editSubmitting = true;
+  stopEditing();
+  doResolve(to.cite.reporter, to.cite.volume, to.cite.page, to.cite.seq, null, null, null, to.text);
+  editSubmitting = false;
+}
+
 // On the top bar rather than the input: the typeahead attaches to the input when it loads,
 // after this, and it must see Enter and Escape first while its list is open.
-document.getElementById('topbar').addEventListener('keydown', async (e) => {
+document.getElementById('topbar').addEventListener('keydown', (e) => {
   if (e.target !== topbarCiteInput) return;
   if (e.key === 'Enter') {
     e.preventDefault();
-    const text = topbarCiteInput.value.trim();
-    if (text && isSearchText(text)) {
-      location.assign(searchUrl(text));
-      return;
-    }
-    let parsed;
-    showWasmBar(null);
-    try {
-      parsed = await parseBox(topbarBox, topbarCiteInput);
-    } catch (err) {
-      stopEditing();
-      if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
-      return;
-    }
-    if (parsed) {
-      editSubmitting = true;
-      stopEditing();
-      doResolve(parsed.reporter, parsed.volume, parsed.page, parsed.seq);
-      editSubmitting = false;
-    } else if (text) {
-      location.assign(searchUrl(text));
-    }
+    submitTopbar();
   }
   if (e.key === 'Escape') {
     stopEditing();
   }
 });
 
-topbarCiteInput.addEventListener('blur', () => {
-  if (!editSubmitting) stopEditing();
+// The button keeps the focus in the box when clicked, so the box's blur doesn't close the
+// editor first; tabbed to, it keeps the editor open too.
+topbarGo.addEventListener('mousedown', (e) => e.preventDefault());
+topbarGo.addEventListener('click', () => submitTopbar());
+topbarGo.addEventListener('blur', (e) => {
+  if (!editSubmitting && e.relatedTarget !== topbarCiteInput) stopEditing();
+});
+
+topbarCiteInput.addEventListener('blur', (e) => {
+  if (!editSubmitting && e.relatedTarget !== topbarGo) stopEditing();
 });
 
 // Dark mode toggle — shared across landing + resolved topbar
@@ -807,6 +844,7 @@ onHashChange((params) => {
     return;
   }
   landingInput.value = `${params.reporter} ${params.volume} ${params.page}`;
+  landingRoute.update();
   doResolve(params.reporter, params.volume, params.page, params.seq, params.pin, params.cite,
     params.view ? { view: params.view, page: params.viewPage } : null);
 });
@@ -832,8 +870,10 @@ if (initial) {
   landing.classList.add('hidden');
   resolved.classList.remove('hidden');
   landingInput.value = `${initial.reporter} ${initial.volume} ${initial.page}`;
+  landingRoute.update();
+  // The search page's box sends a citation here with the text it was typed as (boxroute.js).
   doResolve(initial.reporter, initial.volume, initial.page, initial.seq, initial.pin, initial.cite,
-    initial.view ? { view: initial.view, page: initial.viewPage } : null);
+    initial.view ? { view: initial.view, page: initial.viewPage } : null, takeHandOff(window.location.hash));
 }
 
 // Fetch and compile the WASM in the background once the page has painted;

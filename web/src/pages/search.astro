@@ -40,12 +40,14 @@ const tree = import.meta.env.PUBLIC_SEARCH_TREE || '';
 		<main class="search-page">
 			<h1>Search case law</h1>
 			<form id="search-form" class="search-form" role="search" action="/search/" method="get">
-				<label for="search-q" class="search-label">Words in the decision or its name</label>
+				<label for="search-q" class="search-label">Words in the decision or its name, or a citation</label>
 				<div class="search-row">
 					<input id="search-q" name="q" type="search" autocomplete="off" spellcheck="false" maxlength="500" placeholder="palsgraf railroad" aria-describedby="search-help" />
-					<button type="submit" id="search-btn">Search</button>
+					<!-- One button for both (D163): its label follows the text, a citation or words (boxroute.js). -->
+						<button type="submit" id="search-btn" class="route-btn" data-goes="search"><span class="route-label route-search">Search</span><span class="route-label route-cite">Open citation</span></button>
 				</div>
 				<p id="search-help" class="search-help">Finds decisions with every word, in the opinion text or the case name. Words are matched as written: <i>negligent</i> doesn&rsquo;t find <i>negligence</i>.</p>
+				<span id="search-route-status" class="sr-only" aria-live="polite"></span>
 				<details id="search-filters" class="search-filters">
 					<summary>Filters<span id="search-filter-count" class="search-filter-count"></span></summary>
 					<div class="search-filter-panel">

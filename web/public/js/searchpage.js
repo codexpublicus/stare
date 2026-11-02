@@ -24,9 +24,10 @@
 // run the URL they land on, and go back to where the page was scrolled.
 
 import { SEARCH_CLIENT_URL } from './searchclient-path.js';
+import { attachRouteLabel, handOff, isNotCitation, markNotCitation, routeOf } from './boxroute.js';
 import { indexUrl } from './sources.js';
 import {
-  PAGE_SIZE, caseHref, cardFields, clientFilters, droppedWords, filterChips, formatDate,
+  PAGE_SIZE, caseHref, cardFields, citationIn, clientFilters, droppedWords, filterChips, formatDate,
   hasFilters, looksLikeCitation, nameSegments, noteText, pageCount, pageLinks,
   parseSearchState, sameQuery, searchString, statusText, summaryText,
 } from './searchquery.js';
@@ -55,6 +56,9 @@ const heading = $('search-results-heading');
 let list = $('search-results');
 const empty = $('search-empty');
 const pagesNav = $('search-pages');
+// The button's label follows the box's text: a citation opens in the reader, words search
+// (D163, boxroute.js).
+const route = attachRouteLabel(input, button, $('search-route-status'));
 
 const pinnedTree = document.body.dataset.searchTree || '';
 // A query still running after this long says so, with a way to try again.
@@ -266,6 +270,7 @@ function renderChips(state, hint = {}) {
 
 function fillForm(state) {
   input.value = state.q;
+  route.update();
   fromInput.value = state.from;
   toInput.value = state.to;
   fillFilters(state);
@@ -393,7 +398,7 @@ function renderEmpty(state, result) {
     tips.push('Add a more specific word, such as a party’s name or a term of art.');
   } else {
     h.textContent = `No decisions match ${state.q}.`;
-    if (looksLikeCitation(state.q)) tips.push('To open the case that citation names, use Open in the reader above.');
+    if (offersCitation(state.q)) tips.push('To open the case that citation names, use the link above.');
     tips.push('Words are matched as written: negligent doesn’t find negligence.');
     if (result.tokens.length > 1) tips.push('Try fewer words. Every word has to be in the decision or its name.');
   }
@@ -412,18 +417,43 @@ function renderEmpty(state, result) {
   empty.hidden = false;
 }
 
-// A query that reads like a citation offers to open it in the reader. The parser (the
-// reader's WASM, through resolve.js) loads only when that's clicked.
+// Whether a query is offered to the reader as a citation: it reads like one, and the
+// parser hasn't turned it down in this tab.
+const offersCitation = (q) => looksLikeCitation(q) && !isNotCitation(q);
+
+// Open the citation `q` names in the reader, with `q` handed over for its "Search for this
+// text instead" (boxroute.js). The parser (the reader's WASM, through resolve.js) loads only
+// now. True once on the way; false when the parser can't read `q`, which is then marked so
+// its search stops offering it. A WASM that can't load throws.
+async function openCitation(q) {
+  const [{ parseInput }, { pageSegment }] = await Promise.all([import('./resolve.js'), import('./pagekey.js')]);
+  const p = await parseInput(q);
+  if (!p) {
+    markNotCitation(q);
+    return false;
+  }
+  const seq = p.seq ? `-${String(p.seq).padStart(2, '0')}` : '';
+  const hash = `#${p.reporter}/${p.volume}/${pageSegment(p.page)}${seq}`;
+  handOff(hash, q);
+  location.assign(`/${hash}`);
+  return true;
+}
+
+// Results for a query that reads like a citation ask whether it was meant as one (D163):
+// "Did you mean 347 U.S. 483?", which opens it in the reader. The parser loads only when
+// that's clicked.
 function renderCite(state) {
-  if (!looksLikeCitation(state.q)) {
+  if (!offersCitation(state.q)) {
     citeEl.hidden = true;
     citeEl.replaceChildren();
     return;
   }
+  const shown = citationIn(state.q);
   const b = document.createElement('button');
   b.type = 'button';
   b.className = 'search-cite-open';
-  b.textContent = `Open ${state.q} in the reader`;
+  b.textContent = shown;
+  b.setAttribute('aria-label', `Open ${shown} in the reader`);
   const msg = document.createElement('span');
   msg.className = 'search-cite-msg';
   msg.setAttribute('role', 'status');
@@ -431,14 +461,7 @@ function renderCite(state) {
     b.disabled = true;
     msg.textContent = ' Reading the citation…';
     try {
-      const [{ parseInput }, { pageSegment }] = await Promise.all([import('./resolve.js'), import('./pagekey.js')]);
-      const p = await parseInput(state.q);
-      if (!p) {
-        msg.textContent = ' stare.pub can’t read that as a citation.';
-        return;
-      }
-      const seq = p.seq ? `-${String(p.seq).padStart(2, '0')}` : '';
-      location.assign(`/#${p.reporter}/${p.volume}/${pageSegment(p.page)}${seq}`);
+      if (!(await openCitation(state.q))) msg.textContent = ' stare.pub can’t read that as a citation.';
     } catch (e) {
       console.warn(e);
       msg.textContent = ' The citation reader couldn’t load. Try it on the home page.';
@@ -446,7 +469,7 @@ function renderCite(state) {
       b.disabled = false;
     }
   });
-  citeEl.replaceChildren('That looks like a citation. ', b, msg);
+  citeEl.replaceChildren('Did you mean ', b, '?', msg);
   citeEl.hidden = false;
 }
 
@@ -615,9 +638,26 @@ function go(state, opts) {
   run(state, opts);
 }
 
-form.addEventListener('submit', (e) => {
+// The box routes like the landing's (D163): text that reads as a citation opens in the
+// reader once the parser agrees, and anything else, or anything Apply submits, searches.
+// Words never load the parser.
+form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  go(formState());
+  const state = formState();
+  if (e.submitter?.classList.contains('search-apply') || routeOf(state.q) !== 'cite') {
+    go(state);
+    return;
+  }
+  button.disabled = true;
+  setStatus('Reading the citation…', 'working');
+  try {
+    if (await openCitation(state.q)) return;
+  } catch (err) {
+    console.warn(err);
+  } finally {
+    button.disabled = false;
+  }
+  go(state);
 });
 
 filters.addEventListener('toggle', fillFiltersWhenOpen);
@@ -652,6 +692,10 @@ pagesNav.addEventListener('click', (e) => {
   const state = parseSearchState(new URL(a.href).search);
   go(state, { focus: true });
 });
+
+// Back from a citation this page opened in the reader can restore the page as it was left,
+// saying it was reading the citation; run its URL again.
+window.addEventListener('pageshow', (e) => { if (e.persisted) run(parseSearchState(location.search)); });
 
 window.addEventListener('popstate', (e) => run(parseSearchState(location.search), { scrollY: e.state?.scrollY ?? null }));
 

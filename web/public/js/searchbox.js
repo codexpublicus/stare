@@ -74,11 +74,13 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 /**
  * Make `input` a combobox over `listbox` (a `<ul>`), announcing what it suggests in
  * `status` (a polite live region). `onPick(target, text)` opens a case a page suggestion
- * names: `target` is `{ reporter, volume, page, seq }`. Returns `{ fill, kept, parse,
+ * names: `target` is `{ reporter, volume, page, seq }`. `onText()` is told when the box's
+ * text is set from here rather than typed (the button's label follows it, boxroute.js).
+ * Returns `{ fill, kept, parse,
  * close }`: fill the box with a case's citation as written, the case it still names,
  * the citation its text names when nothing else reads it, and close the list.
  */
-export function attachSearchBox(input, listbox, status, { onPick, position = null }) {
+export function attachSearchBox(input, listbox, status, { onPick, position = null, onText = null }) {
   const id = listbox.id;
   input.setAttribute('role', 'combobox');
   input.setAttribute('aria-autocomplete', 'list');
@@ -164,6 +166,7 @@ export function attachSearchBox(input, listbox, status, { onPick, position = nul
   function setText(text) {
     input.value = text;
     input.setSelectionRange(text.length, text.length);
+    onText?.();
     update();
   }
 
@@ -171,6 +174,7 @@ export function attachSearchBox(input, listbox, status, { onPick, position = nul
     if (!o || o.disabled) return;
     if (o.target) {
       input.value = o.text;
+      onText?.();
       close();
       onPick(o.target, o.text);
       return;
@@ -376,6 +380,7 @@ export function attachSearchBox(input, listbox, status, { onPick, position = nul
         if (!r || filled !== mine || input.value !== mine.text) return;
         mine.text = citeText(r.abbr, mine.target.volume, mine.target.page);
         input.value = mine.text;
+        onText?.();
       }).catch(() => {});
     },
     kept: () => keptTarget(filled, input.value),

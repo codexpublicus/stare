@@ -204,16 +204,9 @@ export function droppedWords(q, tokens) {
   return out;
 }
 
-// A citation as typed: `347 U.S. 483`, `31 A.2d 647, 650 (1943)`, or a reader slug's
-// `a2d 31 647` and `a2d/31/647`.
-const CITED = /^\d{1,4}\s+[A-Za-z][A-Za-z0-9.' &]{0,40}?\s+\d{1,5}(?:\s*,\s*\d{1,5})?(?:\s*\([^)]{0,40}\))?$/;
-const SLUG = /^[a-z][a-z0-9-]{0,30}[\s/]+\d{1,4}(?:-\d+)?[\s/]+\d{1,5}(?:-\d{1,2})?$/i;
-
-/** Whether a query reads like a citation, worth offering to open in the reader. */
-export function looksLikeCitation(q) {
-  const t = String(q).trim();
-  return CITED.test(t) || SLUG.test(t);
-}
+// Whether a query reads like a citation: the boxes' own guess (boxroute.js), so the search page
+// offers the reader exactly what a box would have opened.
+export { citationIn, looksLikeCitation } from './boxroute.js';
 
 /**
  * The filters a state has, as chips: `{ key, label, text }`, `key` the state's field to
