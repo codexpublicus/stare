@@ -225,6 +225,9 @@ function renderChips(state, hint = {}) {
   const sig = JSON.stringify(items);
   if (sig === chips.dataset.sig) return;
   chips.dataset.sig = sig;
+  // A chip's name can change under the focus (the court's key, then its name from a card
+  // or facets.json); the focus stays on the same chip.
+  const focused = [...chips.querySelectorAll('button')].indexOf(document.activeElement);
   if (!items.length) {
     chips.replaceChildren();
     return;
@@ -258,6 +261,7 @@ function renderChips(state, hint = {}) {
     lis.push(li);
   }
   chips.replaceChildren(...lis);
+  if (focused >= 0) chips.querySelectorAll('button')[Math.min(focused, lis.length - 1)]?.focus();
 }
 
 function fillForm(state) {
