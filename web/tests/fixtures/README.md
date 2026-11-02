@@ -45,3 +45,9 @@ through routes, so the browser tests need no R2. Rebuild both when the client's 
 
 `searchtree.js` answers the tree's files as idx.stare.pub does (single and multi-range
 206s) for both.
+
+# Collection fixtures
+
+`collection/` holds index build v2026.10.26.2's `manifest.json`, `report.json` and
+`search/facets.json` from idx.stare.pub, trimmed to the fields `collectionFromIndex`
+(`web/src/lib/collection-read.js`) reads, for `web/tests/collection.test.js`.

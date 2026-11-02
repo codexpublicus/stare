@@ -1,0 +1,40 @@
+{
+ "format": 1,
+ "version": "v2026.10.26.2",
+ "generated_at": "2026-10-26T12:54:50Z",
+ "build": {
+  "cap_release": "VolumesMetadata.json sha256:df5da71c76b6d75b59cfbb07387c71fb255e7a9f8d095c8a676559527532204d"
+ },
+ "totals": {
+  "reporters": 401,
+  "volumes": 40622,
+  "split_volumes": 131,
+  "split_parts": 263,
+  "cases": 6920598,
+  "entries": 6920598,
+  "shortfall": 0,
+  "labeled": 2411,
+  "long_names": 1238,
+  "allowed": 0,
+  "failed": 0
+ },
+ "idx": {
+  "cl_input": {
+   "export": "2026-09-30",
+   "records": 900342,
+   "citations": 1589471,
+   "lines": 1103008,
+   "records_without_lines": 16059,
+   "skipped_vendor": 468501,
+   "skipped_volume": 0,
+   "skipped_page": 252,
+   "skipped_slug": 4,
+   "skipped_ambiguous": 1559,
+   "skipped_year": 15749,
+   "skipped_series": 398,
+   "slug_by_name": 5686,
+   "several_slugs": 0,
+   "slugs_differ": 1291
+  }
+ }
+}

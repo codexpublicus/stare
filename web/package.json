@@ -10,7 +10,8 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "og-image": "node scripts/og-image.mjs"
+    "prebuild": "node scripts/collection.mjs",
+    "collection": "node scripts/collection.mjs"
   },
   "dependencies": {
     "astro": "^7.3.5",

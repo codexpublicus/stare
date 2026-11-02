@@ -2,7 +2,7 @@
 import JsonLd from '../components/JsonLd.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import { dataset } from '../lib/jsonld.js';
-import { courtListener, formatCount } from '../lib/collection.js';
+import { courtListener, formatCount, indexVersion } from '../lib/collection.js';
 import { BOOT_TIMEOUT_MS, bootGuardScript } from '../lib/bootguard.js';
 import '../styles/theme.css';
 import '../styles/layout.css';
@@ -46,7 +46,7 @@ import SiteHead from '../components/SiteHead.astro';
 			</div>
 
 			<h2 id="sources">Sources</h2>
-			<p>The live index, {courtListener.index_version}, is built from two sources, which its manifest names in <code>based_on</code>: the <a href="https://case.law/">Caselaw Access Project</a>&rsquo;s case files (CC0 1.0), and <a href="https://www.courtlistener.com/help/api/bulk-data/">CourtListener&rsquo;s bulk data</a>, published by <a href="https://free.law/">Free Law Project</a>, from its export of {courtListener.export}. CourtListener marks its bulk data with the <a href="https://creativecommons.org/publicdomain/mark/1.0/">Public Domain Mark 1.0</a>, &ldquo;free of known copyright restrictions.&rdquo; From CourtListener, stare.pub takes the opinions and metadata of cases CAP doesn&rsquo;t hold, and the parallel citations in its citation table.</p>
+			<p>The live index, {indexVersion}, is built from two sources, which its manifest names in <code>based_on</code>: the <a href="https://case.law/">Caselaw Access Project</a>&rsquo;s case files (CC0 1.0), and <a href="https://www.courtlistener.com/help/api/bulk-data/">CourtListener&rsquo;s bulk data</a>, published by <a href="https://free.law/">Free Law Project</a>, from its export of {courtListener.export}. CourtListener marks its bulk data with the <a href="https://creativecommons.org/publicdomain/mark/1.0/">Public Domain Mark 1.0</a>, &ldquo;free of known copyright restrictions.&rdquo; From CourtListener, stare.pub takes the opinions and metadata of cases CAP doesn&rsquo;t hold, and the parallel citations in its citation table.</p>
 
 			<h2 id="files">The files</h2>
 			<p>Each volume&rsquo;s index is one gzipped text file, <code>idx.stare.pub/v/&lt;version&gt;/&lt;slug&gt;/&lt;volume&gt;.idx.gz</code>, with a line per case: <code>page,source,ref</code>. Lines sharing a page keep CAP&rsquo;s case first.</p>

@@ -1,6 +1,6 @@
 # stare.pub
 
-> stare.pub resolves U.S. case law citations to the full text of the case. It aggregates published case law decided from 1658 on from the Harvard Caselaw Access Project (CAP), 6.9 million cases, and from CourtListener (Free Law Project), whose records cover cases CAP doesn't have, and produces it as static, self-hostable data: the citation index, the case records, the reporter map and the schemas. There is no API, no account, no key and no server to call; resolving a citation is two or three plain HTTPS GETs, and the same files work from a mirror.
+> stare.pub resolves U.S. case law citations to the full text of the case. It aggregates published case law, 7.8 million decisions from 1658 to 2026, from the Harvard Caselaw Access Project (CAP) and from CourtListener (Free Law Project), whose records cover cases CAP doesn't have, including the decisions after CAP's last volumes, and produces it as static, self-hostable data: the citation index, the case records, the reporter map and the schemas. There is no API, no account, no key and no server to call; resolving a citation is two or three plain HTTPS GETs, and the same files work from a mirror.
 
 ## Resolving a citation
 

@@ -1,7 +1,7 @@
 ---
 import SiteFooter from '../components/SiteFooter.astro';
 import { parseChangelog } from '../lib/changelog.js';
-import { collection, casesLabel, courtListener, formatCount } from '../lib/collection.js';
+import { cap, capCasesLabel, courtListener, coverage, formatCount, indexVersion } from '../lib/collection.js';
 import changelog from '../../../CHANGELOG.md?raw';
 import '../styles/theme.css';
 import '../styles/layout.css';
@@ -18,9 +18,9 @@ import SiteHead from '../components/SiteHead.astro';
 		<SiteHead />
 		<title>About · stare.pub</title>
 		<link rel="alternate" type="application/atom+xml" title="stare.pub updates" href="/updates.xml" />
-		<meta name="description" content={`stare.pub resolves U.S. case citations to full text and original scans, from the Codex Publicus copy of the Caselaw Access Project (${casesLabel}) and CourtListener's bulk data.`} />
+		<meta name="description" content={`stare.pub resolves U.S. case citations to full text and original scans: ${coverage}.`} />
 		<meta property="og:title" content="About §tare.pub" />
-		<meta property="og:description" content={`U.S. case citations to full text and original scans: ${casesLabel} from the Caselaw Access Project, preserved by Codex Publicus, and more from CourtListener.`} />
+		<meta property="og:description" content={`U.S. case citations to full text and original scans: ${coverage}. The CAP cases are preserved by Codex Publicus.`} />
 		<meta property="og:type" content="website" />
 		<meta property="og:url" content="https://stare.pub/about" />
 		<meta property="og:image" content="https://stare.pub/og-image.png" />
@@ -43,10 +43,11 @@ import SiteHead from '../components/SiteHead.astro';
 			<p>Published case law is the law. Reading it shouldn't depend on a subscription, or on any one institution's continued goodwill and funding.</p>
 
 			<h2>The data</h2>
-			<p>Most of the cases come from the <a href="https://case.law/" target="_blank" rel="noopener">Caselaw Access Project</a> (CAP). Between 2013 and 2018 the Harvard Law School Library scanned its collection of American case reporters: {formatCount(collection.volumes)} volumes holding {casesLabel}, decided between {collection.first_year} and {collection.last_year}. The case data is public domain.</p>
+			<p>stare.pub holds {coverage}.</p>
+			<p>Most of the cases come from the <a href="https://case.law/" target="_blank" rel="noopener">Caselaw Access Project</a> (CAP). Between 2013 and 2018 the Harvard Law School Library scanned its collection of American case reporters: {formatCount(cap.volumes)} volumes holding {capCasesLabel}, decided between {cap.first_year} and {cap.last_year}. The case data is public domain.</p>
 			<p>Ravel Law paid for the scanning in exchange for a period of exclusive commercial use, which passed to LexisNexis when it bought Ravel in 2017 and ran until March 2024. When it ended, Harvard published the whole corpus as bulk files at <a href="https://static.case.law/" target="_blank" rel="noopener">static.case.law</a>, and on September 1, 2024 it retired the CAP website and its API. The bulk files are still up. Nobody has said for how long.</p>
 			<p>Codex Publicus holds a complete copy of that release, all 10.4 TB of it: the case text, the page scans, the OCR and the metadata. stare.pub reads its case text from that copy.</p>
-			<p>The rest come from <a href="https://www.courtlistener.com/" target="_blank" rel="noopener">CourtListener</a>, the case law archive run by the <a href="https://free.law/" target="_blank" rel="noopener">Free Law Project</a>. From CourtListener's <a href="https://www.courtlistener.com/help/api/bulk-data/" target="_blank" rel="noopener">bulk data</a> stare.pub takes the opinions and metadata of cases CAP doesn't hold, including the decisions after CAP's last volumes, and the parallel citations CourtListener records, so a citation to one reporter finds the same decision printed in another. CourtListener marks its bulk data with the <a href="https://creativecommons.org/publicdomain/mark/1.0/" target="_blank" rel="noopener">Public Domain Mark 1.0</a>, "free of known copyright restrictions." The live index, {courtListener.index_version}, is built from CourtListener's export of {courtListener.export}, and data.stare.pub serves {formatCount(courtListener.records)} case records from it. Each record names CourtListener and Free Law Project as its source, and the case view links the opinion on CourtListener. Those cases have text and metadata but no page scans.</p>
+			<p>The rest come from <a href="https://www.courtlistener.com/" target="_blank" rel="noopener">CourtListener</a>, the case law archive run by the <a href="https://free.law/" target="_blank" rel="noopener">Free Law Project</a>. From CourtListener's <a href="https://www.courtlistener.com/help/api/bulk-data/" target="_blank" rel="noopener">bulk data</a> stare.pub takes the opinions and metadata of cases CAP doesn't hold, including the decisions after CAP's last volumes, and the parallel citations CourtListener records, so a citation to one reporter finds the same decision printed in another. CourtListener marks its bulk data with the <a href="https://creativecommons.org/publicdomain/mark/1.0/" target="_blank" rel="noopener">Public Domain Mark 1.0</a>, "free of known copyright restrictions." The live index, {indexVersion}, is built from CourtListener's export of {courtListener.export}, and data.stare.pub serves {formatCount(courtListener.records)} case records from it. Each record names CourtListener and Free Law Project as its source, and the case view links the opinion on CourtListener. Those cases have text and metadata but no page scans.</p>
 
 			<h2>How it works</h2>
 			<p>When you look up a citation, your browser:</p>
@@ -61,8 +62,8 @@ import SiteHead from '../components/SiteHead.astro';
 			<h2>Where it stands</h2>
 			<p>Done:</p>
 			<ul>
-				<li><strong>The mirror.</strong> All {formatCount(collection.volumes)} volumes of the CAP release are copied, counted and held read-only.</li>
-				<li><strong>The index.</strong> {formatCount(collection.indexed_volumes)} volumes are indexed and resolve today.</li>
+				<li><strong>The mirror.</strong> All {formatCount(cap.volumes)} volumes of the CAP release are copied, counted and held read-only.</li>
+				<li><strong>The index.</strong> {formatCount(cap.indexed_volumes)} CAP volumes are indexed and resolve today.</li>
 				<li><strong>Citation detection.</strong> citare, a Rust citation parser I wrote, finds the citations in every case you read and in anything you paste into the brief checker, including plain forms like 31 A.2d 647.</li>
 				<li><strong>Our own case text.</strong> Case data is served from the Codex Publicus copy, not from static.case.law.</li>
 				<li><strong>CourtListener.</strong> {formatCount(courtListener.records)} records of cases CAP doesn't hold, from CourtListener's export of {courtListener.export}, are published, and the index points their citations at them; CourtListener's parallel citations link a case's other printings to it.</li>

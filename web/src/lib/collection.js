@@ -1,33 +1,23 @@
-// The collection's size, from one data file (web/src/data/collection.json).
-// Every page, social description and the OG image take their figures from
-// here; web/tests/collection.test.js fails on a figure typed anywhere else.
+// The collection's size and range, from one data file (web/src/data/collection.json).
+// web/scripts/collection.mjs writes it from the live index before every site build
+// (#297); the copy in git is the snapshot the tests run on. Every page, social
+// description, llms.txt's summary and the OG image take their figures from here;
+// web/tests/collection.test.js fails on a figure typed anywhere else, and
+// web/tests/stale-figures.test.js on CAP's own figures given as the whole collection.
 import collection from '../data/collection.json' with { type: 'json' };
+import { figures } from './collection-figures.js';
 
 export { collection };
+export { SOURCES, figures, formatCount, formatMillions } from './collection-figures.js';
 
-// 6,920,596 -> "6.9 million". One decimal, rounded down, so the site never
-// claims more cases than it has.
-export function formatMillions(n) {
-  if (!Number.isInteger(n) || n < 1_000_000) {
-    throw new RangeError(`formatMillions expects an integer of at least a million, got ${n}`);
-  }
-  const tenths = Math.floor(n / 100_000);
-  const whole = Math.floor(tenths / 10);
-  const frac = tenths % 10;
-  return frac === 0 ? `${whole} million` : `${whole}.${frac} million`;
-}
+export const { decisionsLabel, yearSpan, coverage, capCasesLabel, ogLine, llmsSummary } = figures(collection);
 
-// 40622 -> "40,622"
-export function formatCount(n) {
-  return n.toLocaleString('en-US');
-}
+// CAP's release: its cases, volumes and years.
+export const cap = collection.cap;
 
-// formatMillions(cases) + " cases"
-export const casesLabel = `${formatMillions(collection.cases)} cases`;
-
-// "1658–2020"
-export const yearRange = `${collection.first_year}–${collection.last_year}`;
-
-// The CourtListener records the live index points at: the index build, the
-// CourtListener export it was built from, and how many records it has.
+// The CourtListener records the index build points at: the export it was built
+// from, and how many records it published.
 export const courtListener = collection.courtlistener;
+
+// The index build the figures were read from.
+export const indexVersion = collection.index_version;

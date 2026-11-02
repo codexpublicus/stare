@@ -1,7 +1,7 @@
 ---
 import JsonLd from '../components/JsonLd.astro';
 import SiteFooter from '../components/SiteFooter.astro';
-import { casesLabel, yearRange } from '../lib/collection.js';
+import { SOURCES, coverage, decisionsLabel, indexVersion, yearSpan } from '../lib/collection.js';
 import { webSite } from '../lib/jsonld.js';
 import { caseRouteScript } from '../lib/caseroute.js';
 import { DATA_URL, INDEX_URL } from '../../public/js/sources.js';
@@ -20,15 +20,15 @@ import SiteHead from '../components/SiteHead.astro';
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<SiteHead />
 		<title>stare.pub — U.S. Case Law Citation Resolution</title>
-		<meta name="description" content="Free, serverless U.S. case law citation resolution. Look up any case by citation — all client-side, no server, no account." />
+		<meta name="description" content="Free, serverless U.S. case law citation resolution. Look up any case by citation, all in your browser, with no server and no account." />
 		<meta property="og:title" content="§tare.pub — Free U.S. Case Law Lookup" />
-		<meta property="og:description" content={`Resolve legal citations to full case text and original scanned pages. ${casesLabel}, ${yearRange}. No server, no account.`} />
+		<meta property="og:description" content={`Resolve legal citations to full case text and original scanned pages. ${coverage}. No server, no account.`} />
 		<meta property="og:type" content="website" />
 		<meta property="og:url" content="https://stare.pub" />
 		<meta property="og:image" content="https://stare.pub/og-image.png" />
 		<meta name="twitter:card" content="summary_large_image" />
 		<meta name="twitter:title" content="§tare.pub — Free U.S. Case Law Lookup" />
-		<meta name="twitter:description" content={`Resolve legal citations to full case text and original scanned pages. ${casesLabel}. Serverless. Actually.`} />
+		<meta name="twitter:description" content={`Resolve legal citations to full case text and original scanned pages. ${decisionsLabel}. Serverless. Actually.`} />
 		<JsonLd data={webSite()} />
 		<script is:inline>
 			try {
@@ -77,8 +77,8 @@ import SiteHead from '../components/SiteHead.astro';
 				<div class="landing-feature">
 					<div class="landing-feature-icon">&#128214;</div>
 					<div class="landing-feature-text">
-						<strong id="collection-cases">{casesLabel}</strong>
-						<span>{yearRange}, from the Harvard Caselaw Access Project</span>
+						<strong id="collection-cases" data-index-version={indexVersion}>{decisionsLabel}</strong>
+						<span>{yearSpan}, from {SOURCES}</span>
 					</div>
 				</div>
 				<div class="landing-feature">

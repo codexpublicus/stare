@@ -8,7 +8,8 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 
 import { test as base, expect } from '@playwright/test';
 
-import { casesLabel, courtListener, yearRange } from '../src/lib/collection.js';
+import { figures } from '../src/lib/collection-figures.js';
+import { readCollection } from '../src/lib/collection-read.js';
 import { isAllowed, parseLlmsTxt, parseRobots } from '../src/lib/crawlfiles.js';
 import { PATCH_MARKER } from '../src/lib/pdfjs-vendor.js';
 import { PDFJS_BASE } from '../public/js/pdfjs-path.js';
@@ -21,6 +22,17 @@ const WASM_PATH_RE = /^\/wasm\/stare_wasm_bg(\.[0-9a-f]{16})?\.wasm$/;
 const isWasmUrl = (url) => WASM_PATH_RE.test(new URL(url).pathname);
 const WASM_SIZE_PATH = '/wasm/stare_wasm_bg.json';
 const BUNDLE_DIR = '/data/citare/v1/';
+
+// The collection's figures for the index build the deployed site was built from
+// (#297): the build reads them from the live index (web/scripts/collection.mjs) and
+// names the build on the landing's figure, so the deployed pages are checked against
+// that build's own files rather than the snapshot in git.
+async function deployedCollection(page) {
+  await page.goto('/');
+  const version = await page.locator('#collection-cases').getAttribute('data-index-version');
+  expect(version).toMatch(/^v\d{4}\.\d{2}\.\d{2}(?:\.\d+)?$/);
+  return readCollection({ version });
+}
 
 // Every test fails on a console error or warning, or an uncaught exception.
 // `expectedMissing` lists URLs a test expects to 404: Chromium logs every failed
@@ -68,10 +80,10 @@ test('/ returns 200 with the title and security headers', async ({ page }) => {
   expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
 });
 
-test('/ gives the collection figures from web/src/data/collection.json', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.locator('#collection-cases')).toHaveText(casesLabel);
-  await expect(page.locator('#collection-cases + span')).toContainText(yearRange);
+test('/ gives the collection figures of the index build it names', async ({ page }) => {
+  const { decisionsLabel, yearSpan } = figures(await deployedCollection(page));
+  await expect(page.locator('#collection-cases')).toHaveText(decisionsLabel);
+  await expect(page.locator('#collection-cases + span')).toContainText(`${yearSpan}, from the Caselaw Access Project and CourtListener`);
 });
 
 test('the WASM is served as application/wasm, compressed', async ({ request }) => {
@@ -2068,6 +2080,8 @@ test.describe('CourtListener credited as a source (#206)', () => {
   const PDM = 'https://creativecommons.org/publicdomain/mark/1.0/';
 
   test('/about names CourtListener beside CAP, with its terms and the export the index uses', async ({ page }) => {
+    const collection = await deployedCollection(page);
+    const courtListener = collection.courtlistener;
     await page.goto('/about');
     const main = page.locator('.page');
     await expect(main.locator('a[href="https://www.courtlistener.com/"]').first()).toBeVisible();
@@ -2075,9 +2089,11 @@ test.describe('CourtListener credited as a source (#206)', () => {
     await expect(main.locator(`a[href="${PDM}"]`).first()).toBeVisible();
     await expect(main).toContainText(`CourtListener's export of ${courtListener.export}`);
     await expect(main).toContainText('static data you can host yourself');
+    await expect(main).toContainText(`stare.pub holds ${figures(collection).coverage}.`);
   });
 
   test('/data describes the CourtListener records, the cl lines and the aliases, and no export files', async ({ page }) => {
+    const courtListener = (await deployedCollection(page)).courtlistener;
     await page.goto('/data');
     await expect(page.locator('#sources')).toBeVisible();
     await expect(page.locator('#files')).toBeVisible();
