@@ -11,12 +11,20 @@ name: site
 #   preview alias (https://main-stare-pub.nick-441.workers.dev), and smoke
 #   test that version. release.yml refuses to release a merge commit whose
 #   run failed, so the smoke test gates releases.
+# - nightly: the same as a push to main, so the full smoke suite runs against
+#   the current index and data even when nothing merges (#294).
+#
+# A PR's smoke test skips the specs whose inputs are byte-identical to a run
+# that passed (web/e2e/inputs.js, .github/actions/smoke-test); main, the
+# nightly run, the release PR and a PR labelled full-smoke run every spec.
 
 on:
   pull_request:
   push:
     branches:
       - main
+  schedule:
+    - cron: '23 9 * * *'
 
 permissions:
   contents: read
@@ -77,16 +85,40 @@ jobs:
             gh api "repos/$REPO/issues/$PR_NUMBER/comments" -X POST -f body="$body"
           fi
 
+      # Labels are read now rather than from the event, so adding full-smoke and
+      # re-running the job runs every spec.
+      - name: Choose the smoke specs
+        id: smoke-scope
+        if: github.actor != 'dependabot[bot]'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.number }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          reason=""
+          if [ "$HEAD_REF" = release/next ]; then
+            reason="the release PR"
+          elif gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.labels[].name' | grep -qx full-smoke; then
+            reason="the full-smoke label"
+          fi
+          echo "select=$([ -n "$reason" ] && echo all || echo affected)" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+
       # After the comment, so a failing preview still gets its URL posted.
       - uses: ./.github/actions/smoke-test
         if: github.actor != 'dependabot[bot]'
         with:
           url: ${{ steps.preview.outputs.url }}
+          select: ${{ steps.smoke-scope.outputs.select }}
+          select-reason: ${{ steps.smoke-scope.outputs.reason }}
+          record: pr-${{ github.event.number }}
 
   main-preview:
     # Named so a green check on main isn't mistaken for a release.
     name: Preview main (not production)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule'
     runs-on: homelab
     # No concurrency group: cancelling this run would fail release.yml's check
     # of the release PR's merge commit, which waits for it.
@@ -150,3 +182,5 @@ jobs:
         with:
           url: ${{ steps.preview.outputs.url }}
           retries: '0'
+          select-reason: ${{ github.event_name == 'schedule' && 'the nightly run' || 'a push to main' }}
+          record: main

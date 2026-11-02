@@ -4,3 +4,6 @@
 __pycache__/
 .pytest_cache/
 *.rclone.conf
+
+# The smoke suite's record of passing specs (.github/actions/smoke-test)
+/.smoke-passes/

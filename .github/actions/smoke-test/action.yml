@@ -9,6 +9,23 @@ inputs:
   url:
     description: Base URL of the site to test
     required: true
+  # Which specs to run (#294; web/e2e/select.mjs). "affected" skips a spec whose
+  # inputs (web/e2e/inputs.js) hash to one a recorded run passed; "all" runs them all.
+  select:
+    description: '"all" or "affected"'
+    required: false
+    default: all
+  select-reason:
+    description: Why every spec runs, for the job summary
+    required: false
+    default: ''
+  # Where this run records the input hashes of the specs that passed: "main" for
+  # main's record, which every PR reads, "pr-<number>" for a PR's own. Empty records
+  # nothing and hashes nothing (the run needs the build's WASM to hash).
+  record:
+    description: '"main", "pr-<number>", or empty'
+    required: false
+    default: ''
   retries:
     description: >
       Retries for a failed test, overriding playwright.config.js (one in
@@ -105,12 +122,92 @@ runs:
       # A version just uploaded can take a few seconds to answer.
       run: curl --silent --show-error --fail --output /dev/null --retry 12 --retry-delay 5 --retry-all-errors "$STARE_BASE_URL/"
 
+    # The record of passing input hashes is a small JSON file in the Actions cache,
+    # saved under a new key by each run that records and restored by prefix (the
+    # newest). main's is visible to every PR; a PR's own only to that PR. A miss or a
+    # hashing failure just runs more.
+    - name: Hash the specs' inputs
+      id: keys
+      if: inputs.record != '' || inputs.select == 'affected'
+      shell: bash
+      run: |
+        if node web/e2e/select.mjs keys --out "$RUNNER_TEMP/smoke-keys.json"; then
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning::couldn't hash the smoke specs' inputs; every spec runs and nothing is recorded"
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Restore main's record of passing specs
+      if: steps.keys.outputs.ok == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .smoke-passes/main.json
+        key: smoke-passes-main-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: smoke-passes-main-
+
+    - name: Restore this PR's record of passing specs
+      if: steps.keys.outputs.ok == 'true' && startsWith(inputs.record, 'pr-')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .smoke-passes/pr.json
+        key: smoke-passes-${{ inputs.record }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: smoke-passes-${{ inputs.record }}-
+
+    - name: Choose the specs
+      id: plan
+      shell: bash
+      env:
+        OK: ${{ steps.keys.outputs.ok }}
+        SELECT: ${{ inputs.select }}
+        REASON: ${{ inputs.select-reason }}
+      run: |
+        set -euo pipefail
+        if [ "$OK" != true ]; then
+          echo "filters=" >> "$GITHUB_OUTPUT"
+          echo "run=all" >> "$GITHUB_OUTPUT"
+          printf '### Smoke specs\n\nEvery spec runs (%s).\n' "${REASON:-inputs not hashed}" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+        node web/e2e/select.mjs plan --keys "$RUNNER_TEMP/smoke-keys.json" --mode "$SELECT" --reason "$REASON" \
+          --ledger .smoke-passes/main.json --ledger .smoke-passes/pr.json
+
     - name: Smoke test
+      if: steps.plan.outputs.run != '0'
       shell: bash
       env:
         STARE_BASE_URL: ${{ inputs.url }}
         RETRIES: ${{ inputs.retries }}
-      run: web/node_modules/.bin/playwright test --config web/playwright.config.js ${RETRIES:+--retries="$RETRIES"}
+        FILTERS: ${{ steps.plan.outputs.filters }}
+        STARE_SMOKE_REPORT: ${{ runner.temp }}/smoke-report.json
+      run: |
+        read -ra filters <<< "$FILTERS"
+        web/node_modules/.bin/playwright test --config web/playwright.config.js ${RETRIES:+--retries="$RETRIES"} "${filters[@]}"
+
+    # After a failure too: a spec that failed or passed only on a retry gets its
+    # hash marked failed, so no later run reuses an older pass of the same inputs.
+    - name: Record the specs that passed
+      id: record
+      if: always() && inputs.record != '' && steps.keys.outputs.ok == 'true' && steps.plan.outcome == 'success' && steps.plan.outputs.run != '0'
+      shell: bash
+      env:
+        RECORD: ${{ inputs.record }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        set -euo pipefail
+        name=$([ "$RECORD" = main ] && echo main || echo pr)
+        mkdir -p .smoke-passes
+        node web/e2e/select.mjs record --keys "$RUNNER_TEMP/smoke-keys.json" --report "$RUNNER_TEMP/smoke-report.json" \
+          --ledger .smoke-passes/main.json --ledger .smoke-passes/pr.json --run "$RUN_URL" --out "$RUNNER_TEMP/smoke-passes.json"
+        mv "$RUNNER_TEMP/smoke-passes.json" ".smoke-passes/$name.json"
+        echo "path=.smoke-passes/$name.json" >> "$GITHUB_OUTPUT"
+
+    - name: Save the record
+      if: always() && steps.record.outcome == 'success'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.record.outputs.path }}
+        key: smoke-passes-${{ inputs.record }}-${{ github.run_id }}-${{ github.run_attempt }}
 
     - name: Upload traces
       if: failure()
