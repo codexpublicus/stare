@@ -509,7 +509,7 @@ test('a page change keeps the place: focus on the results, and Back returns to w
 });
 
 for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['laptop', { width: 1366, height: 768 }]]) {
-  test(`a query with filters moves nothing on screen either (${name})`, async ({ page }) => {
+  test(`a query with filters and a note under the count moves nothing on screen either (${name})`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.addInitScript(() => {
       window.__cls = 0;
@@ -517,8 +517,9 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['laptop
         for (const e of list.getEntries()) if (!e.hadRecentInput) window.__cls += e.value;
       }).observe({ type: 'layout-shift', buffered: true });
     });
-    await page.goto('/search/?q=contract&court=ny&from=1925&to=1934');
+    await page.goto('/search/?q=the+contract&court=ny&from=1925&to=1934');
     await expect(page.locator('#search-results > li:not(.search-card-skel)')).not.toHaveCount(0);
+    await expect(page.locator('#search-note')).toHaveText('Left out as too common to search for: the.');
     await page.waitForTimeout(500);
     expect(await page.evaluate(() => window.__cls)).toBeLessThan(0.05);
   });
