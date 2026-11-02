@@ -324,7 +324,8 @@ async function runQuery(state, { focus = false } = {}) {
     }
     const pages = pageCount(result.total);
     const page = Math.min(state.page, pages);
-    const ids = result.ranked.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((h) => h.id);
+    // (a query whose words are all stopwords returns no `ranked`)
+    const ids = (result.ranked ?? []).slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((h) => h.id);
     const cards = await readCards(tree, ids);
     if (id !== runId) return;
     list.replaceChildren(...cards.map((c) => card(cardFields(c))));

@@ -125,6 +125,16 @@ test('the next page reads only its cards, and Back shows the first again', async
   expect(treeRequests(page, '.eidx').length).toBe(1);
 });
 
+test('a query of stopwords only, or a word nothing has, says so', async ({ page }) => {
+  await page.goto('/search/?q=the+of+and');
+  await expect(status(page)).toHaveText('Every word in that query is too common to search for. Try more specific words.');
+  await page.fill('#search-q', 'zebra');
+  await page.press('#search-q', 'Enter');
+  await expect(status(page)).toHaveText('No decisions match.');
+  await expect(page.locator('#search-results > li')).toHaveCount(0);
+  await expect(page.locator('#search-pages')).toBeHidden();
+});
+
 test('the landing hands words that aren\'t a citation to the search', async ({ page }) => {
   await page.goto('/');
   await page.fill('#landing-input', 'kale marauders');
