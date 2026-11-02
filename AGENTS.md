@@ -654,7 +654,7 @@ may run code from a fork or check out PR code under `pull_request_target`.
   run; the record is a small JSON file in the Actions cache (`smoke-passes-main-*`, which
   every PR reads, and `smoke-passes-pr-<n>-*`). A pass counts only if every test in the spec
   passed on its first try; a failure or flake marks the hash failed, so an older pass of the
-  same inputs isn't reused. Pushes to `main`, the nightly run (the same job, on a schedule),
+  same inputs isn't reused. Pushes to `main`,
   the release PR and a PR labelled `full-smoke` (add it, then re-run the job) run every spec.
   `web/tests/smoke-inputs.test.js` fails the build if a file under `web/` belongs to no spec
   and isn't in `NOT_INPUTS`, or if a spec's inputs import, fetch by path or read a file outside
