@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-#MISE description="Install web dependencies and build the site"
+#MISE description="Install web dependencies, build the site with the live index's figures, and check them"
 set -euo pipefail
 
 npm --prefix web ci
 npm --prefix web run build
+STARE_REQUIRE_DIST=1 node --test web/tests/collection.test.js web/tests/stale-figures.test.js

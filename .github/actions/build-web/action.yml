@@ -1,6 +1,8 @@
 name: Build the web site
 description: >
-  Installs the web dependencies and runs the Astro build into web/dist. Expects
+  Installs the web dependencies and runs the Astro build into web/dist, with
+  the collection's figures read from the live index, then checks the figures
+  in the build. Expects
   Node to be set up and web/public/wasm and web/public/data/citare to hold the
   stare-wasm build and citare's data bundle: build-site makes them, and
   release.yml downloads the ones the merge commit's main build made.
@@ -24,6 +26,11 @@ runs:
       shell: bash
       run: npm --prefix web ci
 
+    # The build reads the collection's figures from the live index first
+    # (web/scripts/collection.mjs, the prebuild script) and renders og-image.png
+    # in Chromium when they've changed (#297).
+    - uses: ./.github/actions/chromium
+
     - name: Build web
       shell: bash
       env:
@@ -35,3 +42,11 @@ runs:
         export PUBLIC_BUILD_DATE
         echo "Building ${PUBLIC_RELEASE:-dev} at ${PUBLIC_COMMIT:-unknown commit}, ${PUBLIC_BUILD_DATE}"
         npm --prefix web run build
+
+    # The figures in the built pages, llms.txt and the OG image are the ones the
+    # build read, and none of CAP's own is given as the whole collection's (#297).
+    - name: Check the built figures
+      shell: bash
+      env:
+        STARE_REQUIRE_DIST: '1'
+      run: node --test web/tests/collection.test.js web/tests/stale-figures.test.js

@@ -126,6 +126,24 @@ runs:
         release: ${{ inputs.release }}
         commit: ${{ inputs.commit }}
 
+    # The build rewrote web/src/data/collection.json from the live index. The copy
+    # in git is the snapshot the JS tests ran on; say so when the live index has
+    # moved past it (#297). A warning, not a failure: the build itself has the
+    # live figures, and an index publish shouldn't fail every PR until the
+    # snapshot is committed.
+    - name: Compare the collection snapshot with the live index
+      shell: bash
+      run: |
+        set -euo pipefail
+        if git diff --quiet -- web/src/data/collection.json; then
+          echo "web/src/data/collection.json matches the live index"
+        else
+          git diff --stat -- web/src/data/collection.json web/public/llms.txt web/public/og-image.svg
+          msg="web/src/data/collection.json is behind the live index; run npm --prefix web run collection and commit web/src/data/collection.json, web/public/llms.txt and web/public/og-image.*"
+          echo "::warning::$msg"
+          echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
     # Every URL in the build, and the data hosts' paths, against content blockers'
     # filter lists (#265; web/checks/). The lists are fetched at most daily; the cache
     # keeps the last day's, which the check falls back to (up to two weeks old) if a
