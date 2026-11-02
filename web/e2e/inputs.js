@@ -62,7 +62,11 @@ export const SHARED_EXCLUDE = [
 ];
 
 // The search page's own files, which nothing else loads.
-const SEARCH_ONLY_JS = ['web/public/js/searchpage.js', 'web/public/js/searchquery.js'];
+const SEARCH_ONLY_JS = [
+  'web/public/js/searchpage.js',
+  'web/public/js/searchquery.js',
+  'web/public/js/searchfilters.js',
+];
 // The /data page's own module.
 const DATA_ONLY_JS = ['web/public/js/datapage.js'];
 
