@@ -11,6 +11,10 @@ name: site
 #   preview alias (https://main-stare-pub.nick-441.workers.dev), and smoke
 #   test that version. release.yml refuses to release a merge commit whose
 #   run failed, so the smoke test gates releases.
+#
+# A PR's smoke test skips the specs whose inputs are byte-identical to a run
+# that passed (web/e2e/inputs.js, .github/actions/smoke-test); main, the
+# release PR and a PR labelled full-smoke run every spec.
 
 on:
   pull_request:
@@ -77,11 +81,35 @@ jobs:
             gh api "repos/$REPO/issues/$PR_NUMBER/comments" -X POST -f body="$body"
           fi
 
+      # Labels are read now rather than from the event, so adding full-smoke and
+      # re-running the job runs every spec.
+      - name: Choose the smoke specs
+        id: smoke-scope
+        if: github.actor != 'dependabot[bot]'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.number }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          reason=""
+          if [ "$HEAD_REF" = release/next ]; then
+            reason="the release PR"
+          elif gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.labels[].name' | grep -qx full-smoke; then
+            reason="the full-smoke label"
+          fi
+          echo "select=$([ -n "$reason" ] && echo all || echo affected)" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+
       # After the comment, so a failing preview still gets its URL posted.
       - uses: ./.github/actions/smoke-test
         if: github.actor != 'dependabot[bot]'
         with:
           url: ${{ steps.preview.outputs.url }}
+          select: ${{ steps.smoke-scope.outputs.select }}
+          select-reason: ${{ steps.smoke-scope.outputs.reason }}
+          record: pr-${{ github.event.number }}
 
   main-preview:
     # Named so a green check on main isn't mistaken for a release.
@@ -150,3 +178,5 @@ jobs:
         with:
           url: ${{ steps.preview.outputs.url }}
           retries: '0'
+          select-reason: a push to main
+          record: main

@@ -744,6 +744,19 @@ may run code from a fork or check out PR code under `pull_request_target`.
   the build: a workflow Dependabot triggers sees only Dependabot secrets, and infra stores
   `CITARE_DEPLOY_KEY` there but not the Workers token, since a dependency bump runs the new
   version's build scripts and the token can deploy production (codexpublicus/stare-builder#6).
+- **Which smoke specs a PR runs** (#294): `web/e2e/inputs.js` lists each spec's inputs (the
+  files it tests, the WASM, citare's bundle and the reporter map as built, and the live index
+  and scans manifests), and `web/e2e/select.mjs` hashes them after the build. A PR skips a
+  spec whose hash has a recorded pass and lists it in the job summary as reused from that
+  run; the record is a small JSON file in the Actions cache (`smoke-passes-main-*`, which
+  every PR reads, and `smoke-passes-pr-<n>-*`). A pass counts only if every test in the spec
+  passed on its first try; a failure or flake marks the hash failed, so an older pass of the
+  same inputs isn't reused. Pushes to `main`,
+  the release PR and a PR labelled `full-smoke` (add it, then re-run the job) run every spec.
+  `web/tests/smoke-inputs.test.js` fails the build if a file under `web/` belongs to no spec
+  and isn't in `NOT_INPUTS`, or if a spec's inputs import, fetch by path or read a file outside
+  them, so a new file or dependency has to go into the map; when unsure, put it in `SHARED`,
+  which every spec hashes. The suite runs `fullyParallel` on the runner's workers.
 - **Pushes to `main`** (`site.yml`, job "Preview main (not production)") run the same checks
   and upload a version to the `main` preview alias (and the `site-wasm` artifact `release.yml`
   deploys),
