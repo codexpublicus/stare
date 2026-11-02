@@ -343,7 +343,10 @@ single year is the format's own key, and a range over every year is no filter.
 What it fetches, and when:
 
 - Nothing until there is a query or the filters are opened; the page's own modules are
-  `searchpage.js`, `searchquery.js` and `searchclient-path.js` (about 9 KB gzipped).
+  `searchpage.js`, `searchquery.js` and `searchclient-path.js` (about 13 KB gzipped, 5 KB
+  more than before #295's pass).
+- A query that reads like a citation (`347 U.S. 483`, `a2d 31 647`) offers to open it in
+  the reader; `resolve.js` and the parser's WASM load only when that's clicked.
 - Then, once a page: the index manifest (`loadManifest`, for `base`; `PUBLIC_SEARCH_TREE` at
   build time pins a tree instead, for the dev server and local measurements), then the
   search client (12.4 KB gzipped) and the tree's `manifest.json` in parallel. A tree that
@@ -356,8 +359,15 @@ What it fetches, and when:
   so Cloudflare caches them and answers a range of a cold one with the range; the client
   sends one multi-range request per segment a read touches, in parallel. A query's ranking
   is kept, so another page of it reads only its cards.
-- `facets.json` (62 KB gzipped for v2026.10.26.2) only for the filters' lists, after any
-  query under way, or on the query path for a year range, to know which years exist.
+- `facets.json` (62 KB gzipped for v2026.10.26.2) and the panel's module
+  (`searchfilters.js`, 2.3 KB gzipped) only when the filters open, after any query under
+  way; `facets.json` alone on the query path for a year range, to know which years exist.
+  The panel shows each jurisdiction's and court's decisions from it, narrows the court
+  list as a box is typed into, and draws the year range as a chart of decisions a year
+  with two sliders over it. The sliders are a pointer convenience out of the tab order;
+  the From and To boxes hold the form's values. Filters apply with Apply or Search, so
+  choosing three of them costs one query, not three. On a phone the panel stays shut even
+  with filters in the URL; the chips under it show them, and each removes its filter.
 
 Measured on 2026-11-02 on the PR preview against idx.stare.pub's format-2 tree for
 v2026.10.26.2 (7.8M decisions), Chromium with its cache off, the tree's own requests and
@@ -380,13 +390,27 @@ up to 20 cards segments and each is its own request. The owner accepted that for
 (D162); [stare-builder#86](https://github.com/codexpublicus/stare-builder/issues/86) tracks
 numbering decisions so a query's top cards share segments.
 
-The status line is a polite live region that says how many decisions matched, and whether
-that's every match or the best of what the tiers read ("The best 4,352 matches found" for a
-word past the term index's 4,352 postings); the form is `role="search"` and works as a
-plain GET without the module; the pagination is a `nav` with `aria-current`, and a page
-change moves focus to the results' heading. The page is at least the window's height, so
-results arriving move nothing on screen; `search.spec.js` keeps a query's layout shifts
-under 0.05 at phone and laptop sizes.
+While a query runs, the previous results stay on screen, dimmed; a first query fills the
+list with 20 skeleton cards instead and says it is loading the search index. A thin bar
+moves (by transform) along the top of the list. A new query aborts the reads of the one it
+replaces: the session's fetch (`queryFetch`) carries the running query's signal, and a
+query that fails only because a superseded one's shared shard load was aborted runs once
+more (the client drops a failed load from its cache). A query still running after 8 s, or
+one that fails, says so in the status line with a Try again button.
+
+The status line says the count plainly ("137 matches, page 1 of 7", "Top 4,352 matches"
+when the count is the best of what the tiers read for a word past the term index's 4,352
+postings) and isn't a live region; `#search-live` announces once per result set. The
+note under the count (all but one word, the best matches rather than every one, common
+words left out) sits inside the results' box, so it arriving with them moves nothing that
+was there. The query's words are marked in the case names (`nameSegments`, folding as the
+tokenizer does; `searchquery.test.js` checks it against the vendored tokenizer). The form
+is `role="search"` and works as a plain GET without the module; the pagination is a `nav`
+with `aria-current`, a page change moves focus to the results' heading, and Back and
+Forward return to where the page was scrolled (`history.scrollRestoration` is manual; each
+entry's state keeps its `scrollY`). The page is at least the window's height, so results
+arriving move nothing on screen; `search.spec.js` keeps a query's layout shifts under 0.05
+at phone and laptop sizes, with and without filters and a note.
 
 ### The browser cache (#269: `web/public/js/cache.js`)
 
