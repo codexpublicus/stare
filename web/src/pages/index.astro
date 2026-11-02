@@ -57,12 +57,14 @@ import SiteHead from '../components/SiteHead.astro';
 			<p class="landing-input-hint">Enter a citation, or words to search for</p>
 			<form id="landing-form" class="landing-form">
 				<div class="suggest-anchor">
-					<input id="landing-input" type="text" placeholder="31 A.2d 647" autocomplete="off" spellcheck="false" aria-label="Citation" />
+					<input id="landing-input" type="text" placeholder="31 A.2d 647" autocomplete="off" spellcheck="false" aria-label="Citation or words to search for" />
 					<ul id="landing-suggest" class="suggest hidden" aria-label="Suggestions"></ul>
 				</div>
-				<button type="submit" id="landing-btn">Resolve</button>
+				<!-- One button for both (D163): its label follows the text, a citation or words (boxroute.js). -->
+				<button type="submit" id="landing-btn" class="route-btn" data-goes="search"><span class="route-label route-search">Search</span><span class="route-label route-cite">Open citation</span></button>
 			</form>
 			<span id="landing-suggest-status" class="sr-only" aria-live="polite"></span>
+			<span id="landing-route-status" class="sr-only" aria-live="polite"></span>
 			<div id="landing-status" class="status-line"></div>
 			<div id="landing-wasm-progress"></div>
 
@@ -134,9 +136,11 @@ import SiteHead from '../components/SiteHead.astro';
 				<a href="/" class="topbar-brand"><Brand /></a>
 				<span class="topbar-divider">|</span>
 				<span class="topbar-cite topbar-editable" id="topbar-cite" title="Search another citation"></span>
-				<input class="topbar-cite-input hidden" id="topbar-cite-input" type="text" autocomplete="off" spellcheck="false" aria-label="Citation" />
+				<input class="topbar-cite-input hidden" id="topbar-cite-input" type="text" autocomplete="off" spellcheck="false" aria-label="Citation or words to search for" />
+				<button type="button" id="topbar-go" class="route-btn topbar-go hidden" data-goes="search"><span class="route-label route-search">Search</span><span class="route-label route-cite">Open citation</span></button>
 				<ul id="topbar-suggest" class="suggest topbar-suggest hidden" aria-label="Suggestions"></ul>
 				<span id="topbar-suggest-status" class="sr-only" aria-live="polite"></span>
+				<span id="topbar-route-status" class="sr-only" aria-live="polite"></span>
 				<span class="topbar-case" id="topbar-case"></span>
 				<button id="prev-btn" class="topbar-nav" title="Previous case" disabled>&#9664;</button>
 				<button id="next-btn" class="topbar-nav" title="Next case" disabled>&#9654;</button>

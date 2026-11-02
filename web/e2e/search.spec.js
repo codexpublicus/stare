@@ -154,6 +154,7 @@ test('a query of stopwords only, or a word nothing has, says so', async ({ page 
 test('the landing hands words that aren\'t a citation to the search', async ({ page }) => {
   await page.goto('/');
   await page.fill('#landing-input', 'kale marauders');
+  await expect(page.locator('#landing-btn')).toHaveAccessibleName('Search');
   await page.click('#landing-btn');
   await expect(page).toHaveURL(/\/search\/\?q=kale%20marauders$/);
   await expect(page.locator('#search-q')).toHaveValue('kale marauders');
@@ -408,7 +409,7 @@ test('common words left out of a query are named', async ({ page }) => {
   await expect(page.locator('#search-note')).toHaveText('Left out as too common to search for: the.');
 });
 
-test('a citation typed into search offers to open it in the reader', async ({ page }) => {
+test('a search for a citation asks "Did you mean" it, which opens it in the reader', async ({ page }) => {
   // the reader itself isn't under test here: its page is answered with a stub
   await page.route((url) => url.pathname === '/' && url.port === new URL(page.url() || 'http://x').port, (route) => (route.request().resourceType() === 'document'
     ? route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>reader</title>' })
@@ -416,7 +417,7 @@ test('a citation typed into search offers to open it in the reader', async ({ pa
   await page.goto('/search/?q=ny+248+339');
   const offer = page.locator('#search-cite');
   await expect(offer).toBeVisible();
-  await expect(offer).toContainText('That looks like a citation.');
+  await expect(offer).toHaveText('Did you mean ny 248 339?');
   await offer.getByRole('button', { name: 'Open ny 248 339 in the reader' }).click();
   await expect(page).toHaveURL(/\/#ny\/248\/339$/);
 });

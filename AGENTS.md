@@ -335,16 +335,59 @@ What each stage suggests, and fetches the first time:
   files in stare-builder would cost 0.2 to 8 KB more per volume compressed (the index
   files grow about threefold) and would replace the range read.
 
+### One box, one button (D163, #296: `web/public/js/boxroute.js`)
+
+The landing's box, the top bar's editor and the search page's box each take a citation or
+words to search for, with one button that routes the text itself: a citation opens in the
+reader, anything else goes to the search page. The button holds both labels, "Open citation"
+and "Search", in one grid cell with the other `visibility: hidden` (`.route-btn`,
+`data-goes`), so it is always the longer label's width and a change moves nothing; the hidden
+label is out of its accessible name. The top bar's button (`#topbar-go`) shows only while the
+editor is open, and keeps the editor open when clicked or tabbed to.
+
+`routeOf` decides as the text is typed, with a few regular expressions and no parser
+(`citationIn`): a whole box that is a citation (`347 U.S. 483`, `31 A.2d 647, 650 (1943)`,
+a labelled page such as `1 Cai. Cas. xxix`), the slug form (`a2d 31 647-01`), a reporter typed
+first (`Misc. 32 426`), a dashed neutral citation (`2019-Ohio-1234`), or a citation inside
+longer text whose reporter is abbreviated with periods or in capitals (`Brown v. Board of
+Education, 347 U.S. 483 (1954)`; `the 5 Justices in 1954` stays words). Statutes and
+regulations (`42 U.S.C. 1983`, `5 USC 552`) are words. Text it reads as words goes straight
+to the search, with neither the typeahead nor the parser's WASM loaded for it; text it reads
+as a citation waits for the parser on submit (`routeBox` in main.js: the case the box was
+filled with, else `parseInput`, else the typeahead's reporter list), and a citation the
+parser can't read goes to the search after all. On the search page the parser
+(`resolve.js`, `pagekey.js` and the WASM) loads only then, too; the landing still preloads
+the WASM at idle, as before. Apply in the search page's filters always searches.
+
+A screen reader hears the route only when it changes and typing has paused for 700 ms
+(`ANNOUNCE_AFTER_MS`), in a polite live region of its own per box (`#landing-route-status`,
+`#topbar-route-status`, `#search-route-status`): "Enter opens the citation" or "Enter
+searches", never on each keystroke and never for text put in the box from script (a case's
+citation, a suggestion taken).
+
+Each result offers the other way. A case a box opened from typed text says "Opened “31 A.2d
+647” as a citation." over the text, with a link, "Search for this text instead", to
+`/search/?q=<the text>` (`routeNoteHtml`); a case opened from a link, a suggestion or the
+arrows has none. A search for text `citationIn` reads as a citation asks "Did you mean 347
+U.S. 483?" (the citation it found, so a case name before it is left out), which opens it in
+the reader; the parser loads only when that's clicked. The text crosses between the two pages
+in sessionStorage, never the URL, so a shared link carries neither: `handOff` before the
+search page sends a citation to the reader, read once by the reader for that hash
+(`takeHandOff`), and `markNotCitation` when the parser turned text down, so its search doesn't
+ask "Did you mean" about it. `web/tests/boxroute.test.js` covers the expressions, the label and
+its announcements, and the hand-off; `web/e2e/onebox.spec.js` covers each route from each box,
+both switch-back links, that the search page loads no WASM until a citation is submitted, the
+announcements, and that neither box nor button moves when the label changes, at 390 and 1366
+px.
+
 ### The search page (D155 (6): `web/src/pages/search.astro`, `web/public/js/searchpage.js`)
 
 `/search/?q=...&jurisdiction=...&court=...&from=...&to=...&page=...` searches the full-text
 tree stare-builder builds under an index build, `idx.stare.pub/v/<version>/search/`
 (stare-builder's `docs/search-index.md`; D143, D155). It is a real page, not a hash route,
 and runs in place: a new query or page changes the URL with `pushState`, and Back and
-Forward run the URL they land on. The landing's box and the top bar's editor hand text
-they can't read as a citation to it (`searchUrl` in main.js); text with no digit goes
-straight there, without waiting for the parser's WASM, since a citation always has a volume
-and a page.
+Forward run the URL they land on. Its box routes like the landing's and the top bar's (D163,
+above): words search here, a citation opens in the reader.
 
 The ranking is stare-builder's reference client and nobody else's.
 `web/src/vendor/stare-search/` holds `search.mjs` and `tokenize.mjs`, and
@@ -372,10 +415,11 @@ single year is the format's own key, and a range over every year is no filter.
 What it fetches, and when:
 
 - Nothing until there is a query or the filters are opened; the page's own modules are
-  `searchpage.js`, `searchquery.js` and `searchclient-path.js` (about 13 KB gzipped, 5 KB
-  more than before #295's pass).
-- A query that reads like a citation (`347 U.S. 483`, `a2d 31 647`) offers to open it in
-  the reader; `resolve.js` and the parser's WASM load only when that's clicked.
+  `searchpage.js`, `searchquery.js`, `boxroute.js` and `searchclient-path.js` (about 15 KB
+  gzipped, 7 KB more than before #295's pass).
+- A query that reads like a citation (`347 U.S. 483`, `a2d 31 647`) asks "Did you mean"
+  it, and the box's button reads "Open citation" for it; `resolve.js` and the parser's WASM
+  load only when one of them is used.
 - Then, once a page: the index manifest (`loadManifest`, for `base`; `PUBLIC_SEARCH_TREE` at
   build time pins a tree instead, for the dev server and local measurements), then the
   search client (12.4 KB gzipped) and the tree's `manifest.json` in parallel. A tree that
@@ -481,7 +525,7 @@ keep that from happening again:
   404; the site sends no Content-Security-Policy, and if one is added each inline script
   (theme, caseroute, boot guard) needs its `'sha256-...'` in `script-src`, computed from
   the built HTML since the guard's text is generated.
-- **Only the reader's own modules are static.** main.js's static graph is 17 modules
+- **Only the reader's own modules are static.** main.js's static graph is 18 modules
   (`web/tests/boot-graph.test.js` keeps it so). The page views (`pdfviewer.js`,
   `scanviewer.js`, `pageshell.js`, `pagezoom.js`, `pdfpages.js`, `pdfjs-path.js`,
   `selectionpaint.js`) are imported when a page-view tab first opens; one that fails shows

@@ -5,6 +5,10 @@
 .reader-meta { margin-top: 6px; font-size: 14px; color: var(--text-secondary); }
 .reader-source { margin-top: 4px; font-size: 13px; color: var(--text-secondary); }
 .reader-alias { max-width: 632px; margin: 24px auto 0; padding: 8px 12px; font-size: 13px; color: var(--text-secondary); border-left: 3px solid var(--border-light); }
+/* A case a box opened from typed text: what it was opened as, and the way to search instead
+   (D163, boxroute.js). It arrives with the case, so it moves nothing already shown. */
+.route-note { max-width: 632px; margin: 16px auto 0; padding: 0 12px; font-family: var(--font-ui); font-size: 13px; color: var(--text-secondary); }
+.route-note a { color: var(--link); }
 .reader-source a, .sidebar-source a { color: var(--link); text-decoration: none; }
 .reader-source a:hover, .sidebar-source a:hover { color: var(--link-hover); text-decoration: underline; }
 .sidebar-source { margin-top: 6px; font-size: 12px; }
