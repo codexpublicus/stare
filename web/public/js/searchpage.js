@@ -5,9 +5,9 @@
 // Nothing is fetched until there is a query, or the filters are opened. Then, once a page:
 // - the index manifest (manifest.js, the reader's), for the live build's `base`, unless the
 //   build pinned a tree (PUBLIC_SEARCH_TREE, for the dev server and local measurements);
-// - the search client (searchclient-path.js), one module, and the tree's manifest.json, in
-//   parallel. A build with no search/ answers 404, and the page says search isn't
-//   available for it yet;
+// - the tree's manifest.json, then the search client for its format (searchclient-path.js:
+//   format 2 or 3), one module. A build with no search/ answers 404, and the page says
+//   search isn't available for it yet;
 // - facets.json and the filter panel's module (searchfilters.js), only for the filters (the
 //   court and jurisdiction lists with their decisions, and the years for a year range).
 // Each query then costs what the client reads for it: the words' term shards, a facet's
@@ -23,7 +23,7 @@
 // Pages and new queries change the URL with pushState and run in place; Back and Forward
 // run the URL they land on, and go back to where the page was scrolled.
 
-import { SEARCH_CLIENT_URL } from './searchclient-path.js';
+import { searchClientUrl } from './searchclient-path.js';
 import { attachRouteLabel, handOff, isNotCitation, markNotCitation, routeOf } from './boxroute.js';
 import { indexUrl } from './sources.js';
 import {
@@ -142,16 +142,16 @@ function openTree() {
   if (!treePromise) {
     treePromise = (async () => {
       const base = await treeBase();
-      const [client, raw] = await Promise.all([
-        import(SEARCH_CLIENT_URL).catch((e) => {
-          throw Object.assign(new Error('The search client couldn’t load. A content blocker may be stopping it'), { cause: e });
-        }),
-        fetch(`${base}/manifest.json`).then(async (res) => {
-          if (res.status === 404 || res.status === 403) throw new NoTree();
-          if (!res.ok) throw new Error(`The search index answered ${res.status}`);
-          return res.json();
-        }),
-      ]);
+      const res = await fetch(`${base}/manifest.json`);
+      if (res.status === 404 || res.status === 403) throw new NoTree();
+      if (!res.ok) throw new Error(`The search index answered ${res.status}`);
+      const raw = await res.json();
+      // The tree's format picks the client: each reads one format (searchclient-path.js).
+      const url = searchClientUrl(raw?.metadata?.search?.format_version);
+      if (!url) throw new Error('This search index is in a format this page doesn’t read');
+      const client = await import(url).catch((e) => {
+        throw Object.assign(new Error('The search client couldn’t load. A content blocker may be stopping it'), { cause: e });
+      });
       let s;
       try {
         s = await client.openSearch(base, { manifest: raw, fetch: queryFetch });

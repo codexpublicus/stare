@@ -1,8 +1,19 @@
 {
   "stare-search": {
     "repo": "codexpublicus/stare-builder",
+    "commit": "6098a43072a3366c4c8c90e6a63553f59b7addd0",
+    "path": "pipelines/search-index/client",
+    "format_version": 3,
+    "files": {
+      "search.mjs": "c683098bef0e10aa996c934b28e27d2fb3d73eb9975e40025efc11e2ef302616",
+      "tokenize.mjs": "463deb58aa7f76a97fb66c09f8725b9c83f96d1c35532dd4b26a95ad137e3f60"
+    }
+  },
+  "stare-search-format2": {
+    "repo": "codexpublicus/stare-builder",
     "commit": "d419b9eb2754b6f124d14bad0eab874c03c962e9",
     "path": "pipelines/search-index/client",
+    "format_version": 2,
     "files": {
       "search.mjs": "de22e6d52e61c77c88f38e18f79fbb1761542a8e7137237d782f1f153683ac83",
       "tokenize.mjs": "463deb58aa7f76a97fb66c09f8725b9c83f96d1c35532dd4b26a95ad137e3f60"

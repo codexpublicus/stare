@@ -1,13 +1,14 @@
-// The search page (search.astro, public/js/searchpage.js) on the fixture search tree
+// The search page (search.astro, public/js/searchpage.js) on the fixture search trees
 // (web/tests/fixtures/README.md), served through routes in place of idx.stare.pub's, so
 // nothing here needs a tree on R2. The root index manifest is answered too, naming the
-// fixture's version, so the page finds the tree the way it finds the live one.
+// fixture's version, so the page finds the tree the way it finds the live one. The tests
+// run on the format-2 tree, the live tree's format, unless they ask for format 3's.
 import { readFileSync } from 'node:fs';
 
 import { test as base, expect } from '@playwright/test';
 
-import { SEARCH_CLIENT_URL } from '../public/js/searchclient-path.js';
-import { EXPECTED, TREE_PATH, TREE_ROOT, TREE_VERSION, treeResponse } from '../tests/fixtures/searchtree.js';
+import { SEARCH_CLIENT_DIRS, searchClientUrl } from '../public/js/searchclient-path.js';
+import { EXPECTED, TREES, TREE_PATH, TREE_ROOT, TREE_VERSION, treeResponse } from '../tests/fixtures/searchtree.js';
 
 const IDX = 'https://idx.stare.pub';
 const TREE = `${IDX}/${TREE_PATH}`;
@@ -22,8 +23,9 @@ const test = base.extend({
   expectedMissing: [[], { option: true }],
   // Console messages a test causes on purpose, as RegExp sources.
   allowedConsole: [[], { option: true }],
-  // { manifest: false } answers the tree's manifest.json with a 404, as a build without search/ does.
-  tree: [{ manifest: true }, { option: true }],
+  // { manifest: false } answers the tree's manifest.json with a 404, as a build without search/ does;
+  // { format: 3 } serves the format-3 tree; { formatVersion: n } says format n in its manifest.
+  tree: [{ manifest: true, format: 2 }, { option: true }],
   page: async ({ page, expectedMissing, allowedConsole, tree }, use) => {
     const problems = [];
     page.on('console', (msg) => {
@@ -36,6 +38,9 @@ const test = base.extend({
     const requests = [];
     page.on('request', (r) => { if (r.url().startsWith(IDX) && r.method() === 'GET') requests.push({ url: r.url(), range: r.headers().range ?? null }); });
     page.searchRequests = requests;
+    const clients = [];
+    page.on('request', (r) => { if (r.url().includes('/vendor/stare-search-')) clients.push(r.url()); });
+    page.clientRequests = clients;
     await page.route(`${IDX}/manifest.json`, (route) => route.fulfill({
       headers: { ...CORS, 'cache-control': 'no-cache' },
       contentType: 'application/json',
@@ -50,7 +55,12 @@ const test = base.extend({
       if (!tree.manifest && path.endsWith('search/manifest.json')) {
         return route.fulfill({ status: 404, headers: CORS, contentType: 'text/plain', body: 'Not Found' });
       }
-      const r = treeResponse(path, req.headers().range);
+      const r = treeResponse(path, req.headers().range, TREES[tree.format ?? 2].root);
+      if (tree.formatVersion !== undefined && path.endsWith('search/manifest.json')) {
+        const m = JSON.parse(r.body.toString('utf8'));
+        m.metadata.search.format_version = tree.formatVersion;
+        r.body = Buffer.from(JSON.stringify(m));
+      }
       return route.fulfill({
         status: r.status,
         headers: { ...CORS, ...r.headers, 'cache-control': 'public, max-age=31536000, immutable' },
@@ -62,6 +72,9 @@ const test = base.extend({
   },
 });
 
+// The search client modules a page loaded, by format.
+const clientFormats = (page) => Object.entries(SEARCH_CLIENT_DIRS)
+  .filter(([, dir]) => page.clientRequests.some((u) => new URL(u).pathname === `/${dir}/search.js`)).map(([f]) => Number(f));
 const treeRequests = (page, end) => page.searchRequests.filter((r) => new URL(r.url).pathname.endsWith(end));
 // The requests on a segmented file's segments (`cards/<n>.bin`, `low/<n>.bin`).
 const segmentRequests = (page, dir) => page.searchRequests.filter((r) => new RegExp(`/search/${dir}/\\d+\\.bin$`).test(new URL(r.url).pathname));
@@ -111,6 +124,8 @@ test('a query shows 20 cards ranked as stare-builder\'s client ranks them, linke
   expect(treeRequests(page, 'search/manifest.json')).toHaveLength(1);
   expect(treeRequests(page, '.eidx').length).toBe(1);
   expect(treeRequests(page, 'facets.json')).toEqual([]);
+  // and the client for the tree's format, format 2's alone
+  expect(clientFormats(page)).toEqual([2]);
   const cardReads = segmentRequests(page, 'cards');
   expect(cardReads.map((r) => new URL(r.url).pathname.split('/').pop()).sort()).toEqual(cardSegments(want.ranked.slice(0, 20).map(([id]) => id)));
   for (const r of cardReads) expect(r.range).toMatch(/^bytes=\d+-\d+(,\d+-\d+)*$/);
@@ -224,7 +239,7 @@ test('the bundled client ranks as stare-builder\'s client does', async ({ page }
       out.push({ total: r.total, stage: r.stage, ranked: r.ranked.map((h) => h.id), cards: r.hits.map((h) => h.card) });
     }
     return out;
-  }, { url: SEARCH_CLIENT_URL, tree: TREE, queries });
+  }, { url: searchClientUrl(2), tree: TREE, queries });
   expect(got).toEqual(queries.map((q) => ({ total: q.total, stage: q.stage, ranked: q.ranked.map(([id]) => id), cards: q.cards })));
 });
 
@@ -243,10 +258,65 @@ test.describe('a search client a content blocker refuses', () => {
   test.use({ allowedConsole: ['ERR_BLOCKED_BY_CLIENT', 'dynamically imported module'] });
 
   test('says so', async ({ page }) => {
-    await page.route((url) => url.pathname === SEARCH_CLIENT_URL, (route) => route.abort('blockedbyclient'));
+    await page.route((url) => url.pathname.startsWith('/vendor/stare-search-'), (route) => route.abort('blockedbyclient'));
     await page.goto('/search/?q=contract');
     await expect(status(page)).toContainText('content blocker');
     await expect(status(page)).toHaveClass(/search-error/);
+  });
+});
+
+// Format 3 (stare-builder#90) ranks by citation counts: in the fixture, ny/1/13-02, Palsgraf
+// v. Elevator Co., is cited 5,000 times, and the other Palsgraf cases far less or not at all.
+test.describe('a format-3 tree', () => {
+  test.use({ tree: { manifest: true, format: 3 } });
+  const want3 = (q) => TREES[3].expected.find((e) => e.q === q && !e.limit && !e.filters);
+
+  test('loads format 3\'s client alone, and a landmark name ranks its most cited case first', async ({ page }) => {
+    const want = want3('palsgraf');
+    await page.goto('/search/?q=palsgraf');
+    await expect(status(page)).toHaveText(`${want.total} matches, page 1 of 2`);
+    const names = await page.locator('#search-results .search-card-name').allTextContents();
+    expect(names).toEqual(want.cards.map((c) => c.n));
+    await expect(page.locator('#search-results > li:first-child a')).toHaveAttribute('href', '/#ny/1/13-02');
+    expect(clientFormats(page)).toEqual([3]);
+  });
+
+  test('a party name puts its most cited case first, then the rest of that name', async ({ page }) => {
+    const want = want3('palsgraf elevator');
+    await page.goto('/search/?q=palsgraf+elevator');
+    await expect(status(page)).toHaveText(`${want.total} matches, page 1 of ${Math.ceil(want.total / 20)}`);
+    const hrefs = await page.locator('#search-results .search-card-name a').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+    expect(hrefs).toEqual(want.cards.map((c) => `/#${c.r}`));
+    expect(hrefs[0]).toBe('/#ny/1/13-02');
+    const names = await page.locator('#search-results .search-card-name').allTextContents();
+    expect(names.slice(0, 4)).toEqual(Array(4).fill('Palsgraf v. Elevator Co.'));
+  });
+
+  test('the bundled format-3 client ranks as stare-builder\'s client does', async ({ page }) => {
+    await page.goto('/search/');
+    const queries = TREES[3].expected.filter((e) => !e.limit).slice(0, 10);
+    const got = await page.evaluate(async ({ url, tree, queries }) => {
+      const client = await import(url);
+      const out = [];
+      for (const q of queries) {
+        const s = await client.openSearch(tree, { fetch: (u, i) => fetch(u, i) });
+        const r = await client.search(s, q.q, { filters: q.filters ?? {} });
+        out.push({ total: r.total, stage: r.stage, ranked: r.ranked.map((h) => h.id), cards: r.hits.map((h) => h.card) });
+      }
+      return out;
+    }, { url: searchClientUrl(3), tree: TREE, queries });
+    expect(got).toEqual(queries.map((q) => ({ total: q.total, stage: q.stage, ranked: q.ranked.map(([id]) => id), cards: q.cards })));
+  });
+});
+
+test.describe('a tree in a format this page has no client for', () => {
+  test.use({ tree: { manifest: true, format: 3, formatVersion: 4 }, allowedConsole: ['format this page doesn’t read'] });
+
+  test('says so, and loads no client', async ({ page }) => {
+    await page.goto('/search/?q=contract');
+    await expect(status(page)).toContainText('This search index is in a format this page doesn’t read');
+    await expect(status(page)).toHaveClass(/search-error/);
+    expect(page.clientRequests).toEqual([]);
   });
 });
 

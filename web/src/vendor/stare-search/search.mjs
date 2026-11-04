@@ -64,7 +64,7 @@ export async function openSearch(base, { fetch: fetchFn = (...args) => globalThi
   }
   const meta = raw.metadata?.search;
   if (!meta) throw new Error('not a stare search tree: the manifest has no metadata.search');
-  if (meta.format !== 'stare-search' || meta.format_version !== 2) {
+  if (meta.format !== 'stare-search' || meta.format_version !== 3) {
     throw new Error(`unsupported search format ${meta.format} ${meta.format_version}`);
   }
   const ds = new Dataset(url, parseManifest(raw), fetchFn);
@@ -228,22 +228,27 @@ function idf(n, df) {
   return Math.log(1 + (n - df + 0.5) / (df + 0.5));
 }
 
-/** One term's state from its shard: text ids with their codes, name ids with priors. */
-function parseTerm(term, entries) {
-  const t = { term, df: 0, text: new Map(), name: new Map(), nameCount: 0, low: null, complete: true };
+/**
+ * One term's state from its shard: text ids with their codes, name ids with priors. A code is
+ * `level << bits | prior`; keys name the level as a digit and the prior class as a hex digit.
+ */
+function parseTerm(term, entries, bits) {
+  const t = { term, df: 0, text: new Map(), name: new Map(), nameCount: 0, low: null, complete: true, stopName: false };
   const prefix = `${term}#`;
   for (const e of entries) {
     const kind = e.key.slice(prefix.length);
     if (kind === 'd') {
       t.df = decodeRoaring(e.bitmapBytes)[0];
+    } else if (kind === 's') {
+      t.stopName = true;
     } else if (kind === 'l') {
       t.low = e.refs;
       t.complete = false;
     } else if (kind[0] === 'h' || kind[0] === 'm') {
-      const code = Number(kind[1]) * 4 + Number(kind[2]);
+      const code = (Number(kind[1]) << bits) | parseInt(kind.slice(2), 16);
       for (const id of decodeRoaring(e.bitmapBytes)) t.text.set(id, code);
     } else if (kind[0] === 'n') {
-      const prior = Number(kind[1]);
+      const prior = parseInt(kind.slice(1), 16);
       for (const id of decodeRoaring(e.bitmapBytes)) t.name.set(id, prior);
     }
   }
@@ -436,7 +441,7 @@ export async function search(s, query, { filters = {}, limit = 20, cards = true 
     facetIds(s, filters),
     ...words.map((w) => s.ds.searchPrefix('terms', `${w}#`)),
   ]);
-  const terms = words.map((w, i) => parseTerm(w, shards[i]));
+  const terms = words.map((w, i) => parseTerm(w, shards[i], meta.scoring.prior_bits));
   let stage = 1;
   let cands = candidates(terms, facet);
   let exact = terms.every((t) => t.complete);
@@ -497,29 +502,44 @@ export async function search(s, query, { filters = {}, limit = 20, cards = true 
   const sc = meta.scoring;
   const weights = terms.map((t) => ({ t, idf: idf(n, t.df), nidf: t.nameCount ? idf(n, t.nameCount) : 0 }));
   const queryIdf = weights.reduce((m, w) => m + w.idf, 0);
+  const bits = sc.prior_bits;
+  const mask = (1 << bits) - 1;
+  const nameLevel = sc.level_scores[sc.name_level];
   const scored = cands.map((id) => {
     let score = 0;
     let prior = -1;
+    let namePrior = -1;
     let name = 0;
     let nameTokens = 0;
     let nameIdf = 0;
+    // tokens the case name has: name postings, or a stop name's top-level text posting (its
+    // name decisions were folded there)
+    let inName = 0;
     for (const { t, idf: w, nidf } of weights) {
       const code = t.text.get(id);
       if (code !== undefined) {
-        score += w * sc.level_scores[code >> 2];
-        prior = code & 3;
+        score += w * sc.level_scores[code >> bits];
+        prior = code & mask;
+        if (t.stopName && code >> bits === sc.level_scores.length - 1) inName += 1;
       }
       const p = t.name.get(id);
       if (p !== undefined) {
         name += sc.name_weight * nidf;
         nameTokens += 1;
         nameIdf += w;
-        prior = p;
+        namePrior = p;
+        inName += 1;
       }
     }
+    // the query is the case's name: its tokens count at name_level whatever the text's own
+    // levels, and the prior name_prior_scale times, so the more cited of one name rank first
+    const whole = inName === weights.length;
+    if (whole) score = queryIdf * nameLevel;
     if (name && nameTokens < weights.length) name *= NAME_FLOOR + (1 - NAME_FLOOR) * (nameIdf / queryIdf) ** 2;
     score += name;
-    if (prior > 0) score += sc.prior_scores[prior];
+    // a name posting's prior class is the finer one
+    const p = namePrior >= 0 ? sc.name_prior_scores[namePrior] : prior > 0 ? sc.prior_scores[prior] : 0;
+    score += p * (whole ? sc.name_prior_scale : 1);
     return { id, score };
   });
   scored.sort((a, b) => b.score - a.score || a.id - b.id);

@@ -389,22 +389,46 @@ and runs in place: a new query or page changes the URL with `pushState`, and Bac
 Forward run the URL they land on. Its box routes like the landing's and the top bar's (D163,
 above): words search here, a citation opens in the reader.
 
-The ranking is stare-builder's reference client and nobody else's.
-`web/src/vendor/stare-search/` holds `search.mjs` and `tokenize.mjs`, and
-`web/src/vendor/roaringbuckets-client/` roaringbuckets' JS client (v0.3.0 and
-[roaringbuckets#61](https://github.com/lokkju/roaringbuckets/pull/61), which aborts a ranged
-read answered with the whole file), byte for byte at the commits
-`web/src/vendor/search-client.json` pins with each file's SHA-256. The
-`stare-search-client` hook in `astro.config.mjs` (`src/lib/searchvendor.js`) bundles them
-into one module at `/vendor/stare-search-<stare-builder commit>-rb<roaringbuckets
-commit>/search.js` (`SEARCH_CLIENT_URL` in `public/js/searchclient-path.js`), which
-`_headers` serves immutable, and fails the build if a copy differs from its pin.
-`web/tests/searchclient.test.js` checks the pins and runs the copies on a fixture tree
-(`web/tests/fixtures/`, built from stare-builder's made-up corpus) against what
-stare-builder's own client returned at that commit, ranking and scores included;
-`web/e2e/search.spec.js` runs the bundle on the same queries in the browser. Moving the pin
-means copying the files in again, updating the hashes, the directory name and the expected
-results (`web/tests/fixtures/README.md`).
+The ranking is stare-builder's reference client and nobody else's. Each copy of its
+`search.mjs` reads one search format, so the site carries one per format a published tree
+is in: `web/src/vendor/stare-search/` holds `search.mjs` and `tokenize.mjs` for format 3
+(stare-builder 6098a43,
+[stare-builder#90](https://github.com/codexpublicus/stare-builder/pull/90)), and
+`web/src/vendor/stare-search-format2/` the same two files for format 2 (d419b9e,
+[stare-builder#85](https://github.com/codexpublicus/stare-builder/pull/85)), which the live
+tree for v2026.10.26.2 is in. `web/src/vendor/roaringbuckets-client/` holds roaringbuckets'
+JS client (v0.3.0 and [roaringbuckets#61](https://github.com/lokkju/roaringbuckets/pull/61),
+which aborts a ranged read answered with the whole file), which both read the tree with. All
+are byte for byte at the commits `web/src/vendor/search-client.json` pins with each file's
+SHA-256 and, for a stare-search copy, the `format_version` it reads. The
+`stare-search-client` hook in `astro.config.mjs` (`src/lib/searchvendor.js`) bundles each
+format's copy with the roaringbuckets client into its own module at
+`/vendor/stare-search-<stare-builder commit>-rb<roaringbuckets commit>/search.js`
+(`SEARCH_CLIENT_DIRS` and `searchClientUrl` in `public/js/searchclient-path.js`), which
+`_headers` serves immutable, and fails the build if a copy differs from its pin. The page
+reads the tree's `manifest.json`, then loads the client its
+`metadata.search.format_version` names; a format with no client says "This search index is
+in a format this page doesn't read". So the site can ship before a format-3 tree is
+published, and the tree can be published without a site release.
+`web/tests/searchclient.test.js` checks the pins and runs each copy on a fixture tree of its
+format (`web/tests/fixtures/search-tree/` and `search-tree-format3/`, built from
+stare-builder's made-up corpus) against what stare-builder's own client returned at that
+commit, ranking and scores included, and checks each client refuses the other's tree;
+`web/e2e/search.spec.js` runs the bundles on the same queries in the browser, and the page
+on both trees. Moving a pin means copying the files in again, updating the hashes, the
+directory name and the expected results (`web/tests/fixtures/README.md`); once no published
+tree is in format 2, its directory, pin and fixture go.
+
+Format 3 ranks by citation counts (stare-builder's `docs/search-index.md`, "Citation
+counts"): a decision's count is the larger of CAP's `cites_to` count and its
+CourtListener cluster's `citation_count`. Text postings carry a 2-bit prior class
+(`scoring.prior_bits`), case-name keys `t#n<P>` a finer one in one hex digit (16 classes),
+a stop name has a `t#s` key, and within a score bucket the most cited decision comes first.
+The client's party-name rule: when a case's name has every token of the query, every token
+counts at the top text level and the name's prior counts in full, so among cases with the
+same name the citation count decides (`chevron` puts Chevron U.S.A. v. Natural Resources
+Defense Council first). The cards, facets and segments are as in format 2, so the page reads
+them the same way.
 
 The page adds nothing to the client. A year range is the client's own `year_from` and
 `year_to` filter (the union of the years' `year` keys, or of the court's `court_year` keys
@@ -422,10 +446,12 @@ What it fetches, and when:
   load only when one of them is used.
 - Then, once a page: the index manifest (`loadManifest`, for `base`; `PUBLIC_SEARCH_TREE` at
   build time pins a tree instead, for the dev server and local measurements), then the
-  search client (12.4 KB gzipped) and the tree's `manifest.json` in parallel. A tree that
-  answers 404 or 403 says "Search isn't available for this index yet", a note, not an error;
-  a client a content blocker refuses says so. Neither breaks the boot guard, which watches
-  `#search-status`.
+  tree's `manifest.json`, then the search client for its format (13.5 KB gzipped for format
+  2's, 13.7 KB for format 3's). The client waits for the manifest, since the manifest names
+  the format, which adds the client's one round trip to a first query, and nothing once the
+  client is cached (immutable). A tree that answers 404 or 403 says "Search isn't available for this
+  index yet", a note, not an error; a client a content blocker refuses says so. Neither
+  breaks the boot guard, which watches `#search-status`.
 - Each query: what the client reads (the words' term shards, a facet's shard, the low
   tiers when the top tiers can't fill a page, and the page's 20 cards). Search format 2
   stores the cards and the low tiers as 32 MiB segments (`cards/<n>.bin`, `low/<n>.bin`),
@@ -462,6 +488,22 @@ went up, since a page's 20 cards fall in
 up to 20 cards segments and each is its own request. The owner accepted that for now
 (D162); [stare-builder#86](https://github.com/codexpublicus/stare-builder/issues/86) tracks
 numbering decisions so a query's top cards share segments.
+
+Format 3, measured on 2026-11-02 against an unpublished format-3 tree of v2026.10.26.2 served
+locally by stare-builder's `client/server.mjs` (manifest gzip-compressed), beside format 2
+from idx.stare.pub through the main preview, same Chromium setup, first query, the tree's
+requests and bytes with the manifest left out (format 2's is 269 KB as zstd from
+Cloudflare, format 3's 226 KB as gzip from the local server; gzip -6 of each is 232 KB and
+225 KB): `negligence` 2 requests and 38.8 KB in format 2, 7 and 38.4 KB in format 3;
+`chevron` 9 and 41.4 KB, 12 and 34.2 KB; `miranda arizona` 9 and 410.6 KB, 9 and 401.8 KB;
+`palsgraf railroad` 17 and 765.4 KB, 18 and 764.6 KB. The bytes are the same; the requests
+go up where the most cited first scatters a page's 20 cards over more cards segments
+(`negligence`'s fall in 6 segments, against 1), which
+[stare-builder#86](https://github.com/codexpublicus/stare-builder/issues/86) would fix. The
+first results change: `chevron` gave Chevron U.S.A., Inc. v. Workers' Compensation Appeals
+Board first and gives Chevron U.S.A. Inc. v. Natural Resources Defense Council; `miranda
+arizona` gave In re a Member of the State Bar of Arizona, Miranda and gives Miranda v.
+Arizona.
 
 While a query runs, the previous results stay on screen, dimmed; a first query fills the
 list with 20 skeleton cards instead and says it is loading the search index. A thin bar
