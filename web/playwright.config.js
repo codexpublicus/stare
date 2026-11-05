@@ -1,6 +1,7 @@
 // Smoke tests against a deployed stare.pub: a workers.dev preview in CI
 // (site.yml), or any URL locally (`mise run e2e <url>`). Nothing here starts
 // a server; STARE_BASE_URL must point at a running site.
+import { availableParallelism } from 'node:os';
 import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.STARE_BASE_URL;
@@ -21,7 +22,9 @@ export default defineConfig({
   // At most 8 at once in CI, the most the suite ran before fullyParallel: the tests
   // read the live index and data hosts, and at 16 workers a fetch from idx.stare.pub
   // came back without its CORS header (a flake on a run with no retries fails main).
-  workers: process.env.CI ? 8 : undefined,
+  // No more than the runner's CPUs either: at 8 workers on a 4-vCPU GitHub-hosted
+  // runner, the Archival PDF specs timed out rendering pages.
+  workers: process.env.CI ? Math.min(8, availableParallelism()) : undefined,
   // The previews are public and shared; one retry absorbs a network blip
   // in CI without hiding a deterministic failure. The main preview's run
   // passes --retries=0 (site.yml), so flakiness shows up there.
