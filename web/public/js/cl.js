@@ -88,9 +88,9 @@ export function reasonPhrase(code) {
 
 /**
  * The provenance line for a case CourtListener blocks from search engines (its record's
- * `source.cl_blocked`, from stare-builder's blocking.py): the notice, then the reasons
+ * `source.cl_blocked`, from the index builder's blocking.py): the notice, then the reasons
  * as inferred, "(inferred: unpublished within 30 years)", in a div of `className`. The
- * reasons are stare-builder's inference, never CourtListener's statement. Nothing else
+ * reasons are the index builder's inference, never CourtListener's statement. Nothing else
  * about the case changes. '' for a case that isn't blocked. Mirrors `ClBlocked::notice`
  * in crates/stare/src/case.rs.
  */

@@ -1,6 +1,6 @@
 // The search page (search.astro): a query in the URL (`/search/?q=...&court=...&from=...`),
-// run with stare-builder's reference client over the live index build's search tree on
-// idx.stare.pub (docs/search-index.md in stare-builder), 20 result cards a page.
+// run with the index builder's reference client over the live index build's search tree on
+// idx.stare.pub (docs/search-index.md in the index builder), 20 result cards a page.
 //
 // Nothing is fetched until there is a query, or the filters are opened. Then, once a page:
 // - the index manifest (manifest.js, the reader's), for the live build's `base`, unless the

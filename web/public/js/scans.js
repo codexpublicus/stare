@@ -2,9 +2,9 @@
 //
 // 658 of CAP's 40,622 volumes have no page scans: CAP published their text (the case zips)
 // but no tar, so there is no image to show and no archival PDF. The list is the `no_scans`
-// of each reporter in stare-builder's pdf-publish index, data.stare.pub/pdf/manifest.json
+// of each reporter in the index builder's pdf-publish index, data.stare.pub/pdf/manifest.json
 // (D120, D122), as of its first publish; CAP's data is fixed, so it doesn't grow. One more
-// volume, f-appx/660, has scans whose PDF isn't built yet (stare-builder#24); it keeps the
+// volume, f-appx/660, has scans whose PDF isn't built yet; it keeps the
 // PDF link, which answers 404 until that volume is published.
 const NO_SCANS = {
   'a3d': ['138-2', '139-2', '140-2', '141-2', '142-2', '143-2', '144-2', '145-2', '146-2',

@@ -1,6 +1,6 @@
 //! The JSON Schemas for the index build's reports and the reporter map, compiled in from the repo's
 //! `schemas/` directory, which stays their source. They are published-format
-//! specs: stare.pub's `/data` page reads both files, and codexpublicus/stare-builder,
+//! specs: stare.pub's `/data` page reads both files, and the index builder,
 //! which writes them, validates what it writes against these at the stare rev it pins.
 
 /// `schemas/index-report.v1.schema.json`: `/index/v/<version>/report.json`, one index

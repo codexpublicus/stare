@@ -9,7 +9,7 @@
 ///   download followed by `stare --index <cache>/bins --data <cache>/zips resolve ...`
 ///   (or just letting the normal cache lookup do its job) works without a network call.
 /// - The list of volumes per reporter comes from `manifest.json` at the root of the
-///   index source (written by stare-builder's `stare-admin build-manifest`). The manifest is always
+///   index source (written by the index builder's `stare-admin build-manifest`). The manifest is always
 ///   fetched fresh, since it changes when the index is rebuilt, and saved as
 ///   `<cache>/bins/manifest.json`.
 /// - Index files are at their path under the manifest's `base` when it has one

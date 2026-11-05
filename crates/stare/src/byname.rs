@@ -5,8 +5,8 @@
 //! reader opens the first. When nothing else settles which one a citation means (no
 //! alias names one, and a parallel run's printings don't narrow it to one), the
 //! citing text's name for the case (`DetectedCitation::case_name`, `Segreto v.
-//! Bristol`) is compared with each case's own, the way stare-builder matches a
-//! CourtListener cluster to a case on a shared page (stare-builder#37, `alias::by_name`):
+//! Bristol`) is compared with each case's own, the way the index builder matches a
+//! CourtListener cluster to a case on a shared page (its `alias::by_name`):
 //! the names' telling words, and the citation's year against the decision date when
 //! both are there. A case is taken only when it is the one clear match; otherwise the
 //! reader keeps opening the page's first.
@@ -14,7 +14,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
-/// Words that say nothing about which case a name is (stare-builder's
+/// Words that say nothing about which case a name is (the index builder's
 /// `NAME_STOPWORDS`).
 const NAME_STOPWORDS: [&str; 39] = [
     "v",

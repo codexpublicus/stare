@@ -299,7 +299,7 @@ R2: no egress fees. Operations: $0.36/M Class B reads.
 
 ### Storage split: R2 + IPFS
 
-The tars (~3.9 TB) are the perfect IPFS candidate: large, static, immutable, public domain. Pin from homelab TrueNAS at zero cost. Available via any IPFS gateway.
+The tars (~3.9 TB) are the perfect IPFS candidate: large, static, immutable, public domain. Pin from our own storage at zero cost. Available via any IPFS gateway.
 
 Everything needed for citation → text resolution lives on R2 (index + zips = ~17 GB, < $0.30/month). The tars on IPFS are only accessed for the page viewer / on-demand PDF features.
 
@@ -313,7 +313,7 @@ The full tier at < $1/month is the target: R2 for the small/hot data, IPFS for t
 
 ### IPFS / BitTorrent
 
-- **IPFS**: content-addressed, pinned from homelab TrueNAS. Per-reporter directory DAGs for bulk pinning. WASM clients can access IPFS directly (via Helia/js-ipfs) or through any public gateway.
+- **IPFS**: content-addressed, pinned from our own storage. Per-reporter directory DAGs for bulk pinning. WASM clients can access IPFS directly (via Helia/js-ipfs) or through any public gateway.
 - **BitTorrent**: per-reporter torrents for bulk distribution. Community can seed. Lower barrier than IPFS pinning.
 - Both are complementary — IPFS for permanent addressing, BitTorrent for fast bulk transfer.
 - Architecture is backend-agnostic — the base URL is configurable per component.

@@ -128,7 +128,7 @@ pub fn data_loaded() -> bool {
 ///
 /// `span` is converted here, at the WASM boundary, from citare_core's UTF-8
 /// byte offsets to Unicode scalar value (char) offsets, matching how
-/// gorsuch-library's page viewer indexes the same served text. JS callers
+/// the shared Codex Publicus page viewer indexes the same served text. JS callers
 /// that use `span` with `String.prototype.slice` (UTF-16 code units) still
 /// need to convert further, as `renderParagraphHtml` in
 /// `web/public/js/citations.js` does when it highlights by `span`.

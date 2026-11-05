@@ -1,7 +1,7 @@
 //! Build steps for the stare.pub site that need the stare library. The site build
 //! (`.github/actions/build-site`, `mise run build-wasm`) runs `export-citare-data`
 //! after building stare-wasm. It was `stare-admin export-citare-data` until
-//! stare-admin moved to codexpublicus/stare-builder (#163). `export-reporters`
+//! stare-admin moved to the index builder (#163). `export-reporters`
 //! writes the reporter map, `/reporters.json` (#161).
 
 use anyhow::Context;

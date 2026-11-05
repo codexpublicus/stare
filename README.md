@@ -4,10 +4,10 @@
 
 **Repository**: `codexpublicus/stare` in the Codex Publicus GitHub org: the site, the `stare`
 CLI and the library that reads the published data. The data itself (the citation index,
-archival PDFs, CourtListener records) is built and published from `codexpublicus/stare-builder`.
-Alongside them are `codexpublicus/gorsuch-library`, `codexpublicus/infra` (shared zones, edge rules and the LFS proxy)
-and `codexpublicus/codexpublicus.org` (umbrella site). Shared Cloudflare values come from the
-Pulumi stack `organization/codexpublicus-infra/prod`.
+archival PDFs, CourtListener records) is built and published to idx.stare.pub and
+data.stare.pub by a separate, private index builder. The org's shared zones, edge rules and
+LFS proxy live in its private infrastructure repository, and `codexpublicus/codexpublicus.org`
+is the umbrella site. Shared Cloudflare values come from the org's infrastructure stack.
 
 ## What is this?
 
@@ -83,7 +83,7 @@ retried up to three times.
 ### `stare mcp`
 
 `stare mcp` is an MCP server over stdin and stdout for agents that write or review legal text
-(#162; the design is `docs/superpowers/specs/2026-10-27-stare-mcp-design.md`). Its tools are
+(#162, design accepted as D148). Its tools are
 `check_brief` (every citation in a document, as `stare check --json` gives them, with the cited
 cases), `get_case` (a case's metadata and text in windows, or excerpts around a quotation with
 `find`), `resolve_citation`, `find_citations_in_text` and `index_info`. It reads the same

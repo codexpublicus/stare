@@ -5,7 +5,7 @@
 - [x] Analyze static.case.law structure and file formats
 - [x] Design mirror architecture (aria2 + Docker + NFS)
 - [x] Generate URL list (203,113 URLs across 40,622 volumes)
-- [x] Deploy mirror on ml-01 → TrueNAS `mega/codex-publicus` (now `mega/codexpublicus/cap-mirror`, read-only)
+- [x] Deploy the mirror to local storage (now read-only)
 - [ ] Mirror complete (~10% as of 2026-03-22, ETA ~7 days)
 - [ ] Verify completeness: all 40,622 volumes × 5 file types present
 - [ ] Verify checksums: sha256sum against `.tar.sha256` files
@@ -102,7 +102,7 @@ Build a WASM-driven interactive text overlay component ("alto.js"):
 - [ ] Image/text sync: click text in reader → scroll to that position in page viewer
 
 ### Distribution
-- [ ] IPFS: pin tars + volume PDFs from TrueNAS
+- [ ] IPFS: pin tars + volume PDFs from the local mirror
 - [ ] BitTorrent: per-reporter torrents for bulk distribution
 - [ ] Fully decentralized hosting: serve stare.pub itself from IPFS (site + WASM + data = one content-addressed bundle, no traditional hosting required)
 

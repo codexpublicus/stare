@@ -278,7 +278,7 @@ pub struct BasedOn {
 
 /// What an index build is made from: the Caselaw Access Project's data (CC0 1.0) and
 /// CourtListener's bulk data (the Public Domain Mark 1.0, Free Law Project).
-/// stare-builder writes this as `based_on`.
+/// The index builder writes this as `based_on`.
 pub fn index_based_on() -> Vec<BasedOn> {
     vec![
         BasedOn {

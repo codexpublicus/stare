@@ -106,7 +106,7 @@ test('the empty page fetches nothing from the index, and no search client', asyn
   expect(client).toEqual([]);
 });
 
-test('a query shows 20 cards ranked as stare-builder\'s client ranks them, linked to the reader', async ({ page }) => {
+test('a query shows 20 cards ranked as the index builder\'s client ranks them, linked to the reader', async ({ page }) => {
   const want = expected('contract');
   await page.goto('/search/?q=contract');
   await expect(status(page)).toHaveText('137 matches, page 1 of 7');
@@ -227,7 +227,7 @@ test('a year range finds the decisions of those years', async ({ page }) => {
   for (const d of dates) expect(Number(d.slice(-4))).toBeGreaterThanOrEqual(1925);
 });
 
-test('the bundled client ranks as stare-builder\'s client does', async ({ page }) => {
+test('the bundled client ranks as the index builder\'s client does', async ({ page }) => {
   await page.goto('/search/');
   const queries = EXPECTED.filter((e) => !e.limit).slice(0, 10);
   const got = await page.evaluate(async ({ url, tree, queries }) => {
@@ -265,7 +265,7 @@ test.describe('a search client a content blocker refuses', () => {
   });
 });
 
-// Format 3 (stare-builder#90) ranks by citation counts: in the fixture, ny/1/13-02, Palsgraf
+// Format 3 ranks by citation counts: in the fixture, ny/1/13-02, Palsgraf
 // v. Elevator Co., is cited 5,000 times, and the other Palsgraf cases far less or not at all.
 test.describe('a format-3 tree', () => {
   test.use({ tree: { manifest: true, format: 3 } });
@@ -292,7 +292,7 @@ test.describe('a format-3 tree', () => {
     expect(names.slice(0, 4)).toEqual(Array(4).fill('Palsgraf v. Elevator Co.'));
   });
 
-  test('the bundled format-3 client ranks as stare-builder\'s client does', async ({ page }) => {
+  test('the bundled format-3 client ranks as the index builder\'s client does', async ({ page }) => {
     await page.goto('/search/');
     const queries = TREES[3].expected.filter((e) => !e.limit).slice(0, 10);
     const got = await page.evaluate(async ({ url, tree, queries }) => {

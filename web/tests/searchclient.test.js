@@ -10,9 +10,9 @@ import { clientFilters } from '../public/js/searchquery.js';
 import { clientDirNames, clientPins, readPins, verifyVendored } from '../src/lib/searchvendor.js';
 import { EXPECTED, TREES, TREE_PATH, treeFetch } from './fixtures/searchtree.js';
 
-// The search page ranks with stare-builder's reference client, vendored unchanged
+// The search page ranks with the index builder's reference client, vendored unchanged
 // (src/lib/searchvendor.js), one copy per search format. These fail when a copy drifts from
-// its pin, and run each copy on the fixture tree of its format against what stare-builder's
+// its pin, and run each copy on the fixture tree of its format against what the index builder's
 // own client returned for the same queries at that commit (fixtures/search-expected.json and
 // search-expected-format3.json; fixtures/README.md says how they were made).
 
@@ -47,7 +47,7 @@ test('the clients\' URLs name the pinned commits', () => {
 });
 
 // A vendored search.mjs imports '@roaringbuckets/client'; lay the copies out so Node
-// resolves it, as stare-builder's own test does with a checkout.
+// resolves it, as the index builder's own test does with a checkout.
 async function loadClient(dirName) {
   const dir = mkdtempSync(join(tmpdir(), 'stare-search-'));
   cpSync(join(VENDOR, dirName), join(dir, 'client'), { recursive: true });
@@ -67,7 +67,7 @@ for (const format of [2, 3]) {
   const { root, expected } = TREES[format];
   for (const want of expected) {
     const label = `${JSON.stringify(want.q)}${want.filters ? ` ${JSON.stringify(want.filters)}` : ''}${want.limit ? ` limit ${want.limit}` : ''}`;
-    test(`format ${format}: ranks ${label} as stare-builder's client does`, async () => {
+    test(`format ${format}: ranks ${label} as the index builder's client does`, async () => {
       const client = await clients[format];
       const s = await client.openSearch(BASE, { fetch: treeFetch(undefined, root) });
       const r = await client.search(s, want.q, { filters: want.filters ?? {}, limit: want.limit ?? 20 });
@@ -94,7 +94,7 @@ test('each client opens only its own format\'s tree', async () => {
 });
 
 // Format 3 ranks by citation counts. In the made-up corpus ny/1/13-02, Palsgraf v. Elevator
-// Co., is cited 5,000 times through the crosswalk (stare-builder's tests/fixture.py), and
+// Co., is cited 5,000 times through the crosswalk (the index builder's tests/fixture.py), and
 // the other Palsgraf cases far less or not at all.
 const firstCards = async (format, q, n = 5) => {
   const client = await clients[format];

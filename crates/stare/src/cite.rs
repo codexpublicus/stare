@@ -40,7 +40,7 @@ pub struct DetectedCitation {
     /// Byte span (UTF-8) in the source text, as returned by citare_core.
     /// This is Rust's native string-indexing unit; it is neither Unicode
     /// scalar values (code points) nor UTF-16 code units. Callers that hand
-    /// spans to JavaScript or to the gorsuch-library page viewer must convert
+    /// spans to JavaScript or to the shared Codex Publicus page viewer must convert
     /// first; see `spans_to_char_offsets` below, which stare-wasm applies at
     /// the WASM boundary.
     pub span: (usize, usize),
@@ -1080,7 +1080,7 @@ pub type SpanOffsetError = citare_core::offsets::OffsetError;
 ///
 /// citare_core's `Citation::span()` returns byte offsets, Rust's native
 /// string-indexing unit. Neither JavaScript (which indexes strings by UTF-16
-/// code unit) nor gorsuch-library's shared page viewer (which defines offsets
+/// code unit) nor the shared Codex Publicus page viewer (which defines offsets
 /// as Unicode code points and converts to UTF-16 only where it touches the
 /// DOM) can use bytes directly. This is the boundary conversion: stare-wasm
 /// calls it before serializing citations for JS, so `span` means one thing
@@ -2287,7 +2287,7 @@ mod tests {
     /// citare_core's span() is a UTF-8 byte span. Non-ASCII text before a
     /// citation (section sign, curly quotes, an accented name, an emoji)
     /// pushes the byte offset well past the Unicode scalar value (char)
-    /// offset gorsuch-library's page viewer expects. spans_to_char_offsets
+    /// offset the shared Codex Publicus page viewer expects. spans_to_char_offsets
     /// is the boundary conversion; this asserts it slices the original
     /// text correctly when indexed by chars, not bytes.
     #[test]
@@ -2315,7 +2315,7 @@ mod tests {
         );
 
         // The real assertion: char offsets must slice the original text
-        // (indexed by Unicode scalar value, the unit gorsuch-library uses)
+        // (indexed by Unicode scalar value, the unit the shared page viewer uses)
         // back to the exact matched text.
         let chars: Vec<char> = text.chars().collect();
         let sliced: String = chars[start..end].iter().collect();

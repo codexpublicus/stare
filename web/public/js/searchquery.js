@@ -2,7 +2,7 @@
 // state, the filters handed to the reference client, year ranges, and how a result card
 // reads. Nothing here fetches; web/tests/searchquery.test.js covers it.
 //
-// The ranking is stare-builder's reference client, vendored unchanged
+// The ranking is the index builder's reference client, vendored unchanged
 // (src/vendor/stare-search/, src/lib/searchvendor.js). The client filters on a year range
 // itself (`year_from` and `year_to`, the union of the years' keys); the page closes the
 // range at the years facets.json says exist, so the client reads only those years' keys.

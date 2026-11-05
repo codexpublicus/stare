@@ -41,12 +41,12 @@
 //! 287,cap,neb/128/0783-01,via=cl:8077312
 //! ```
 //!
-//! `via=nominative:us` is a nominative alias (stare-builder#32): U.S. Reports volumes 1 to
+//! `via=nominative:us` is a nominative alias: U.S. Reports volumes 1 to
 //! 90 are the early reporters' volumes (Dall., Cranch, Wheat., Pet., How., Black, Wall.)
 //! renumbered, and the index files each case under its reporter's name and volume too:
 //! `238,cap,us/89/0238-01,via=nominative:us` in `wall/22.idx.gz`.
 //!
-//! `via=official:<slug>` is an official-page alias (stare-builder#41, #48): a case whose
+//! `via=official:<slug>` is an official-page alias: a case whose
 //! official citation gives another page than the one CAP's scan numbers it by (a reprint
 //! paged differently, an orders section CAP numbers on from the opinions, a misnumbered
 //! page) is filed at its official page in its own volume too:
@@ -179,7 +179,7 @@ pub fn via_label(via: &str) -> String {
     }
 }
 
-/// The `via` of a nominative alias (stare-builder#32): a case in U.S. Reports volumes 1
+/// The `via` of a nominative alias: a case in U.S. Reports volumes 1
 /// to 90 filed under the early reporter's own name and volume (`22 Wall. 238` is `89 U.S.
 /// 238`). The concordance is the Supreme Court's, so the label states it as fact.
 pub const VIA_NOMINATIVE: &str = "nominative:us";
@@ -187,12 +187,12 @@ pub const VIA_NOMINATIVE: &str = "nominative:us";
 /// How a reader labels a link through a nominative alias.
 pub const NOMINATIVE_LABEL: &str = "Resolved as the U.S. Reports under its reporter's name";
 
-/// The `via` of an official-page alias in the U.S. Reports (stare-builder#41): a case
+/// The `via` of an official-page alias in the U.S. Reports: a case
 /// filed at the page its official citation gives (`8 U.S. 29` is CAP's `us/8` page 18).
 /// Every reporter's is `official:<slug>` ([`is_official`]).
 pub const VIA_OFFICIAL: &str = "official:us";
 
-/// The tag of an official-page alias's `via`, `official:<slug>` (stare-builder#48).
+/// The tag of an official-page alias's `via`, `official:<slug>`.
 pub const OFFICIAL_TAG: &str = "official";
 
 /// Whether `via` is an official-page alias's, in any reporter (`official:ohio`).

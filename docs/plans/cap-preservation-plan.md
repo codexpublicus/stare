@@ -30,7 +30,7 @@ The PDFs are the irreplaceable asset. The text can be re-derived from PDFs; PDFs
 
 - **RoaringBuckets index on Cloudflare R2**: Searchable binary index with Roaring bitmap indexes across metadata dimensions (jurisdiction, court, date range, citation, case name tokens). Byte offsets enable HTTP range request queries with zero backend. Estimated index size: single-digit GB. Cost: ~$0.15/month.
 - **Full text corpus on R2**: Merged Harvard + CourtListener text, deduplicated via xxHash content addressing. Estimated 80-324 GB depending on scope. Cost: $1.20-$4.86/month.
-- **Reporter volume PDFs on IPFS**: Content-addressed, distributed, permanent. Pinned initially from homelab TrueNAS. Per-file CIDs for granular index resolution; per-reporter directory DAGs for bulk pinning. Zero ongoing hosting cost beyond own storage.
+- **Reporter volume PDFs on IPFS**: Content-addressed, distributed, permanent. Pinned initially from our own storage. Per-file CIDs for granular index resolution; per-reporter directory DAGs for bulk pinning. Zero ongoing hosting cost beyond own storage.
 
 ### Resolution Flow
 
@@ -202,7 +202,7 @@ Keep it short. These are busy academics. Lead with what you're offering (preserv
 
 **CourtListener changes bulk data format or access**: Low risk in the near term. They're a stable nonprofit with a decade of operations. But formats change; pin a copy of each quarterly dump.
 
-**IPFS pinning ecosystem**: If you're the only pinner, the data is only as available as your homelab uptime. Mitigate by seeding to Filecoin storage deals (cheap for public domain data) and encouraging academic institutions to pin.
+**IPFS pinning ecosystem**: If you're the only pinner, the data is only as available as your own storage's uptime. Mitigate by seeding to Filecoin storage deals (cheap for public domain data) and encouraging academic institutions to pin.
 
 **Ravel/LexisNexis claims**: The original Ravel exclusivity deal expired in March 2024. The data is public domain case law. The scans themselves may have a thin copyright claim (sweat of the brow for digitization), but Harvard released them under CC0 / no known copyright restrictions. This is clean.
 
@@ -214,7 +214,7 @@ Keep it short. These are busy academics. Lead with what you're offering (preserv
 |---|---|---|---|---|
 | RoaringBuckets index | Built from merged data | ~1-5 GB | R2 | ~$0.08 |
 | Full text corpus | Harvard HF + CourtListener CSV | 80-324 GB | R2 | $1.20-$4.86 |
-| Reporter volume PDFs | case.law scrape or bulk transfer | 400 GB - 2 TB | IPFS (homelab pin) | $0 |
+| Reporter volume PDFs | case.law scrape or bulk transfer | 400 GB - 2 TB | IPFS (own pin) | $0 |
 | **Total R2** | | | | **< $5/month** |
 
 Act on the PDFs first. Everything else can wait.

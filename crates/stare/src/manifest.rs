@@ -62,14 +62,14 @@
 //! other. A reader that doesn't know `aliases` sees them as volumes it doesn't hold.
 //!
 //! `license`, when present, is the licence the build's files are published under, which
-//! stare-builder's `build-manifest` writes: CC BY-NC-ND 4.0 with stare.pub as the source
+//! The index builder's `build-manifest` writes: CC BY-NC-ND 4.0 with stare.pub as the source
 //! ([`crate::license::CC_BY_NC_ND`], #161, D65). Readers don't need it; manifests written
 //! before it have none.
 //!
 //! `based_on`, when present, says what the build is made from (D67): the Caselaw Access
 //! Project's data and CourtListener's bulk data, each with its URL and the licence or
 //! mark it states for itself ([`crate::license::index_based_on`]). It is provenance,
-//! not terms; stare-builder's `build-manifest` writes it, and manifests written before
+//! not terms; the index builder's `build-manifest` writes it, and manifests written before
 //! it have none.
 //!
 //! The legacy format (format 1, everything before it) is the bare reporter map with

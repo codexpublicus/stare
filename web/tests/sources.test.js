@@ -31,7 +31,7 @@ test('a PDF link can open at a page', () => {
   assert.equal(pdfUrl('a2d', '31', 1.5), 'https://data.stare.pub/pdf/us/a2d/31.pdf');
 });
 
-// stare-builder's pipelines/pdf-publish/reporter-jurisdictions.json, from exemplar 0.4.0.
+// the index builder's pipelines/pdf-publish/reporter-jurisdictions.json, from exemplar 0.4.0.
 // The PDFs' paths are fixed once published, so a change here is a change there first.
 test('the reporters outside `us` are the territories\' own', () => {
   assert.deepEqual({ ...PDF_JURISDICTIONS }, {

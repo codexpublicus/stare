@@ -1,5 +1,5 @@
 // The Archival PDF view: the case's pages of our archival PDF of its volume
-// (data.stare.pub/pdf/..., stare-builder's pdf-publish; #51), drawn by PDF.js from only the
+// (data.stare.pub/pdf/..., the index builder's pdf-publish; #51), drawn by PDF.js from only the
 // bytes those pages need. The PDFs are linearized, so the first range request gives the
 // file's length and layout, and each page after that is a range request or two
 // (pdfpages.js). PDF.js is our own copy (pdfjs-path.js), loaded the first time the view

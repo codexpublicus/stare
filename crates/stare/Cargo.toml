@@ -8,7 +8,7 @@ license = "PolyForm-Shield-1.0.0"
 [features]
 default = ["embedded-data"]
 # citare's reporter, edition and court tables compiled in. The CLI, stare-site,
-# the tests and codexpublicus/stare-builder's stare-admin use them; stare-wasm
+# the tests and the index builder's stare-admin use them; stare-wasm
 # builds without them and loads the bundle with `data::load`.
 embedded-data = ["citare-core/embedded-data"]
 
