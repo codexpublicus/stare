@@ -2,7 +2,7 @@ name: stare-cli release
 
 # Releases of the stare binary, the CLI and `stare mcp` (#162), apart from the site's:
 # a `stare-cli-vX.Y.Z` tag (SemVer) builds static Linux binaries for x86_64 and
-# aarch64 (musl, cross-compiled with cargo-zigbuild on the homelab runners) and
+# aarch64 (musl, cross-compiled with cargo-zigbuild on GitHub-hosted runners) and
 # attaches them to a GitHub Release on this repository (D149: release assets here
 # until the repository is public). The site's release tooling reads only `v*` tags,
 # so these tags and releases don't touch it, and the release isn't marked latest.
@@ -13,7 +13,9 @@ name: stare-cli release
 # skill and a SHA256SUMS.
 #
 # A pull request that changes this file builds both archives and stops, so the
-# workflow is proven before a tag needs it. Nothing else runs it.
+# workflow is proven before a tag needs it. Nothing else runs it. The build
+# fetches the private citare dependency with CITARE_DEPLOY_KEY, which a fork's
+# PR doesn't get, so a fork's PR skips it.
 
 on:
   push:
@@ -29,7 +31,12 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.target }}
-    runs-on: homelab
+    if: >-
+      github.repository == 'codexpublicus/stare' &&
+      (github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     strategy:
       fail-fast: true
       matrix:
@@ -38,10 +45,6 @@ jobs:
           - aarch64-unknown-linux-musl
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: ./.github/actions/homelab-setup
-        with:
-          packages: build-essential pkg-config openssh-client
 
       - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
         with:
@@ -139,7 +142,8 @@ jobs:
     name: Release
     if: startsWith(github.ref, 'refs/tags/stare-cli-v')
     needs: build
-    runs-on: homelab
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
