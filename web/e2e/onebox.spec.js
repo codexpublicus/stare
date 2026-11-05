@@ -28,6 +28,13 @@ const test = base.extend({
     page.on('pageerror', (err) => problems.push(`uncaught: ${err.message}`));
     page.wasmRequests = 0;
     page.on('request', (r) => { if (isWasmUrl(r.url())) page.wasmRequests += 1; });
+    // Spike (D171): the search page's snippets read the fixture cards' routes from the live
+    // data with the reader's WASM, which would count here as the parser loading; these tests
+    // are about the box's routing, so the snippets module is a no-op.
+    await page.route((url) => url.pathname === '/js/snippets.js', (route) => route.fulfill({
+      contentType: 'text/javascript',
+      body: 'export function attachSnippets() { return { cancel() {} }; }',
+    }));
     await page.route((url) => url.origin === IDX && /^\/v\/[^/]+\/search\//.test(url.pathname), (route) => {
       const req = route.request();
       if (req.method() === 'OPTIONS') {

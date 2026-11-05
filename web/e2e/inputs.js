@@ -63,6 +63,7 @@ const SEARCH_ONLY_JS = [
   'web/public/js/searchpage.js',
   'web/public/js/searchquery.js',
   'web/public/js/searchfilters.js',
+  'web/public/js/snippets.js',
 ];
 // The /data page's own module.
 const DATA_ONLY_JS = ['web/public/js/datapage.js'];
