@@ -95,7 +95,7 @@ pub enum TextField {
     PerOpinion(Vec<String>),
 }
 
-/// `source.cl_blocked` (stare-builder's `blocking.py`): CourtListener's blocked flags for
+/// `source.cl_blocked` (the index builder's `blocking.py`): CourtListener's blocked flags for
 /// the cluster and its docket, and the blocking rules that match the case. CourtListener
 /// doesn't publish why it blocked an item, so `reasons` is an inference, and
 /// `reason_basis` says so. Nothing is hidden for it; the viewer shows a provenance line.

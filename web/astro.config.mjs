@@ -158,8 +158,8 @@ const pdfjs = {
 	},
 };
 
-// Bundles the search page's clients (stare-builder's reference query for each search
-// format and the roaringbuckets JS client, vendored unchanged in src/vendor/) into
+// Bundles the search page's clients (the index builder's reference query for each search
+// format and the RoaringBuckets JS client, vendored unchanged in src/vendor/) into
 // public/vendor/ (gitignored), one module per format, before the dev server or the build
 // reads public/ (src/lib/searchvendor.js). Fails if a vendored file differs from its pin,
 // or if SEARCH_CLIENT_DIRS doesn't name the pinned commits.

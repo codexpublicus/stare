@@ -12,7 +12,7 @@ export const TREE_PATH = `v/${TREE_VERSION}/search`;
 
 const readJson = (url) => JSON.parse(readFileSync(url, 'utf8'));
 
-// Each format's tree, with what stare-builder's own client for that format returned for
+// Each format's tree, with what the index builder's own client for that format returned for
 // the queries in search-queries.json (format 2) or search-queries-format3.json (format 3).
 export const TREES = {
   2: {

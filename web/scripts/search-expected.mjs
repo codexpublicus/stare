@@ -1,10 +1,10 @@
-// Runs stare-builder's own reference client (not stare's copy) on the fixture search tree
+// Runs the index builder's own reference client (not stare's copy) on the fixture search tree
 // and writes what it returns, for web/tests/searchclient.test.js (web/tests/fixtures/README.md).
 //
-//   node web/scripts/search-expected.mjs <stare-builder client dir> <tree dir> <queries.json> <out.json>
+//   node web/scripts/search-expected.mjs <index builder client dir> <tree dir> <queries.json> <out.json>
 //
 // The client directory is pipelines/search-index/client at the pinned commit, with
-// node_modules/@roaringbuckets/client pointing at roaringbuckets' packages/client at its pin.
+// node_modules/@roaringbuckets/client pointing at the RoaringBuckets client's packages/client at its pin.
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';

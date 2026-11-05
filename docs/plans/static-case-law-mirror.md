@@ -79,8 +79,8 @@ Everything except browsable per-case directories:
 docker compose (mirror/docker-compose.yaml)
   └─ codex-mirror container (hurlenko/aria2-ariang)
        ├─ aria2c daemon — downloads 10 concurrent files
-       ├─ AriaNg web UI — progress monitoring at http://ml-01:8280/
-       └─ NFS volume → truenas:/mnt/mega/codex-publicus
+       ├─ AriaNg web UI: progress monitoring on port 8280
+       └─ NFS volume on local storage
 ```
 
 ### Queue / Resume System
@@ -93,7 +93,7 @@ aria2's `--save-session` acts as a shrinking queue:
 
 ### Files
 
-The `mirror/` directory moved to codexpublicus/stare-builder with the rest of the data build
+The `mirror/` directory moved to the index builder with the rest of the data build
 (#163); the paths below are in that repo.
 
 | File | Purpose |
@@ -117,12 +117,9 @@ conditional-get=true
 
 ### Storage
 
-- **Target**: TrueNAS at `truenas.lodenheim.lokkju.com`
-- **Dataset**: `mega/codexpublicus/cap-mirror` (renamed from `mega/codex-publicus` on
-  2026-09-29; read-only since the mirror completed)
-- **NFS export**: `/mnt/mega/codexpublicus/cap-mirror` to `192.168.32.0/24` (MapRoot: root,
-  read-only)
-- **Docker NFS volume**: mounted directly via `driver_opts` in compose — no host mount needed
+- **Target**: an NFS dataset on local storage, read-only since the mirror completed
+  (2026-09-29)
+- **Docker NFS volume**: mounted directly via `driver_opts` in compose, so no host mount is needed
 - **Download path**: `/aria2/data/downloads/{reporter}/{volume}.{ext}`
 
 ### Running
@@ -136,8 +133,7 @@ docker compose up -d
 # Watch logs
 docker logs -f codex-mirror
 
-# Web UI
-open http://ml-01:8280/
+# Web UI: AriaNg on the mirror host's port 8280
 
 # Stop gracefully (saves session for resume)
 docker compose down

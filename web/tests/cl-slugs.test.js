@@ -1,7 +1,7 @@
 // Citations of reporters CAP never had resolve through citare's edition slug (#153).
 // crates/stare/tests/fixtures/cl-sample-build.json is a sample build: for each
 // citation, what the WASM detects in a reader's citation string, and the unified
-// index stare-admin writes. stare-admin's tests (in codexpublicus/stare-builder, with
+// index stare-admin writes. stare-admin's tests (in the index builder, with
 // their own copy of the file) check both against citare; here the
 // site looks each one up through them, as the landing box and the sidebar do.
 import { test, describe } from 'node:test';

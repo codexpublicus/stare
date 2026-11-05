@@ -43,7 +43,7 @@ Keep three kinds of truth apart; mixing them is the usual way a doc goes wrong:
 
 - **Live data**: only what idx.stare.pub's root `manifest.json` names (`version`, `base`) is
   the live index, and only builds in `reports/index.json` were published. A build that exists
-  on ml-01 or in a stare-builder PR but isn't in the root manifest isn't live, however ready.
+  on the build host or in an index builder PR but isn't in the root manifest isn't live, however ready.
 - **Shipped code**: the repo docs and the site's pages describe the code on `main`, which the
   next release ships. Production may be a release or two behind (the script shows which), so
   a sentence about what stare.pub serves today, such as an issue comment or the README's

@@ -5,8 +5,8 @@ name: site
 #
 # - pull requests: build, upload a Worker version, comment its preview URL,
 #   and smoke test it. Dependabot's PRs only build: a workflow Dependabot
-#   triggers sees only Dependabot secrets, and infra gives it the citare
-#   deploy key but not the Workers token (codexpublicus/stare-builder#6).
+#   triggers sees only Dependabot secrets, and the infrastructure stack gives it the citare
+#   deploy key but not the Workers token.
 # - pushes to main: build and upload a Worker version to the stable `main`
 #   preview alias (https://main-stare-pub.nick-441.workers.dev), and smoke
 #   test that version. release.yml refuses to release a merge commit whose

@@ -26,24 +26,23 @@ docs/plans/extraction-plan.md       — Citation index + data pipeline: bin inde
 docs/plans/search-plan.md           — Search + data products: RoaringBuckets, DuckLake, comparisons
 ```
 
-### The data build: codexpublicus/stare-builder
+### The data build: the index builder
 
-The producer side moved to codexpublicus/stare-builder with its history (#163):
-`stare-admin` (the index build, `build-manifest`, `build-report`, `build-idx`),
-`pipelines/archival-pdf` and `pipelines/courtlistener`, the aria2 mirror job and tar audit
-(`mirror/`), the operator mise tasks (`index-build`, `index-publish`, `cl-fetch`,
-`cl-build`, `cl-test`, `archival-*`), their
-runbooks and the homelab notes. Its AGENTS.md covers them.
+The producer side moved with its history (#163) to the index builder, a separate private
+repository: `stare-admin` (the index build, `build-manifest`, `build-report`, `build-idx`),
+the archival PDF and CourtListener pipelines, the aria2 mirror job and tar audit, the
+operator tasks (`index-build`, `index-publish`, `cl-fetch`, `cl-build`, `cl-test`,
+`archival-*`) and their runbooks. Its own AGENTS.md covers them.
 
 This repo is the reader: the site, the CLI, stare-wasm, `crates/stare` with the readers
 and writers for every published format (the per-volume index, the manifest, records), and
 the format specs, including `schemas/` for the build report and `reports/index.json` that
-`/data` reads. `stare::schemas` compiles them in, and stare-builder's report test validates
+`/data` reads. `stare::schemas` compiles them in, and the index builder's report test validates
 against that at its pinned rev. A
 change to a published format lands here first, in the format's reader, writer and the docs
-below; stare-builder pins `crates/stare` by a site release tag (`vYYYY.MM.DD.N`) and picks
+below; the index builder pins `crates/stare` by a site release tag (`vYYYY.MM.DD.N`) and picks
 it up when it bumps the pin, so a change it needs ships in a release first.
-stare-builder depends on stare, never the other way round, and nothing here may depend on
+The index builder depends on stare, never the other way round, and nothing here may depend on
 it. stare's CI builds no pipeline.
 
 ## Architecture
@@ -96,10 +95,10 @@ One gzipped text file per volume as cited, for every source (`docs/plans/courtli
   with trailing `key=value` fields; `via=cl:<cluster>` says it came from CourtListener's
   `citations` table (publisher, scraper and import metadata, never eyecite, never
   `html_with_citations` or the citation-map): `287,cap,neb/128/0783-01,via=cl:8077312`
-  in `n-w/260.idx.gz`. `via=nominative:us` (stare-builder#32) files a case in U.S. Reports
+  in `n-w/260.idx.gz`. `via=nominative:us` files a case in U.S. Reports
   volumes 1 to 90 under its early reporter's name and volume as well (`wall/22.idx.gz`:
   `238,cap,us/89/0238-01,via=nominative:us`), labelled "Resolved as the U.S. Reports under
-  its reporter's name". `via=official:<slug>` (stare-builder#41, #48) files a case whose
+  its reporter's name". `via=official:<slug>` files a case whose
   official citation gives another page than CAP's scan numbers it by (a reprint paged
   differently, an orders section CAP numbers on from the opinions, a misnumbered page) at
   its official page, in its own volume (`us/8.idx.gz`: `29,cap,us/8/0018-01,via=official:us`,
@@ -146,11 +145,11 @@ A reporter citare reads as a variation of an edition with another name (citare#8
 `reporter` as cited and gets that edition's slug, with the edition's name in
 `corrected_reporter`. The site's link says "Read as 127 Ohio St. 545", and the miss notes,
 the CLI's `stare check` and the CourtListener and Scholar links use the edition's name.
-stare-builder's `stare-admin --cl` files each CourtListener citation under the slugs of the editions citare
+The index builder's `stare-admin --cl` files each CourtListener citation under the slugs of the editions citare
 finds in its citation string, or of its reporter's edition name when citare can't read the
 string (CourtListener writes `2019 T.C. Memo. 123`); a name citare splits between reporters
 (`Hill`, `Ct. Cl.`) is filed under each of its slugs. The pipeline's manifest carries
-citare's slugs too, from its copy of `data/edition-slugs.json` (stare-builder's
+citare's slugs too, from its copy of `data/edition-slugs.json` (the index builder's
 `crates/stare-admin/tests/edition_slugs.rs` checks the copy against the citare its stare pin
 brings); the build counts any that disagree as `slugs_differ`.
 `crates/stare/tests/fixtures/cl-sample-build.json` is a sample build that the Rust and JS
@@ -176,8 +175,8 @@ page's second (`#md/163/481-02`). A data alias (`via=cl:`) still wins: it resolv
 its own, with its own label. When nothing else settles which case at such a page a citation means (no alias
 names one, and its run's printings, if any, share more than one; `Verdict::tied`), the citing
 text's case name does (#212, D72 (2), `stare::byname::pick`): its telling words and year
-against each case's names and decision date, the way stare-builder matches CourtListener
-clusters to shared pages (stare-builder#37), taking a case only when it is the one clear
+against each case's names and decision date, the way the index builder matches CourtListener
+clusters to shared pages, taking a case only when it is the one clear
 match. When a run's printings share several cases, none of them fits the name, and exactly
 one case on the official printing's whole page does (D90,
 `stare::byname::pick_on_official_page`; the U.S. Reports for `State v. Gordon, ..., cert.
@@ -266,8 +265,8 @@ the deployed pages against that build's own files (`readCollection({ version })`
 
 ### Index builds and publishing
 
-Index builds run from codexpublicus/stare-builder (`mise run index-build`, `mise run
-index-publish`, operator-run on ml-01); its AGENTS.md has the steps. Each build is immutable
+Index builds run from the index builder (`mise run index-build`, `mise run index-publish`,
+run by the operator); its AGENTS.md has the steps. Each build is immutable
 under `v/<version>/` with a CalVer data version (`vYYYY.MM.DD`, `.N` for a later one the
 same day), and the root `manifest.json`'s `base` names the live one. Rolling back is
 publishing an earlier version.
@@ -280,7 +279,7 @@ as held and report "not indexed yet" instead of linking out.
 ### Storage Split
 
 - **R2**: index, zips, tar.csvs, search index, DuckLake (~$1-8/month)
-- **IPFS**: tars, volume PDFs (pinned from homelab TrueNAS, $0)
+- **IPFS**: tars, volume PDFs (pinned from the local mirror, $0)
 
 ### Client-Side Rendering (WASM)
 
@@ -332,7 +331,7 @@ What each stage suggests, and fetches the first time:
   that one entry, 70 to 380 KB per volume in the ten volumes measured on #248), kept in
   the cache's `multi` store as `names/<slug>/<folder>`, and aborted when the typing moves
   to another volume. The index lines carry no names; a names column added to the index
-  files in stare-builder would cost 0.2 to 8 KB more per volume compressed (the index
+  files by the index builder would cost 0.2 to 8 KB more per volume compressed (the index
   files grow about threefold) and would replace the range read.
 
 ### One box, one button (D163, #296: `web/public/js/boxroute.js`)
@@ -383,27 +382,24 @@ px.
 ### The search page (D155 (6): `web/src/pages/search.astro`, `web/public/js/searchpage.js`)
 
 `/search/?q=...&jurisdiction=...&court=...&from=...&to=...&page=...` searches the full-text
-tree stare-builder builds under an index build, `idx.stare.pub/v/<version>/search/`
-(stare-builder's `docs/search-index.md`; D143, D155). It is a real page, not a hash route,
+tree the index builder builds under an index build, `idx.stare.pub/v/<version>/search/`
+(the index builder's search-index spec; D143, D155). It is a real page, not a hash route,
 and runs in place: a new query or page changes the URL with `pushState`, and Back and
 Forward run the URL they land on. Its box routes like the landing's and the top bar's (D163,
 above): words search here, a citation opens in the reader.
 
-The ranking is stare-builder's reference client and nobody else's. Each copy of its
+The ranking is the index builder's reference client and nobody else's. Each copy of its
 `search.mjs` reads one search format, so the site carries one per format a published tree
 is in: `web/src/vendor/stare-search/` holds `search.mjs` and `tokenize.mjs` for format 3
-(stare-builder 6098a43,
-[stare-builder#90](https://github.com/codexpublicus/stare-builder/pull/90)), and
-`web/src/vendor/stare-search-format2/` the same two files for format 2 (d419b9e,
-[stare-builder#85](https://github.com/codexpublicus/stare-builder/pull/85)), which the live
-tree for v2026.10.26.2 is in. `web/src/vendor/roaringbuckets-client/` holds roaringbuckets'
-JS client (v0.3.0 and [roaringbuckets#61](https://github.com/lokkju/roaringbuckets/pull/61),
-which aborts a ranged read answered with the whole file), which both read the tree with. All
+(index builder commit 6098a43), and `web/src/vendor/stare-search-format2/` the same two
+files for format 2 (d419b9e), which the live tree for v2026.10.26.2 is in.
+`web/src/vendor/roaringbuckets-client/` holds the RoaringBuckets JS client (v0.3.0 plus a
+fix that aborts a ranged read answered with the whole file), which both read the tree with. All
 are byte for byte at the commits `web/src/vendor/search-client.json` pins with each file's
 SHA-256 and, for a stare-search copy, the `format_version` it reads. The
 `stare-search-client` hook in `astro.config.mjs` (`src/lib/searchvendor.js`) bundles each
 format's copy with the roaringbuckets client into its own module at
-`/vendor/stare-search-<stare-builder commit>-rb<roaringbuckets commit>/search.js`
+`/vendor/stare-search-<client commit>-rb<RoaringBuckets client commit>/search.js`
 (`SEARCH_CLIENT_DIRS` and `searchClientUrl` in `public/js/searchclient-path.js`), which
 `_headers` serves immutable, and fails the build if a copy differs from its pin. The page
 reads the tree's `manifest.json`, then loads the client its
@@ -412,14 +408,14 @@ in a format this page doesn't read". So the site can ship before a format-3 tree
 published, and the tree can be published without a site release.
 `web/tests/searchclient.test.js` checks the pins and runs each copy on a fixture tree of its
 format (`web/tests/fixtures/search-tree/` and `search-tree-format3/`, built from
-stare-builder's made-up corpus) against what stare-builder's own client returned at that
-commit, ranking and scores included, and checks each client refuses the other's tree;
+the index builder's made-up corpus) against what the index builder's own client returned at
+that commit, ranking and scores included, and checks each client refuses the other's tree;
 `web/e2e/search.spec.js` runs the bundles on the same queries in the browser, and the page
 on both trees. Moving a pin means copying the files in again, updating the hashes, the
 directory name and the expected results (`web/tests/fixtures/README.md`); once no published
 tree is in format 2, its directory, pin and fixture go.
 
-Format 3 ranks by citation counts (stare-builder's `docs/search-index.md`, "Citation
+Format 3 ranks by citation counts (the index builder's search-index spec, "Citation
 counts"): a decision's count is the larger of CAP's `cites_to` count and its
 CourtListener cluster's `citation_count`. Text postings carry a 2-bit prior class
 (`scoring.prior_bits`), case-name keys `t#n<P>` a finer one in one hex digit (16 classes),
@@ -486,11 +482,10 @@ The bytes are format 1's but for the manifest's encoding (format 1, served local
 gzip: 3 and 271 KB for `negligence`, 5 and 993 KB for `palsgraf railroad`); the requests
 went up, since a page's 20 cards fall in
 up to 20 cards segments and each is its own request. The owner accepted that for now
-(D162); [stare-builder#86](https://github.com/codexpublicus/stare-builder/issues/86) tracks
-numbering decisions so a query's top cards share segments.
+(D162); an open index-builder issue tracks numbering decisions so a query's top cards share segments.
 
 Format 3, measured on 2026-11-02 against an unpublished format-3 tree of v2026.10.26.2 served
-locally by stare-builder's `client/server.mjs` (manifest gzip-compressed), beside format 2
+locally by the index builder's client test server (manifest gzip-compressed), beside format 2
 from idx.stare.pub through the main preview, same Chromium setup, first query, the tree's
 requests and bytes with the manifest left out (format 2's is 269 KB as zstd from
 Cloudflare, format 3's 226 KB as gzip from the local server; gzip -6 of each is 232 KB and
@@ -498,8 +493,7 @@ Cloudflare, format 3's 226 KB as gzip from the local server; gzip -6 of each is 
 `chevron` 9 and 41.4 KB, 12 and 34.2 KB; `miranda arizona` 9 and 410.6 KB, 9 and 401.8 KB;
 `palsgraf railroad` 17 and 765.4 KB, 18 and 764.6 KB. The bytes are the same; the requests
 go up where the most cited first scatters a page's 20 cards over more cards segments
-(`negligence`'s fall in 6 segments, against 1), which
-[stare-builder#86](https://github.com/codexpublicus/stare-builder/issues/86) would fix. The
+(`negligence`'s fall in 6 segments, against 1), which that index-builder issue would fix. The
 first results change: `chevron` gave Chevron U.S.A., Inc. v. Workers' Compensation Appeals
 Board first and gives Chevron U.S.A. Inc. v. Natural Resources Defense Council; `miranda
 arizona` gave In re a Member of the State Bar of Arizona, Miranda and gives Miranda v.
@@ -700,7 +694,7 @@ checks the length and hash, and loads it with `init_data` before `loadWasm()` re
 The name changes only when reporters-db or courts-db does, so a stare release
 re-downloads the module alone, and a data change the bundle alone.
 
-In Chromium on the previews (median of 9, two rounds, from ml-01, zstd chosen), a first
+In Chromium on the previews (median of 9, two rounds, zstd chosen), a first
 visit transfers 697,960 bytes of WASM files against 792,477 to 792,540 before; a repeat
 visit to the same deploy 900 bytes either way (three 304s, and the bundle from the cache
 with nothing sent); a repeat visit after a stare release about 579 KB against 787 KB.
@@ -732,14 +726,14 @@ Sizes vary widely by volume: a2d/31's tar is 102 MB (83 MB of it JPGs) and its P
 
 ## Organization and infrastructure
 
-This repo is `codexpublicus/stare` in the `codexpublicus` GitHub org, alongside
-`codexpublicus/stare-builder` (the data build), `codexpublicus/gorsuch-library`, `codexpublicus/infra` (shared zones, edge rules and the
-LFS proxy) and `codexpublicus/codexpublicus.org` (umbrella site).
+This repo is `codexpublicus/stare` in the `codexpublicus` GitHub org, alongside the index
+builder (the data build, private), the org's private infrastructure repository (shared zones,
+edge rules and the LFS proxy) and `codexpublicus/codexpublicus.org` (umbrella site). The
+Gorsuch library is at gorsuch.codexpublicus.org.
 
-Shared Cloudflare values come from the Pulumi stack `organization/codexpublicus-infra/prod`,
-not from any per-site config. That stack owns stare.pub's zone and DNS, the `stare-pub-idx`
-R2 bucket and `idx.stare.pub` (moved there from
-`lokkju-infra` on 2026-09-27; see codexpublicus/stare#3), the `codex-data` R2 bucket, the
+Shared Cloudflare values come from the org's infrastructure stack (Pulumi), not from any
+per-site config. That stack owns stare.pub's zone and DNS, the `stare-pub-idx` R2 bucket and
+`idx.stare.pub` (since 2026-09-27; see codexpublicus/stare#3), the `codex-data` R2 bucket, the
 Workers deploy token, the citare deploy key and the three Actions secrets that carry them
 (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CITARE_DEPLOY_KEY`), plus
 `CITARE_DEPLOY_KEY` again as a Dependabot secret. This repo runs no
@@ -751,11 +745,7 @@ stare.pub has no email of its own. The published contact address is `info@codexp
 
 stare.pub is the `stare-pub` Worker (Workers Static Assets, `web/dist`), attached to the apex
 as a Wrangler custom domain. The one sanctioned path to production is merging the release PR.
-It is not the only possible one: this private repo is on GitHub Free, so `main` has no branch
-protection and there are no environment protection rules, and a same-repo PR runs its own copy
-of `site.yml` with `CLOUDFLARE_API_TOKEN`. A PR that edits a workflow to run `wrangler deploy`
-would deploy production without a release, and a Workers token can't be scoped to preview
-uploads only. Review workflow changes in PRs with that in mind.
+Review workflow changes in PRs with care.
 
 Every job runs on GitHub-hosted runners (`runs-on: ubuntu-24.04`), with a timeout. Toolchains
 come from their setup actions (`setup-node`, `rust-toolchain`, `setup-uv`); the image has the C
@@ -779,9 +769,10 @@ dispatch or a merged release PR, and the push, tag and dispatch jobs check
   then upload a Worker version and keep one updating comment with its preview URL
   (`https://<version>-stare-pub.nick-441.workers.dev`), then run the Playwright smoke suite
   (`web/e2e/`, `.github/actions/smoke-test`) against that URL. Dependabot's PRs stop after
-  the build: a workflow Dependabot triggers sees only Dependabot secrets, and infra stores
+  the build: a workflow Dependabot triggers sees only Dependabot secrets, and the infrastructure
+  stack stores
   `CITARE_DEPLOY_KEY` there but not the Workers token, since a dependency bump runs the new
-  version's build scripts and the token can deploy production (codexpublicus/stare-builder#6).
+  version's build scripts and the token can deploy production.
 - **Which smoke specs a PR runs** (#294): `web/e2e/inputs.js` lists each spec's inputs (the
   files it tests, the WASM, citare's bundle and the reporter map as built, and the live index
   and scans manifests), and `web/e2e/select.mjs` hashes them after the build. A PR skips a
@@ -858,7 +849,7 @@ links, and `web/src/lib/changelog.js` strips any link from a CHANGELOG line.
 Don't hand-edit `CHANGELOG.md` or push `v*` tags yourself; the workflows own both. Changes to
 the workflows need the operator's workflow-scoped token to merge. `release-prepare.yml` opens
 its PRs with the yeet GitHub App's token (`YEET_APP_ID` and `YEET_APP_PRIVATE_KEY`, pushed by
-codexpublicus/infra), so CI runs on them without an approval, and `release.yml` accepts a
+the infrastructure stack), so CI runs on them without an approval, and `release.yml` accepts a
 release PR only from `codexpublicus-yeet[bot]`. Without those values `release-prepare.yml`
 fails; there is no `GITHUB_TOKEN` fallback, and the repo setting "Allow GitHub Actions to
 create and approve pull requests" is off. Wrangler is
@@ -879,12 +870,12 @@ fixes. `scripts/changes.sh` there lists the merged PRs, releases and live state.
 `idx.stare.pub`'s CORS allows `stare.pub`, its subdomains and the account's workers.dev
 subdomain, so previews resolve citations too.
 
-`stare-pub-idx` holds the deployed index. It is protected and `retain_on_delete` in
-codexpublicus-infra and must never be deleted or recreated; back it up before any change to
+`stare-pub-idx` holds the deployed index. It is protected and `retain_on_delete` in the
+infrastructure stack and must never be deleted or recreated; back it up before any change to
 its declaration.
 
-Infrastructure changes go through PRs to codexpublicus/infra, not this repo. See that
-repo's `AGENTS.md` for the Pulumi, Wrangler and LFS rules that apply across the org.
+Infrastructure changes go through PRs to the org's infrastructure repository, not this repo;
+its `AGENTS.md` has the Pulumi, Wrangler and LFS rules that apply across the org.
 
 ### The look (#257, #261: `web/src/styles/`, `web/src/components/Brand.astro`, `SiteHead.astro`)
 
@@ -952,17 +943,17 @@ parse, if `robots.txt` passes 500 KiB or its `/c/` Allow lines aren't the curate
 sitemap lists a page `robots.txt` disallows. `llms.txt` is the citation recipe
 in plain GETs (manifest, per-volume `.idx.gz` or the volume zip's `CasesMetadata.json`, the case);
 update it with any change to the published formats. `idx.stare.pub` and `data.stare.pub` get
-their own `Disallow: /` robots.txt from stare-builder's publish tasks.
+their own `Disallow: /` robots.txt from the index builder's publish tasks.
 
 ### Archival PDFs and CourtListener records
 
 The archival per-volume PDF pipeline (#51) and the CourtListener bulk-export pipeline (#83)
-are in codexpublicus/stare-builder, with their runbooks. What they publish, and how the site
+are in the index builder, with their runbooks. What they publish, and how the site
 and CLI read it, is above: `/cl/c/...` records (`crates/stare/src/cl.rs`) and the archival
-PDFs at `pdf/<jurisdiction>/<reporter>/<volume>.pdf`, which stare-builder's `pdf-publish`
+PDFs at `pdf/<jurisdiction>/<reporter>/<volume>.pdf`, which the index builder's `pdf-publish`
 uploads (D120, D122). `{jur}` is the reporter's jurisdiction code, `us` except the
 territories' own reporters (`PDF_JURISDICTIONS` in `web/public/js/sources.js`, a copy of
-stare-builder's `pipelines/pdf-publish/reporter-jurisdictions.json`; the two change together
+the index builder's `reporter-jurisdictions.json`; the two change together
 or not at all, since the paths are fixed once published). Every PDF's pages are its METS
 ORDERs 1 to N, so a case's pages are its `first_page_order` to `last_page_order`.
 
@@ -981,7 +972,7 @@ takes it out. A hash has a place in the text (`~c=`) or a page view, not both:
   `disableAutoFetch`, `disableStream`): the first chunk gives the length and the
   linearization header, then the cross-reference section and each page shown, and it
   prefetches the next page once one is drawn. A 404 says the volume's PDF isn't published
-  yet (f-appx/660, stare-builder#24) and offers the Raw Scans.
+  yet (f-appx/660) and offers the Raw Scans.
 - **Raw Scans** (`web/public/js/scanviewer.js`): CAP's color JPEGs from the volume's tar on
   static.case.law, by range requests through its `.tar.csv`, with the ALTO text.
 
@@ -1100,15 +1091,15 @@ Everything an agent uses is a static file; nothing runs per request (the owner's
   - CourtListener records carry the Public Domain Mark 1.0 that CourtListener puts on its bulk
     data (`PUBLIC_DOMAIN_MARK`), in `license`, and `attribution`: CourtListener, Free Law
     Project, and the export date (`COURTLISTENER`; `CaseJson::license`/`attribution`).
-    stare-builder's record writer adds both. The JSON-LD's CourtListener `isBasedOn` states the
+    The index builder's record writer adds both. The JSON-LD's CourtListener `isBasedOn` states the
     mark, and the records are their own part (`#courtlistener-records`) under it.
   - The index manifest (`Manifest::license`), build reports and `reports/index.json` take a
-    `license` (CC BY-NC-ND, stare.pub as the source) that stare-builder writes; the report
+    `license` (CC BY-NC-ND, stare.pub as the source) that the index builder writes; the report
     schemas accept it, and files from before it have none.
   - They also take an optional `based_on` (D67, `Manifest::based_on`, the report schema's
     `$defs/based_on`): what the build is made from, as facts with URLs, the Caselaw Access
     Project (CC0 1.0) and CourtListener's bulk data (Public Domain Mark 1.0, Free Law Project).
-    stare-builder writes `stare::license::index_based_on()`. No licence terms or legal
+    The index builder writes `stare::license::index_based_on()`. No licence terms or legal
     conclusions go in it.
 
 `crates/stare-site/tests/agent_files.rs` validates an exported `reporters.json` against its
@@ -1119,12 +1110,12 @@ licence, and `web/e2e/agents.spec.js` checks the deployed
 site serves all of it.
 
 Per-case JSON (`data.stare.pub/case/<slug>/<vol>/<page>.json`, the issue's third static piece)
-waits on stare-builder: it's a one-time write of about 7M objects from the zips plus the
+waits on the index builder: it's a one-time write of about 7M objects from the zips plus the
 CourtListener records, a new data build rather than a site change.
 
 ### The `stare` binary and `stare mcp` (#162)
 
-The design is `docs/superpowers/specs/2026-10-27-stare-mcp-design.md` (accepted as D148). The
+The design was accepted as D148 (#162). The
 orchestration `stare resolve` and `stare check` run is `stare_cli::engine`: `Sources` (the
 index and data locations and the manifest), `fetch` (cache, then source), `resolve`, `check`
 (`check_text` returns a `CheckReport`, whose citations serialize to `stare check --json`
@@ -1168,12 +1159,12 @@ refuses a tag that doesn't match.
   (our copy, #27), and the volume PDF link opens our archival PDF at
   `https://data.stare.pub/pdf/<jurisdiction>/<reporter>/<volume>.pdf#page=N`. Tars and
   `.tar.csv` still point at static.case.law.
-- **Mirror**: complete. TrueNAS `mega/codexpublicus/cap-mirror` holds 40,622 zips and 39,964
+- **Mirror**: complete. The local mirror holds 40,622 zips and 39,964
   each of tars, `.tar.csv` and PDFs (counted 2026-09-29; checksums not yet audited, and a2d/142.tar fails its `.tar.sha256`, see #77); the dataset is read-only and the
   aria2 `codex-mirror` container is stopped.
 - **Pending, tracked by issue** (`gh issue list -R codexpublicus/stare`):
   - #42: `codex-data` contents and `data.stare.pub` exposure (tier 1 uploaded 2026-09-29)
-  - #51: archival per-volume PDFs (pipeline in codexpublicus/stare-builder)
+  - #51: archival per-volume PDFs (pipeline in the index builder)
   - #52, #61: Akoma Ntoso case text (profile in codexpublicus/exemplar); parallel-citation display
   - #10 — a computable court record key, a stable identifier for every decision
   - #8 — add case sources beyond CAP
@@ -1187,14 +1178,14 @@ refuses a tag that doesn't match.
 
 ## Development Phases
 
-1. **Mirror static.case.law** (done 2026-09-29): every tar, PDF, zip and metadata file, on TrueNAS
-2. **Citation index + CLI tool** (done): the per-volume index at idx.stare.pub, built in codexpublicus/stare-builder, and the Rust `stare` CLI (`stare resolve a2d 31 647` → text)
+1. **Mirror static.case.law** (done 2026-09-29): every tar, PDF, zip and metadata file, on local storage
+2. **Citation index + CLI tool** (done): the per-volume index at idx.stare.pub, built by the index builder, and the Rust `stare` CLI (`stare resolve a2d 31 647` → text)
 3. **Web tool (WASM)** (live at stare.pub): citare and stare-wasm in the browser, zip extraction, served by the `stare-pub` Worker; PDF as fallback viewer link
 4. **DuckLake** — process zips into Parquet, build catalog, assign stable case IDs
 5. **RoaringBuckets search** — generate bitmaps from DuckLake data, add search to web UI
 6. **Page viewer** — tar range access + ALTO XML rendering in WASM (deferred; not needed for core text resolution)
 7. **MCP server** (M1 built, #162) — `stare mcp`, below; M2 adds pin pages, more tools, HTTP on loopback and macOS and Windows builds
-8. **IPFS distribution** — pin tars + PDFs from TrueNAS (alongside Phase 6)
+8. **IPFS distribution** — pin tars + PDFs from the local mirror (alongside Phase 6)
 9. **CourtListener integration** (phase 2) — citation graph first, then post-2018 cases (text-only), then full pre-2018 merge if warranted. See `search-plan.md` for decision rationale. Worth asking Free Law Project about PDFs/scans before committing to text-only tier.
 
 ## Language & Tooling Preferences
@@ -1207,9 +1198,9 @@ refuses a tag that doesn't match.
 
 ## Infrastructure
 
-The homelab (ml-01, TrueNAS and the `codexpublicus-*` Docker volumes) runs the data build
-and the CI runners; codexpublicus/stare-builder's AGENTS.md describes it. Inspect corpus
-files from the mirror there, never from static.case.law.
+The data build runs on the operator's own hardware, beside the local mirror; the index
+builder's AGENTS.md describes it. Inspect corpus files from the mirror there, never from
+static.case.law.
 
 ## Key Context
 

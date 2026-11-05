@@ -7,7 +7,7 @@
 // already have (data.stare.pub, codex-data's `cap/`, codexpublicus/stare#42), and so have
 // the PDFs, which are our archival PDFs (#51), not CAP's: one per volume with scans, at
 // `pdf/<jurisdiction>/<reporter>/<volume>.pdf` with its manifest beside it as
-// `<volume>.json` (D120, D122; stare-builder's pdf-publish). The tars stay on the mirror.
+// `<volume>.json` (D120, D122; the index builder's pdf-publish). The tars stay on the mirror.
 // A .tar.csv holds byte offsets into its tar, so the tar it's read against must be
 // byte-identical to the one it was made from; sharing one base keeps them paired.
 
@@ -20,7 +20,7 @@ export const TAR_URL = MIRROR_URL; // the .tar and its .tar.csv
 export const PDF_URL = `${DATA_URL}/pdf`;
 
 // The jurisdiction segment of a reporter's PDF paths: `us`, except the territories' own
-// reporters. A copy of stare-builder's pipelines/pdf-publish/reporter-jurisdictions.json
+// reporters. A copy of the index builder's pipelines/pdf-publish/reporter-jurisdictions.json
 // (derived from codexpublicus/exemplar 0.4.0's court registry), which pdf-publish's
 // index, data.stare.pub/pdf/manifest.json, repeats under `jurisdictions`. The paths are
 // immutable once published, so the two change together or not at all.

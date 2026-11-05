@@ -1,7 +1,6 @@
 // Smoke checks for a deployed stare.pub (issue #81). The automated form of
-// the manual preview checks in
-// docs/superpowers/plans/2026-09-27-stare-infra-and-workers.md (Task 6,
-// step 5), plus /check exercising citare through the WASM.
+// the manual preview checks from the Workers migration plan, plus /check
+// exercising citare through the WASM.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { gunzipSync, gzipSync } from 'node:zlib';
@@ -1031,7 +1030,7 @@ test('the Archival PDF view opens a case in the largest volume without fetching 
 });
 
 test.describe('a scanned volume without an archival PDF', () => {
-  // f-appx/660 has scans, and no PDF yet (stare-builder#24).
+  // f-appx/660 has scans, and no PDF yet.
   test.use({ expectedMissing: ['https://data.stare.pub/pdf/us/f-appx/660.pdf'] });
 
   test('the Archival PDF view says so and points at the Raw Scans', async ({ page }) => {
@@ -1426,7 +1425,7 @@ test.describe('the unified per-volume index', () => {
     expect(seen.bins).toEqual([]);
   });
 
-  // A blocked case (stare-builder#17) renders in full, with a quiet provenance line.
+  // A blocked case renders in full, with a quiet provenance line.
   test('a case CourtListener blocks renders in full, with the blocked line', async ({ page }) => {
     await routeIdx(page);
     const blocked = readFileSync(new URL('../../crates/stare/tests/fixtures/cl-record-blocked.json', import.meta.url));

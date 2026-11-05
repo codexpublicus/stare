@@ -95,7 +95,7 @@ function fromRust(c) {
  * index doesn't (see caseLookupLinks).
  *
  * `start`/`end` are Unicode code point offsets into `text`, matching
- * gorsuch-library's page viewer convention, not UTF-16 code units. Convert
+ * the shared Codex Publicus page viewer's convention, not UTF-16 code units. Convert
  * to UTF-16 offsets before using them with String.prototype.slice or any
  * other native JS string indexing. renderTextHtml, below, highlights by
  * these offsets.
@@ -187,7 +187,7 @@ export async function checkAvailability(slug, volume, manifest = null) {
  * through CourtListener's citation metadata" for `cl:<cluster>`, and "Resolved as
  * the U.S. Reports under its reporter's name" for a nominative alias, and "Resolved
  * by the reporter's official page; CAP's scan numbers the case on another page" for
- * an official-page alias, `official:<slug>` (stare-builder#41, #48). The `cl:` aliases come
+ * an official-page alias, `official:<slug>`. The `cl:` aliases come
  * from CourtListener's `citations` table (publisher, scraper and import data), a
  * third party's metadata; nothing here calls such a link verified.
  */
@@ -199,21 +199,20 @@ export function viaLabel(via) {
 }
 
 /**
- * The `via` of a nominative alias (stare-builder#32): U.S. Reports volumes 1 to 90
+ * The `via` of a nominative alias: U.S. Reports volumes 1 to 90
  * filed under the early reporter's name and volume (`22 Wall. 238` is `89 U.S. 238`).
  */
 export const VIA_NOMINATIVE = 'nominative:us';
 
 /**
- * The `via` of an official-page alias in the U.S. Reports (stare-builder#41): a case
+ * The `via` of an official-page alias in the U.S. Reports: a case
  * filed at its official page in its own volume (`8 U.S. 29` is CAP's `us/8` page 18).
  * Every reporter's is `official:<slug>` (`isOfficialVia`).
  */
 export const VIA_OFFICIAL = 'official:us';
 
 /**
- * Whether `via` is an official-page alias's, in any reporter (`official:ohio`,
- * stare-builder#48): a case whose official citation gives another page than the one
+ * Whether `via` is an official-page alias's, in any reporter (`official:ohio`): a case whose official citation gives another page than the one
  * CAP's scan numbers it by.
  */
 export function isOfficialVia(via) {

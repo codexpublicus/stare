@@ -24,7 +24,7 @@ See `extraction-plan.md`. Binary index files with direct page offset lookup. One
 
 ### Why RoaringBuckets over Tantivy?
 
-Evaluated both for serving a full-text search index as static files on R2. RoaringBuckets (lokkju/roaringbuckets) is the clear choice:
+Evaluated both for serving a full-text search index as static files on R2. RoaringBuckets is the clear choice:
 
 | | RoaringBuckets | Tantivy |
 |---|---|---|

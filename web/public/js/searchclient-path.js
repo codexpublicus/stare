@@ -1,5 +1,5 @@
-// Where the search page loads a search client from: stare-builder's reference client for one
-// search format and roaringbuckets' JS client, bundled into one module per format by the
+// Where the search page loads a search client from: the index builder's reference client for one
+// search format and the RoaringBuckets JS client, bundled into one module per format by the
 // `stare-search-client` hook in astro.config.mjs (src/lib/searchvendor.js). Each directory is
 // named for its two pinned commits in src/vendor/search-client.json, so a URL never changes
 // content and _headers serves it immutable; web/tests/searchclient.test.js fails if the names

@@ -1,5 +1,5 @@
 //! `stare mcp`: an MCP server over stdio for agents that write or review legal text
-//! (#162; `docs/superpowers/specs/2026-10-27-stare-mcp-design.md`). It reads only the
+//! (#162, design accepted as D148). It reads only the
 //! static files stare.pub publishes, or a mirror of them, through the same engine as
 //! `stare resolve` and `stare check`, and shares their cache.
 //!

@@ -250,13 +250,12 @@ cases, 1% corrected) touched 3,633 index files, 13.5 MB.
 
 ## Pipeline
 
-`pipelines/courtlistener/` in codexpublicus/stare-builder (uv project, CLI `stare-cl`; it was in
-this repo until #163), run on ml-01 in a container like
-`index-build`, against the `codexpublicus-courtlistener` volume (`/mnt/mega/codexpublicus/courtlistener`
-on TrueNAS):
+`pipelines/courtlistener/` in the index builder (uv project, CLI `stare-cl`; it was in
+this repo until #163), run on the build host in a container like `index-build`, against a
+local CourtListener volume:
 
 1. **fetch** (`stare-cl fetch`): newest complete export, resumable with `If-Range` against the
-   ETag, sha256 and terms recorded in `export.json`. Lifted from gorsuch-library's `clbulk`.
+   ETag, sha256 and terms recorded in `export.json`. Adapted from an earlier Codex Publicus CourtListener fetcher.
 2. **stage**: load `courts`, `dockets` (selected columns), `opinion-clusters` and `citations` into
    one SQLite or DuckDB file; mark each cluster held-by-CAP or not using the index's manifest and
    `.bin` files.
@@ -293,7 +292,7 @@ links to cluster ids directly, which nothing in stare does yet.
 5. CourtListener parallel citations as aliases to CAP cases
    ([#151](https://github.com/codexpublicus/stare/issues/151)): the reader side here
    (cross-volume `cap` refs, `via`, the manifest's `aliases`), the build in
-   [stare-builder#10](https://github.com/codexpublicus/stare-builder/issues/10).
-6. The full run on ml-01 (needs the `codexpublicus-courtlistener` volume), publish, the cache rules
+   the index builder.
+6. The full run on the build host (needs the CourtListener volume), publish, the cache rules
    on idx.stare.pub, and `stare download` fetching the index tarball and records
    ([#23](https://github.com/codexpublicus/stare/issues/23)). Then the delta against the next export.
