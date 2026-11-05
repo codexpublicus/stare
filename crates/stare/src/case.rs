@@ -278,7 +278,7 @@ pub fn list_cases_in_zip(zip_bytes: &[u8]) -> Result<Vec<String>> {
     let archive = zip::ZipArchive::new(cursor)?;
     let mut cases = Vec::new();
     for i in 0..archive.len() {
-        let name = archive.name_for_index(i).context("invalid zip entry")?;
+        let name = archive.name_for_index(i).context("invalid zip entry")??;
         if let Some(rest) = name.strip_prefix("json/") {
             if let Some(case_file) = rest.strip_suffix(".json") {
                 if !case_file.is_empty() {
