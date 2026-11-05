@@ -120,7 +120,7 @@ export async function computeKeys({ root = ROOT, fetchFn = fetch, env = process.
   const common = [
     `format ${FORMAT}`,
     `node ${process.version}`,
-    `image ${env.GARM_RUNNER_VERSION || env.GARM_RUNNER_IMAGE || 'unknown'}`,
+    `image ${env.ImageOS || 'unknown'}-${env.ImageVersion || 'unknown'}`,
     ...(await externalHashes(fetchFn)),
   ];
   const specs = {};

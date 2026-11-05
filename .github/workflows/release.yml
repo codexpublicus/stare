@@ -59,7 +59,8 @@ jobs:
       github.event.pull_request.base.ref == 'main' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login == 'codexpublicus-yeet[bot]'
-    runs-on: homelab
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     permissions:
       contents: read
       actions: read
@@ -122,7 +123,7 @@ jobs:
           echo "site-run=$site_run" >> "$GITHUB_OUTPUT"
           echo "Deploying the build from site run $site_run"
 
-      # scripts/calver.mjs and the Astro build; the homelab runner image has no Node
+      # scripts/calver.mjs and the Astro build, on the Node version the previews use
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -243,7 +244,8 @@ jobs:
   release:
     name: Release and deploy production
     needs: build
-    runs-on: homelab
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: write
       actions: write
@@ -257,7 +259,7 @@ jobs:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           persist-credentials: false
 
-      # scripts/calver.mjs and wrangler; the homelab runner image has no Node
+      # scripts/calver.mjs and wrangler, on the Node version the previews use
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22

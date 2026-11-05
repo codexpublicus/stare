@@ -757,22 +757,18 @@ of `site.yml` with `CLOUDFLARE_API_TOKEN`. A PR that edits a workflow to run `wr
 would deploy production without a release, and a Workers token can't be scoped to preview
 uploads only. Review workflow changes in PRs with that in mind.
 
-Every job runs on `runs-on: homelab`, the org's self-hosted runners: GARM in lokkju/infra
-(`homelab/platform/garm/`, "CI runners (GARM)" in its `homelab/README.md`) starts an ephemeral
-Kubernetes pod per job on ml-01, with a privileged Docker-in-Docker sidecar. The image is
-actions-runner plus gh, git, curl, jq, ca-certificates, build-essential, pkg-config,
-openssh-client and poppler-utils (lokkju/infra#81), and has no passwordless sudo
-(lokkju/infra#105). `.github/actions/homelab-setup` checks that the packages a job names are
-installed, tries `sudo -n apt-get` only for missing ones and fails naming them otherwise, and
-sets `TMPDIR` to `$RUNNER_TEMP`, because the sidecar sees only the runner's work volume and a
-`docker run -v` of a `/tmp` path would mount an empty directory. `build-site` asks it for
-`build-essential pkg-config openssh-client`. Toolchains still come from their setup actions
-(`setup-node`, `rust-toolchain`, `setup-uv`). The Playwright suite installs Chromium's
-headless shell itself and checks its shared libraries with `ldd`; it runs
-`playwright install-deps` only if some are missing and sudo works, so those libraries have to
-be in the image. pip, uv and npm go through the homelab's Nexus proxy, set by the runner's
-environment. A job on these runners can get root on ml-01 through the sidecar, so no workflow
-may run code from a fork or check out PR code under `pull_request_target`.
+Every job runs on GitHub-hosted runners (`runs-on: ubuntu-24.04`), with a timeout. Toolchains
+come from their setup actions (`setup-node`, `rust-toolchain`, `setup-uv`); the image has the C
+toolchain, `pkg-config` and `ssh` the build needs. The Playwright suite installs Chromium's
+headless shell itself, caches it under the image's `ImageOS` and `ImageVersion`, checks its
+shared libraries with `ldd` and runs `playwright install-deps` only for any the image lacks.
+A pull request from a fork gets no secrets, and the build needs `CITARE_DEPLOY_KEY` to fetch
+the private citare dependency over ssh, so a fork's PR runs only site.yml's "Fork PR (not
+built)" job, which says so; a maintainer pushes the branch here to build and preview it.
+Every job that uses a secret is limited to same-repository PRs, pushes to `main`, a tag, a
+dispatch or a merged release PR, and the push, tag and dispatch jobs check
+`github.repository` so a fork's copy of a workflow does nothing. No workflow may run on
+`pull_request_target` or check out a fork's code where a secret is in reach.
 
 - **Rust toolchain and cache** (#79): `rust-toolchain.toml` pins the Rust version, which CI
   reads; bump it on purpose, since a new rustc changes the cache key and the next `main` run

@@ -12,6 +12,13 @@ name: site
 #   test that version. release.yml refuses to release a merge commit whose
 #   run failed, so the smoke test gates releases.
 #
+# Every job runs on GitHub-hosted runners. A pull request from a fork gets no
+# secrets, and the build needs CITARE_DEPLOY_KEY to fetch the private citare
+# dependency over ssh, so a fork's PR runs only the "Fork PR" job, which says
+# so; a maintainer can push the branch to this repository to build and preview
+# it. No job runs on pull_request_target or checks out a fork's code with a
+# secret in reach.
+#
 # A PR's smoke test skips the specs whose inputs are byte-identical to a run
 # that passed (web/e2e/inputs.js, .github/actions/smoke-test); main, the
 # release PR and a PR labelled full-smoke run every spec.
@@ -28,8 +35,12 @@ permissions:
 jobs:
   pr-preview:
     name: Preview PR
-    if: github.event_name == 'pull_request'
-    runs-on: homelab
+    # Same-repository PRs only: a fork's PR gets no secrets (see the header).
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     permissions:
       contents: read
       pull-requests: write
@@ -111,11 +122,31 @@ jobs:
           select-reason: ${{ steps.smoke-scope.outputs.reason }}
           record: pr-${{ github.event.number }}
 
+  # The build needs CITARE_DEPLOY_KEY, which GitHub doesn't give a fork's PR.
+  # This says why nothing was built instead of failing on the citare fetch.
+  fork-pr:
+    name: Fork PR (not built)
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Explain
+        run: |
+          msg="This PR comes from a fork, which gets no secrets. The build fetches the private citare dependency with CITARE_DEPLOY_KEY, so it, the preview and the smoke test run only for branches in codexpublicus/stare. A maintainer can push this branch there to run them."
+          echo "::notice title=Fork PR not built::$msg"
+          echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+
   main-preview:
     # Named so a green check on main isn't mistaken for a release.
     name: Preview main (not production)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: homelab
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      github.repository == 'codexpublicus/stare'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     # No concurrency group: cancelling this run would fail release.yml's check
     # of the release PR's merge commit, which waits for it.
     permissions:
