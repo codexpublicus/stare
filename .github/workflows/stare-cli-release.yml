@@ -14,8 +14,7 @@ name: stare-cli release
 #
 # A pull request that changes this file builds both archives and stops, so the
 # workflow is proven before a tag needs it. Nothing else runs it. The build
-# fetches the private citare dependency with CITARE_DEPLOY_KEY, which a fork's
-# PR doesn't get, so a fork's PR skips it.
+# uses no secrets (citare is fetched over https), so a fork's PR runs it too.
 
 on:
   push:
@@ -31,10 +30,7 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.target }}
-    if: >-
-      github.repository == 'codexpublicus/stare' &&
-      (github.event_name == 'push' ||
-      github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.repository == 'codexpublicus/stare'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
@@ -45,10 +41,6 @@ jobs:
           - aarch64-unknown-linux-musl
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
-        with:
-          ssh-private-key: ${{ secrets.CITARE_DEPLOY_KEY }}
 
       - name: Read the pinned Rust toolchain
         id: toolchain
@@ -92,8 +84,6 @@ jobs:
           esac
           echo "version=$crate" >> "$GITHUB_OUTPUT"
 
-      # cargo's own git fetches citare through the ssh agent, with the GitHub host keys
-      # it knows; the git CLI would need them in known_hosts, as build-site's doesn't.
       - name: Build
         env:
           TARGET: ${{ matrix.target }}

@@ -734,10 +734,9 @@ Gorsuch library is at gorsuch.codexpublicus.org.
 Shared Cloudflare values come from the org's infrastructure stack (Pulumi), not from any
 per-site config. That stack owns stare.pub's zone and DNS, the `stare-pub-idx` R2 bucket and
 `idx.stare.pub` (since 2026-09-27; see codexpublicus/stare#3), the `codex-data` R2 bucket, the
-Workers deploy token, the citare deploy key and the three Actions secrets that carry them
-(`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CITARE_DEPLOY_KEY`), plus
-`CITARE_DEPLOY_KEY` again as a Dependabot secret. This repo runs no
-Pulumi of its own.
+Workers deploy token and the two Actions secrets that carry it (`CLOUDFLARE_API_TOKEN`,
+`CLOUDFLARE_ACCOUNT_ID`). citare is public and the build fetches it over https, so no deploy
+key is needed. This repo runs no Pulumi of its own.
 
 stare.pub has no email of its own. The published contact address is `info@codexpublicus.org`.
 
@@ -749,12 +748,12 @@ Review workflow changes in PRs with care.
 
 Every job runs on GitHub-hosted runners (`runs-on: ubuntu-24.04`), with a timeout. Toolchains
 come from their setup actions (`setup-node`, `rust-toolchain`, `setup-uv`); the image has the C
-toolchain, `pkg-config` and `ssh` the build needs. The Playwright suite installs Chromium's
+toolchain and `pkg-config` the build needs. The Playwright suite installs Chromium's
 headless shell itself, caches it under the image's `ImageOS` and `ImageVersion`, checks its
 shared libraries with `ldd` and runs `playwright install-deps` only for any the image lacks.
-A pull request from a fork gets no secrets, and the build needs `CITARE_DEPLOY_KEY` to fetch
-the private citare dependency over ssh, so a fork's PR runs only site.yml's "Fork PR (not
-built)" job, which says so; a maintainer pushes the branch here to build and preview it.
+The build needs no secrets, so a pull request from a fork runs the same checks and build in
+site.yml's "Build fork PR (no preview)" job; it gets no secrets, so no preview or smoke test,
+and a maintainer pushes the branch here to preview it.
 Every job that uses a secret is limited to same-repository PRs, pushes to `main`, a tag, a
 dispatch or a merged release PR, and the push, tag and dispatch jobs check
 `github.repository` so a fork's copy of a workflow does nothing. No workflow may run on
@@ -770,9 +769,8 @@ dispatch or a merged release PR, and the push, tag and dispatch jobs check
   (`https://<version>-stare-pub.nick-441.workers.dev`), then run the Playwright smoke suite
   (`web/e2e/`, `.github/actions/smoke-test`) against that URL. Dependabot's PRs stop after
   the build: a workflow Dependabot triggers sees only Dependabot secrets, and the infrastructure
-  stack stores
-  `CITARE_DEPLOY_KEY` there but not the Workers token, since a dependency bump runs the new
-  version's build scripts and the token can deploy production.
+  stack stores no Workers token there, since a dependency bump runs the new version's build
+  scripts and the token can deploy production.
 - **Which smoke specs a PR runs** (#294): `web/e2e/inputs.js` lists each spec's inputs (the
   files it tests, the WASM, citare's bundle and the reporter map as built, and the live index
   and scans manifests), and `web/e2e/select.mjs` hashes them after the build. A PR skips a
@@ -807,7 +805,7 @@ dispatch or a merged release PR, and the push, tag and dispatch jobs check
   ran cargo fmt, clippy, the tests and the smoke suite on that exact commit, and reruns only
   the Astro build (`.github/actions/build-web`), since the footer's tag and the changelog
   regenerated for it differ from the main preview's. It has no git credentials on disk while
-  npm runs, and no citare deploy key at all. The artifact is kept 30 days, so re-running a
+  npm runs. The artifact is kept 30 days, so re-running a
   release older than that fails at the download. A second job, which runs no build code,
   creates the tag on the merge commit through the API (refusing if it exists elsewhere),
   refuses if a newer release tag exists, creates the GitHub Release with the git-cliff notes,
