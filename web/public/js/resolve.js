@@ -7,7 +7,7 @@ import {
 } from './manifest.js';
 import { loadWasm, WasmLoadError } from './wasm.js';
 import { citedPage, filePage, labelCases, pageKey } from './pagekey.js';
-import { parseSpan, readSpanText, spanKey } from './zipspan.js';
+import { parseSpan, readSpanText, spanKey, SpanError } from './zipspan.js';
 
 let wasm = null;
 
@@ -119,7 +119,8 @@ function fetchSpanText(reporter, folder, span) {
       key: await spanCacheKey(reporter, folder, span),
     }))();
     spanFetch = { key, promise };
-    promise.catch(() => { if (spanFetch?.promise === promise) spanFetch = null; });
+    // A network error is worth another try; an answer that wasn't the span isn't.
+    promise.catch((e) => { if (!(e instanceof SpanError) && spanFetch?.promise === promise) spanFetch = null; });
   }
   return spanFetch.promise;
 }
