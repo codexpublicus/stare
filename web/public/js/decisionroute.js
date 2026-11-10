@@ -4,10 +4,13 @@
 //
 // The reader opens a CourtListener record no citation reaches this way. Each index build
 // has a decision-route table beside its files, `<base>d/<c>.json.gz` on idx.stare.pub,
-// where `c` is the id's sixth character (the last digit of its sequence number): each id
-// maps to the records it opens, `{ cluster, hash }`, the record at
-// `cl/c/<cluster>/<hash>.json.gz` on data.stare.pub. A 2 KB shard and the index manifest
-// the reader already reads are all a lookup costs.
+// where `c` is the id's sixth character (the last digit of its sequence number). Its
+// `records` map a CourtListener-only decision's id to the records it opens,
+// `{ cluster, hash }`, the record at `cl/c/<cluster>/<hash>.json.gz` on data.stare.pub. Its
+// `cap` map a decision the ledger joined such a record to, one with CAP printings, to those
+// printings and the decision's key (D208, 2026-11-10: the ledger ruled them one decision, so
+// the address opens the CAP printing, picked as for `/k/`). A 2 KB shard and the index
+// manifest the reader already reads are all a lookup costs.
 //
 // An id is seven characters of Crockford's base32 in lower case (`0-9a-z` without `i`, `l`,
 // `o`, `u`): six digits, the decision's sequence number, then a Luhn mod 32 check character.
@@ -94,10 +97,22 @@ async function loadShard(id) {
 }
 
 /**
+ * The CAP decision `id` names in a parsed shard (`{ cap: { <id>: { key, sources } } }`), as
+ * `{ key, sources }` with only its `cap:` sources, or null.
+ */
+export function capIn(shard, id) {
+  const d = shard?.cap?.[id];
+  const sources = Array.isArray(d?.sources) ? d.sources.filter((s) => /^cap:/.test(s)) : [];
+  if (!sources.length) return null;
+  return { key: typeof d.key === 'string' ? d.key : null, sources };
+}
+
+/**
  * Resolves `id` (canonical) from the live build's table: `{ found: true, records }` with
- * the entries it opens, or `{ found: false }` when the table has none (or the build has no
- * table: its shard answers 404). Throws when the table can't be reached. `deps.loadShard`
- * replaces the fetch in tests.
+ * the entries a CourtListener-only decision opens, `{ found: true, cap: { key, sources } }`
+ * for a decision with CAP printings, or `{ found: false }` when the table has neither (or
+ * the build has no table: its shard answers 404). Throws when the table can't be reached.
+ * `deps.loadShard` replaces the fetch in tests.
  */
 export async function resolveDecision(id, deps = {}) {
   let shard;
@@ -107,6 +122,8 @@ export async function resolveDecision(id, deps = {}) {
     if (String(e?.message).startsWith('NOT_FOUND:')) return { found: false };
     throw e;
   }
+  const cap = capIn(shard, id);
+  if (cap) return { found: true, cap };
   const records = recordsIn(shard, id);
   return records.length ? { found: true, records } : { found: false };
 }

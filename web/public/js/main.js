@@ -639,8 +639,9 @@ async function openAddress(at, extra = null) {
     place?.view ? { view: place.view, page: place.viewPage } : null);
 }
 
-// Opens `/d/<id>/` (decisionroute.js): a CourtListener record no citation reaches, from the
-// live index build's decision-route table. `seq` is openAddress's.
+// Opens `/d/<id>/` (decisionroute.js) from the live index build's decision-route table: a
+// CourtListener record no citation reaches, or, for a decision the ledger joined such a
+// record to, its CAP printing. `seq` is openAddress's.
 async function openDecision(at, seq) {
   landing.classList.add('hidden');
   resolved.classList.remove('hidden');
@@ -663,6 +664,20 @@ async function openDecision(at, seq) {
   }
   const path = decisionPath(at.id);
   if (path !== location.pathname) history.replaceState(history.state, '', path + location.hash);
+  if (hit.cap) {
+    // A decision with CAP printings (D208): the address opens its CAP printing, as its
+    // key's /k/ address does, and keeps the case's hash like one. Its canonical is the key's.
+    const printing = pickPrinting(hit.cap.sources, hit.cap.key || '');
+    if (!printing) {
+      notFound(`The decision ${at.id} has no printing stare.pub holds.`);
+      return;
+    }
+    setRoute(path, SITE + (hit.cap.key ? keyPath(hit.cap.key) : path));
+    landingInput.value = `${printing.reporter} ${printing.volume} ${printing.page}`;
+    landingRoute.update();
+    doResolve(printing.reporter, printing.volume, printing.page, printing.seq);
+    return;
+  }
   // No case hash names the record, so the route's hash is one that names no case: a case
   // the reader moves to from here leaves the path (router.js).
   setRoute(path, SITE + path, `#d/${at.id}`);

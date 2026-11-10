@@ -126,6 +126,7 @@ test('a script or crawler asking for an address gets a 404, and real files still
 // table's shard and the record are served here: the hand-made record the Rust tests read,
 // under an id the live ledger gave a CourtListener-only decision.
 const DECISION = { id: '01cm306', title: 'Smith v. Jones' };
+const LYON_ID = '01cd294';
 const RECORD_URL = 'https://data.stare.pub/cl/c/9876543/0f3a9c2e7b1d4a65.json.gz';
 const RECORD = readFileSync(new URL('../../crates/stare/tests/fixtures/cl-record.json', import.meta.url));
 
@@ -136,7 +137,11 @@ async function serveDecisionTable(page) {
     const records = shard === DECISION.id[5]
       ? { [DECISION.id]: [{ cluster: 9876543, hash: '0f3a9c2e7b1d4a65' }] }
       : {};
-    const body = gzipSync(JSON.stringify({ format: 'stare-decision-routes-shard', format_version: 1, shard, records }));
+    // Lyon's decision, as if an unrouted record's cluster were joined to it (D208)
+    const cap = shard === LYON_ID[5]
+      ? { [LYON_ID]: { key: LYON.key, sources: ['cap:a2d/31/0647-01'], clusters: [5123106] } }
+      : {};
+    const body = gzipSync(JSON.stringify({ format: 'stare-decision-routes-shard', format_version: 1, shard, records, cap }));
     return route.fulfill({ status: 200, headers: cors, contentType: 'application/gzip', body });
   });
   await page.route(RECORD_URL, (route) => route.fulfill({
@@ -190,4 +195,14 @@ test('a script or crawler asking for a decision address gets a 404', async ({ re
   const resp = await request.get(`/d/${DECISION.id}/`);
   expect(resp.status()).toBe(404);
   expect(resp.headers()['content-type']).not.toContain('text/html');
+});
+
+test('a decision with a CAP printing opens the CAP case, with its key as the canonical', async ({ page }) => {
+  await serveDecisionTable(page);
+  await page.goto(`/d/${LYON_ID}/`);
+  await expect(page.locator('#topbar-case')).toHaveText(LYON.title);
+  const url = new URL(page.url());
+  expect(url.pathname).toBe(`/d/${LYON_ID}/`);
+  expect(url.hash).toBe('');
+  expect(await canonical(page)).toBe(`https://stare.pub/k/${LYON.key}/`);
 });

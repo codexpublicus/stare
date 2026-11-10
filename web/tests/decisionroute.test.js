@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  checkChar, decisionPath, normalizeId, openDecisionRecord, parseDecisionPath, recordsIn,
+  capIn, checkChar, decisionPath, normalizeId, openDecisionRecord, parseDecisionPath, recordsIn,
   resolveDecision, shardPath,
 } from '../public/js/decisionroute.js';
 import { parseCasePath } from '../public/js/caseaddress.js';
@@ -23,6 +23,13 @@ const SHARD_4 = {
       { cluster: 8503924, hash: '7cd6802cf422a935' },
     ],
   },
+};
+
+// A decision with a CAP printing that an unrouted record's cluster is joined to (D208), as
+// the table writes it: D'Elia & Marks Co. v. Lyon's row in ledger v2026.11.08.
+const SHARD_9 = {
+  format: 'stare-decision-routes-shard', format_version: 1, shard: '9', records: {},
+  cap: { '01cd294': { key: 'us/dc/69/1943-05-11', sources: ['cap:a2d/31/0647-01'], clusters: [5123106] } },
 };
 
 describe('ids', () => {
@@ -98,6 +105,15 @@ describe('the table', () => {
     assert.deepEqual(await resolveDecision('01cm306', { loadShard: missing }), { found: false });
     const down = async () => { throw new Error('HTTP 503 fetching it'); };
     await assert.rejects(resolveDecision('01cm306', { loadShard: down }), /503/);
+  });
+
+  test('a decision with a CAP printing resolves to its printings and key (D208)', async () => {
+    assert.deepEqual(capIn(SHARD_9, '01cd294'), { key: 'us/dc/69/1943-05-11', sources: ['cap:a2d/31/0647-01'] });
+    assert.equal(capIn(SHARD_9, '01cm306'), null);
+    assert.equal(capIn({ cap: { x: { sources: ['cl-cluster:1'] } } }, 'x'), null);
+    assert.deepEqual(await resolveDecision('01cd294', { loadShard: async () => SHARD_9 }), {
+      found: true, cap: { key: 'us/dc/69/1943-05-11', sources: ['cap:a2d/31/0647-01'] },
+    });
   });
 
   test('opens the nth record, with the others to switch to', async () => {
