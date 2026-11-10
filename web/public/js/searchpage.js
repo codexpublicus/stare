@@ -82,6 +82,8 @@ let last = null;
 let runId = 0;
 // The running query's abort controller; the session's fetch reads its signal.
 let current = null;
+// The snippets for the results on screen (snippets.js), cancelled by a new query.
+let snippets = null;
 
 history.scrollRestoration = 'manual';
 
@@ -318,7 +320,11 @@ function card(fields, tokens) {
   const meta = document.createElement('p');
   meta.className = 'search-card-meta';
   meta.append(...[cite, court].filter((el) => el.textContent));
-  li.append(title, date, meta);
+  // The line a snippet of the case's text goes in, its room kept from the
+  // start so the snippet arriving moves nothing (snippets.js).
+  const snip = document.createElement('p');
+  snip.className = 'search-card-snippet';
+  li.append(title, date, meta, snip);
   return li;
 }
 
@@ -329,7 +335,7 @@ function skeleton() {
     const li = document.createElement('li');
     li.className = 'search-card search-card-skel';
     li.setAttribute('aria-hidden', 'true');
-    li.innerHTML = '<div class="search-card-name"><span></span></div><span class="search-card-date"><span></span></span><p class="search-card-meta"><span></span></p>';
+    li.innerHTML = '<div class="search-card-name"><span></span></div><span class="search-card-date"><span></span></span><p class="search-card-meta"><span></span></p><p class="search-card-snippet"></p>';
     li.firstChild.firstChild.style.width = `${40 + ((i * 37) % 45)}%`;
     out.push(li);
   }
@@ -529,6 +535,8 @@ const isAbort = (e) => e?.name === 'AbortError';
 async function runQuery(state, { focus = false, scrollY = null } = {}) {
   const id = ++runId;
   current?.abort();
+  snippets?.cancel();
+  snippets = null;
   const ctl = new AbortController();
   current = ctl;
   fillForm(state);
@@ -605,6 +613,7 @@ async function runQuery(state, { focus = false, scrollY = null } = {}) {
       if (heading.getBoundingClientRect().top < 0) heading.scrollIntoView({ block: 'start' });
     }
     if (scrollY !== null) window.scrollTo(0, scrollY);
+    startSnippets(id, fields, result.tokens);
   } catch (e) {
     if (id !== runId) return;
     clearResults();
@@ -626,6 +635,27 @@ async function runQuery(state, { focus = false, scrollY = null } = {}) {
       if (current === ctl) current = null;
     }
   }
+}
+
+// Snippets (D171, #313) of each visible card's text, once the results are on screen. The
+// module loads only now; a module that can't load leaves the lines empty. Progress goes to
+// `stareSnippets` and performance marks, for measurement.
+function startSnippets(id, fields, tokens) {
+  performance.mark('stare:results');
+  const stats = { shown: 0, empty: 0, failed: 0, events: [] };
+  globalThis.stareSnippets = stats;
+  const items = [...list.querySelectorAll('.search-card-snippet')].map((el, i) => ({ el, route: fields[i]?.route || '' }));
+  if (!items.length || !tokens.length) return;
+  import('./snippets.js').then(({ attachSnippets }) => {
+    if (id !== runId) return;
+    snippets = attachSnippets(items, tokens, {
+      onEvent: (name, detail) => {
+        stats[name] += 1;
+        stats.events.push({ name, t: performance.now(), ...detail });
+        performance.mark(`stare:snippet:${name}`);
+      },
+    });
+  }, () => {});
 }
 
 // Remember where this entry was scrolled, then push the new one.
