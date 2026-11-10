@@ -31,6 +31,7 @@ export const SHARED = [
   'web/astro.config.mjs',
   'web/tsconfig.json',
   'wrangler.jsonc',
+  'worker/**',
   '.github/actions/build-site/**',
   '.github/actions/build-web/**',
   'web/public/_headers',
@@ -130,6 +131,7 @@ const group = (...parts) => parts.map((p) => (Array.isArray(p) ? { include: p, e
 
 // Each spec under web/e2e/ and the groups it tests, beyond SHARED and the spec itself.
 export const SPECS = {
+  'web/e2e/addresses.spec.js': group(READER, ['web/tests/fixtures/crk/**']),
   'web/e2e/agents.spec.js': group(READER, PAGES),
   'web/e2e/cache.spec.js': group(READER, CHECK, PAGES, SITEMAP),
   'web/e2e/caseload.spec.js': group(READER),

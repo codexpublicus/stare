@@ -1,0 +1,66 @@
+{
+ "format": "stare-crk-ledger-latest",
+ "format_version": 1,
+ "version": "v2026.11.08",
+ "manifest": "v2026.11.08/manifest.json",
+ "manifest_sha256": "eddf258f5abd4e42a63e80982017b075a163889ce01416b9cf0dc838724b85f9",
+ "errata": "https://data.stare.pub/crk/errata.json",
+ "license": {
+  "id": "CC-BY-NC-ND-4.0",
+  "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+  "source": "https://stare.pub",
+  "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+ },
+ "shard_path": "s/{hash}.json.gz",
+ "bucket": {
+  "hash": "fnv1a-32",
+  "of": "stem",
+  "rule": "bucket = fnv1a32(utf8(stem)) mod len(courts[court])"
+ },
+ "courts": {
+  "us/dc": [
+   "06c10ecd78449fba",
+   "f9436500880e9aeb",
+   "830756de6d10e3f8",
+   "a02de5e52add0a99",
+   "32d0263d63056b92",
+   "0274496b6e0eb964",
+   "4a6c160d5d9d4ca8",
+   "40feebd76f9e36bc"
+  ],
+  "us/pa": [
+   "519bbc589b6195b6",
+   "bdb14bf161d3007b",
+   "15da642ce422b4b0",
+   "c01748f74dbec7a0",
+   "314485e3ed4b234b",
+   "a50ad6f89252c392",
+   "5951abaf36604d51",
+   "d612c0881b8111e5",
+   "fa491e5b5d9b3ca2",
+   "028bf58a44542e3c",
+   "32a08867537c8075",
+   "cf0437611903ba9e",
+   "a4a65d6cd49d35d7",
+   "5ab98128fb59b978",
+   "cee7d68f8f52c5d8",
+   "62c20e7c42698c84",
+   "cc7ffd2c4787a47b",
+   "70ceb9abd2b2ff8a",
+   "cc3d621108fd79ce",
+   "1268e6b947c28c62",
+   "8d57e658191fd1e5",
+   "4fcd8e5a49a9b766",
+   "fc73d8516dc19ee4",
+   "d9d755140f188238",
+   "9778d70f53e17e57",
+   "cc6f288344f4c174",
+   "ed338d3d2cd5bb94",
+   "7246b45c6b70aed2",
+   "01ca96073993d20d",
+   "61abd03853814349",
+   "22d2f0c59288d60d",
+   "1eff6d7466563e57"
+  ]
+ }
+}
