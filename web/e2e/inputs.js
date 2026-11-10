@@ -154,6 +154,7 @@ export const NOT_INPUTS = {
   'web/tests/**': 'unit tests, which build-site runs with node --test (the search fixture is in SEARCH)',
   'web/checks/**': 'the content-blocker check, which build-site runs on the build',
   'web/scripts/**': 'maintenance scripts whose outputs (fonts, marks, og-image, fixtures) are committed',
+  'web/public/.well-known/**': 'the release signing keys (#231), static text no page loads; web/tests/mirror.test.js checks them',
 };
 
 // The files outside the site that external data the specs fetch at run time comes
