@@ -275,7 +275,7 @@
           "in": "path",
           "required": true,
           "description": "A JSON Schema's file name.",
-          "schema": { "enum": ["reporters.v1.schema.json", "index-report.v1.schema.json", "reports-index.v1.schema.json"] }
+          "schema": { "enum": ["reporters.v1.schema.json", "index-report.v1.schema.json", "reports-index.v1.schema.json", "mirror.v1.schema.json"] }
         }
       ],
       "get": {
