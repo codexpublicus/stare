@@ -86,10 +86,14 @@ test('a pin cite goes to its page once the markers are in', async ({ page }) => 
 test('the previous and next cases come from the index, without the zip', async ({ page }) => {
   await page.goto(CASE);
   await expect(page.locator('#topbar-case')).toHaveText(TITLE);
-  await expect(page.locator('#prev-btn')).toBeEnabled();
+  // 148-01 is the volume's first case.
+  await expect(page.locator('#prev-btn')).toBeDisabled();
   await page.locator('#next-btn').click();
   await expect(page.locator('#topbar-case')).not.toHaveText(TITLE);
   await expect(page.locator(READER_TEXT).first()).not.toBeEmpty();
+  await expect(page.locator('#prev-btn')).toBeEnabled();
+  await page.locator('#prev-btn').click();
+  await expect(page.locator('#topbar-case')).toHaveText(TITLE);
   expect(page.zipRequests().filter((r) => !r.range)).toEqual([]);
 });
 
