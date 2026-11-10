@@ -1,9 +1,9 @@
 import { parseInput, resolve, extractCase, extractFile, getPageOrders } from './resolve.js';
 import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } from './ui.js';
 import { caseHash, getHashParams, setHash, onHashChange } from './router.js';
-import { NotInCopyError, notInCopyHtml, notInCopyNodes, hasFeature, upstreamUrl } from './mirror.js';
 import { aliasNoteHtml, processCitations, setupCiteHovers } from './citations.js';
 import { attachCiteNav } from './citenav.js';
+import { NotInCopyError, notInCopyHtml, notInCopyNodes, hasFeature, upstreamUrl } from './mirror.js';
 import { footnoteParagraphs, pageBreaks, pageMarker } from './pages.js';
 import { preloadWasm, WasmLoadError } from './wasm.js';
 import { showWasmProgress } from './wasmbar.js';

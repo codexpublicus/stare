@@ -631,43 +631,6 @@ Switching between the cases on one page renders from the zip in memory and marks
 as its own, so it doesn't resolve the page again (#268). `web/e2e/caseswitch.spec.js`
 covers the three.
 
-### Self-hosted copies (#231, D119, D146: `mirror-kit/`, `web/public/js/sources.js`, `mirror.js`)
-
-A copy of stare.pub is the site build plus idx.stare.pub's and data.stare.pub's files in one
-root: `site -> site.<version>/`, `kit/` (a copy of `mirror-kit/`), and `mirror/` with
-`mirror.json`, `idx/` and `data/`, which stare.pub's release process ships as the tier 1 tar.
-The server maps `/` to `site/`, `/mirror/` to `mirror/` and `/robots.txt` to the kit's
-(`Disallow: /`). `mirror-kit/` has a Caddyfile, `nginx.conf`, `apache.htaccess` with
-`apache-vhost.conf`, `compose.yaml` (the official `caddy:2` image, the root mounted
-read-only, port `STARE_PORT` or 8080) and the operator's README, which states the six
-serving rules all three configurations implement. `scripts/mirror-kit/servers.test.mjs`
-runs each server's official image at a pinned tag against a fixture copy and checks every
-rule (`mise run test-mirror-kit`; `.github/workflows/mirror-kit.yml` on GitHub-hosted
-runners, fork PRs included). A change to `_headers`' immutable paths changes the kit's too.
-
-The reader is the same build on a copy. `sources.js` keeps idx.stare.pub and
-data.stare.pub on stare.pub, its subdomains and the `*-stare-pub.nick-441.workers.dev`
-previews (`isUpstreamHost`); on any other host it fetches `/mirror/mirror.json` once, with a
-top-level await, so no importer runs before the bases settle, and when that is a
-`stare-mirror` file at a 1.x `format_version` (`schemas/mirror.v1.schema.json`) the bases
-(`INDEX_URL`, `DATA_URL`, `ZIP_URL`, `PDF_URL`, `TAR_URL`, `let` exports) move to
-`<origin>/mirror/idx` and `<origin>/mirror/data`. A 404, an HTML fallback page with a 200,
-or another format leaves them alone. Build every data URL from these bases at call time or
-at module level in an importer; never keep an absolute stare.pub data URL, and pass any
-absolute `https://data.stare.pub/...` or `https://idx.stare.pub/...` read out of a data file
-(the ledger's `errata`) through `localDataUrl`. `mirror.js` shows "A mirror of stare.pub"
-with the release and data date at the top of the page and in the footer line (from
-SiteFooter.astro's script), points the canonical link at stare.pub, and words what a copy
-lacks by `mirror.json`'s components (`hasFeature`: `cap`/`cl` text, `search`, `pdf/*`
-pages, `cap-raw/*` raw scans): "Text not in this copy" in the status line, "Pages not in
-this copy" and "Raw scans not in this copy" in the page views, and the search page's
-tier 2 note, each linking to the same page on stare.pub and never fetching from it.
-`keyMissNote()` is the sentence the /k/ landing adds for a key the copy's ledger lacks. The
-head script's preconnects to stare.pub's hosts are left out on a copy (`addLinks`). The
-site may not ship anything under `/mirror/`, and the release keys are at
-`/.well-known/stare-release-key.pub` and `stare-recovery-key.pub`
-(`web/tests/mirror.test.js`).
-
 ### WASM module size (#73)
 
 `web/public/wasm/stare_wasm_bg.wasm` is built by wasm-pack with the release profile in
@@ -981,6 +944,43 @@ sitemap lists a page `robots.txt` disallows. `llms.txt` is the citation recipe
 in plain GETs (manifest, per-volume `.idx.gz` or the volume zip's `CasesMetadata.json`, the case);
 update it with any change to the published formats. `idx.stare.pub` and `data.stare.pub` get
 their own `Disallow: /` robots.txt from the index builder's publish tasks.
+
+### Self-hosted copies (#231, D119, D146: `mirror-kit/`, `web/public/js/sources.js`, `mirror.js`)
+
+A copy of stare.pub is the site build plus idx.stare.pub's and data.stare.pub's files in one
+root: `site -> site.<version>/`, `kit/` (a copy of `mirror-kit/`), and `mirror/` with
+`mirror.json`, `idx/` and `data/`, which stare.pub's release process ships as the tier 1 tar.
+The server maps `/` to `site/`, `/mirror/` to `mirror/` and `/robots.txt` to the kit's
+(`Disallow: /`). `mirror-kit/` has a Caddyfile, `nginx.conf`, `apache.htaccess` with
+`apache-vhost.conf`, `compose.yaml` (the official `caddy:2` image, the root mounted
+read-only, port `STARE_PORT` or 8080) and the operator's README, which states the six
+serving rules all three configurations implement. `scripts/mirror-kit/servers.test.mjs`
+runs each server's official image at a pinned tag against a fixture copy and checks every
+rule (`mise run test-mirror-kit`; `.github/workflows/mirror-kit.yml` on GitHub-hosted
+runners, fork PRs included). A change to `_headers`' immutable paths changes the kit's too.
+
+The reader is the same build on a copy. `sources.js` keeps idx.stare.pub and
+data.stare.pub on stare.pub, its subdomains and the `*-stare-pub.nick-441.workers.dev`
+previews (`isUpstreamHost`); on any other host it fetches `/mirror/mirror.json` once, with a
+top-level await, so no importer runs before the bases settle, and when that is a
+`stare-mirror` file at a 1.x `format_version` (`schemas/mirror.v1.schema.json`) the bases
+(`INDEX_URL`, `DATA_URL`, `ZIP_URL`, `PDF_URL`, `TAR_URL`, `let` exports) move to
+`<origin>/mirror/idx` and `<origin>/mirror/data`. A 404, an HTML fallback page with a 200,
+or another format leaves them alone. Build every data URL from these bases at call time or
+at module level in an importer; never keep an absolute stare.pub data URL, and pass any
+absolute `https://data.stare.pub/...` or `https://idx.stare.pub/...` read out of a data file
+(the ledger's `errata`) through `localDataUrl`. `mirror.js` shows "A mirror of stare.pub"
+with the release and data date at the top of the page and in the footer line (from
+SiteFooter.astro's script), points the canonical link at stare.pub, and words what a copy
+lacks by `mirror.json`'s components (`hasFeature`: `cap`/`cl` text, `search`, `pdf/*`
+pages, `cap-raw/*` raw scans): "Text not in this copy" in the status line, "Pages not in
+this copy" and "Raw scans not in this copy" in the page views, and the search page's
+tier 2 note, each linking to the same page on stare.pub and never fetching from it.
+`keyMissNote()` is the sentence the /k/ landing adds for a key the copy's ledger lacks. The
+head script's preconnects to stare.pub's hosts are left out on a copy (`addLinks`). The
+site may not ship anything under `/mirror/`, and the release keys are at
+`/.well-known/stare-release-key.pub` and `stare-recovery-key.pub`
+(`web/tests/mirror.test.js`).
 
 ### Archival PDFs and CourtListener records
 
