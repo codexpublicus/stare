@@ -48,7 +48,7 @@ one; its files are in `releases/<release>/`.
 mkdir -p /srv/stare && cd /srv/stare
 curl -fsSLO https://data.stare.pub/releases/latest.json
 curl -fsSLO https://data.stare.pub/releases/latest.json.minisig
-minisign -Vm latest.json -P RWRuuIWL1hnu8l81OQ/pyqka6QPtVyiesfn6wIr4CtHdhnBChGViuSa0
+minisign -Vm latest.json -P RWTR1z+lb96CaCdVkipBJO+O6KJyVIZkYQz2syiFItetSW+S74fWeKrF
 release=v2026.11.10   # the release latest.json names
 curl -fsSLO https://data.stare.pub/releases/$release/release.json
 curl -fsSLO https://data.stare.pub/releases/$release/release.json.minisig
@@ -101,7 +101,7 @@ which lists every file in the component.
 1. Check the signature:
 
    ```sh
-   minisign -Vm release.json -P RWRuuIWL1hnu8l81OQ/pyqka6QPtVyiesfn6wIr4CtHdhnBChGViuSa0
+   minisign -Vm release.json -P RWTR1z+lb96CaCdVkipBJO+O6KJyVIZkYQz2syiFItetSW+S74fWeKrF
    ```
 
 2. Check the tar against the SHA-256 that `release.json` gives for it:
@@ -123,19 +123,19 @@ which lists every file in the component.
 The keys, also published at `https://stare.pub/.well-known/stare-release-key.pub` and
 `https://stare.pub/.well-known/stare-recovery-key.pub`:
 
-Release key (ID F2EE19D68B85B86E), which signs every release:
-
-```
-untrusted comment: minisign public key F2EE19D68B85B86E
-RWRuuIWL1hnu8l81OQ/pyqka6QPtVyiesfn6wIr4CtHdhnBChGViuSa0
-```
-
-Recovery key (ID 6882DE6FA53FD7D1), kept offline and used only to sign a change of release
-key:
+Release key (ID 6882DE6FA53FD7D1), which signs every release:
 
 ```
 untrusted comment: minisign public key 6882DE6FA53FD7D1
 RWTR1z+lb96CaCdVkipBJO+O6KJyVIZkYQz2syiFItetSW+S74fWeKrF
+```
+
+Recovery key (ID F2EE19D68B85B86E), kept offline and used only to sign a change of release
+key:
+
+```
+untrusted comment: minisign public key F2EE19D68B85B86E
+RWRuuIWL1hnu8l81OQ/pyqka6QPtVyiesfn6wIr4CtHdhnBChGViuSa0
 ```
 
 A key change is published under `releases/keys/`, signed by the old key or by the recovery

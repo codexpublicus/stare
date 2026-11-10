@@ -354,8 +354,8 @@ test('the release keys are published where the kit says', () => {
   const pub = (name) => readFileSync(new URL(`web/public/.well-known/${name}`, root), 'utf8');
   const release = pub('stare-release-key.pub');
   const recovery = pub('stare-recovery-key.pub');
-  assert.match(release, /^untrusted comment: minisign public key F2EE19D68B85B86E\nRWRuuIWL1hnu8l81OQ\/pyqka6QPtVyiesfn6wIr4CtHdhnBChGViuSa0\n$/);
-  assert.match(recovery, /^untrusted comment: minisign public key 6882DE6FA53FD7D1\nRWTR1z\+lb96CaCdVkipBJO\+O6KJyVIZkYQz2syiFItetSW\+S74fWeKrF\n$/);
+  assert.match(release, /^untrusted comment: minisign public key 6882DE6FA53FD7D1\nRWTR1z\+lb96CaCdVkipBJO\+O6KJyVIZkYQz2syiFItetSW\+S74fWeKrF\n$/);
+  assert.match(recovery, /^untrusted comment: minisign public key F2EE19D68B85B86E\nRWRuuIWL1hnu8l81OQ\/pyqka6QPtVyiesfn6wIr4CtHdhnBChGViuSa0\n$/);
   for (const key of [release, recovery]) assert.ok(README.includes(key.trim()), 'the kit README repeats each key');
   const headers = readFileSync(new URL('web/public/_headers', root), 'utf8');
   for (const name of ['stare-release-key.pub', 'stare-recovery-key.pub']) {

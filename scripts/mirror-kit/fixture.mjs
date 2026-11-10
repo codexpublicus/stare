@@ -63,7 +63,7 @@ export function buildFixture() {
   put('site/vendor/pdfjs-6.4.299-p1/pdf.min.mjs', 'export const pdfjs = 1;\n');
   put('site/vendor/stare-search-abc1234-rbdef5678/search.js', 'export const search = 1;\n');
   put('site/.well-known/stare-release-key.pub',
-    'untrusted comment: minisign public key F2EE19D68B85B86E\nRWRuuIWL1hnu8l81OQ/pyqka6QPtVyiesfn6wIr4CtHdhnBChGViuSa0\n');
+    'untrusted comment: minisign public key 6882DE6FA53FD7D1\nRWTR1z+lb96CaCdVkipBJO+O6KJyVIZkYQz2syiFItetSW+S74fWeKrF\n');
   symlinkSync(SITE_DIR, join(root, 'site'));
 
   // The kit, as the tier 1 tar carries it, and the same rules as a root .htaccess for the
