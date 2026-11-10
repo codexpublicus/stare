@@ -8,6 +8,7 @@ import { preloadWasm, WasmLoadError } from './wasm.js';
 import { showWasmProgress } from './wasmbar.js';
 import { filePage } from './pagekey.js';
 import { hasScans, pdfPage } from './scans.js';
+import { pdfUrl as volumePdfUrl } from './sources.js';
 import { generations } from './generation.js';
 import { attachRouteLabel, markNotCitation, routeNoteHtml, routeOf, searchHref, takeHandOff } from './boxroute.js';
 
@@ -166,10 +167,20 @@ function goToPage(page) {
 // HTML in the volume zip; none when the zip has no HTML for it, or there's
 // no zip (a CourtListener record, which has no pages).
 function casePages(zipData, caseFile, caseData) {
-  const none = { pages: null, footnotes: null };
-  if (!zipData) return none;
+  if (!zipData) return NO_PAGES;
   try {
-    const html = extractFile(zipData, `html/${caseFile}.html`);
+    return htmlPages(extractFile(zipData, `html/${caseFile}.html`), caseData);
+  } catch {
+    return NO_PAGES;
+  }
+}
+
+const NO_PAGES = { pages: null, footnotes: null };
+
+// The page breaks and footnotes in a case's CAP HTML.
+function htmlPages(html, caseData) {
+  const none = NO_PAGES;
+  try {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const opinions = caseData.casebody?.opinions || [];
     let footnotes = null;
@@ -236,6 +247,40 @@ function casePdfPage(zipData, caseFile) {
   } catch {
     return null;
   }
+}
+
+// The sidebar's archival PDF link for a case read by its zip span (D180), which has no
+// zip to read the case's page orders from: the link opens the volume at its start until
+// they're read, by range (resolve.js's spanZip), when the link is about to be used (a
+// pointer over it, focus, a touch). A click before they're in opens the tab at once and
+// sends it to the case's page when they arrive, so the click still counts as the user's.
+function wireLazyPdfLink(sidebarEl, result, caseFile) {
+  const link = sidebarEl.querySelector('#pdf-link');
+  if (!link || !result.zip) return;
+  let orders = null;
+  const load = () => {
+    orders ??= result.zip.pageOrders(caseFile).then((o) => {
+      const n = pdfPage(o?.first);
+      if (n && link.isConnected) link.href = volumePdfUrl(result.reporter, result.volume, n);
+      return n;
+    }).catch(() => null);
+    return orders;
+  };
+  for (const type of ['pointerenter', 'focus', 'touchstart']) link.addEventListener(type, load, { once: true, passive: true });
+  link.addEventListener('click', (e) => {
+    if (link.href.includes('#page=')) return;
+    e.preventDefault();
+    const tab = window.open('', '_blank');
+    load().then((n) => {
+      const url = volumePdfUrl(result.reporter, result.volume, n);
+      if (!tab) {
+        window.open(url, '_blank', 'noopener');
+        return;
+      }
+      tab.opener = null;
+      tab.location.href = url;
+    });
+  });
 }
 
 function seqFromFile(caseFile) {
@@ -315,7 +360,7 @@ async function showResolved(result, pin, cite, load, fromText = null) {
   resetPageViews();
   // A CourtListener record has no page scans or archival PDF to show, nor has a CAP
   // volume without scans.
-  const scans = !!result.zipData && hasScans(result.reporter, result.volume);
+  const scans = (!!result.zipData || !!result.zip) && hasScans(result.reporter, result.volume);
   tabPdf.classList.toggle('hidden', !scans);
   tabPages.classList.toggle('hidden', !scans);
   const wantView = pendingView;
@@ -338,10 +383,34 @@ async function showResolved(result, pin, cite, load, fromText = null) {
   // one page re-renders each with its own offsets.
   const citationsByCase = new Map();
   const pagesByCase = new Map();
+  // A case read by its zip span (D180) has no zip in memory: its CAP HTML is read by range
+  // after the text is shown (spanZip's html), and the reader is drawn again with the page
+  // markers and footnotes once it's in, going to the pin cite's page if there was one.
   const pagesFor = (caseFile, caseData) => {
-    if (!pagesByCase.has(caseFile)) pagesByCase.set(caseFile, casePages(result.zipData, caseFile, caseData));
-    return pagesByCase.get(caseFile);
+    if (pagesByCase.has(caseFile)) return pagesByCase.get(caseFile);
+    if (result.zipData || !result.zip) {
+      pagesByCase.set(caseFile, casePages(result.zipData, caseFile, caseData));
+      return pagesByCase.get(caseFile);
+    }
+    pagesByCase.set(caseFile, NO_PAGES);
+    result.zip.html(caseFile).then((html) => {
+      const layout = htmlPages(html, caseData);
+      pagesByCase.set(caseFile, layout);
+      if (!load.current() || shownCaseFile !== caseFile || !layout.pages) return;
+      const cached = citationsByCase.get(caseFile) || null;
+      renderReader(readerContent, caseData, cached, layout.pages, layout.footnotes);
+      if (cached) {
+        setupCiteHovers(readerContent, resolve);
+        wireCiteNav(citationStatusHandle.listEl, readerContent);
+      }
+      if (pendingPin !== null) goToPage(pendingPin);
+      else markTarget();
+      pendingPin = null;
+    }, () => {});
+    return NO_PAGES;
   };
+  // A pin cite waiting for the page markers of a case read by its span.
+  let pendingPin = null;
   let shownCaseFile = null;
   // Handle on the cited-cases section's label/status/list elements for the
   // case currently shown, returned by renderSidebar. highlightCase updates
@@ -355,6 +424,7 @@ async function showResolved(result, pin, cite, load, fromText = null) {
   statusBar.classList.add('hidden');
   const shown = showCase(result.caseFile, result.caseData, result);
   goToPage(cite ? null : pin);
+  if (!cite && pin && !target && !pagesByCase.get(result.caseFile)?.pages) pendingPin = pin;
   await shown;
 
   function showCase(caseFile, caseData, actions) {
@@ -369,6 +439,7 @@ async function showResolved(result, pin, cite, load, fromText = null) {
       cached?.unique || null, cached ? 'done' : 'loading', cached?.groups || null,
       casePdfPage(result.zipData, caseFile)
     );
+    if (!result.zipData) wireLazyPdfLink(sidebar, result, caseFile);
     wireActions(actions);
     if (cached) {
       setupCiteHovers(readerContent, resolve);
@@ -416,13 +487,24 @@ async function showResolved(result, pin, cite, load, fromText = null) {
     }
   }
 
-  function switchCase(caseFile) {
-    if (!result.zipData) {
+  let switching = 0;
+  async function switchCase(caseFile) {
+    if (!result.zipData && !result.zip) {
       // Several CourtListener records start on the page; each is its own fetch.
       doResolve(result.reporter, result.volume, result.page, result.allCases.indexOf(caseFile) + 1);
       return;
     }
-    const caseData = extractCase(result.zipData, caseFile);
+    // A case read by its span (D180) reads the other by its own span; the zip, when a page
+    // view has fetched it, has them all.
+    const turn = ++switching;
+    let caseData;
+    try {
+      caseData = result.zipData ? extractCase(result.zipData, caseFile) : await result.zip.caseData(caseFile);
+    } catch {
+      if (turn === switching && load.current()) doResolve(result.reporter, result.volume, pageFromFile(caseFile), seqFromFile(caseFile));
+      return;
+    }
+    if (turn !== switching || !load.current()) return;
     const seq = seqFromFile(caseFile);
     const page = pageFromFile(caseFile);
     // The case shown is now this one (#268): the hash names it, and the hashchange that
@@ -764,7 +846,7 @@ async function openPageView(view, page = null) {
   showView(view);
   if (page) viewPages[view] = page;
   setViewHash(view);
-  if (!currentResult?.zipData) return;
+  if (!currentResult?.zipData && !currentResult?.zip) return;
   const el = VIEWS[view][1];
   if (view === 'pdf' ? pdfViewerLoaded : pageViewerLoaded) {
     if (page) goToViewPage(el, page);
@@ -785,6 +867,21 @@ async function openPageView(view, page = null) {
     return;
   }
   if (currentResult !== result) return;
+  // A case read by its zip span (D180) fetches the zip now: the views read the case's page
+  // orders and printed page labels out of it, as before.
+  if (!result.zipData) {
+    el.innerHTML = '<div class="page-viewer-loading"><span class="spinner"></span> Loading the volume\'s case data...</div>';
+    try {
+      result.zipData = await result.zip.loadZip();
+    } catch {
+      if (currentResult !== result) return;
+      if (view === 'pdf') pdfViewerLoaded = false;
+      else pageViewerLoaded = false;
+      el.innerHTML = '<div class="pdf-view-message">Couldn\'t reach the server. Check your connection and try again.</div>';
+      return;
+    }
+    if (currentResult !== result) return;
+  }
   if (view === 'pdf') {
     await viewModules.pdf.renderPdfViewer(pdfViewerEl, currentResult, {
       openScans: () => openPageView('scans'), page: viewPages.pdf, onPage: onViewPage('pdf'),

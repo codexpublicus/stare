@@ -202,23 +202,25 @@ describe('the page check with the unified index', () => {
 describe('idxZipHint', () => {
   const gz = (text) => new Uint8Array(gzipSync(Buffer.from(text)));
   const FILE = [
-    `5,cap,0005-01`,
+    `5,cap,0005-01,zip=100:20:8`,
     `5,cl,7/${H1}`,
     `7,cl,8/${H1}`,
     `7,cap,0007-01`,
     `12,cap,138-2/0012-01`,
     `12,cap,0012-02`,
-    `287,cap,neb/128/0783-01,via=cl:8077312`,
+    `287,cap,neb/128/0783-01,via=cl:8077312,zip=7:9:0`,
     `xxix,cap,xxix-01`,
     `40,cl,9/${H2}`,
     '',
   ].join('\n');
 
   test('the first line at the page names the zip: the volume\'s own, a folder\'s or an alias\'s', async () => {
-    assert.deepEqual(await idxZipHint(gz(FILE), 5), { reporter: null, folder: null });
-    assert.deepEqual(await idxZipHint(gz(FILE), 12), { reporter: null, folder: '138-2' });
-    assert.deepEqual(await idxZipHint(gz(FILE), 287), { reporter: 'neb', folder: '128' });
-    assert.deepEqual(await idxZipHint(gz(FILE), 'xxix'), { reporter: null, folder: null });
+    assert.deepEqual(await idxZipHint(gz(FILE), 5),
+      { reporter: null, folder: null, caseFile: '0005-01', zip: { offset: 100, length: 20, method: 8 } });
+    assert.deepEqual(await idxZipHint(gz(FILE), 12), { reporter: null, folder: '138-2', caseFile: '0012-01', zip: null });
+    assert.deepEqual(await idxZipHint(gz(FILE), 287),
+      { reporter: 'neb', folder: '128', caseFile: '0783-01', zip: { offset: 7, length: 9, method: 0 } });
+    assert.deepEqual(await idxZipHint(gz(FILE), 'xxix'), { reporter: null, folder: null, caseFile: 'xxix-01', zip: null });
   });
 
   test('none for a CourtListener record, a page with nothing, or no file', async () => {
@@ -229,7 +231,7 @@ describe('idxZipHint', () => {
   });
 
   test('a folder folded into the file takes that folder\'s own line', async () => {
-    assert.deepEqual(await idxZipHint(gz(FILE), 12, '138-2'), { reporter: null, folder: '138-2' });
+    assert.deepEqual(await idxZipHint(gz(FILE), 12, '138-2'), { reporter: null, folder: '138-2', caseFile: '0012-01', zip: null });
     assert.equal(await idxZipHint(gz(FILE), 5, '138-2'), null);
   });
 
@@ -238,6 +240,6 @@ describe('idxZipHint', () => {
   });
 
   test('plain (already gunzipped) bytes read the same', async () => {
-    assert.deepEqual(await idxZipHint(new TextEncoder().encode(FILE), 12), { reporter: null, folder: '138-2' });
+    assert.deepEqual((await idxZipHint(new TextEncoder().encode(FILE), 12)).folder, '138-2');
   });
 });
