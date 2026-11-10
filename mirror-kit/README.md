@@ -15,7 +15,7 @@ text and full-text search, the archival page PDFs, the raw CAP archive) follow.
 - A machine that stays on. For tier 1, a Raspberry Pi 4 or 5 with Raspberry Pi OS Lite and an
   SSD over USB, or any Linux box.
 - Disk: a 32 GB SD card or any USB stick holds tier 1; a 128 GB SSD holds tier 2; a 2 TB SSD
-  holds tier 3; tier 4 (about 12 TB) is a NAS. Use ext4, or another filesystem that handles a
+  holds tier 3; tier 4 (about 12 TB) needs a disk array. Use ext4, or another filesystem that handles a
   million small files well. exFAT struggles with tier 2's 860,000 CourtListener records.
 - Docker with the compose plugin, or a web server you already run: Caddy, nginx or Apache.
 - `minisign` and `sha256sum` to check what you download (`apt install minisign`).
