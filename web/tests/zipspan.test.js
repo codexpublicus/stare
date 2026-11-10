@@ -3,6 +3,7 @@
 // JS, and the reader's span path (resolve.js's readBySpan and spanZip) with its fallbacks.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { deflateRawSync, gzipSync } from 'node:zlib';
 
 import {
@@ -164,6 +165,30 @@ describe('index lines in JS', () => {
     assert.deepEqual(await volumeCaseFiles('a3d', '138', '138', { readIdx }), ['0005-01', '0900-01']);
     assert.deepEqual(await volumeCaseFiles('a3d', '138', '138-2', { readIdx }), ['0008-01', '0901-01']);
     assert.deepEqual(await volumeCaseFiles('a3d', '139', '139', { readIdx }), []);
+  });
+});
+
+describe('a recorded CAP zip (crates/stare/tests/fixtures/a2d-31.zip)', () => {
+  const zip = new Uint8Array(readFileSync(new URL('../../crates/stare/tests/fixtures/a2d-31.zip', import.meta.url)));
+  // The span the index builder writes for an entry: past the local header (30 bytes, the
+  // name and the extra field), its compressed length, its method.
+  function spanOf(name) {
+    const dir = JSON.parse(wasm.zip_directory(zip, 0)).entries;
+    const e = dir.find((x) => x.name === name);
+    const v = new DataView(zip.buffer, zip.byteOffset + e.start);
+    const offset = e.start + 30 + v.getUint16(26, true) + v.getUint16(28, true);
+    return { offset, length: v.getUint32(18, true), method: v.getUint16(8, true) };
+  }
+
+  test('each case JSON read by its span is the case extract_case reads out of the whole zip', async () => {
+    for (const file of ['0647-01', '0657-01', '0657-02']) {
+      const span = spanOf(`json/${file}.json`);
+      assert.equal(span.method, 8);
+      const log = [];
+      const got = await readSpanText('u', span, { fetch: server(zip, { log }) });
+      assert.equal(log.length, 1);
+      assert.deepEqual(JSON.parse(wasm.parse_case_json(got.raw)), JSON.parse(wasm.extract_case(zip, file)));
+    }
   });
 });
 

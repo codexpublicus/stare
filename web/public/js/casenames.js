@@ -45,11 +45,27 @@ export async function zipDirectory(url, deps = {}) {
   const tail = await read(url, size ? `bytes=${Math.max(0, size - TAIL)}-${size - 1}` : `bytes=-${TAIL}`);
   let dir = JSON.parse(w.zip_directory(tail.bytes, tail.start));
   if (dir.need != null) {
-    const more = await read(url, size ? `bytes=${dir.need}-${size - 1}` : `bytes=${dir.need}-`);
+    // Only the bytes before the tail, joined to it, when the tail came as asked.
+    let more;
+    if (dir.need < tail.start) {
+      const head = await read(url, `bytes=${dir.need}-${tail.start - 1}`);
+      more = head.start + head.bytes.length === tail.start
+        ? { bytes: concat(head.bytes, tail.bytes), start: head.start }
+        : head;
+    } else {
+      more = await read(url, size ? `bytes=${dir.need}-${size - 1}` : `bytes=${dir.need}-`);
+    }
     dir = JSON.parse(w.zip_directory(more.bytes, more.start));
   }
   if (!dir.entries) throw new Error(`No central directory in ${url}`);
   return dir.entries;
+}
+
+function concat(a, b) {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a);
+  out.set(b, a.length);
+  return out;
 }
 
 /**
