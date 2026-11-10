@@ -1,6 +1,7 @@
 import { parseInput, resolve, extractCase, extractFile, getPageOrders } from './resolve.js';
 import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } from './ui.js';
 import { caseHash, getHashParams, setHash, onHashChange } from './router.js';
+import { NotInCopyError, notInCopyHtml, notInCopyNodes, hasFeature, upstreamUrl } from './mirror.js';
 import { aliasNoteHtml, processCitations, setupCiteHovers } from './citations.js';
 import { attachCiteNav } from './citenav.js';
 import { footnoteParagraphs, pageBreaks, pageMarker } from './pages.js';
@@ -483,6 +484,23 @@ function setStatus(msg, isError) {
   }
 }
 
+// A copy of stare.pub without the case's text (sources.js hasFeature): the status line says
+// so, with a link to the same case on stare.pub, where the case would have been. A case
+// opened from a link goes back to the landing, as a failed lookup does.
+function notInCopy(err, reporter, volume, page, seq, fromText) {
+  const path = window.location.pathname.length > 1
+    ? `${window.location.pathname}${window.location.hash}`
+    : `/${caseHash(reporter, volume, page, seq)}`;
+  const shown = Object.assign(new NotInCopyError(err.feature), { href: upstreamUrl(path) });
+  if (landing.classList.contains('hidden') && !currentResult) {
+    showLanding();
+    landingBox.fill(fromText || '', { reporter, volume, page, seq });
+  }
+  const isLanding = !landing.classList.contains('hidden');
+  setStatus(shown.message, false);
+  (isLanding ? landingStatus : statusBar).replaceChildren(...notInCopyNodes(document, shown));
+}
+
 // `fromText` is the text a box opened the case from, for the reader's "Search for this text
 // instead"; null when the case came from a link, a suggestion or the arrows.
 async function doResolve(reporter, volume, page, seq = null, pin = null, cite = null, view = null, fromText = null) {
@@ -507,6 +525,10 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
     showResolved(result, result.alias ? null : pin, result.alias ? null : cite, load, fromText);
   } catch (err) {
     if (!load.current()) return;
+    if (err instanceof NotInCopyError) {
+      notInCopy(err, reporter, volume, page, seq, fromText);
+      return;
+    }
     if (!(err instanceof WasmLoadError)) setStatus(err.message, true);
     // Only go to landing if we're not already showing a case
     // (i.e., this was a landing page search, not an inline edit). A WASM
@@ -766,6 +788,15 @@ async function openPageView(view, page = null) {
   setViewHash(view);
   if (!currentResult?.zipData) return;
   const el = VIEWS[view][1];
+  // A copy of stare.pub without the archival PDFs or the raw scans says so in the view.
+  const feature = view === 'pdf' ? 'pages' : 'raw-scans';
+  if (!hasFeature(feature)) {
+    const r = currentResult;
+    el.innerHTML = notInCopyHtml(Object.assign(new NotInCopyError(feature), {
+      href: upstreamUrl(`/${caseHash(r.reporter, r.volume, r.page, r.seq, null, null, { view, page: viewPages[view] })}`),
+    }));
+    return;
+  }
   if (view === 'pdf' ? pdfViewerLoaded : pageViewerLoaded) {
     if (page) goToViewPage(el, page);
     return;

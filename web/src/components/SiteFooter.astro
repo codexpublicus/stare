@@ -45,5 +45,8 @@ const buildTitle = !info.release && info.date ? `Built ${info.date}` : undefined
 
 <script is:inline type="module">
 	import { loadDataLine } from '/js/dataversion.js';
+	import { showMirror } from '/js/mirror.js';
+	// On a self-hosted copy, "A mirror of stare.pub" with its release and data date (#231).
+	showMirror();
 	for (const el of document.querySelectorAll('[data-site-data-line]')) loadDataLine(el);
 </script>

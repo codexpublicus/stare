@@ -34,10 +34,17 @@ export const WASM_PRELOADS_MARK = '/*stare:wasm-preloads*/[]';
 
 /**
  * Adds `<link>`s to `doc`'s <head>: each of `links` is `{ rel, href, as?, crossorigin? }`.
- * Inlined into the head script, so it can't import anything.
+ * Inlined into the head script, so it can't import anything. On a self-hosted copy of
+ * stare.pub (any host public/js/sources.js's `isUpstreamHost` refuses; the pattern is
+ * repeated here and web/tests/mirror.test.js checks the two agree), the preconnects to
+ * stare.pub's index and data hosts are left out: a copy reads its own files.
  */
 export function addLinks(links, doc) {
+  var host = doc.location && doc.location.hostname;
+  var upstream = !host
+    || /^(?:(?:[a-z0-9-]+\.)*stare\.pub|(?:[a-z0-9-]+-)?stare-pub\.nick-441\.workers\.dev)\.?$/.test(String(host).toLowerCase());
   for (var i = 0; i < links.length; i++) {
+    if (!upstream && links[i].rel === 'preconnect') continue;
     var l = doc.createElement('link');
     l.rel = links[i].rel;
     if (links[i].as) l.as = links[i].as;

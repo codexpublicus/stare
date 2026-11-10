@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stare.pub/schemas/mirror.v1.schema.json",
+  "x-license": {
+    "id": "CC-BY-NC-ND-4.0",
+    "name": "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+    "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+    "source": "https://stare.pub"
+  },
+  "title": "stare.pub self-hosted copy description, format 1",
+  "description": "<root>/mirror/mirror.json in a self-hosted copy of stare.pub (#231), served at /mirror/mirror.json: which mirror release the copy holds, the date of its data, and its components. The reader reads it on any host that isn't stare.pub's and, when it is a `stare-mirror` file at a 1.x format_version, reads the copy's /mirror/idx and /mirror/data instead of idx.stare.pub and data.stare.pub. stare.pub's release process writes it into the tier 1 tar; mirror-kit/README.md shows it for anyone writing it by hand. A reader accepts any 1.x file and ignores fields it doesn't know; a change that would make a 1.0 reader misread a file is a new major version.",
+  "type": "object",
+  "required": ["format", "format_version", "upstream", "release", "components"],
+  "properties": {
+    "format": { "const": "stare-mirror" },
+    "format_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$",
+      "description": "SemVer of this format. 1.0.0 is the first."
+    },
+    "upstream": {
+      "const": "https://stare.pub",
+      "description": "The site this is a copy of. The reader links only to stare.pub whatever this says."
+    },
+    "release": {
+      "type": "string",
+      "pattern": "^v[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}(\\.[1-9][0-9]*)?$",
+      "description": "The mirror release the copy holds (CalVer), as named under data.stare.pub/releases/."
+    },
+    "data_date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "The date of the copy's newest data, shown in the reader's banner (\"data from 2026-11-08\") and on a /k/ key the copy's ledger doesn't have."
+    },
+    "tiers": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1, "maximum": 4 },
+      "uniqueItems": true,
+      "description": "The tiers the copy holds in full: 1 lookup, 2 text and search, 3 pages, 4 the CAP archive. Informational; the reader decides what to offer from `components`."
+    },
+    "components": {
+      "type": "object",
+      "description": "Each component present, by id, with its version. Tier 1: `site`, `index`, `crk`, `pdf-manifest`, `kit`. Ids that turn on a reader feature: `cap` or `cl` (case text, tier 2), `search` (the full-text search tree, tier 2), any id starting `pdf/` (archival page PDFs, tier 3), any starting `cap-raw/` (CAP's raw scans, tier 4). A feature whose component is absent is said in place with a link to the same page on stare.pub.",
+      "propertyNames": { "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["version"],
+        "properties": {
+          "version": { "type": "string", "minLength": 1, "description": "The component's own version (CalVer for data and the site)." }
+        }
+      }
+    }
+  }
+}

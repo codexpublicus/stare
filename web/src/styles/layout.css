@@ -163,6 +163,11 @@ html:root .site-footer .cp-footer {
 .site-footer-line a { text-decoration: none; }
 .site-footer-line a:hover { text-decoration: underline; }
 .site-footer-data { font-variant-numeric: lining-nums tabular-nums; }
+/* A self-hosted copy's banner (public/js/mirror.js, #231): "A mirror of stare.pub", its release
+   and data date, at the top of each page and in the footer line. Never on stare.pub. */
+.mirror-banner { margin: 0; padding: 4px 16px; font-family: var(--font-ui); font-size: 13px; line-height: 1.4; color: var(--text-secondary); background: var(--bg-alt); border-bottom: 1px solid var(--border); flex: none; }
+.mirror-banner a { color: var(--link); }
+.landing > .mirror-banner { position: absolute; top: 0; left: 0; right: 0; padding-right: 64px; }
 .landing-link { color: var(--text-secondary); text-decoration: none; transition: color 0.15s; }
 .landing-link:hover { color: var(--link); }
 

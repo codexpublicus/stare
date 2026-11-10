@@ -1,5 +1,6 @@
 import { fetchCached, fetchCachedText } from './cache.js';
 import { indexUrl, zipUrl } from './sources.js';
+import { hasFeature, requireFeature } from './mirror.js';
 import { ClRecordError, fetchClRecord } from './cl.js';
 import { idxEntries, idxZipHint, readIdx } from './idx.js';
 import {
@@ -182,7 +183,7 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
     const number = foldedInto(manifest, reporter, cited);
     readIdx(reporter, number || cited, 0)
       .then((bytes) => idxZipHint(bytes, page, number ? cited : null))
-      .then((hint) => { if (hint) fetchZip(hint.reporter || reporter, hint.folder || cited); })
+      .then((hint) => { if (hint && hasFeature('text')) fetchZip(hint.reporter || reporter, hint.folder || cited); })
       .catch(() => {});
     let entries;
     try {
@@ -254,6 +255,8 @@ async function resolveEntries(reporter, cited, page, entries, onStatus, seq) {
 // A CAP case from its folder's zip: the `seq`th of `allCases` (the page's case files),
 // or the first.
 async function resolveCap(reporter, volume, page, allCases, onStatus, seq) {
+  // A copy of stare.pub without the case text (tier 1) says so in place (main.js).
+  requireFeature('text');
   onStatus('Fetching case data...');
   let zipData;
   try {
@@ -295,6 +298,7 @@ async function resolveCap(reporter, volume, page, allCases, onStatus, seq) {
 // `cl/<cluster_id>`, `allCases` every record at the page.
 async function resolveCl(reporter, volume, page, entries, onStatus, seq) {
   const n = seq !== null && seq > 0 && seq <= entries.length ? seq : 1;
+  requireFeature('text');
   onStatus('Fetching case data...');
   let caseData;
   try {
