@@ -15,6 +15,7 @@ import { DATA_URL } from './sources.js';
 import { fetchCached, gunzip } from './cache.js';
 import { filePage } from './pagekey.js';
 import { isVolumeKey } from './manifest.js';
+import { parseDecisionPath } from './decisionroute.js';
 
 export const LEDGER_URL = `${DATA_URL}/crk/ledger`;
 
@@ -38,10 +39,13 @@ function decodeSegments(rest) {
  * reporter, volume, page, n }` for `/c/<jurisdiction>/<slug>/<volume>/<page>/[<n>/]`,
  * `{ kind: 'bad', prefix }` for a `/k/` or `/c/` path that names nothing, and null for any
  * other path (the reader's own `/` among them). Keys are lowercase; a path in capitals reads
- * as its lowercase form.
+ * as its lowercase form. `/d/<id>/` is decisionroute.js's: `{ kind: 'd', id }`, or
+ * `{ kind: 'bad', prefix: 'd' }`.
  */
 export function parseCasePath(pathname) {
   const path = String(pathname || '');
+  const decision = parseDecisionPath(path);
+  if (decision) return decision;
   const m = path.match(/^\/([kc])\/(.*)$/);
   if (!m) return null;
   const segs = decodeSegments(m[2]);

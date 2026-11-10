@@ -92,9 +92,16 @@ export function clientFilters(state, facets = null) {
 // as the card's `r` gives it and the reader's hash takes it.
 const ROUTE = /^[a-z0-9][a-z0-9-]*\/\d[0-9a-z-]*\/[0-9A-Za-z.%-]+$/;
 
+// A card's route by decision id (`d/<id>`): a CourtListener record no citation reaches,
+// which the reader opens at `/d/<id>/` (decisionroute.js).
+const DECISION_ROUTE = /^d\/([0-9a-hjkmnp-tv-z]{7})$/;
+
 /** The reader's link for a card's route, or null for one that isn't a route. */
 export function caseHref(route) {
-  return typeof route === 'string' && ROUTE.test(route) ? `/#${route}` : null;
+  if (typeof route !== 'string') return null;
+  const d = DECISION_ROUTE.exec(route);
+  if (d) return `/d/${d[1]}/`;
+  return ROUTE.test(route) ? `/#${route}` : null;
 }
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',

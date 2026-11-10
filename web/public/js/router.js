@@ -42,10 +42,12 @@ let route = null;
 
 /**
  * Shows cases at `path` from now on (null: at `/`), with `canonical`, an absolute URL, as
- * the page's canonical link while it does (removed with the route).
+ * the page's canonical link while it does (removed with the route). `hash` is the case the
+ * path shows when it is known already; a `/d/<id>/` record, which no case hash names, passes
+ * one that names no case, so any case the reader moves to leaves the path.
  */
-export function setRoute(path, canonical = null) {
-  route = path ? { path, hash: null } : null;
+export function setRoute(path, canonical = null, hash = null) {
+  route = path ? { path, hash } : null;
   setCanonical(route ? canonical : null);
 }
 

@@ -1,6 +1,7 @@
 // The browser's cache of index and case files, in IndexedDB (an in-memory map where
 // IndexedDB isn't available, fails or doesn't answer): `bins` and `multi` hold
-// idx.stare.pub's .bin, .idx.gz and .multi files (and the scans' tar.csv, and a volume's
+// idx.stare.pub's .bin, .idx.gz and .multi files and decision-route shards (`d/<c>.json.gz`,
+// decisionroute.js) (and the scans' tar.csv, and a volume's
 // case names for the search boxes, `names/<slug>/<folder>`), `zips` the case zips and
 // CourtListener records, with each one's size, last use and ETag in `zipmeta`.
 //
@@ -23,7 +24,7 @@ const DB_NAME = 'stare-cache';
 const DB_VERSION = 3;
 const STORES = ['bins', 'multi', 'zips', 'zipmeta'];
 const INDEX_STORES = ['bins', 'multi'];
-const INDEX_FILE = /\.(?:bin|multi|idx\.gz)$/;
+const INDEX_FILE = /\.(?:bin|multi|idx\.gz)$|\/d\/[0-9a-z]\.json\.gz$/;
 // A CAP volume zip on data.stare.pub, which can be replaced; CourtListener records,
 // also in `zips`, are under immutable content-hashed paths.
 const CAP_ZIP = /\.zip$/;

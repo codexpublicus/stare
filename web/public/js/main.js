@@ -2,6 +2,7 @@ import { parseInput, resolve, extractCase, extractFile, getPageOrders } from './
 import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } from './ui.js';
 import { caseHash, getHashParams, parseHash, setHash, onHashChange, replaceHash, routePath, setRoute } from './router.js';
 import { citationPath, clusters, keyPath, parseCasePath, pickPrinting, resolveKey } from './caseaddress.js';
+import { decisionPath, openDecisionRecord, resolveDecision } from './decisionroute.js';
 import { pdfJurisdiction } from './sources.js';
 import { aliasNoteHtml, processCitations, setupCiteHovers } from './citations.js';
 import { attachCiteNav } from './citenav.js';
@@ -419,6 +420,11 @@ async function showResolved(result, pin, cite, load, fromText = null) {
   }
 
   function switchCase(caseFile) {
+    if (result.decision) {
+      // The records one decision id opens (`/d/<id>/`); each is its own fetch.
+      doResolveDecision(result.decision, result.records, result.allCases.indexOf(caseFile) + 1);
+      return;
+    }
     if (!result.zipData) {
       // Several CourtListener records start on the page; each is its own fetch.
       doResolve(result.reporter, result.volume, result.page, result.allCases.indexOf(caseFile) + 1);
@@ -566,9 +572,15 @@ function showKeyNotice(msg) {
 async function openAddress(at, extra = null) {
   const seq = ++addressSeq;
   if (at.kind === 'bad') {
-    notFound(at.prefix === 'k'
-      ? `${location.pathname} isn't a case key. A key looks like /k/us/dc/69/1943-05-11/.`
-      : `${location.pathname} isn't a citation address. One looks like /c/us/a2d/31/647/.`);
+    notFound({
+      k: `${location.pathname} isn't a case key. A key looks like /k/us/dc/69/1943-05-11/.`,
+      c: `${location.pathname} isn't a citation address. One looks like /c/us/a2d/31/647/.`,
+      d: `${location.pathname} isn't a decision address. One looks like /d/075000d/.`,
+    }[at.prefix]);
+    return;
+  }
+  if (at.kind === 'd') {
+    openDecision(at, seq);
     return;
   }
   landing.classList.add('hidden');
@@ -625,6 +637,60 @@ async function openAddress(at, extra = null) {
   doResolve(target.reporter, target.volume, target.page, target.seq ?? place?.seq ?? null,
     place?.pin ?? null, place?.cite ?? null,
     place?.view ? { view: place.view, page: place.viewPage } : null);
+}
+
+// Opens `/d/<id>/` (decisionroute.js): a CourtListener record no citation reaches, from the
+// live index build's decision-route table. `seq` is openAddress's.
+async function openDecision(at, seq) {
+  landing.classList.add('hidden');
+  resolved.classList.remove('hidden');
+  showKeyNotice(null);
+  setStatus('Looking up the decision...', false);
+  let hit;
+  try {
+    hit = await resolveDecision(at.id);
+  } catch (e) {
+    if (seq !== addressSeq) return;
+    console.warn('Decision lookup failed:', e);
+    notFound(`Couldn't reach the index to look up the decision ${at.id}. Check your connection and try again.`);
+    return;
+  }
+  if (seq !== addressSeq) return;
+  if (!hit.found) {
+    notFound(`stare.pub has no record for the decision ${at.id}. A decision a citation reaches `
+      + 'opens at its citation; try that instead.');
+    return;
+  }
+  const path = decisionPath(at.id);
+  if (path !== location.pathname) history.replaceState(history.state, '', path + location.hash);
+  // No case hash names the record, so the route's hash is one that names no case: a case
+  // the reader moves to from here leaves the path (router.js).
+  setRoute(path, SITE + path, `#d/${at.id}`);
+  doResolveDecision(at.id, hit.records, 1);
+}
+
+// doResolve for the `n`th record a decision id opens: the record has no page, so nothing
+// goes in the hash and there are no arrows.
+async function doResolveDecision(id, records, n) {
+  const load = loads.start();
+  landingBtn.disabled = true;
+  setStatus('', false);
+  showWasmBar(() => doResolveDecision(id, records, n));
+  try {
+    const result = await openDecisionRecord(id, records, n, (msg) => { if (load.current()) setStatus(msg, false); });
+    if (!load.current()) return;
+    currentResult = result;
+    lastResolvedHash = window.location.hash;
+    pendingView = null;
+    showResolved(result, null, null, load);
+  } catch (err) {
+    if (!load.current()) return;
+    if (err instanceof WasmLoadError) return;
+    if (!currentResult) notFound(err.message);
+    else setStatus(err.message, true);
+  } finally {
+    if (load.current()) landingBtn.disabled = false;
+  }
 }
 
 // Where a box's text goes (D163): `{ cite, text }` for a case to open, `{ search }` for the

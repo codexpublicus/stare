@@ -668,6 +668,21 @@ an address that names nothing, shows the landing with an error and adds
 `<meta name="robots" content="noindex">`. `web/e2e/addresses.spec.js` covers it with the
 ledger served from `web/tests/fixtures/crk/`.
 
+`/d/<id>/` (`web/public/js/decisionroute.js`) is a decision's short id from the same ledger
+(D121): seven Crockford base32 characters, six digits and a Luhn mod 32 check, read in
+capitals or with `i`, `l`, `o` for `1`, `1`, `0` and moved to the canonical form. It opens the
+CourtListener records no citation reaches, which have no index line to follow. Each index
+build has a decision-route table beside its files, `<base>d/<c>.json.gz` on idx.stare.pub
+(the index builder writes it), 32 shards by the id's sixth character, each mapping an id to
+the records it opens (`{ cluster, hash }`, the record at `cl/c/<cluster>/<hash>.json.gz`).
+So a lookup is the index manifest the reader already reads and one shard of about 2 KB,
+cached in `bins` with the index files and pruned with them. An id that opens several records
+lists them like the records on one page; a record has no page, so the address carries no case
+hash and the arrows are off. An id the table doesn't have, or a build with no table (its shard
+answers 404), says stare.pub has no record for it. The search tree's cards for these records
+route `d/<id>`, which `caseHref` links to `/d/<id>/`. `web/e2e/addresses.spec.js` covers
+it with the shard and the record served from fixtures.
+
 ### WASM module size (#73)
 
 `web/public/wasm/stare_wasm_bg.wasm` is built by wasm-pack with the release profile in
