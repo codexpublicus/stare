@@ -3,7 +3,7 @@ name = "stare-site"
 version = "0.1.0"
 edition = "2021"
 description = "Build steps for the stare.pub site that need the stare library"
-license = "PolyForm-Shield-1.0.0"
+license = "LicenseRef-PolyForm-Shield-1.0.0"
 publish = false
 
 [[bin]]
