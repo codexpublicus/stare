@@ -71,6 +71,25 @@
 //! starts with `#parts,<first page of part 1>,<first page of part 2>,…`, and a reader
 //! fetches the later part a page falls in ([`VolumeIndex::part_for`]).
 //!
+//! **Zip spans** (D180). A `cap` line, an alias's included, can carry `zip=<offset>:<length>:<method>`:
+//! where the case's JSON entry (`json/<file>.json`) sits in the zip the ref names, as the
+//! offset of the entry's first byte of compressed data (past its local header), its
+//! compressed length and its compression method, 8 (deflate) or 0 (stored). A reader
+//! fetches those bytes with one `Range` request and inflates them, instead of reading
+//! the zip's central directory or the whole zip. The index builder writes the field after
+//! `via`:
+//!
+//! ```text
+//! 51,cap,0051-01,zip=39997:8435:8
+//! 1,cap,ri/69/0051-01,via=cl:4105300,zip=39997:8435:8
+//! ```
+//!
+//! The field is optional (a build from before it, an alias into a zip the build didn't
+//! read), and a reader without a span reads the zip as before. A value that isn't three
+//! numbers, or a length of 0, is ignored, not a malformed line, so a bad span costs the
+//! shortcut, never the case. Readers from before the field skip it as a field they don't
+//! know, so the format stays `idx: 1`.
+//!
 //! Readers trim whitespace, skip blank lines and `#` comment lines, and skip a malformed
 //! line (reporting its 1-based number) rather than rejecting the volume.
 //!
@@ -126,10 +145,65 @@ pub struct Entry {
     pub reference: String,
     /// Where the line came from (`cl:8077312`), for an alias; see [`via_label`].
     pub via: Option<String>,
+    /// Where a `cap` line's case JSON is in its zip, when the build recorded it.
+    pub zip: Option<ZipSpan>,
 }
 
 /// The field a line's provenance is in.
 pub const VIA: &str = "via";
+
+/// The field a line's zip span is in.
+pub const ZIP: &str = "zip";
+
+/// A case JSON's entry in its volume zip (D180): `offset` is the first byte of its
+/// compressed data, past the local header, `length` the compressed length and `method`
+/// the zip compression method (8 deflate, 0 stored). A reader that doesn't know the
+/// method reads the zip as it would without a span.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+pub struct ZipSpan {
+    pub offset: u64,
+    pub length: u64,
+    pub method: u16,
+}
+
+/// Deflate, the method CAP's zips use.
+pub const ZIP_DEFLATE: u16 = 8;
+/// Stored, no compression.
+pub const ZIP_STORED: u16 = 0;
+
+impl ZipSpan {
+    /// `<offset>:<length>:<method>` as a line writes it; None for anything else, or a
+    /// length of 0.
+    pub fn parse(s: &str) -> Option<ZipSpan> {
+        let mut it = s.split(':');
+        let num = |p: Option<&str>| {
+            p.filter(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+                .and_then(|p| p.parse::<u64>().ok())
+        };
+        let offset = num(it.next())?;
+        let length = num(it.next())?;
+        let method = u16::try_from(num(it.next())?).ok()?;
+        (it.next().is_none() && length > 0).then_some(ZipSpan {
+            offset,
+            length,
+            method,
+        })
+    }
+
+    /// The value as a line writes it: `39997:8435:8`.
+    pub fn text(&self) -> String {
+        format!("{}:{}:{}", self.offset, self.length, self.method)
+    }
+
+    /// The HTTP `Range` header that fetches the entry's bytes: `bytes=39997-48431`.
+    pub fn range(&self) -> String {
+        format!(
+            "bytes={}-{}",
+            self.offset,
+            self.offset + self.length.saturating_sub(1)
+        )
+    }
+}
 
 /// Where a `cap` ref's case is: `file` in the volume's own zip, `folder/file` in another
 /// folder of a volume CAP split, or `slug/folder/file` in another reporter or volume
@@ -365,6 +439,18 @@ impl Entry {
         Entry::checked(page, Source::Cap, reference)?.with_via(&format!("cl:{}", cluster_id))
     }
 
+    /// This entry with its case JSON's zip span set. Only a `cap` line has one.
+    pub fn with_zip(mut self, span: ZipSpan) -> Result<Entry> {
+        if self.source != Source::Cap {
+            bail!("a zip span on a {} line", self.source.tag());
+        }
+        if span.length == 0 {
+            bail!("an empty zip span");
+        }
+        self.zip = Some(span);
+        Ok(self)
+    }
+
     /// This entry with its provenance set (`cl:8077312`).
     pub fn with_via(mut self, via: &str) -> Result<Entry> {
         if !is_via(via) {
@@ -385,6 +471,7 @@ impl Entry {
             source,
             reference,
             via: None,
+            zip: None,
         })
     }
 
@@ -398,6 +485,9 @@ impl Entry {
         );
         if let Some(via) = &self.via {
             line.push_str(&format!(",{}={}", VIA, via));
+        }
+        if let Some(zip) = &self.zip {
+            line.push_str(&format!(",{}={}", ZIP, zip.text()));
         }
         line
     }
@@ -463,6 +553,7 @@ impl Entry {
             cluster_id: cl.map(|(id, _)| id),
             hash: cl.map(|(_, h)| h),
             via: self.via.as_deref(),
+            zip: self.zip,
         }
     }
 }
@@ -487,6 +578,9 @@ pub struct EntryView<'a> {
     pub cluster_id: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hash: Option<&'a str>,
+    /// The case JSON's span in its zip, `{ offset, length, method }`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zip: Option<ZipSpan>,
 }
 
 /// One parsed part of a volume's index.
@@ -515,6 +609,8 @@ fn parse_line(line: &str) -> Result<Option<Entry>, ()> {
     };
     let (reference, fields) = split_fields(rest);
     let mut via = None;
+    let mut zip = None;
+    let mut zip_seen = false;
     for field in fields {
         let (key, value) = field.split_once('=').ok_or(())?;
         if key == VIA {
@@ -522,7 +618,16 @@ fn parse_line(line: &str) -> Result<Option<Entry>, ()> {
                 return Err(());
             }
             via = Some(value.to_string());
+        } else if key == ZIP {
+            // Twice is malformed; a value that isn't a span is only no span.
+            if std::mem::replace(&mut zip_seen, true) {
+                return Err(());
+            }
+            zip = ZipSpan::parse(value);
         } // a field this reader doesn't know is skipped
+    }
+    if source != Source::Cap {
+        zip = None;
     }
     let ok = match source {
         Source::Cap => parse_cap_target(reference).is_some(),
@@ -536,6 +641,7 @@ fn parse_line(line: &str) -> Result<Option<Entry>, ()> {
         source,
         reference: reference.to_string(),
         via,
+        zip,
     }))
 }
 
@@ -666,6 +772,7 @@ pub fn sort_entries(entries: &mut Vec<Entry>) {
             .then(a.rank().cmp(&b.rank()))
             .then_with(|| compare_refs(a.source, &a.reference, &b.reference))
             .then_with(|| a.via.cmp(&b.via))
+            .then_with(|| a.zip.cmp(&b.zip))
     });
     entries.dedup();
 }
@@ -1084,6 +1191,92 @@ mod tests {
         );
         let folded = entries_from_bin(&built.bin, None, Some("1-2")).unwrap();
         assert_eq!(folded[0].reference, "1-2/0005-01");
+    }
+
+    #[test]
+    fn keeps_zip_spans_on_cap_lines() {
+        // Lines as v2026.11.05.3 has them (n-w/260, ri/69).
+        let text = "51,cap,0051-01,zip=39997:8435:8\n\
+                    52,cap,0052-01\n\
+                    1,cap,ri/69/0051-01,via=cl:4105300,zip=39997:8435:8\n\
+                    53,cap,11, 12-01,zip=10:20:0\n\
+                    54,cap,0054-01,zip=bad\n\
+                    55,cap,0055-01,zip=1:0:8\n\
+                    56,cap,0056-01,zip=1:2:8,zip=3:4:8\n";
+        let idx = parse(text);
+        assert_eq!(idx.malformed, vec![7]);
+        let span = |page| idx.lookup(&Number(page))[0].zip;
+        let deflate = ZipSpan {
+            offset: 39997,
+            length: 8435,
+            method: ZIP_DEFLATE,
+        };
+        assert_eq!(span(51), Some(deflate));
+        assert_eq!(span(52), None);
+        let alias = idx.lookup(&Number(1))[0];
+        assert_eq!(alias.alias_target(), Some(("ri", "69", "0051-01")));
+        assert_eq!(alias.via.as_deref(), Some("cl:4105300"));
+        assert_eq!(alias.zip, Some(deflate));
+        // A case file with a comma keeps it; the span is still a field.
+        let comma = idx.lookup(&Number(53))[0];
+        assert_eq!(comma.reference, "11, 12-01");
+        assert_eq!(comma.zip.map(|z| z.method), Some(ZIP_STORED));
+        // A value that isn't a span keeps the line and drops the span.
+        assert_eq!(span(54), None);
+        assert_eq!(span(55), None);
+        // Written back as read, after via.
+        assert_eq!(
+            alias.line(),
+            "1,cap,ri/69/0051-01,via=cl:4105300,zip=39997:8435:8"
+        );
+        assert_eq!(
+            idx.lookup(&Number(51))[0].line(),
+            "51,cap,0051-01,zip=39997:8435:8"
+        );
+        assert_eq!(deflate.range(), "bytes=39997-48431");
+        // The view hands it to JS.
+        let json = serde_json::to_value(alias.view()).unwrap();
+        assert_eq!(
+            json["zip"],
+            serde_json::json!({"offset": 39997, "length": 8435, "method": 8})
+        );
+        assert!(serde_json::to_value(idx.lookup(&Number(52))[0].view())
+            .unwrap()
+            .get("zip")
+            .is_none());
+        // A CourtListener line has no zip; the field is dropped, not the line.
+        let cl_line = format!("9,cl,5/{H1},zip=1:2:8\n");
+        let idx = parse(&cl_line);
+        assert!(idx.malformed.is_empty());
+        assert_eq!(idx.entries[0].zip, None);
+        assert!(cl(Number(9), 5, H1).with_zip(deflate).is_err());
+        let built = cap(Number(51), "0051-01").with_zip(deflate).unwrap();
+        assert_eq!(built.line(), "51,cap,0051-01,zip=39997:8435:8");
+        assert_eq!(parse(&built.line()).entries[0], built);
+    }
+
+    #[test]
+    fn zip_span_values() {
+        assert_eq!(
+            ZipSpan::parse("0:1:0"),
+            Some(ZipSpan {
+                offset: 0,
+                length: 1,
+                method: 0
+            })
+        );
+        for bad in [
+            "",
+            "1:2",
+            "1:2:3:4",
+            "a:2:8",
+            "-1:2:8",
+            "1:2:70000",
+            "1::8",
+            " 1:2:8",
+        ] {
+            assert_eq!(ZipSpan::parse(bad), None, "{bad:?}");
+        }
     }
 
     #[test]
