@@ -145,7 +145,7 @@
 .search-results { list-style: none; padding: 0; margin: 0; transition: opacity 0.15s; }
 .search-results[aria-busy="true"] .search-card:not(.search-card-skel) { opacity: 0.5; }
 .search-card {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name name" "meta date";
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name name" "meta date" "snip snip";
   column-gap: 1rem; padding: 0.75rem 0; border-top: 1px solid var(--border-light);
 }
 .search-card:first-child { border-top: none; }
@@ -160,6 +160,14 @@
 }
 .search-card-meta > span + span::before { content: '·'; padding: 0 0.4em; color: var(--text-tertiary); }
 .search-card-cite { color: var(--text-body); font-variant-numeric: tabular-nums; }
+/* A snippet (D171, #313) of the case's text, two lines whose room is kept from the start,
+   so a snippet arriving (or never arriving) moves nothing. */
+.search-card-snippet {
+  grid-area: snip; margin: 0.3rem 0 0; font-size: 0.9rem; line-height: 1.45; height: 2.9em;
+  color: var(--text-secondary); overflow: hidden; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+}
+.search-card-snippet mark { color: var(--text-body); background: var(--search-mark); border-radius: 2px; }
 .search-card-date {
   grid-area: date; align-self: end; font-family: var(--font-ui); font-size: 0.85rem; line-height: 1.4;
   color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right;

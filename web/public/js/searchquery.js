@@ -183,7 +183,8 @@ function fold(text) {
   s = s.replace(DOTTED, (m) => m.replaceAll('.', ''));
   return s.replace(/'s\b/g, '').replace(/(?<=\d),(?=\d{3})/g, '');
 }
-const foldedWords = (text) => fold(text).split(/[^a-z0-9]+/).filter(Boolean);
+/** A text's words folded as the tokenizer folds them, stopwords and short words kept. */
+export const foldedWords = (text) => fold(text).split(/[^a-z0-9]+/).filter(Boolean);
 
 /**
  * A case name cut into runs, `{ text, hit }` each, `hit` for a word the query's tokens

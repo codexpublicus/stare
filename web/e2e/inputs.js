@@ -64,6 +64,7 @@ const SEARCH_ONLY_JS = [
   'web/public/js/searchpage.js',
   'web/public/js/searchquery.js',
   'web/public/js/searchfilters.js',
+  'web/public/js/snippets.js',
 ];
 // The /data page's own module.
 const DATA_ONLY_JS = ['web/public/js/datapage.js'];
@@ -115,6 +116,7 @@ const SEARCH = [
   'web/src/vendor/stare-search/**',
   'web/src/vendor/stare-search-format2/**',
   'web/tests/fixtures/searchtree.js',
+  'web/tests/fixtures/snippettexts.js',
   'web/tests/fixtures/search-expected.json',
   'web/tests/fixtures/search-tree/**',
   'web/tests/fixtures/search-expected-format3.json',
@@ -144,6 +146,7 @@ export const SPECS = {
     'crates/stare/tests/fixtures/cl-record-blocked.json',
   ]),
   'web/e2e/zipcache.spec.js': group(READER),
+  'web/e2e/zipspan.spec.js': group(READER),
 };
 
 // Files under web/ that no smoke spec tests, and why. Anything else under web/ must be

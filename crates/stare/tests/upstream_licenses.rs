@@ -75,7 +75,7 @@ fn the_upstream_licence_copies_match_citares_submodules() {
 
 #[test]
 fn the_citare_commit_is_the_one_cargo_builds() {
-    // git+ssh://git@github.com/codexpublicus/citare.git?tag=v0.7.2#<commit>
+    // git+https://github.com/codexpublicus/citare.git?tag=v0.7.5#<commit>
     let source = citare_core()["source"].as_str().unwrap().to_string();
     let commit = source.rsplit_once('#').map(|(_, c)| c).unwrap_or_default();
     assert_eq!(stare::license::CITARE_COMMIT, commit, "{source}");

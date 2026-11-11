@@ -1,6 +1,8 @@
 // The case zips' IndexedDB cache (#269, web/public/js/cache.js): a full quota or an
 // IndexedDB that doesn't answer still opens the case, from the network, and a case opened
 // again comes from the cache.
+import { gunzipSync, gzipSync } from 'node:zlib';
+
 import { test as base, expect } from '@playwright/test';
 
 // Like smoke.spec.js, every test fails on a console error or warning or an uncaught
@@ -44,7 +46,18 @@ test('a case opens when IndexedDB never answers', async ({ page }) => {
   await expect(page.locator('#reader .reader-text p').first()).not.toBeEmpty();
 });
 
+// The volume's index files with their zip spans (D180) taken out, so the reader fetches
+// the whole zip (zipspan.spec.js covers a case read by its span).
+async function stripSpans(page) {
+  await page.route((url) => url.hostname === 'idx.stare.pub' && /\/a2d\/142(\.\d+)?\.idx\.gz$/.test(url.pathname), async (route) => {
+    const res = await route.fetch();
+    const text = gunzipSync(await res.body()).toString('utf8').replace(/,zip=\d+:\d+:\d+/g, '');
+    await route.fulfill({ response: res, body: gzipSync(Buffer.from(text)) });
+  });
+}
+
 test('a case opened again comes from the cache, with one HEAD to check the zip is current', async ({ page }) => {
+  await stripSpans(page);
   await page.goto(CASE);
   await expect(page.locator('#topbar-case')).toHaveText(TITLE);
   await page.waitForLoadState('networkidle');

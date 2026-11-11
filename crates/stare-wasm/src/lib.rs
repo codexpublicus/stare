@@ -39,7 +39,8 @@ pub fn parse_case_json(json: &[u8]) -> Result<String, JsError> {
 /// Parse one part of a volume's unified index (`<reporter>/<volume>.idx.gz`), gzipped or
 /// plain. Returns JSON: `{ parts: ["1012", ...], entries: [entry], malformed: [line
 /// numbers] }`, each entry `{ page, source, ref }` plus `folder` and `case_file` for a
-/// `cap` line or `cluster_id` and `hash` for a `cl` line. An alias (#151), a `cap` line
+/// `cap` line (and `zip`, `{ offset, length, method }`, when the line has a span, D180)
+/// or `cluster_id` and `hash` for a `cl` line. An alias (#151), a `cap` line
 /// naming a case in another volume, also has `reporter` (that case's slug, with `folder`
 /// its folder) and `via` (where the alias came from, `cl:8077312`). Throws on bytes
 /// that aren't gzip or UTF-8 text.

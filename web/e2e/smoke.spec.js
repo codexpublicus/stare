@@ -526,12 +526,14 @@ test('/#a2d/31/647-01 resolves through idx.stare.pub and renders the case', asyn
 
 // The archival PDFs (D120, D122): the case's link opens our PDF of its volume at the
 // case's first page, which is its METS ORDER (a2d/31's 647-01 is ORDER 695, where the PDF's
-// bookmark for it points). Only the link is checked; nothing here fetches the PDF.
+// bookmark for it points). Only the link is checked; nothing here fetches the PDF. A case
+// read by its zip span (#313) reads its page orders when the link is about to be used.
 test('/#a2d/31/647-01 links the archival PDF at the case\'s page', async ({ page }) => {
   await page.goto('/#a2d/31/647-01');
   await expect(page.locator('#reader .reader-title')).toHaveText("D'Elia & Marks Co. v. Lyon");
   const link = page.locator('#sidebar #pdf-link');
   await expect(link).toHaveText(/Download archival PDF/);
+  await link.hover();
   await expect(link).toHaveAttribute('href', 'https://data.stare.pub/pdf/us/a2d/31.pdf#page=695');
   await expect(page.locator('.view-tab:visible')).toHaveText(['Reader', 'Archival PDF', 'Raw Scans']);
   await expect(page.locator('#tab-reader')).toHaveClass(/active/);

@@ -1,12 +1,13 @@
-import { fetchCached, fetchCachedText } from './cache.js';
+import { cacheGet, cacheSet, fetchCached, fetchCachedText } from './cache.js';
 import { indexUrl, zipUrl } from './sources.js';
 import { ClRecordError, fetchClRecord } from './cl.js';
-import { idxEntries, idxZipHint, readIdx } from './idx.js';
+import { idxEntries, idxZipHint, readIdx, volumeCaseFiles } from './idx.js';
 import {
   citedSlug, foldedInto, hasIdx, indexPath, isVolumeKey, loadManifest, volumeCandidates,
 } from './manifest.js';
 import { loadWasm, WasmLoadError } from './wasm.js';
 import { citedPage, filePage, labelCases, pageKey } from './pagekey.js';
+import { parseSpan, readSpanText, spanKey, SpanError } from './zipspan.js';
 
 let wasm = null;
 
@@ -100,6 +101,30 @@ function fetchZip(reporter, volume) {
   return zipFetch.promise;
 }
 
+// The case being read by its zip span (D180, zipspan.js), or the last one read: resolve()
+// starts it from idxZipHint before the WASM is in, as it starts a zip, and resolveCap
+// takes it up when it's the case the lookup settles on. One at a time.
+let spanFetch = null;
+
+async function spanCacheKey(reporter, folder, span) {
+  return spanKey((await loadManifest()).base, reporter, folder, span);
+}
+
+// `{ text, raw, total }` for the case JSON at `span` of `<reporter>/<folder>.zip`, or
+// `{ whole }` (the zip, from a server that ignored the Range); see readSpanText.
+function fetchSpanText(reporter, folder, span) {
+  const key = `${reporter}/${folder}.zip@${span.offset}:${span.length}:${span.method}`;
+  if (spanFetch?.key !== key) {
+    const promise = (async () => readSpanText(zipUrl(reporter, folder), span, {
+      key: await spanCacheKey(reporter, folder, span),
+    }))();
+    spanFetch = { key, promise };
+    // A network error is worth another try; an answer that wasn't the span isn't.
+    promise.catch((e) => { if (!(e instanceof SpanError) && spanFetch?.promise === promise) spanFetch = null; });
+  }
+  return spanFetch.promise;
+}
+
 // A volume folder's .bin, or null if it isn't indexed.
 async function fetchBin(reporter, volume) {
   const key = await indexPath(`${reporter}/${volume}.bin`);
@@ -180,9 +205,15 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
   if (hasIdx(manifest)) {
     onStatus('Fetching index...');
     const number = foldedInto(manifest, reporter, cited);
+    // The case's span when its line has one (one Range request), else its whole zip.
     readIdx(reporter, number || cited, 0)
       .then((bytes) => idxZipHint(bytes, page, number ? cited : null))
-      .then((hint) => { if (hint) fetchZip(hint.reporter || reporter, hint.folder || cited); })
+      .then((hint) => {
+        if (!hint) return;
+        const span = seq === null || seq === 1 ? parseSpan(hint.zip) : null;
+        if (span) fetchSpanText(hint.reporter || reporter, hint.folder || cited, span).catch(() => {});
+        else if (!hint.zip) fetchZip(hint.reporter || reporter, hint.folder || cited);
+      })
       .catch(() => {});
     let entries;
     try {
@@ -237,30 +268,29 @@ async function resolveEntries(reporter, cited, page, entries, onStatus, seq) {
     const targetPage = filePage(first.case_file);
     const result = await resolveCap(
       first.reporter, first.folder, targetPage === null ? page : targetPage,
-      [first.case_file], onStatus, null,
+      [first.case_file], onStatus, null, new Map([[first.case_file, first.zip]]),
     );
     return { ...result, alias: { via: first.via || null, reporter, volume: cited, page } };
   }
   if (first.source === 'cap') {
     const folder = first.folder || null;
-    const allCases = entries
-      .filter((e) => e.source === 'cap' && (e.folder || null) === folder)
-      .map((e) => e.case_file);
-    return resolveCap(reporter, folder || cited, page, allCases, onStatus, seq);
+    const own = entries.filter((e) => e.source === 'cap' && !e.reporter && (e.folder || null) === folder);
+    const allCases = own.map((e) => e.case_file);
+    const spans = new Map(own.map((e) => [e.case_file, e.zip]));
+    return resolveCap(reporter, folder || cited, page, allCases, onStatus, seq, spans);
   }
   return resolveCl(reporter, cited, page, entries.filter((e) => e.source === 'cl'), onStatus, seq);
 }
 
-// A CAP case from its folder's zip: the `seq`th of `allCases` (the page's case files),
-// or the first.
-async function resolveCap(reporter, volume, page, allCases, onStatus, seq) {
+// A CAP case: the `seq`th of `allCases` (the page's case files), or the first. `spans`
+// maps the case files to their lines' zip spans (D180), where the index has them; with
+// one, the case is read with one Range request (zipspan.js) and the result has no
+// `zipData` but `zip`, which reads the rest of the zip by range when it's wanted
+// (spanZip). Without a span, or when the span read fails or the server answers it with
+// something other than those bytes, the whole zip is fetched as before (a 200 with the
+// whole zip is taken as that).
+async function resolveCap(reporter, volume, page, allCases, onStatus, seq, spans = null) {
   onStatus('Fetching case data...');
-  let zipData;
-  try {
-    zipData = await fetchZip(reporter, volume);
-  } catch (e) {
-    throw new Error(`Couldn't reach the server. Check your connection and try again.`);
-  }
 
   // If seq specified, pick that specific case; otherwise default to -01 (first).
   // The sequence number is after the file name's last hyphen ("1114-1140-02").
@@ -278,6 +308,28 @@ async function resolveCap(reporter, volume, page, allCases, onStatus, seq) {
     activeSeq = seqOf(activeCaseFile) || 1;
   }
 
+  const base = { reporter, volume, page, caseFile: activeCaseFile, seq: activeSeq, allCases };
+  let zipData = null;
+  // A zip already in memory (a prefetch for a line with no span, a page view's) has it.
+  if (zipFetch?.key !== `${reporter}/${volume}.zip`) {
+    // The index file a folder's lines are in: its own, or the number a split folder is
+    // folded into (`138` for `138-2`).
+    const fileVolume = spans ? foldedInto(await loadManifest(), reporter, volume) : null;
+    const got = await readBySpan(reporter, volume, activeCaseFile, spans, fileVolume, {
+      onStatus, wasm: async () => ensureWasm(),
+    });
+    if (got?.whole) zipData = got.whole;
+    else if (got) return { ...base, ...got };
+  }
+
+  if (!zipData) {
+    try {
+      zipData = await fetchZip(reporter, volume);
+    } catch (e) {
+      throw new Error(`Couldn't reach the server. Check your connection and try again.`);
+    }
+  }
+
   await ensureWasm();
   onStatus('Extracting case...');
   const caseJsonStr = wasm.extract_case(zipData, activeCaseFile);
@@ -287,7 +339,120 @@ async function resolveCap(reporter, volume, page, allCases, onStatus, seq) {
   const volumeCasesJson = wasm.list_cases(zipData);
   const volumeCases = JSON.parse(volumeCasesJson).sort();
 
-  return { reporter, volume, page, caseFile: activeCaseFile, seq: activeSeq, allCases, caseData, zipData, volumeCases };
+  return { ...base, caseData, zipData, volumeCases };
+}
+
+/**
+ * A CAP case read by its line's zip span (D180): `{ caseData, zipData: null, zip,
+ * volumeCases }` (`zip` is spanZip's, `volumeCases` the folder's case files from its
+ * index, for the previous and next buttons), or `{ whole }`, the zip, when the server
+ * answered the range with all of it, or null when there's no span for `caseFile` in
+ * `spans` or it couldn't be read (a network error, a 206 for other bytes, bytes that
+ * don't inflate or parse), which leaves the case to the whole zip, as before. A WASM
+ * that won't load is thrown, for the loading bar's Retry.
+ *
+ * `deps`: `wasm` (an async function giving the module), `onStatus`, and, for tests,
+ * `readSpan` (fetchSpanText's shape), `volumeCaseFiles` and `cacheSet`.
+ */
+export async function readBySpan(reporter, folder, caseFile, spans, fileVolume = null, deps = {}) {
+  const span = parseSpan(spans?.get(caseFile));
+  if (!span) return null;
+  const listCases = deps.volumeCaseFiles || volumeCaseFiles;
+  // The previous and next cases, from the volume's index, alongside the case.
+  const listing = Promise.resolve()
+    .then(() => listCases(reporter, fileVolume || folder, folder))
+    .catch(() => []);
+  let got;
+  try {
+    got = await (deps.readSpan || fetchSpanText)(reporter, folder, span);
+  } catch {
+    return null;
+  }
+  if (got.whole) {
+    (deps.cacheSet || cacheSet)('zips', `${reporter}/${folder}.zip`, got.whole);
+    return { whole: got.whole };
+  }
+  const w = await deps.wasm();
+  deps.onStatus?.('Extracting case...');
+  let caseData;
+  try {
+    caseData = JSON.parse(w.parse_case_json(got.raw));
+  } catch {
+    return null;
+  }
+  const zip = spanZip(reporter, folder, spans, got.total, { wasm: w, ...(deps.readSpan ? { readSpan: deps.readSpan } : {}) });
+  return { caseData, zipData: null, zip, volumeCases: await listing };
+}
+
+/**
+ * The rest of a zip a case was read out of by its span (D180), for the reader: what it
+ * needs besides the case JSON, read by range requests and kept, so nothing fetches the
+ * whole zip until a page view asks for it.
+ *
+ * - `caseData(caseFile)`: another case of the page (the multi-case notice's switch), by
+ *   its own span, else out of the zip by range (casenames.js's zipFileText).
+ * - `html(caseFile)`: the case's CAP HTML (`html/<case>.html`), for the reader's page
+ *   markers and footnotes: the zip's central directory from its tail (once a page per
+ *   zip), then the entry. `total`, the zip's size from the span's Content-Range, makes
+ *   the tail an explicit range, which needs no CORS preflight. Kept in the cache beside
+ *   the case's span.
+ * - `pageOrders(caseFile)`: the case's METS ORDERs, `{ first, last }`, from the zip's
+ *   `metadata/CasesMetadata.json` (casenames.js's volumePageOrders), for the sidebar's
+ *   archival PDF link, only once the link is about to be used.
+ * - `loadZip()`: the whole zip, fetched (and cached) as before, for the page views.
+ *
+ * `spans` maps case files to spans; `total` may be null (the span came from the cache).
+ * `deps` ({ zipFileText, volumePageOrders, readSpan, cacheGet, cacheSet, fetchZip, wasm,
+ * base }) are injectable for tests.
+ */
+export function spanZip(reporter, folder, spans, total, deps = {}) {
+  const url = zipUrl(reporter, folder);
+  const get = deps.cacheGet || cacheGet;
+  const set = deps.cacheSet || cacheSet;
+  const names = () => (deps.zipFileText ? deps : import('./casenames.js'));
+  const htmls = new Map();
+  const rangeDeps = () => ({ ...(total ? { size: total } : {}), ...(deps.wasm ? { wasm: deps.wasm } : {}), ...(deps.fetchRange ? { fetchRange: deps.fetchRange } : {}) });
+  const zip = {
+    async caseData(caseFile) {
+      const span = parseSpan(spans?.get(caseFile));
+      const w = deps.wasm || await ensureWasm();
+      if (span) {
+        try {
+          const got = await (deps.readSpan || fetchSpanText)(reporter, folder, span);
+          if (!got.whole) return JSON.parse(w.parse_case_json(got.raw));
+        } catch {
+          // Read out of the zip by range instead, below.
+        }
+      }
+      const text = await (await names()).zipFileText(url, `json/${caseFile}.json`, rangeDeps());
+      return JSON.parse(w.parse_case_json(new TextEncoder().encode(text)));
+    },
+    html(caseFile) {
+      if (!htmls.has(caseFile)) {
+        const read = (async () => {
+          const span = parseSpan(spans?.get(caseFile));
+          const key = span
+            ? `${spanKey(deps.base ?? (await loadManifest()).base, reporter, folder, span)}#html` : null;
+          const hit = key ? await get('zips', key).catch(() => null) : null;
+          if (hit) return new TextDecoder().decode(hit);
+          const text = await (await names()).zipFileText(url, `html/${caseFile}.html`, rangeDeps());
+          if (key) await set('zips', key, new TextEncoder().encode(text)).catch(() => {});
+          return text;
+        })();
+        htmls.set(caseFile, read);
+        read.catch(() => htmls.delete(caseFile));
+      }
+      return htmls.get(caseFile);
+    },
+    async pageOrders(caseFile) {
+      const orders = await (await names()).volumePageOrders(reporter, folder, rangeDeps());
+      return orders[caseFile] || null;
+    },
+    async loadZip() {
+      return (deps.fetchZip || fetchZip)(reporter, folder);
+    },
+  };
+  return zip;
 }
 
 // The CourtListener record at `page` of `volume` (the `seq`th when several start

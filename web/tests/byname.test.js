@@ -352,6 +352,18 @@ describe('case names read out of a zip by range requests', () => {
     assert.ok(entries.some(e => e.name === 'json/0657-01.json'));
   });
 
+  test('with the zip\'s size known, every range is explicit, and the bytes before the tail are only those', async () => {
+    const log = [];
+    // A server that sends only the last 100 bytes of a tail, so the directory starts before it.
+    const serve = rangeServer(zip, log);
+    const size = zip.length;
+    const short = async (url, range) => (range === `bytes=${size - 65536}-${size - 1}` ? serve(url, `bytes=${size - 100}-${size - 1}`) : serve(url, range));
+    const entries = await zipDirectory('x', { fetchRange: short, wasm, size });
+    assert.ok(entries.some(e => e.name === 'json/0657-01.json'));
+    assert.ok(log.every((r) => /^bytes=\d+-\d+$/.test(r)), log.join(' '));
+    assert.match(log[1], new RegExp(`-${size - 101}$`));
+  });
+
   test('a CourtListener record is read whole', async () => {
     const ref = { source: 'cl', cluster_id: 1, hash: '0123456789abcdef' };
     const names = await readCaseNames({ ref }, {
