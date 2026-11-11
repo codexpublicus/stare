@@ -9,8 +9,10 @@ import { test as base, expect } from '@playwright/test';
 
 import { SEARCH_CLIENT_DIRS, searchClientUrl } from '../public/js/searchclient-path.js';
 import { EXPECTED, TREES, TREE_PATH, TREE_ROOT, TREE_VERSION, treeResponse } from '../tests/fixtures/searchtree.js';
+import { snippetFiles } from '../tests/fixtures/snippettexts.js';
 
 const IDX = 'https://idx.stare.pub';
+const DATA = 'https://data.stare.pub';
 const TREE = `${IDX}/${TREE_PATH}`;
 const CORS = {
   'access-control-allow-origin': '*',
@@ -26,7 +28,11 @@ const test = base.extend({
   // { manifest: false } answers the tree's manifest.json with a 404, as a build without search/ does;
   // { format: 3 } serves the format-3 tree; { formatVersion: n } says format n in its manifest.
   tree: [{ manifest: true, format: 2 }, { option: true }],
-  page: async ({ page, expectedMissing, allowedConsole, tree }, use) => {
+  // { noSpan: [routes] } lists the cards' volumes in the index manifest and serves their
+  // index files and zips (snippettexts.js), so the cards get snippets; off, the manifest
+  // lists no volumes and the snippets make no request.
+  snippets: [null, { option: true }],
+  page: async ({ page, expectedMissing, allowedConsole, tree, snippets }, use) => {
     const problems = [];
     page.on('console', (msg) => {
       if (msg.type() !== 'error' && msg.type() !== 'warning') return;
@@ -41,11 +47,37 @@ const test = base.extend({
     const clients = [];
     page.on('request', (r) => { if (r.url().includes('/vendor/stare-search-')) clients.push(r.url()); });
     page.clientRequests = clients;
+    const texts = snippets && snippetFiles(EXPECTED.flatMap((e) => e.cards), TREE_VERSION, snippets);
     await page.route(`${IDX}/manifest.json`, (route) => route.fulfill({
       headers: { ...CORS, 'cache-control': 'no-cache' },
       contentType: 'application/json',
-      body: JSON.stringify({ format: 2, version: TREE_VERSION, base: `v/${TREE_VERSION}/`, idx: 1, reporters: {} }),
+      body: JSON.stringify({
+        format: 2, version: TREE_VERSION, base: `v/${TREE_VERSION}/`, idx: 1, reporters: texts?.manifestReporters ?? {},
+      }),
     }));
+    const data = [];
+    page.dataRequests = data;
+    page.on('request', (r) => { if (r.url().startsWith(DATA)) data.push({ path: new URL(r.url()).pathname, method: r.method(), range: r.headers().range ?? null }); });
+    if (texts) {
+      await page.route((url) => url.origin === IDX && /\.idx\.gz$/.test(url.pathname), (route) => {
+        const body = texts.files[`idx:${new URL(route.request().url()).pathname}`];
+        if (!body) return route.fulfill({ status: 404, headers: CORS, body: 'Not Found' });
+        return route.fulfill({ headers: { ...CORS, 'content-type': 'application/gzip' }, body });
+      });
+      await page.route(`${DATA}/cap/**`, (route) => {
+        const req = route.request();
+        const body = texts.files[`data:${new URL(req.url()).pathname}`];
+        if (!body) return route.fulfill({ status: 404, headers: CORS, body: 'Not Found' });
+        const m = /^bytes=(\d+)-(\d+)$/.exec(req.headers().range || '');
+        if (!m) return route.fulfill({ headers: { ...CORS, 'content-type': 'application/zip' }, body });
+        const [a, b] = [Number(m[1]), Math.min(Number(m[2]), body.length - 1)];
+        return route.fulfill({
+          status: 206,
+          headers: { ...CORS, 'content-type': 'application/zip', 'content-range': `bytes ${a}-${b}/${body.length}` },
+          body: body.subarray(a, b + 1),
+        });
+      });
+    }
     await page.route(`${TREE}/**`, (route) => {
       const req = route.request();
       if (req.method() === 'OPTIONS') {
@@ -595,3 +627,69 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['laptop
     expect(await page.evaluate(() => window.__cls)).toBeLessThan(0.05);
   });
 }
+
+test.describe('snippets', () => {
+  test.use({ snippets: { noSpan: ['cal/1/7'] } });
+
+  test('each visible card gets a snippet with the query\'s word marked, one Range request each and no WASM', async ({ page }) => {
+    const wasm = [];
+    page.on('request', (r) => { if (/\/wasm\//.test(new URL(r.url()).pathname)) wasm.push(r.url()); });
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto('/search/?q=contract');
+    await expect(status(page)).toHaveText('137 matches, page 1 of 7');
+    const first = page.locator('#search-results > li').first().locator('.search-card-snippet');
+    await expect(first).toHaveClass(/search-card-snippet-on/);
+    await expect(first.locator('mark')).toHaveText(['contract']);
+    await page.waitForLoadState('networkidle');
+    const shown = await page.locator('.search-card-snippet-on').count();
+    expect(shown).toBeGreaterThan(0);
+    // Only cards in view (or nearly) are read; the page of 20 doesn't all fit.
+    expect(shown).toBeLessThan(20);
+    const reads = page.dataRequests.filter((r) => r.path.startsWith('/cap/'));
+    expect(reads.length).toBe(shown);
+    for (const r of reads) {
+      expect(r.method).toBe('GET');
+      expect(r.range).toMatch(/^bytes=\d+-\d+$/);
+    }
+    expect(wasm).toEqual([]);
+  });
+
+  test('a card whose index line has no span gets no snippet, and no request for its case', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto('/search/?q=contract');
+    await expect(page.locator('.search-card-snippet-on').first()).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    const third = page.locator('#search-results > li').nth(2);
+    await expect(third.locator('.search-card-cite')).toHaveText('1 CAL 7');
+    await expect(third.locator('.search-card-snippet')).toBeEmpty();
+    expect(await page.evaluate(() => globalThis.stareSnippets.failed)).toBe(0);
+  });
+
+  test('another visit reads the snippets from the browser cache', async ({ page }) => {
+    await page.goto('/search/?q=contract');
+    await expect(page.locator('.search-card-snippet-on').first()).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    page.dataRequests.length = 0;
+    await page.reload();
+    await expect(page.locator('.search-card-snippet-on').first()).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    expect(page.dataRequests.filter((r) => r.path.startsWith('/cap/'))).toEqual([]);
+  });
+
+  for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['laptop', { width: 1366, height: 768 }]]) {
+    test(`snippets arriving move nothing at ${name} size`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await page.addInitScript(() => {
+        window.__cls = 0;
+        new PerformanceObserver((list) => {
+          for (const e of list.getEntries()) if (!e.hadRecentInput) window.__cls += e.value;
+        }).observe({ type: 'layout-shift', buffered: true });
+      });
+      await page.goto('/search/?q=contract');
+      await expect(page.locator('.search-card-snippet-on').first()).toBeVisible();
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(300);
+      expect(await page.evaluate(() => window.__cls)).toBeLessThan(0.05);
+    });
+  }
+});

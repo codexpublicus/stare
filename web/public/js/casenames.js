@@ -33,19 +33,39 @@ export async function fetchRange(url, range, fetchFn = fetch) {
 /**
  * A zip's files as `[{ name, start, end }]`, each one's local entry by offset, from its
  * central directory: the zip's tail, and the bytes before it when the directory starts
- * earlier. `deps` ({ fetchRange, wasm }) are injectable for tests.
+ * earlier. `deps` ({ fetchRange, wasm }) are injectable for tests; `deps.size`, the
+ * zip's size when it's known (a span read's Content-Range, zipspan.js), asks for the
+ * tail as an explicit range, `bytes=<size-TAIL>-<size-1>`, which unlike a suffix range
+ * is a CORS-safelisted header and needs no preflight.
  */
 export async function zipDirectory(url, deps = {}) {
   const read = deps.fetchRange || fetchRange;
   const w = deps.wasm || await loadWasm();
-  const tail = await read(url, `bytes=-${TAIL}`);
+  const size = Number.isSafeInteger(deps.size) && deps.size > 0 ? deps.size : null;
+  const tail = await read(url, size ? `bytes=${Math.max(0, size - TAIL)}-${size - 1}` : `bytes=-${TAIL}`);
   let dir = JSON.parse(w.zip_directory(tail.bytes, tail.start));
   if (dir.need != null) {
-    const more = await read(url, `bytes=${dir.need}-`);
+    // Only the bytes before the tail, joined to it, when the tail came as asked.
+    let more;
+    if (dir.need < tail.start) {
+      const head = await read(url, `bytes=${dir.need}-${tail.start - 1}`);
+      more = head.start + head.bytes.length === tail.start
+        ? { bytes: concat(head.bytes, tail.bytes), start: head.start }
+        : head;
+    } else {
+      more = await read(url, size ? `bytes=${dir.need}-${size - 1}` : `bytes=${dir.need}-`);
+    }
     dir = JSON.parse(w.zip_directory(more.bytes, more.start));
   }
   if (!dir.entries) throw new Error(`No central directory in ${url}`);
   return dir.entries;
+}
+
+function concat(a, b) {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a);
+  out.set(b, a.length);
+  return out;
 }
 
 /**
@@ -133,5 +153,40 @@ export async function volumeCaseNames(reporter, folder, deps = {}) {
   })();
   volumeNames.set(key, read);
   read.catch(() => volumeNames.delete(key));
+  return read;
+}
+
+// Volumes' page orders read this page, by `<reporter>/<folder>`, in flight or done.
+const volumeOrders = new Map();
+
+/**
+ * The METS ORDERs of the cases in a CAP volume folder, `{ <case file>: { first, last } }`,
+ * from the zip's `metadata/CasesMetadata.json` by range requests (the WASM's
+ * `get_page_orders` reads the same fields out of a whole zip), for the reader's archival
+ * PDF link on a case read by its zip span (resolve.js, spanZip). Kept in the cache's
+ * `multi` store under `orders/<reporter>/<folder>`, like volumeCaseNames.
+ */
+export async function volumePageOrders(reporter, folder, deps = {}) {
+  const key = `${reporter}/${folder}`;
+  if (volumeOrders.has(key) && !deps.fresh) return volumeOrders.get(key);
+  const read = (async () => {
+    const get = deps.cacheGet || cacheGet;
+    const set = deps.cacheSet || cacheSet;
+    const cached = await get('multi', `orders/${key}`);
+    if (cached) return JSON.parse(cached);
+    const text = await zipFileText(zipUrl(reporter, folder), 'metadata/CasesMetadata.json', { ...deps, fresh: false });
+    const out = {};
+    for (const c of JSON.parse(text)) {
+      const first = c?.first_page_order;
+      const last = c?.last_page_order;
+      if (typeof c?.file_name === 'string' && Number.isSafeInteger(first) && Number.isSafeInteger(last)) {
+        out[c.file_name] = { first, last };
+      }
+    }
+    await set('multi', `orders/${key}`, JSON.stringify(out));
+    return out;
+  })();
+  volumeOrders.set(key, read);
+  read.catch(() => volumeOrders.delete(key));
   return read;
 }
