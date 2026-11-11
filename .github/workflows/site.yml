@@ -5,19 +5,19 @@ name: site
 #
 # - pull requests: build, upload a Worker version, comment its preview URL,
 #   and smoke test it. Dependabot's PRs only build: a workflow Dependabot
-#   triggers sees only Dependabot secrets, and the infrastructure stack gives it the citare
-#   deploy key but not the Workers token.
+#   triggers sees only Dependabot secrets, and the infrastructure stack doesn't
+#   give it the Workers token.
 # - pushes to main: build and upload a Worker version to the stable `main`
 #   preview alias (https://main-stare-pub.nick-441.workers.dev), and smoke
 #   test that version. release.yml refuses to release a merge commit whose
 #   run failed, so the smoke test gates releases.
 #
-# Every job runs on GitHub-hosted runners. A pull request from a fork gets no
-# secrets, and the build needs CITARE_DEPLOY_KEY to fetch the private citare
-# dependency over ssh, so a fork's PR runs only the "Fork PR" job, which says
-# so; a maintainer can push the branch to this repository to build and preview
-# it. No job runs on pull_request_target or checks out a fork's code with a
-# secret in reach.
+# Every job runs on GitHub-hosted runners. The build needs no secrets (citare is
+# fetched over https), so a pull request from a fork gets the same checks and
+# build in the "Build fork PR" job, but no preview or smoke test, which need the
+# Workers token a fork's PR doesn't get; a maintainer can push the branch to
+# this repository to preview it. No job runs on pull_request_target or checks
+# out a fork's code with a secret in reach.
 #
 # A PR's smoke test skips the specs whose inputs are byte-identical to a run
 # that passed (web/e2e/inputs.js, .github/actions/smoke-test); main, the
@@ -49,7 +49,6 @@ jobs:
 
       - uses: ./.github/actions/build-site
         with:
-          ssh-private-key: ${{ secrets.CITARE_DEPLOY_KEY }}
           release: pr-${{ github.event.number }}
           commit: ${{ github.event.pull_request.head.sha }}
 
@@ -122,21 +121,32 @@ jobs:
           select-reason: ${{ steps.smoke-scope.outputs.reason }}
           record: pr-${{ github.event.number }}
 
-  # The build needs CITARE_DEPLOY_KEY, which GitHub doesn't give a fork's PR.
-  # This says why nothing was built instead of failing on the citare fetch.
+  # A fork's PR gets the checks and the build, which need no secrets, but no
+  # preview or smoke test: those need the Workers token, which GitHub doesn't
+  # give a fork's PR.
   fork-pr:
-    name: Fork PR (not built)
+    name: Build fork PR (no preview)
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions: {}
+    timeout-minutes: 60
+    permissions:
+      contents: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/build-site
+        with:
+          release: pr-${{ github.event.number }}
+          commit: ${{ github.event.pull_request.head.sha }}
+
       - name: Explain
         run: |
-          msg="This PR comes from a fork, which gets no secrets. The build fetches the private citare dependency with CITARE_DEPLOY_KEY, so it, the preview and the smoke test run only for branches in codexpublicus/stare. A maintainer can push this branch there to run them."
-          echo "::notice title=Fork PR not built::$msg"
+          msg="This PR comes from a fork, which gets no secrets, so it was checked and built but not previewed or smoke tested. A maintainer can push this branch to codexpublicus/stare to run them."
+          echo "::notice title=Fork PR not previewed::$msg"
           echo "$msg" >> "$GITHUB_STEP_SUMMARY"
 
   main-preview:
@@ -160,7 +170,6 @@ jobs:
 
       - uses: ./.github/actions/build-site
         with:
-          ssh-private-key: ${{ secrets.CITARE_DEPLOY_KEY }}
           release: ${{ steps.label.outputs.release }}
           commit: ${{ github.sha }}
 
