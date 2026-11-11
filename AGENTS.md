@@ -895,7 +895,12 @@ dispatch or a merged release PR, and the push, tag and dispatch jobs check
   release older than that fails at the download. A second job, which runs no build code,
   creates the tag on the merge commit through the API (refusing if it exists elsewhere),
   refuses if a newer release tag exists, creates the GitHub Release with the git-cliff notes,
-  runs `wrangler deploy` on the built `web/dist`, and dispatches `release-prepare.yml`. The
+  runs `wrangler deploy` on the built `web/dist`, attaches that same `web/dist` to the
+  release as `stare-site-<tag>.tar.gz` with `stare-site-<tag>.tar.gz.sha256` (a deterministic
+  tar: sorted, owner 0, every mtime the merge commit's time, paths relative to `web/dist`;
+  read back and checked after upload, and replaced by a re-run), and dispatches
+  `release-prepare.yml`. The asset is the durable copy of a release's exact build, which the
+  workflow artifacts aren't; the mirror release build packs it. The
   tag, release and deploy share a job because tags and releases made with `GITHUB_TOKEN`
   don't trigger other workflows, so nothing may depend on `on: push: tags` or `on: release`.
   Re-running a failed release reuses the tag already on the merge commit, and refuses once a
