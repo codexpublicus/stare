@@ -123,7 +123,7 @@ binary, the reporters-db and courts-db licences and the skill.
 
 ## License
 
-The code is PolyForm Shield 1.0.0 (the `license` in each crate's `Cargo.toml`).
+The code is PolyForm Shield 1.0.0: see [LICENSE.md](LICENSE.md), which each crate's `Cargo.toml` and `web/package.json` point to.
 
 The Caselaw Access Project case files on `data.stare.pub/cap/` are CC0 1.0, the terms CAP
 published them under. Everything else the project produces (the citation index, the manifest

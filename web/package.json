@@ -2,6 +2,7 @@
   "name": "stare-web",
   "type": "module",
   "version": "0.0.1",
+  "license": "SEE LICENSE IN ../LICENSE.md",
   "engines": {
     "node": ">=22.12.0"
   },
