@@ -1,0 +1,6 @@
+# A self-hosted copy of stare.pub (https://stare.pub). This file asks search engines and
+# other crawlers not to index the copy, so that searches lead to stare.pub and not to many
+# copies of it. Keep it unless you want this copy indexed; if you do, replace it with
+# stare.pub's own robots.txt (site/robots.txt in the copy).
+User-agent: *
+Disallow: /

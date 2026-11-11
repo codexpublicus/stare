@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Run the mirror kit's Caddy, nginx and Apache configurations in Docker against a test copy"
+set -euo pipefail
+
+# The kit's six serving rules (mirror-kit/README.md), checked against each server in its
+# official image; the mirror-kit workflow runs the same. Needs Docker.
+node --test scripts/mirror-kit/servers.test.mjs

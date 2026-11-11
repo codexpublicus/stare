@@ -6,7 +6,7 @@
 
 import { cacheGet, cacheSet } from './cache.js';
 import { fetchClRecord } from './cl.js';
-import { zipUrl } from './sources.js';
+import { hasFeature, zipUrl } from './sources.js';
 import { loadWasm } from './wasm.js';
 
 // How many bytes from a zip's end are fetched first (`stare::ziprange::TAIL`).
@@ -99,6 +99,8 @@ export async function readCaseNames(pageCase, deps = {}) {
     : `${ref.reporter}/${ref.folder}/${ref.caseFile}`;
   if (!names.has(key) || deps.fresh) {
     const read = (async () => {
+      // A copy of stare.pub without the case text has no names to read.
+      if (!hasFeature('text')) throw new Error('Text not in this copy');
       const data = ref.source === 'cl'
         ? await (deps.fetchClRecord || fetchClRecord)(ref)
         : JSON.parse(await zipFileText(zipUrl(ref.reporter, ref.folder), `json/${ref.caseFile}.json`, deps));
@@ -141,6 +143,7 @@ export async function volumeCaseNames(reporter, folder, deps = {}) {
       fetchRange: deps.fetchRange
         || ((url, range) => fetchRange(url, range, (u, init) => fetch(u, { ...init, signal }))),
     };
+    if (!hasFeature('text')) throw new Error('Text not in this copy');
     const text = await zipFileText(zipUrl(reporter, folder), 'metadata/CasesMetadata.json', rangeDeps);
     const out = {};
     for (const c of JSON.parse(text)) {

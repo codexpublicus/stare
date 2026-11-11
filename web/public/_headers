@@ -30,6 +30,14 @@
 /sitemap.xml
   Content-Type: application/xml; charset=utf-8
 
+# stare.pub's release signing keys (minisign public keys, #231): the release key that signs
+# each mirror release's release.json, and the offline recovery key that signs only a key
+# change. Also in mirror-kit/README.md, so a swapped key is easy to notice.
+/.well-known/stare-release-key.pub
+  Content-Type: text/plain; charset=utf-8
+/.well-known/stare-recovery-key.pub
+  Content-Type: text/plain; charset=utf-8
+
 # PDF.js for the Archival PDF view (src/lib/pdfjs-vendor.js). The directory is named for
 # the pdfjs-dist version and our worker patch's revision (public/js/pdfjs-path.js), so a
 # URL never changes content.

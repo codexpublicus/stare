@@ -26,6 +26,7 @@
 import { searchClientUrl } from './searchclient-path.js';
 import { attachRouteLabel, handOff, isNotCitation, markNotCitation, routeOf } from './boxroute.js';
 import { indexUrl } from './sources.js';
+import { NotInCopyError, hasFeature, notInCopyNodes } from './mirror.js';
 import {
   PAGE_SIZE, caseHref, cardFields, citationIn, clientFilters, droppedWords, filterChips, formatDate,
   hasFilters, looksLikeCitation, nameSegments, noteText, pageCount, pageLinks,
@@ -68,6 +69,9 @@ const PROGRESS_AFTER_MS = 150;
 
 // Thrown when the index build has no search tree; shown as a note, not an error.
 class NoTree extends Error {}
+// Thrown on a copy of stare.pub without the search tree (tier 1): a note with a link to the
+// same search on stare.pub.
+class TreeNotInCopy extends NoTree {}
 
 let basePromise = null;
 let treePromise = null;
@@ -119,6 +123,7 @@ function treeBase() {
   if (!basePromise) {
     basePromise = (async () => {
       if (pinnedTree) return pinnedTree.replace(/\/$/, '');
+      if (!hasFeature('search')) throw new TreeNotInCopy();
       const { loadManifest } = await import('./manifest.js');
       const m = await loadManifest();
       if (m.unreachable) throw new Error('Couldn’t reach the index');
@@ -512,7 +517,9 @@ function fillFiltersWhenOpen() {
     }, (e) => {
       if (e && !(e instanceof NoTree)) console.warn(e);
       yearChart.textContent = '';
-      filterNote.textContent = e instanceof NoTree
+      filterNote.textContent = e instanceof TreeNotInCopy
+        ? 'Search isn’t in this copy of stare.pub.'
+        : e instanceof NoTree
         ? 'Search isn’t available for this index yet.'
         : 'The court list couldn’t load. Close and open Filters to try again.';
     });
@@ -617,7 +624,12 @@ async function runQuery(state, { focus = false, scrollY = null } = {}) {
   } catch (e) {
     if (id !== runId) return;
     clearResults();
-    if (e instanceof NoTree) {
+    if (e instanceof TreeNotInCopy) {
+      const err = new NotInCopyError('search', `${location.pathname}${location.search}`);
+      setStatus(err.message, 'note');
+      statusEl.replaceChildren(...notInCopyNodes(document, err));
+      announce(statusEl.textContent);
+    } else if (e instanceof NoTree) {
       setStatus('Search isn’t available for this index yet. You can still open a case by its citation on the home page.', 'note');
       announce(statusEl.textContent);
     } else {

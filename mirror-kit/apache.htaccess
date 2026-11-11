@@ -1,0 +1,69 @@
+# Apache rules for a self-hosted copy of stare.pub (mirror-kit/README.md). Apache 2.4.
+#
+# The copy's root (it holds site/, mirror/ and kit/) must be the document root. Either
+# include this file in the root's <Directory> block (apache-vhost.conf does), or copy it
+# to <root>/.htaccess where only .htaccess files are allowed (AllowOverride FileInfo
+# Options Indexes, and Options FollowSymLinks for the site/ symlink). It needs mod_rewrite,
+# mod_headers and mod_mime; mod_setenvif turns off mod_deflate and mod_brotli under
+# /mirror/ where they are loaded. / is served from site/, /mirror/ from mirror/, and
+# /robots.txt from kit/robots.txt.
+#
+# The six rules every kit configuration implements (README.md, "What the server does"):
+# 1. Real files win.
+# 2. A browser navigation (Sec-Fetch-Mode: navigate) to a path no file matches gets
+#    /index.html with a 200, which opens /k/ and /c/ addresses in the reader; any other
+#    request for a missing path gets a 404.
+# 3. /mirror/ never falls back: a missing data file is a 404.
+# 4. Range requests work (Apache's default), and nothing under /mirror/ is compressed on
+#    the fly.
+# 5. .gz files are application/gzip with no Content-Encoding (the reader gunzips them
+#    itself); JSON and text are charset=utf-8.
+# 6. Content-hashed and immutable paths are cached for a year; everything else is
+#    `max-age=0, must-revalidate`.
+
+Options -Indexes +FollowSymLinks
+DirectoryIndex index.html
+
+RewriteEngine On
+RewriteBase /
+
+# /robots.txt from the kit; /mirror/ as files and nothing else (rule 3).
+RewriteRule ^robots\.txt$ kit/robots.txt [END]
+RewriteRule ^mirror(/|$) - [END]
+
+# Rules 1 and 2: the site. A file, then a directory's index.html, then for a browser
+# navigation the reader; anything else under site/ is a 404.
+RewriteRule ^$ site/index.html [END]
+RewriteCond %{DOCUMENT_ROOT}/site/$1 -f
+RewriteRule ^(.+)$ site/$1 [END]
+RewriteCond %{DOCUMENT_ROOT}/site/$1/index.html -f
+RewriteRule ^(.+?)/?$ site/$1/index.html [END]
+RewriteCond %{HTTP:Sec-Fetch-Mode} =navigate
+RewriteRule ^ site/index.html [END]
+RewriteRule ^(.*)$ site/$1 [END]
+
+# Rule 5. Some Apache packages ship `AddEncoding x-gzip .gz`, which would send the index
+# files with Content-Encoding: gzip, and browsers would gunzip them before the reader sees
+# them. RemoveEncoding undoes it here; remove that line from the server's own
+# configuration too if you can.
+RemoveEncoding .gz
+RemoveType .gz
+AddType application/gzip .gz
+AddType "application/json; charset=utf-8" .json
+AddType "text/plain; charset=utf-8" .txt .pub
+AddType "text/javascript; charset=utf-8" .js .mjs
+AddType application/wasm .wasm
+AddDefaultCharset utf-8
+
+# Rule 4: no on-the-fly compression of the data, nor of a .gz file anywhere (rule 5).
+SetEnvIf Request_URI "^/mirror/" no-gzip no-brotli
+SetEnvIf Request_URI "\.gz$" no-gzip no-brotli
+
+# Rule 6, by the request as the browser sent it, and the security headers stare.pub sends
+# (web/public/_headers).
+Header always set X-Content-Type-Options nosniff
+Header always set Referrer-Policy strict-origin-when-cross-origin
+Header set Cache-Control "public, max-age=0, must-revalidate"
+<If "%{THE_REQUEST} =~ m#^\S+ /(_astro/|data/citare/|vendor/pdfjs-|vendor/stare-search-|wasm/stare_wasm_bg\.[^?\s]+\.wasm[?\s]|wasm/stare_wasm\.[^?\s]+\.js[?\s]|mirror/idx/v/|mirror/data/crk/ledger/s/|mirror/data/cl/c/|mirror/data/pdf/[^?\s]+\.pdf[?\s])#">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+</If>

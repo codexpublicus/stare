@@ -1,5 +1,6 @@
 import { cacheGet, cacheSet, fetchCached, fetchCachedText } from './cache.js';
 import { indexUrl, zipUrl } from './sources.js';
+import { hasFeature, requireFeature } from './mirror.js';
 import { ClRecordError, fetchClRecord } from './cl.js';
 import { idxEntries, idxZipHint, readIdx, volumeCaseFiles } from './idx.js';
 import {
@@ -209,7 +210,7 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
     readIdx(reporter, number || cited, 0)
       .then((bytes) => idxZipHint(bytes, page, number ? cited : null))
       .then((hint) => {
-        if (!hint) return;
+        if (!hint || !hasFeature('text')) return;
         const span = seq === null || seq === 1 ? parseSpan(hint.zip) : null;
         if (span) fetchSpanText(hint.reporter || reporter, hint.folder || cited, span).catch(() => {});
         else if (!hint.zip) fetchZip(hint.reporter || reporter, hint.folder || cited);
@@ -290,6 +291,8 @@ async function resolveEntries(reporter, cited, page, entries, onStatus, seq) {
 // something other than those bytes, the whole zip is fetched as before (a 200 with the
 // whole zip is taken as that).
 async function resolveCap(reporter, volume, page, allCases, onStatus, seq, spans = null) {
+  // A copy of stare.pub without the case text (tier 1) says so in place (main.js).
+  requireFeature('text');
   onStatus('Fetching case data...');
 
   // If seq specified, pick that specific case; otherwise default to -01 (first).
@@ -460,6 +463,7 @@ export function spanZip(reporter, folder, spans, total, deps = {}) {
 // `cl/<cluster_id>`, `allCases` every record at the page.
 async function resolveCl(reporter, volume, page, entries, onStatus, seq) {
   const n = seq !== null && seq > 0 && seq <= entries.length ? seq : 1;
+  requireFeature('text');
   onStatus('Fetching case data...');
   let caseData;
   try {

@@ -1,0 +1,39 @@
+name: mirror-kit
+
+# The self-host kit's server configurations (mirror-kit/): Caddy, nginx and Apache, each
+# in its official image at a pinned tag, and compose.yaml as an operator runs it, against
+# a small copy laid out as a real one, checked against the six rules in
+# mirror-kit/README.md (scripts/mirror-kit/servers.test.mjs). It needs no secrets, so it
+# runs on fork pull requests too.
+
+on:
+  pull_request:
+    paths:
+      - mirror-kit/**
+      - scripts/mirror-kit/**
+      - .github/workflows/mirror-kit.yml
+  push:
+    branches:
+      - main
+    paths:
+      - mirror-kit/**
+      - scripts/mirror-kit/**
+      - .github/workflows/mirror-kit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  servers:
+    name: Kit servers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Check the server configurations
+        run: node --test scripts/mirror-kit/servers.test.mjs

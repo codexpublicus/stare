@@ -1,0 +1,70 @@
+# Caddy configuration for a self-hosted copy of stare.pub (mirror-kit/README.md).
+#
+# The copy's root holds site/ (a symlink to the site build), mirror/ (the data) and kit/
+# (this directory). / is served from site/, /mirror/ from mirror/, and /robots.txt from
+# kit/robots.txt. compose.yaml runs this file in the official caddy:2 image with the root
+# mounted at /srv/stare; outside Docker, set STARE_ROOT to the copy's root, or edit the
+# default below. STARE_LISTEN is the address to listen on (default :8080, plain HTTP; put
+# a hostname here instead to have Caddy get a certificate for it).
+#
+# The six rules every kit configuration implements (README.md, "What the server does"):
+# 1. Real files win.
+# 2. A browser navigation (Sec-Fetch-Mode: navigate) to a path no file matches gets
+#    /index.html with a 200, which opens /k/ and /c/ addresses in the reader; any other
+#    request for a missing path gets a 404.
+# 3. /mirror/ never falls back: a missing data file is a 404.
+# 4. Range requests work, and nothing under /mirror/ is compressed on the fly. This file
+#    has no `encode` directive, so nothing is compressed anywhere.
+# 5. .gz files are application/gzip with no Content-Encoding (the reader gunzips them
+#    itself); JSON and text are charset=utf-8.
+# 6. Content-hashed and immutable paths are cached for a year; everything else is
+#    `max-age=0, must-revalidate`.
+
+{
+	admin off
+}
+
+{$STARE_LISTEN::8080} {
+	# Rule 6, and the security headers stare.pub sends (web/public/_headers).
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		# The default, set only where the immutable rule below hasn't set one.
+		?Cache-Control "public, max-age=0, must-revalidate"
+	}
+	@immutable path_regexp immutable ^/(_astro/|data/citare/|vendor/pdfjs-|vendor/stare-search-|wasm/stare_wasm_bg\..+\.wasm$|wasm/stare_wasm\..+\.js$|mirror/idx/v/|mirror/data/crk/ledger/s/|mirror/data/cl/c/|mirror/data/pdf/.+\.pdf$)
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+	# Rule 5. file_server keeps a Content-Type that is already set.
+	@gz path *.gz
+	header @gz Content-Type application/gzip
+	@json path *.json
+	header @json Content-Type "application/json; charset=utf-8"
+	@text path *.txt *.pub
+	header @text Content-Type "text/plain; charset=utf-8"
+	@js path *.js *.mjs
+	header @js Content-Type "text/javascript; charset=utf-8"
+
+	# Rule 3: the data, as files and nothing else.
+	handle /mirror/* {
+		root * {$STARE_ROOT:/srv/stare}
+		file_server
+	}
+
+	handle /robots.txt {
+		root * {$STARE_ROOT:/srv/stare}/kit
+		file_server
+	}
+
+	# Rules 1 and 2: the site.
+	handle {
+		root * {$STARE_ROOT:/srv/stare}/site
+		@fallback {
+			header Sec-Fetch-Mode navigate
+			not file {path} {path}/index.html {path}/
+		}
+		rewrite @fallback /index.html
+		try_files {path} {path}/index.html
+		file_server
+	}
+}
