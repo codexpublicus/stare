@@ -1,6 +1,8 @@
 import { parseInput, resolve, extractCase, extractFile, getPageOrders } from './resolve.js';
 import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } from './ui.js';
-import { caseHash, getHashParams, setHash, onHashChange } from './router.js';
+import { caseHash, getHashParams, parseHash, setHash, onHashChange, replaceHash, routePath, setRoute } from './router.js';
+import { citationPath, clusters, keyPath, parseCasePath, pickPrinting, resolveKey } from './caseaddress.js';
+import { pdfJurisdiction } from './sources.js';
 import { aliasNoteHtml, processCitations, setupCiteHovers } from './citations.js';
 import { attachCiteNav } from './citenav.js';
 import { footnoteParagraphs, pageBreaks, pageMarker } from './pages.js';
@@ -191,7 +193,7 @@ function setCiteHash(n) {
   if (!p) return;
   const hash = caseHash(p.reporter, p.volume, p.page, p.seq, null, n);
   if (window.location.hash === hash) return;
-  history.replaceState(history.state, '', hash);
+  replaceHash(hash);
   lastResolvedHash = hash;
 }
 
@@ -432,6 +434,7 @@ async function showResolved(result, pin, cite, load, fromText = null) {
     currentResult = shownResult;
     setHash(result.reporter, result.volume, page, seq);
     lastResolvedHash = window.location.hash;
+    if (!routePath()) showKeyNotice(null);
     updateTopbar(caseData);
     updatePrevNext(result, caseFile);
     renderMultiNotice(multiEl, result.allCases, caseFile, switchCase);
@@ -503,6 +506,7 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
     if (result.alias) setHash(result.reporter, result.volume, result.page, result.seq, null);
     else setHash(reporter, result.volume, page, result.seq, pin, cite, cite ? null : view);
     lastResolvedHash = window.location.hash;
+    if (!routePath()) showKeyNotice(null);
     pendingView = result.alias || cite ? null : view;
     showResolved(result, result.alias ? null : pin, result.alias ? null : cite, load, fromText);
   } catch (err) {
@@ -512,6 +516,10 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
     // (i.e., this was a landing page search, not an inline edit). A WASM
     // failure stays on the reader's shell, where its Retry button is.
     if (landing.classList.contains('hidden') && !currentResult && !(err instanceof WasmLoadError)) {
+      if (routePath()) {
+        setRoute(null);
+        noIndex();
+      }
       showLanding();
       setStatus(err.message, true);
       landingBox.fill(fromText || '', { reporter, volume, page, seq });
@@ -519,6 +527,104 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
   } finally {
     if (load.current()) landingBtn.disabled = false;
   }
+}
+
+const SITE = 'https://stare.pub';
+const keyNotice = document.getElementById('key-notice');
+// Each openAddress call; a lookup that returns after another started is dropped.
+let addressSeq = 0;
+
+// Tells crawlers that render the page not to index it: the fallback serves the reader with
+// a 200 for an address that names nothing, so the page says so itself.
+function noIndex() {
+  if (document.head.querySelector('meta[name="robots"]')) return;
+  const meta = document.createElement('meta');
+  meta.name = 'robots';
+  meta.content = 'noindex';
+  document.head.appendChild(meta);
+}
+
+// The landing with `msg` as its error, for an address that names no case.
+function notFound(msg) {
+  loads.cancel();
+  setRoute(null);
+  noIndex();
+  showKeyNotice(null);
+  showLanding();
+  setStatus(msg, true);
+}
+
+function showKeyNotice(msg) {
+  if (!keyNotice) return;
+  keyNotice.textContent = msg || '';
+  keyNotice.classList.toggle('hidden', !msg);
+}
+
+// Opens a permanent address (#283): `/k/<key>/` from the minted-key ledger, `/c/.../` from
+// the per-volume index like a typed citation. `at` is parseCasePath's; `extra`, the hash's
+// params, for a place in the case (`/k/<key>/#a2d/31/647-01~c=3`).
+async function openAddress(at, extra = null) {
+  const seq = ++addressSeq;
+  if (at.kind === 'bad') {
+    notFound(at.prefix === 'k'
+      ? `${location.pathname} isn't a case key. A key looks like /k/us/dc/69/1943-05-11/.`
+      : `${location.pathname} isn't a citation address. One looks like /c/us/a2d/31/647/.`);
+    return;
+  }
+  landing.classList.add('hidden');
+  resolved.classList.remove('hidden');
+  showKeyNotice(null);
+  let target;
+  if (at.kind === 'c') {
+    // The index has no jurisdiction level yet (D97): a reporter's jurisdiction is the one
+    // its PDFs are filed under, and an address with another is corrected to it.
+    const jurisdiction = pdfJurisdiction(at.reporter);
+    const path = citationPath(jurisdiction, at.reporter, at.volume, at.page, at.n);
+    if (path !== location.pathname) history.replaceState(history.state, '', path + location.hash);
+    setRoute(path, SITE + path);
+    target = { reporter: at.reporter, volume: at.volume, page: at.page, seq: at.n };
+  } else {
+    setStatus('Looking up the case key...', false);
+    let hit;
+    try {
+      hit = await resolveKey(at.key);
+    } catch (e) {
+      if (seq !== addressSeq) return;
+      console.warn('Key lookup failed:', e);
+      notFound(`Couldn't reach the key ledger to look up ${at.key}. Check your connection and try again.`);
+      return;
+    }
+    if (seq !== addressSeq) return;
+    if (!hit.found) {
+      notFound(`stare.pub has no case with the key ${at.key}. A decision that's held for review or `
+        + 'that the key rules refuse has no key yet; try its citation instead.');
+      return;
+    }
+    // A replaced key names its decision's current key, which the address shows instead.
+    const path = keyPath(hit.current);
+    if (path !== location.pathname) history.replaceState(history.state, '', path + location.hash);
+    const printing = pickPrinting(hit.decision?.sources, hit.current);
+    if (!printing) {
+      const cl = clusters(hit.decision?.sources);
+      notFound(`The decision ${hit.current} has no printing stare.pub holds`
+        + (cl.length ? ` yet; its CourtListener record is https://www.courtlistener.com/opinion/${cl[0]}/.` : '.'));
+      return;
+    }
+    setRoute(path, SITE + path);
+    if (hit.provisional) {
+      showKeyNotice('This key is provisional: trustworthy sources disagree about a fact it is computed from, '
+        + 'so it may be corrected.');
+    }
+    target = printing;
+  }
+  landingInput.value = `${target.reporter} ${target.volume} ${target.page}`;
+  landingRoute.update();
+  // A place in the case the hash names, when it's the case the address opens.
+  const place = extra && extra.reporter === target.reporter && extra.volume === target.volume
+    && extra.page === target.page ? extra : null;
+  doResolve(target.reporter, target.volume, target.page, target.seq ?? place?.seq ?? null,
+    place?.pin ?? null, place?.cite ?? null,
+    place?.view ? { view: place.view, page: place.viewPage } : null);
 }
 
 // Where a box's text goes (D163): `{ cite, text }` for a case to open, `{ search }` for the
@@ -729,7 +835,7 @@ function setViewHash(view) {
   const hash = caseHash(p.reporter, p.volume, p.page, p.seq, null, view ? null : p.cite,
     view ? { view, page: viewPages[view] } : null);
   if (window.location.hash === hash) return;
-  history.replaceState(history.state, '', hash);
+  replaceHash(hash);
   lastResolvedHash = hash;
 }
 
@@ -852,6 +958,7 @@ onHashChange((params) => {
 // Handle back to empty hash (return to landing). A case still loading is dropped, so it
 // can't open over the landing when it arrives, and Forward opens the case again.
 window.addEventListener('hashchange', () => {
+  if (parseCasePath(location.pathname)) return;
   if (!window.location.hash || window.location.hash === '#') {
     loads.cancel();
     lastResolvedHash = '';
@@ -861,12 +968,18 @@ window.addEventListener('hashchange', () => {
 });
 
 // Auto-resolve from URL hash on load. A case opens on the reader's shell, as
-// index.astro's <head> script already showed it (data-route="case"), so the
-// landing never flashes; a lookup that fails goes back to the landing with
-// its error.
+// index.astro's <head> script already showed it (data-route="case"), so the landing never
+// flashes; a lookup that fails goes back to the landing with its error. A permanent
+// address (`/k/<key>/`, `/c/.../`, #283) opens the same way, and any other path the
+// single-page-application fallback served the reader for says there's nothing there.
 const initial = getHashParams();
+const initialPath = parseCasePath(location.pathname);
 document.documentElement.removeAttribute('data-route');
-if (initial) {
+if (initialPath) {
+  openAddress(initialPath, initial);
+} else if (location.pathname !== '/' && location.pathname !== '/index.html') {
+  notFound(`There's no page at ${location.pathname}.`);
+} else if (initial) {
   landing.classList.add('hidden');
   resolved.classList.remove('hidden');
   landingInput.value = `${initial.reporter} ${initial.volume} ${initial.page}`;
@@ -875,6 +988,15 @@ if (initial) {
   doResolve(initial.reporter, initial.volume, initial.page, initial.seq, initial.pin, initial.cite,
     initial.view ? { view: initial.view, page: initial.viewPage } : null, takeHandOff(window.location.hash));
 }
+
+// Back or Forward to a permanent address the page isn't showing opens it again (the ledger
+// and the index files are cached, so it's quick). One the page shows is the hashchange
+// handler's.
+window.addEventListener('popstate', () => {
+  const at = parseCasePath(location.pathname);
+  if (!at || routePath() === location.pathname) return;
+  openAddress(at, parseHash(location.hash));
+});
 
 // Fetch and compile the WASM in the background once the page has painted;
 // nothing waits on it until a feature needs it.

@@ -1,0 +1,25 @@
+{
+ "format": "stare-crk-ledger-shard",
+ "format_version": 1,
+ "shard": "us/pa/14",
+ "keys": [
+  {
+   "key": "us/pa/rpt.500-pa-524/1983-04-27~2",
+   "id": "050z7n5",
+   "status": "active",
+   "minted": "v2026.11.08",
+   "changed": "v2026.11.08"
+  }
+ ],
+ "decisions": [
+  {
+   "id": "050z7n5",
+   "key": "us/pa/rpt.500-pa-524/1983-04-27~2",
+   "sources": [
+    "cap:pa/500/0524-02",
+    "cl-cluster:2298483"
+   ],
+   "created": "v2026.11.08"
+  }
+ ]
+}

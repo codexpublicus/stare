@@ -30,7 +30,93 @@ import { pageKey, pageSegment } from './pagekey.js';
  * both.
  */
 export function getHashParams() {
-  return parseHash(window.location.hash);
+  return parseHash(window.location.hash || routeHash());
+}
+
+// The permanent address the page shows a case at (#283, caseaddress.js): `/k/<key>/` or
+// `/c/<jurisdiction>/<slug>/<volume>/<page>/`, with `hash`, the case it opened, as the
+// hash setHash first gave it (null until then). While the shown case is that one, the
+// address stays the path, with the hash only for a place in it (`~c=3`, `~v=pdf&p=3`, `@1023`);
+// moving to another case leaves the path for `/#<case>`. Null on `/`.
+let route = null;
+
+/**
+ * Shows cases at `path` from now on (null: at `/`), with `canonical`, an absolute URL, as
+ * the page's canonical link while it does (removed with the route).
+ */
+export function setRoute(path, canonical = null) {
+  route = path ? { path, hash: null } : null;
+  setCanonical(route ? canonical : null);
+}
+
+/** The route's path, or null. */
+export function routePath() {
+  return route?.path || null;
+}
+
+// The route's case hash when the address is the route's path with no hash, else ''.
+function routeHash() {
+  return route?.hash && window.location.pathname === route.path ? route.hash : '';
+}
+
+function setCanonical(href) {
+  const doc = globalThis.document;
+  if (!doc?.head) return;
+  let link = doc.head.querySelector('link[rel="canonical"]');
+  if (!href) {
+    link?.remove();
+    return;
+  }
+  if (!link) {
+    link = doc.createElement('link');
+    link.rel = 'canonical';
+    doc.head.appendChild(link);
+  }
+  link.href = href;
+}
+
+// Whether two hashes name the same case, whatever place in it they add.
+function sameCase(a, b) {
+  const p = parseHash(a);
+  const q = parseHash(b);
+  return !!p && !!q && p.reporter === q.reporter && p.volume === q.volume
+    && p.page === q.page && (p.seq || 1) === (q.seq || 1);
+}
+
+// setHash on a route: true when it handled the address.
+function setRouteHash(newHash) {
+  if (!route) return false;
+  if (!route.hash) route.hash = caseOnly(newHash);
+  if (sameCase(newHash, route.hash)) {
+    const target = newHash === route.hash ? route.path : `${route.path}${newHash}`;
+    if (window.location.pathname + window.location.hash !== target) {
+      history.replaceState(history.state, '', target);
+    }
+    return true;
+  }
+  // Another case: the address leaves the path. A link in the text already added the
+  // history entry (the hash is there), so that one is replaced.
+  const replace = window.location.hash === newHash;
+  setRoute(null);
+  if (replace) history.replaceState(history.state, '', `/${newHash}`);
+  else history.pushState(null, '', `/${newHash}`);
+  return true;
+}
+
+/**
+ * Replaces the address's hash with `hash` without a history entry or a hashchange: on a
+ * route showing its case, the route's path with `hash` only when it adds a place.
+ */
+export function replaceHash(hash) {
+  let target = hash;
+  if (route?.hash && sameCase(hash, route.hash)) target = hash === route.hash ? route.path : `${route.path}${hash}`;
+  history.replaceState(history.state, '', target);
+}
+
+// A case hash without its pin, cited place or page view.
+function caseOnly(hash) {
+  const p = parseHash(hash);
+  return p ? caseHash(p.reporter, p.volume, p.page, p.seq) : hash;
 }
 
 /** getHashParams for a given hash (`#a2d/31/647-01`), or null. */
@@ -100,6 +186,12 @@ export function caseHash(reporter, volume, page, seq, pin = null, cite = null, v
  */
 export function setHash(reporter, volume, page, seq, pin = null, cite = null, view = null) {
   const newHash = caseHash(reporter, volume, page, seq, pin, cite, view);
+  if (setRouteHash(newHash)) return;
+  // Off `/` with no route (an address that named nothing), a case goes to `/`.
+  if (window.location.pathname !== '/') {
+    history.pushState(null, '', `/${newHash}`);
+    return;
+  }
   if (window.location.hash !== newHash) {
     window.location.hash = newHash;
   }

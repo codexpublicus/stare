@@ -3,7 +3,14 @@
   "name": "stare-pub",
   "account_id": "441c9b9997aeedf42f0c48d5bdb996cb",
   "compatibility_date": "2026-09-01",
-  "assets": { "directory": "./web/dist" },
+  // Runs only for a request no file matches that isn't a browser navigation: a 404
+  // (worker/index.js). Navigations to such a path get index.html, the reader, from the
+  // fallback below without running it (#283, D147).
+  "main": "./worker/index.js",
+  "assets": {
+    "directory": "./web/dist",
+    "not_found_handling": "single-page-application"
+  },
   "workers_dev": true,
   "preview_urls": true,
   "routes": [{ "pattern": "stare.pub", "custom_domain": true }]

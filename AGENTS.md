@@ -19,6 +19,7 @@ crates/stare-site    — `stare-site export-citare-data` and `export-reporters`:
 crates/stare-wasm    — wasm-bindgen bindings for the website (same core as the CLI)
 data/                — committed index files (e.g. a2d/31.bin) and other build artifacts
 web/                 — Astro site: landing, about, brief checker, case viewer
+worker/              — the Worker's script: a 404 for non-navigation requests no file matches
 docs/plans/checklist.md             — Master checklist, iterate through this
 docs/plans/cap-preservation-plan.md — Original plan: outreach, risk assessment, data sources
 docs/plans/static-case-law-mirror.md — Mirror of static.case.law: status, file formats, aria2 setup
@@ -631,6 +632,42 @@ Switching between the cases on one page renders from the zip in memory and marks
 as its own, so it doesn't resolve the page again (#268). `web/e2e/caseswitch.spec.js`
 covers the three.
 
+### Permanent case addresses (#283, D147: `wrangler.jsonc`, `worker/index.js`, `web/public/js/caseaddress.js`)
+
+A decision's permanent address is `/k/<key>/`, its CRK key (D99, D121), and
+`/c/<jurisdiction>/<slug>/<volume>/<page>/` is a citation lookup (D97, D89), with
+`/<n>/` after the page for the nth case on a page several share (D59). Neither is a file.
+`wrangler.jsonc` sets `not_found_handling: "single-page-application"`: a browser
+navigation (`Sec-Fetch-Mode: navigate`) to a path no file matches gets `index.html`, the
+reader, without running any Worker code. Every other request no file matches (a crawler,
+a script, a fetch for a missing file) runs `worker/index.js`, which answers 404, as such a
+request got before; with no Worker script, Cloudflare would serve the reader with a 200 to
+those too. Real files always win: the Worker never runs for a path a file matches, and
+`assets.run_worker_first` must stay unset (`web/tests/routing.test.js` checks the contract
+of D146: one fallback, no `_redirects` or `_routes.json`).
+
+The reader reads the path (`parseCasePath`). A key resolves from the minted-key ledger on
+data.stare.pub: `latest.json` (fetched once a page), then the key's shard,
+`courts[court][fnv1a32(stem) % courts[court].length]`, kept in the browser cache's `bins`
+store since shards are immutable. A replaced key's row names its `current` key, and the
+address moves to it (`history.replaceState`); a key with no row says stare.pub has no case
+with it (held and refused decisions have no key); a provisional key shows `#key-notice`.
+The decision row's `cap:` sources are the printings: the one a `rpt.<volume>-<slug>-<page>`
+segment names, else the first outside the West regional reporters (`REGIONAL`; the ledger
+doesn't mark the official printing), else the first. A `/c/` address resolves like a typed
+citation through the per-volume index; its jurisdiction is corrected to the reporter's
+(`pdfJurisdiction`), since the index has no jurisdiction level yet.
+
+While the case an address opened is shown, the address stays the path, with the case hash
+after it only for a place in the case (`~c=3`, `~v=pdf&p=3`, `@1023`); another case leaves
+it for `/#<case>`, and Back returns to it (`setRoute`, `replaceHash` in `router.js`). The
+hash links (`#a2d/31/647-01`) work as before. The page's canonical link is the address
+while it's shown; a `/c/` address has no `/k/` canonical yet, since nothing maps a case
+file to its key without its shard. Any other path the fallback serves the reader for, and
+an address that names nothing, shows the landing with an error and adds
+`<meta name="robots" content="noindex">`. `web/e2e/addresses.spec.js` covers it with the
+ledger served from `web/tests/fixtures/crk/`.
+
 ### WASM module size (#73)
 
 `web/public/wasm/stare_wasm_bg.wasm` is built by wasm-pack with the release profile in
@@ -743,7 +780,9 @@ stare.pub has no email of its own. The published contact address is `info@codexp
 
 ### Site releases and deploys (`.github/workflows/`, `cliff.toml`, `wrangler.jsonc`)
 
-stare.pub is the `stare-pub` Worker (Workers Static Assets, `web/dist`), attached to the apex
+stare.pub is the `stare-pub` Worker (Workers Static Assets, `web/dist`, with `worker/index.js`
+answering only the requests no file matches that aren't navigations; see "Permanent case
+addresses"), attached to the apex
 as a Wrangler custom domain. The one sanctioned path to production is merging the release PR.
 Review workflow changes in PRs with care.
 
@@ -795,7 +834,7 @@ dispatch or a merged release PR, and the push, tag and dispatch jobs check
 - **The release PR** (`release-prepare.yml`, on every push to `main`): git-cliff collects the
   Conventional Commits since the last release tag and keeps one open PR from `release/next`,
   "chore(release): next site release", that updates `CHANGELOG.md`. Only `feat`, `fix` and
-  `perf` commits touching the site (`web/`, `crates/stare`, `crates/stare-wasm`, `crates/stare-site`, `wrangler.jsonc`,
+  `perf` commits touching the site (`web/`, `crates/stare`, `crates/stare-wasm`, `crates/stare-site`, `wrangler.jsonc`, `worker/`,
   `site.yml`, `.github/actions/build-site/` and `.github/actions/build-web/`) after the commit in `scripts/release-baseline` are releasable; docs, chore, ci, test, build, style and refactor are
   hidden, and with nothing releasable there's no PR. The version in the PR is a preview.
 - **Releasing** (`release.yml`, when the bot's release PR from `release/next` merges into
