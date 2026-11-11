@@ -10,12 +10,12 @@
 // loading shell, never a blank page.
 
 /**
- * True when `path` is a permanent case address the reader opens (#283): `/k/<key>/` or
- * `/c/<jurisdiction>/<slug>/<volume>/<page>/`, as caseaddress.js's `parseCasePath` reads
- * them, malformed ones included, which open the reader to say so.
+ * True when `path` is a permanent case address the reader opens (#283): `/k/<key>/`,
+ * `/c/<jurisdiction>/<slug>/<volume>/<page>/` or `/d/<id>/`, as caseaddress.js's
+ * `parseCasePath` reads them, malformed ones included, which open the reader to say so.
  */
 export function isCasePath(path) {
-  return /^\/[kc]\/./.test(String(path || ''));
+  return /^\/[kcd]\/./.test(String(path || ''));
 }
 
 /** True when router.js's `parseHash` would give a case for `hash` (`#a2d/31/647-01`). */
