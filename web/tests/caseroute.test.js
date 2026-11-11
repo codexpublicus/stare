@@ -105,7 +105,7 @@ describe('isCaseHash', () => {
 
 // The head script index.astro inlines (#262), run against a fake document.
 describe('caseRouteScript', () => {
-  function run(hash, links = null) {
+  function run(hash, links = null, pathname = '/') {
     let script = caseRouteScript(['https://idx.stare.pub', 'https://data.stare.pub']);
     if (links) script = script.replace(WASM_PRELOADS_MARK, `/*stare:wasm-preloads*/${JSON.stringify(links)}`);
     const added = [];
@@ -115,7 +115,7 @@ describe('caseRouteScript', () => {
       head: { appendChild: (l) => added.push(l) },
       createElement: () => ({}),
     };
-    new Function('location', 'document', script)({ hash }, document);
+    new Function('location', 'document', script)({ hash, pathname }, document);
     return { attrs, added };
   }
 
@@ -137,6 +137,15 @@ describe('caseRouteScript', () => {
       { rel: 'preload', as: 'fetch', href: '/wasm/stare_wasm_bg.0123456789abcdef.wasm', crossOrigin: 'anonymous' },
       { rel: 'modulepreload', href: '/wasm/stare_wasm.0123456789abcdef.js' },
     ]);
+  });
+
+  test('a permanent case address marks the route too (#283)', () => {
+    for (const path of ['/k/us/dc/69/1943-05-11/', '/c/us/a2d/31/647/']) {
+      const { attrs, added } = run('', null, path);
+      assert.equal(attrs['data-route'], 'case', path);
+      assert.equal(added.length, 2, path);
+    }
+    assert.deepEqual(run('', null, '/about').attrs, {});
   });
 
   test('the landing gets neither the mark nor any link', () => {

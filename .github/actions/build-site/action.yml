@@ -9,9 +9,6 @@ description: >
   repo to be checked out already.
 
 inputs:
-  ssh-private-key:
-    description: Deploy key for the private citare dependency (secrets.CITARE_DEPLOY_KEY)
-    required: true
   release:
     description: >
       The build's label, shown in the footer: the release tag, main-<sha>, or
@@ -26,10 +23,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
-      with:
-        ssh-private-key: ${{ inputs.ssh-private-key }}
-
     # The toolchain pinned in rust-toolchain.toml, which also names the
     # wasm32 target and clippy and rustfmt for rustup
     - name: Read the pinned Rust toolchain

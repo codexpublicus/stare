@@ -79,6 +79,8 @@
    preloaded Source Serif 4 is put to use at the first paint, not when the case arrives. */
 .status-line { padding: 6px 16px; font-family: var(--font-text); font-size: 13px; color: var(--status-text); min-height: 1.4em; }
 .status-line.error { color: var(--error-text); background: var(--error-bg); border-bottom: 1px solid var(--error-border); }
+/* A provisional key's notice on a /k/ address (#283), above the reader, set before the case loads. */
+.key-notice { margin: 0; padding: 6px 16px; font-family: var(--font-text); font-size: 13px; color: var(--text); background: var(--status-bg); border-bottom: 1px solid var(--border); }
 
 /* The page views (public/js/pageshell.js, #246): the Archival PDF and the Raw Scans fill the
    reader column; the toolbar stays at the top and the page scrolls under it when zoomed. */

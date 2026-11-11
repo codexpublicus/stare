@@ -19,6 +19,7 @@ crates/stare-site    — `stare-site export-citare-data` and `export-reporters`:
 crates/stare-wasm    — wasm-bindgen bindings for the website (same core as the CLI)
 data/                — committed index files (e.g. a2d/31.bin) and other build artifacts
 web/                 — Astro site: landing, about, brief checker, case viewer
+worker/              — the Worker's script: a 404 for non-navigation requests no file matches
 docs/plans/checklist.md             — Master checklist, iterate through this
 docs/plans/cap-preservation-plan.md — Original plan: outreach, risk assessment, data sources
 docs/plans/static-case-law-mirror.md — Mirror of static.case.law: status, file formats, aria2 setup
@@ -113,6 +114,14 @@ One gzipped text file per volume as cited, for every source (`docs/plans/courtli
   aliases; they aren't in `reporters`, and a miss in one links out like any volume
   stare.pub doesn't hold. Readers from before aliases skip the lines as malformed and
   ignore `aliases`, so the format stays `idx: 1`.
+- Zip spans (D180, #313): a `cap` line, an alias's too, can end with
+  `zip=<offset>:<length>:<method>`, where its case JSON's entry is in the zip the ref names
+  (the first byte of compressed data past the local header, the compressed length, 8 for
+  deflate or 0 for stored): `51,cap,0051-01,zip=39997:8435:8`. The index builder writes it
+  after `via` from v2026.11.05.3. `idx::ZipSpan` parses it onto `Entry::zip`, `line()`
+  writes it, and `EntryView` (so `lookup_idx`) hands it to JS as `{ offset, length,
+  method }`; a value that isn't a span is dropped without losing the line. Optional, so the
+  format stays `idx: 1`.
 - A part ends at the first page boundary after 1,000 lines; part 0 then starts with
   `#parts,<first page of part 1>,...`, and readers fetch the part a page falls in.
 - Readers trim, skip blank and `#` lines, skip (and report) malformed lines, and skip a
@@ -507,6 +516,17 @@ query that fails only because a superseded one's shared shard load was aborted r
 more (the client drops a failed load from its cache). A query still running after 8 s, or
 one that fails, says so in the status line with a Try again button.
 
+Snippets (D171, #313): once a page of results is on screen, `snippets.js` loads and gives
+each card, as it comes within 200px of the viewport, a two-line passage of the decision's
+own text around the query's words, marked as the tokenizer folds them (`foldedWords`). A
+CAP case is read by its index line's zip span, one Range request, with the index parsed in
+JS (`idxEntriesJs`), so the WASM never loads; a CourtListener card fetches its record whole,
+as the reader does; a line without a span, or a volume the manifest doesn't list, gets no
+snippet and no request. At most six at once, cached like the reader's reads, aborted by a
+new query. The line's height is kept from the first render (the skeleton cards have it
+too), so a snippet arriving, or never arriving, moves nothing. `search.spec.js` serves
+made-up texts behind the fixture tree's cards (`web/tests/fixtures/snippettexts.js`).
+
 The status line says the count plainly ("137 matches, page 1 of 7", "Top 4,352 matches"
 when the count is the best of what the tiers read for a word past the term index's 4,352
 postings) and isn't a live region; `#search-live` announces once per result set. The
@@ -523,7 +543,7 @@ at phone and laptop sizes, with and without filters and a note.
 
 ### The browser cache (#269: `web/public/js/cache.js`)
 
-Index files, case zips and CourtListener records are cached in IndexedDB (`stare-cache`,
+Index files, case zips, the case entries read by zip span and CourtListener records are cached in IndexedDB (`stare-cache`,
 version 3), or in memory where it can't be used. The page opens one connection and closes
 it on `versionchange`, so another tab's upgrade isn't blocked; an open that fails, is
 blocked or doesn't answer within `limits.openTimeoutMs` (3 s) falls back to memory for the
@@ -607,9 +627,37 @@ them and still loads the WASM late, at low priority.
 `resolve()` (`web/public/js/resolve.js`) awaits the WASM only where it's used: the manifest
 and the volume's `.idx.gz` are fetched straight away, and `idxZipHint` (`idx.js`) reads the
 index file in JS to guess the case's zip and start it, while the WASM's `lookup_idx` still
-decides what's shown. The text itself still waits for the WASM (`extract_case`), so on slow
-4G the WASM's download is most of the wait; rendering a CAP case's text from the zip's HTML
+decides what's shown. The text itself still waits for the WASM (`parse_case_json`, or `extract_case` from a
+whole zip), so on slow
+4G the WASM's download is most of the wait on a first visit; rendering a CAP case's text
 without it is the next step.
+
+When the case's line has a zip span (D180, #313), the reader doesn't fetch the zip at all:
+`idxZipHint` hands the span over before the WASM is in, and `zipspan.js` fetches
+`bytes=<offset>-<offset+length-1>` from data.stare.pub (an explicit range is
+CORS-safelisted, so no preflight) and inflates it with `DecompressionStream('deflate-raw')`.
+`readBySpan` in resolve.js parses it with `parse_case_json`, and the previous and next
+buttons come from the volume's index lines (`volumeCaseFiles`, every part of a split
+volume). The result has no `zipData` but `zip` (`spanZip`), which reads the rest by range
+when it's wanted: the case's `html/<case>.html` for the page markers and footnotes after the
+text shows (the directory from the zip's tail, an explicit range from the size the span's
+`Content-Range` gave, then the entry; the reader draws the text again with them and then
+goes to a pin cite's page), another case of the page by its own span, and the page orders
+from `metadata/CasesMetadata.json` (`volumePageOrders`, cached per volume) for the sidebar's
+PDF link only once the link is pointed at, focused or touched. The page views fetch the
+whole zip, as before, when one opens. The span's bytes and the HTML are cached in the
+`zips` store under `<base>span/<slug>/<folder>.zip@<span>`, so a build that reads a
+corrected zip, and writes new spans, never meets a stale entry. A line without a span, a
+span that isn't answered with exactly its bytes, or one that doesn't inflate falls back to
+the whole zip quietly; a 200 with the whole zip is read as that zip. Measured on 2026-11-10 on the PR preview
+([stare#318](https://github.com/codexpublicus/stare/pull/318)) against the main preview,
+ten cases in ten volumes opened one after another, Chromium with its cache off: the zips
+cost 10 requests and 14,763 KB before and 32 requests and 1,156 KB after (151 KB of it the
+ten case JSONs, the rest the directories and HTML for the page markers); the text of a case
+after the first showed in a median 0.19 to 0.28 s against 0.20 s on a fast connection, and
+1.2 s against 8.8 s on DevTools' Slow 4G, where the first case's text took 7.8 s against
+22.6 s. Opened again, nothing is fetched for a case's zip, where before each cost a HEAD.
+`web/e2e/zipspan.spec.js` covers the path and its fallbacks on the live index.
 
 The case view is one flex column the height of the window (`#resolved`, `100dvh`): the top
 bar, then the reader and sidebar in what's left. The loading line and the WASM bar sit over
@@ -630,6 +678,42 @@ aborts. Back to the landing ends the load under way and clears `#landing-status`
 Switching between the cases on one page renders from the zip in memory and marks the hash
 as its own, so it doesn't resolve the page again (#268). `web/e2e/caseswitch.spec.js`
 covers the three.
+
+### Permanent case addresses (#283, D147: `wrangler.jsonc`, `worker/index.js`, `web/public/js/caseaddress.js`)
+
+A decision's permanent address is `/k/<key>/`, its CRK key (D99, D121), and
+`/c/<jurisdiction>/<slug>/<volume>/<page>/` is a citation lookup (D97, D89), with
+`/<n>/` after the page for the nth case on a page several share (D59). Neither is a file.
+`wrangler.jsonc` sets `not_found_handling: "single-page-application"`: a browser
+navigation (`Sec-Fetch-Mode: navigate`) to a path no file matches gets `index.html`, the
+reader, without running any Worker code. Every other request no file matches (a crawler,
+a script, a fetch for a missing file) runs `worker/index.js`, which answers 404, as such a
+request got before; with no Worker script, Cloudflare would serve the reader with a 200 to
+those too. Real files always win: the Worker never runs for a path a file matches, and
+`assets.run_worker_first` must stay unset (`web/tests/routing.test.js` checks the contract
+of D146: one fallback, no `_redirects` or `_routes.json`).
+
+The reader reads the path (`parseCasePath`). A key resolves from the minted-key ledger on
+data.stare.pub: `latest.json` (fetched once a page), then the key's shard,
+`courts[court][fnv1a32(stem) % courts[court].length]`, kept in the browser cache's `bins`
+store since shards are immutable. A replaced key's row names its `current` key, and the
+address moves to it (`history.replaceState`); a key with no row says stare.pub has no case
+with it (held and refused decisions have no key); a provisional key shows `#key-notice`.
+The decision row's `cap:` sources are the printings: the one a `rpt.<volume>-<slug>-<page>`
+segment names, else the first outside the West regional reporters (`REGIONAL`; the ledger
+doesn't mark the official printing), else the first. A `/c/` address resolves like a typed
+citation through the per-volume index; its jurisdiction is corrected to the reporter's
+(`pdfJurisdiction`), since the index has no jurisdiction level yet.
+
+While the case an address opened is shown, the address stays the path, with the case hash
+after it only for a place in the case (`~c=3`, `~v=pdf&p=3`, `@1023`); another case leaves
+it for `/#<case>`, and Back returns to it (`setRoute`, `replaceHash` in `router.js`). The
+hash links (`#a2d/31/647-01`) work as before. The page's canonical link is the address
+while it's shown; a `/c/` address has no `/k/` canonical yet, since nothing maps a case
+file to its key without its shard. Any other path the fallback serves the reader for, and
+an address that names nothing, shows the landing with an error and adds
+`<meta name="robots" content="noindex">`. `web/e2e/addresses.spec.js` covers it with the
+ledger served from `web/tests/fixtures/crk/`.
 
 ### WASM module size (#73)
 
@@ -734,27 +818,28 @@ Gorsuch library is at gorsuch.codexpublicus.org.
 Shared Cloudflare values come from the org's infrastructure stack (Pulumi), not from any
 per-site config. That stack owns stare.pub's zone and DNS, the `stare-pub-idx` R2 bucket and
 `idx.stare.pub` (since 2026-09-27; see codexpublicus/stare#3), the `codex-data` R2 bucket, the
-Workers deploy token, the citare deploy key and the three Actions secrets that carry them
-(`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CITARE_DEPLOY_KEY`), plus
-`CITARE_DEPLOY_KEY` again as a Dependabot secret. This repo runs no
-Pulumi of its own.
+Workers deploy token and the two Actions secrets that carry it (`CLOUDFLARE_API_TOKEN`,
+`CLOUDFLARE_ACCOUNT_ID`). citare is public and the build fetches it over https, so no deploy
+key is needed. This repo runs no Pulumi of its own.
 
 stare.pub has no email of its own. The published contact address is `info@codexpublicus.org`.
 
 ### Site releases and deploys (`.github/workflows/`, `cliff.toml`, `wrangler.jsonc`)
 
-stare.pub is the `stare-pub` Worker (Workers Static Assets, `web/dist`), attached to the apex
+stare.pub is the `stare-pub` Worker (Workers Static Assets, `web/dist`, with `worker/index.js`
+answering only the requests no file matches that aren't navigations; see "Permanent case
+addresses"), attached to the apex
 as a Wrangler custom domain. The one sanctioned path to production is merging the release PR.
 Review workflow changes in PRs with care.
 
 Every job runs on GitHub-hosted runners (`runs-on: ubuntu-24.04`), with a timeout. Toolchains
 come from their setup actions (`setup-node`, `rust-toolchain`, `setup-uv`); the image has the C
-toolchain, `pkg-config` and `ssh` the build needs. The Playwright suite installs Chromium's
+toolchain and `pkg-config` the build needs. The Playwright suite installs Chromium's
 headless shell itself, caches it under the image's `ImageOS` and `ImageVersion`, checks its
 shared libraries with `ldd` and runs `playwright install-deps` only for any the image lacks.
-A pull request from a fork gets no secrets, and the build needs `CITARE_DEPLOY_KEY` to fetch
-the private citare dependency over ssh, so a fork's PR runs only site.yml's "Fork PR (not
-built)" job, which says so; a maintainer pushes the branch here to build and preview it.
+The build needs no secrets, so a pull request from a fork runs the same checks and build in
+site.yml's "Build fork PR (no preview)" job; it gets no secrets, so no preview or smoke test,
+and a maintainer pushes the branch here to preview it.
 Every job that uses a secret is limited to same-repository PRs, pushes to `main`, a tag, a
 dispatch or a merged release PR, and the push, tag and dispatch jobs check
 `github.repository` so a fork's copy of a workflow does nothing. No workflow may run on
@@ -770,9 +855,8 @@ dispatch or a merged release PR, and the push, tag and dispatch jobs check
   (`https://<version>-stare-pub.nick-441.workers.dev`), then run the Playwright smoke suite
   (`web/e2e/`, `.github/actions/smoke-test`) against that URL. Dependabot's PRs stop after
   the build: a workflow Dependabot triggers sees only Dependabot secrets, and the infrastructure
-  stack stores
-  `CITARE_DEPLOY_KEY` there but not the Workers token, since a dependency bump runs the new
-  version's build scripts and the token can deploy production.
+  stack stores no Workers token there, since a dependency bump runs the new version's build
+  scripts and the token can deploy production.
 - **Which smoke specs a PR runs** (#294): `web/e2e/inputs.js` lists each spec's inputs (the
   files it tests, the WASM, citare's bundle and the reporter map as built, and the live index
   and scans manifests), and `web/e2e/select.mjs` hashes them after the build. A PR skips a
@@ -795,7 +879,7 @@ dispatch or a merged release PR, and the push, tag and dispatch jobs check
 - **The release PR** (`release-prepare.yml`, on every push to `main`): git-cliff collects the
   Conventional Commits since the last release tag and keeps one open PR from `release/next`,
   "chore(release): next site release", that updates `CHANGELOG.md`. Only `feat`, `fix` and
-  `perf` commits touching the site (`web/`, `crates/stare`, `crates/stare-wasm`, `crates/stare-site`, `wrangler.jsonc`,
+  `perf` commits touching the site (`web/`, `crates/stare`, `crates/stare-wasm`, `crates/stare-site`, `wrangler.jsonc`, `worker/`,
   `site.yml`, `.github/actions/build-site/` and `.github/actions/build-web/`) after the commit in `scripts/release-baseline` are releasable; docs, chore, ci, test, build, style and refactor are
   hidden, and with nothing releasable there's no PR. The version in the PR is a preview.
 - **Releasing** (`release.yml`, when the bot's release PR from `release/next` merges into
@@ -807,7 +891,7 @@ dispatch or a merged release PR, and the push, tag and dispatch jobs check
   ran cargo fmt, clippy, the tests and the smoke suite on that exact commit, and reruns only
   the Astro build (`.github/actions/build-web`), since the footer's tag and the changelog
   regenerated for it differ from the main preview's. It has no git credentials on disk while
-  npm runs, and no citare deploy key at all. The artifact is kept 30 days, so re-running a
+  npm runs. The artifact is kept 30 days, so re-running a
   release older than that fails at the download. A second job, which runs no build code,
   creates the tag on the merge commit through the API (refusing if it exists elsewhere),
   refuses if a newer release tag exists, creates the GitHub Release with the git-cliff notes,

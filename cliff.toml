@@ -68,6 +68,7 @@ include_paths = [
   "crates/stare-wasm/**",
   "crates/stare-site/**",
   "wrangler.jsonc",
+  "worker/**",
   ".github/workflows/site.yml",
   ".github/actions/build-site/**",
   ".github/actions/build-web/**",

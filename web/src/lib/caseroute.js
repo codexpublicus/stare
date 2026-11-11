@@ -9,6 +9,15 @@
 // once it has decided, so a hash this gets wrong costs a moment of the
 // loading shell, never a blank page.
 
+/**
+ * True when `path` is a permanent case address the reader opens (#283): `/k/<key>/` or
+ * `/c/<jurisdiction>/<slug>/<volume>/<page>/`, as caseaddress.js's `parseCasePath` reads
+ * them, malformed ones included, which open the reader to say so.
+ */
+export function isCasePath(path) {
+  return /^\/[kc]\/./.test(String(path || ''));
+}
+
 /** True when router.js's `parseHash` would give a case for `hash` (`#a2d/31/647-01`). */
 export function isCaseHash(hash) {
   const s = String(hash || '').replace(/^#/, '');
@@ -55,7 +64,7 @@ export function addLinks(links, doc) {
 }
 
 /**
- * The head script for index.astro: on a case hash, marks <html> data-route="case" and
+ * The head script for index.astro: on a case hash or a permanent case address, marks <html> data-route="case" and
  * starts what opening the case will need with the HTML, before main.js and its imports
  * have loaded (#262): connections to the index and data hosts (`preconnects`, hrefs),
  * and the WASM module, its glue, its build info and citare's data bundle, which the
@@ -65,6 +74,6 @@ export function addLinks(links, doc) {
  */
 export function caseRouteScript(preconnects) {
   const links = preconnects.map((href) => ({ rel: 'preconnect', href, crossorigin: true }));
-  return `try { if ((${isCaseHash})(location.hash)) { document.documentElement.setAttribute('data-route', 'case'); `
+  return `try { if ((${isCasePath})(location.pathname) || (${isCaseHash})(location.hash)) { document.documentElement.setAttribute('data-route', 'case'); `
     + `(${addLinks})(${JSON.stringify(links)}.concat(${WASM_PRELOADS_MARK}), document); } } catch (e) {}`;
 }

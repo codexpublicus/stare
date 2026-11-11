@@ -77,3 +77,13 @@ does (`src/vendor/stare-search-format2/README.md`).
 `collection/` holds index build v2026.10.26.2's `manifest.json`, `report.json` and
 `search/facets.json` from idx.stare.pub, trimmed to the fields `collectionFromIndex`
 (`web/src/lib/collection-read.js`) reads, for `web/tests/collection.test.js`.
+
+# Key ledger fixtures
+
+`crk/` is the minted-key ledger as data.stare.pub published it at `crk/ledger/` (version
+v2026.11.08), cut down for `caseaddress.test.js` and `e2e/addresses.spec.js`: `latest.json`
+with only the `us/dc` and `us/pa` courts' shard lists, and two shards, stored as plain JSON
+(the spec gzips them as it serves them), each with only the rows the tests use. One row is
+made up: `us/dc/69/1943-05-11~9`, a `replaced` key whose `current` is
+`us/dc/69/1943-05-11` (D'Elia & Marks Co. v. Lyon, 31 A.2d 647), since the first version
+replaced no key. Its stem is the active key's, so it's in the same shard.
