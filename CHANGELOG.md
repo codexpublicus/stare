@@ -2,6 +2,15 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
+## v2026.11.11.1 - 2026-11-11
+
+### Features
+
+- web: open /k/<key>/ and /c/ addresses in the reader
+- web: open CAP cases and search snippets by the index's zip spans, one Range request each
+- web: open /d/<id>/ decision addresses in the reader
+- self-host mirror kit and the reader on a self-hosted copy
+
 ## v2026.11.05.1 - 2026-11-05
 
 ### Fixes
