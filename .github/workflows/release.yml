@@ -18,7 +18,10 @@ name: release
 #   5. create the tag on the merge commit through the API, refusing if it exists
 #      elsewhere, and the GitHub Release with the git-cliff notes;
 #   6. deploy production (stare.pub) with wrangler;
-#   7. dispatch release-prepare.yml so the release PR and CHANGELOG.md catch up.
+#   7. attach the deployed web/dist to the GitHub Release as a deterministic
+#      stare-site-<tag>.tar.gz and its .sha256, so a release's exact build
+#      outlives the workflow artifacts (the mirror release build packs it);
+#   8. dispatch release-prepare.yml so the release PR and CHANGELOG.md catch up.
 #
 # The tag, release and deploy share one job, and nothing listens for
 # `push: tags` or `release`, because a tag or release created with GITHUB_TOKEN
@@ -322,6 +325,37 @@ jobs:
           cp -R "$RUNNER_TEMP/release/dist" web/dist
           npx --yes wrangler@4.141.0 deploy --tag "$VERSION" --message "Release $VERSION"
           echo "Deployed $VERSION ($SHA) to https://stare.pub" >> "$GITHUB_STEP_SUMMARY"
+
+      # The exact files deployed above, as a durable release asset. Deterministic:
+      # sorted names, owner 0, modes normalized, every mtime the merge commit's
+      # commit time, pax headers without atime/ctime, and gzip without a name or
+      # time, so the same web/dist always packs to the same bytes. Paths are
+      # relative to web/dist (./index.html, ./_astro/...). A re-run replaces the
+      # asset with the build it deployed.
+      - name: Attach the built site to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          name="stare-site-$VERSION.tar.gz"
+          assets="$RUNNER_TEMP/site-asset"
+          rm -rf "$assets"
+          mkdir -p "$assets"
+          epoch=$(git log -1 --format=%ct "$SHA")
+          LC_ALL=C tar --sort=name --format=posix \
+            --pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime \
+            --mtime="@$epoch" --owner=0 --group=0 --numeric-owner \
+            --mode='u+rwX,go+rX,go-w' \
+            -C "$RUNNER_TEMP/release/dist" -cf - . \
+            | gzip -n -9 > "$assets/$name"
+          (cd "$assets" && sha256sum "$name" > "$name.sha256")
+          cat "$assets/$name.sha256"
+          gh release upload "$VERSION" "$assets/$name" "$assets/$name.sha256" --clobber
+          # Read it back: the published asset must be the file packed here.
+          mkdir "$assets/check"
+          gh release download "$VERSION" --pattern "$name" --dir "$assets/check"
+          (cd "$assets/check" && sha256sum -c "../$name.sha256")
+          echo "Attached $name ($(cut -d' ' -f1 "$assets/$name.sha256"))" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Refresh the release PR
         env:
