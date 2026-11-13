@@ -1,7 +1,7 @@
 {
-  "index_version": "v2026.11.05.3",
-  "index_generated_at": "2026-11-05T15:05:48Z",
-  "decisions": 7783826,
+  "index_version": "v2026.10.26.2",
+  "index_generated_at": "2026-10-26T12:54:50Z",
+  "decisions": 7820940,
   "first_year": 1658,
   "last_year": 2026,
   "cap": {
@@ -14,8 +14,8 @@
   },
   "courtlistener": {
     "export": "2026-09-30",
-    "records": 863228,
-    "records_without_lines": 1695
+    "records": 900342,
+    "records_without_lines": 16059
   },
   "years_ignored": [
     {
@@ -23,5 +23,5 @@
       "decisions": 1
     }
   ],
-  "source": "Read from idx.stare.pub/v/v2026.11.05.3/ by web/scripts/collection.mjs: decisions is CAP's cases (report.json totals.cases) plus the CourtListener records the build published (idx.cl_input.records); first_year and last_year are the range of search/facets.json years, over both sources, up to the CourtListener export's year; indexed_volumes is manifest.json volumes. CAP's volumes and years are CAP_RELEASE in web/src/lib/collection-read.js, counted from the release that report.json's build.cap_release names."
+  "source": "Read from idx.stare.pub/v/v2026.10.26.2/ by web/scripts/collection.mjs: decisions is CAP's cases (report.json totals.cases) plus the CourtListener records the build published (idx.cl_input.records); first_year and last_year are the range of search/facets.json years, over both sources, up to the CourtListener export's year; indexed_volumes is manifest.json volumes. CAP's volumes and years are CAP_RELEASE in web/src/lib/collection-read.js, counted from the release that report.json's build.cap_release names."
 }
