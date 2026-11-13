@@ -1,5 +1,5 @@
 /* The shared Codex Publicus footer: styles for footer/footer.html (see footer/README.md).
-   One quiet line: the Codex Publicus lead, the project's accounts as icons, then the site's own line if it has one.
+   One quiet line: the Codex Publicus lead and the project's accounts as icons, with the site's own line, if it has one, on the row below.
    Self-contained: every rule is scoped to .cp-footer, so a site can load it beside its own CSS.
    The site supplies Source Serif 4; the stack falls back without it.
    Theme: prefers-color-scheme, overridden by data-theme="light" or data-theme="dark" on <html>.
@@ -47,22 +47,17 @@
 .cp-footer a { color: inherit; }
 .cp-footer a:hover { color: var(--cp-accent); }
 
-.cp-footer-lead { white-space: nowrap; }
-.cp-footer-lead a { text-decoration: none; }
-.cp-footer-of + a { margin-left: 0.15em; }
+/* The lead's pieces are centred on the line, as the icons are, so the mark sits level with
+   the text in any face; a baseline offset suits only the face it was tuned for. */
+.cp-footer-lead { display: inline-flex; align-items: center; gap: 0.4em; white-space: nowrap; }
+.cp-footer-lead a { display: inline-flex; align-items: center; gap: 0.35em; text-decoration: none; }
 .cp-footer-name {
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
   text-underline-offset: 0.15em;
 }
 .cp-footer-lead a:hover .cp-footer-name { text-decoration-color: currentColor; }
-.cp-footer-mark {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  margin-right: 0.35em;
-  vertical-align: -3px;
-}
+.cp-footer-mark { display: block; flex: none; width: 16px; height: 16px; }
 .cp-footer .cp-ink { fill: currentColor; }
 .cp-footer .cp-cut { fill: var(--cp-ground); }
 
@@ -76,4 +71,6 @@
 }
 .cp-footer-icon svg { display: block; width: 1rem; height: 1rem; fill: currentColor; }
 
-.cp-footer-line { margin: 0; }
+/* A site's line starts its own row under the lead and icons, so it doesn't move between rows
+   as its width changes, and it takes the footer's type over a page's own paragraph rules. */
+.cp-footer .cp-footer-line { flex-basis: 100%; margin: 0; font: inherit; color: inherit; }
