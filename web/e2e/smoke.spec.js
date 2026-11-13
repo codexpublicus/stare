@@ -1993,7 +1993,7 @@ test.describe('from a cited case to where the text cites it (#159)', () => {
     await expect(e.locator('.cited-count')).toHaveText('2×');
     await expect(e.locator('.cited-case')).toHaveText('✓ 138 U.S. 529 (1×)');
     await expect(e.locator('.cited-also')).toHaveText('Also cited as Id. (1×)');
-    await e.getByRole('button', { name: /^Show where the text cites 138 U\.S\. 529/ }).focus();
+    await e.getByRole('button', { name: /show where the text cites 138 U\.S\. 529$/ }).focus();
     await page.keyboard.press(']');
     await expect(page.locator('#check-rendered .cite-place-current')).toHaveText('138 U.S. 529');
     await page.keyboard.press(']');
