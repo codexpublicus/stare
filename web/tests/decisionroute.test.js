@@ -108,11 +108,13 @@ describe('the table', () => {
   });
 
   test('a decision with a CAP printing resolves to its printings and key (D208)', async () => {
-    assert.deepEqual(capIn(SHARD_9, '01cd294'), { key: 'us/dc/69/1943-05-11', sources: ['cap:a2d/31/0647-01'] });
+    assert.deepEqual(capIn(SHARD_9, '01cd294'), {
+      key: 'us/dc/69/1943-05-11', sources: ['cap:a2d/31/0647-01'], clusters: [5123106],
+    });
     assert.equal(capIn(SHARD_9, '01cm306'), null);
     assert.equal(capIn({ cap: { x: { sources: ['cl-cluster:1'] } } }, 'x'), null);
     assert.deepEqual(await resolveDecision('01cd294', { loadShard: async () => SHARD_9 }), {
-      found: true, cap: { key: 'us/dc/69/1943-05-11', sources: ['cap:a2d/31/0647-01'] },
+      found: true, cap: { key: 'us/dc/69/1943-05-11', sources: ['cap:a2d/31/0647-01'], clusters: [5123106] },
     });
   });
 

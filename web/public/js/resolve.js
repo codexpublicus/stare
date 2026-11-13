@@ -278,7 +278,9 @@ async function resolveEntries(reporter, cited, page, entries, onStatus, seq) {
     const own = entries.filter((e) => e.source === 'cap' && !e.reporter && (e.folder || null) === folder);
     const allCases = own.map((e) => e.case_file);
     const spans = new Map(own.map((e) => [e.case_file, e.zip]));
-    return resolveCap(reporter, folder || cited, page, allCases, onStatus, seq, spans);
+    // The page's entries, for the case's other printings (altsources.js).
+    const result = await resolveCap(reporter, folder || cited, page, allCases, onStatus, seq, spans);
+    return { ...result, pageEntries: entries };
   }
   return resolveCl(reporter, cited, page, entries.filter((e) => e.source === 'cl'), onStatus, seq);
 }

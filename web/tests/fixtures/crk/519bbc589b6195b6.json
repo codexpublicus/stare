@@ -1,0 +1,26 @@
+{
+ "format": "stare-crk-ledger-shard",
+ "format_version": 1,
+ "shard": "us/pa/0",
+ "keys": [
+  {
+   "key": "us/pa/0007e.d.appealdocket1997/1998-05-19",
+   "id": "04ypkyx",
+   "status": "active",
+   "minted": "v2026.11.08",
+   "changed": "v2026.11.08"
+  }
+ ],
+ "decisions": [
+  {
+   "id": "04ypkyx",
+   "key": "us/pa/0007e.d.appealdocket1997/1998-05-19",
+   "sources": [
+    "cap:a2d/711/1003-01",
+    "cap:pa/551/0552-01",
+    "cl-cluster:2162554"
+   ],
+   "created": "v2026.11.08"
+  }
+ ]
+}

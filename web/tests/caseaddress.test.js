@@ -160,7 +160,10 @@ describe('resolveInShard', () => {
         { id: '000003', sources: ['cap:a2d/1/0001-01', 'cl-cluster:9'] },
       ],
     };
-    assert.equal(resolveInShard(shard, 'us/x/a/2000-01-01').decision.id, '000003');
+    const r = resolveInShard(shard, 'us/x/a/2000-01-01');
+    assert.equal(r.decision.id, '000003');
+    // And the decisions merged into it come with it, for its other sources.
+    assert.deepEqual(r.merged.map((d) => d.id), ['000001']);
   });
 });
 
