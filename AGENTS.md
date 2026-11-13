@@ -613,6 +613,41 @@ typeahead's; one main.js imports statically, where the guard's message must appe
 Analytics' beacon, put into each page's HTML at the end of `<body>` (where Cloudflare's
 automatic injection puts it) and in `<head>`, where the guard's message must never show.
 
+### A fetch that fails (#254, #271)
+
+A failure leaves the part of the page it broke saying so, plainly, with a Retry where trying
+again makes sense, and the rest working. `ui.js`'s `showNotice(host, message, { retry })` puts
+a line over the bottom of a positioned host (`#case-notice` in the reader's `.main-body`; each
+page view's own, through pageshell.js's `notice()`), absolutely placed so it moves nothing,
+`role="status"` so it's announced, with Retry and Dismiss; `reportError(host, where, err,
+opts)` logs it with `console.error` first. Where each failure goes:
+
+- **Showing a case.** `doResolve` and `doResolveDecision` catch `showResolved`'s promise, and
+  the multi-case notice's links catch `switchCase`: "This case couldn't be shown (reason)" over
+  the reader, with a Retry that loads it again. `openPageView` catches everything it starts and
+  says "The Raw Scans view couldn't open this case's pages (reason). The Reader still works."
+  in the view with a Retry, so nothing that opens a view (the tabs, the hash, a `~v=` link)
+  needs a catch of its own.
+- **The page markers** of a case read by its span: "The page numbers and footnotes couldn't be
+  loaded (reason). The text is complete." with a Retry. A case whose zip has no HTML for it
+  only logs (`console.info`), as does one read from a whole zip.
+- **The citation check.** The cited-cases section says why it stopped, that the text is
+  complete, and offers Retry, which runs the check again in place.
+- **The manifest.** An unreachable one is no longer kept for the session (`loadManifest`):
+  calls already waiting share it, and the next call fetches again.
+- **The typeahead.** A reporter list or volume index that can't be fetched shows "Suggestions
+  aren't available right now" in the list, saying a full citation still opens; the next
+  keystroke tries again.
+- **Case names** that can't be read for a page several cases start on leave the citation on
+  the page's first case and say so in its title and sidebar note (`namesUnread`,
+  `byNameLabel`); **a hover preview** that fails says "Couldn't load the preview" and is
+  tried again on the next hover. The page views' fallbacks for page labels and page orders
+  log with `console.info`.
+
+`web/e2e/failures.spec.js` makes each fail and then work: the ALTO, the manifest, the
+typeahead's reporter list, the zip a page view fetches, the page markers' range reads (and
+checks the reader doesn't move when the notice shows) and a preview.
+
 ### Opening a case (#260, #262)
 
 A case link starts what it needs with the HTML. `caseRouteScript` (`web/src/lib/caseroute.js`),

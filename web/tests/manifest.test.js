@@ -131,16 +131,26 @@ describe('volumeCandidates', () => {
   });
 });
 
-test('loadManifest fetches once and survives a failed fetch', async () => {
+test('loadManifest survives a failed fetch, tries again next time, and keeps a good one', async () => {
   let calls = 0;
   const failing = async () => {
     calls += 1;
     throw new Error('offline');
   };
-  const m = await loadManifest(failing);
+  // Calls made while a fetch is under way share it.
+  const [m] = await Promise.all([loadManifest(failing), loadManifest(failing)]);
+  assert.equal(calls, 1);
   assert.deepEqual(m.reporters, {});
   // cache.js keeps its cache when it can't read the version.
   assert.equal(m.unreachable, true);
-  await loadManifest(failing);
-  assert.equal(calls, 1);
+  // The failure isn't kept (#271): the next call fetches again.
+  assert.equal((await loadManifest(failing)).unreachable, true);
+  assert.equal(calls, 2);
+  const good = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ format: 2, version: 'v2026.11.13', reporters: { a2d: ['31'] } }));
+  };
+  assert.deepEqual((await loadManifest(good)).reporters, { a2d: ['31'] });
+  await loadManifest(good);
+  assert.equal(calls, 3);
 });

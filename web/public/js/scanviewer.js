@@ -209,7 +209,6 @@ export async function renderPageViewer(container, result, { page = 1, onPage } =
     console.warn(`Raw Scans: the ALTO for page ${order} couldn't be read:`, e);
     ui.notice(TEXT_FAILED, {
       retry: async () => {
-        ui.notice(null);
         try {
           const altoPage = await fetchAltoForPage(result.reporter, result.volume, order);
           if (!destroyed && shown?.order === order) addOverlay(altoPage);

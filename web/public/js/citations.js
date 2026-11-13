@@ -601,9 +601,17 @@ export async function applyNames(
 ) {
   const picks = new Map();
   const officialPicks = new Map();
+  // The citations a name would have decided among cases whose names couldn't be read (#271):
+  // they open the page's first case, and say so (byNameLabel).
+  const unread = new Set();
   const readCase = async (x) => {
-    const read = await Promise.resolve(readNames(x)).catch(() => null);
-    return { id: x.id, names: read?.names || [], date: read?.date || null };
+    let failed = false;
+    const read = await Promise.resolve(readNames(x)).catch((err) => {
+      console.warn(`Couldn't read the case names for ${x.id}:`, err);
+      failed = true;
+      return null;
+    });
+    return { id: x.id, names: read?.names || [], date: read?.date || null, failed };
   };
   await Promise.all(checked.map(async (e) => {
     if (isShortForm(e) || picks.has(e.raw)) return;
@@ -625,6 +633,7 @@ export async function applyNames(
     if (!at) return;
     try {
       const cases = await Promise.all(e.pageCases.filter(x => at.open.includes(x.id)).map(readCase));
+      if (cases.some(c => c.failed)) unread.add(e.raw);
       if (!cases.some(c => c.names.length)) return;
       const id = await match(cases, name, e.year ?? null);
       const to = id && e.pageCases.find(x => x.id === id);
@@ -646,8 +655,12 @@ export async function applyNames(
     const own = (e.pageCases || []).find(x => x.id === p.to.id);
     picks.set(e.raw, { ...p, to: own || { ...p.to, via: null } });
   }
-  if (!picks.size) return checked;
+  for (const raw of picks.keys()) unread.delete(raw);
+  if (!picks.size && !unread.size) return checked;
   const changed = new Map();
+  for (const e of checked) {
+    if (!isShortForm(e) && unread.has(e.raw)) changed.set(e.raw, { ...e, namesUnread: true });
+  }
   for (const e of checked) {
     const p = !isShortForm(e) && picks.get(e.raw);
     if (!p) continue;
@@ -683,6 +696,9 @@ export async function applyNames(
  * D98 (1)). '' for any other citation.
  */
 export function byNameLabel(c) {
+  if (c?.namesUnread && !c.byName) {
+    return "Several cases start on this page and their names couldn't be read, so this opens the first of them";
+  }
   if (!c?.byName) return '';
   const { among, shared, official, sharesOne } = c.byName;
   if (official) {
@@ -1638,7 +1654,7 @@ export function setupCiteHovers(container, previewFn) {
       if (preview) {
         tooltipEl.innerHTML = `<div><strong>${esc(preview.name)}</strong><br><span style="opacity:0.7">${esc(preview.cite)} &mdash; ${esc(preview.date)}</span></div>`;
       } else {
-        tooltipEl.innerHTML = 'Could not load preview';
+        tooltipEl.textContent = "Couldn't load the preview. Point at the citation again to retry, or click to open the case.";
       }
     });
 

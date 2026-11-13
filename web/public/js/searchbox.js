@@ -28,6 +28,7 @@ import {
 import { loadWasm } from './wasm.js';
 
 const DEBOUNCE_MS = 120;
+const SUGGESTIONS_DOWN = "Suggestions aren't available right now";
 
 let data = null;
 
@@ -182,6 +183,14 @@ export function attachSearchBox(input, listbox, status, { onPick, position = nul
     setText(o.text);
   }
 
+  // The one line the list shows when what it suggests from couldn't be fetched.
+  function unavailable(why) {
+    return {
+      key: 'unavailable', disabled: true, main: SUGGESTIONS_DOWN,
+      detail: `${why}. A full citation still opens; keep typing to try again.`,
+    };
+  }
+
   function reporterOptions(hits, q) {
     return hits.map((r) => ({
       key: `r:${r.slug}`,
@@ -249,7 +258,11 @@ export function attachSearchBox(input, listbox, status, { onPick, position = nul
     let d;
     try {
       d = await loadData();
-    } catch {
+    } catch (e) {
+      // Said in the list, not left blank (#271); the next keystroke tries again.
+      if (mine !== generation) return;
+      console.warn('Search suggestions: the reporter list could not load.', e);
+      render([unavailable("the list of reporters couldn't be loaded")], SUGGESTIONS_DOWN, text);
       return;
     }
     if (mine !== generation) return;
@@ -273,8 +286,11 @@ export function attachSearchBox(input, listbox, status, { onPick, position = nul
     let entries;
     try {
       entries = await volumeEntries(r.slug, volume, q.page.replace(/-.*/, ''));
-    } catch {
-      entries = null;
+    } catch (e) {
+      if (mine !== generation) return;
+      console.warn(`Search suggestions: ${r.slug} ${volume}'s index could not load.`, e);
+      render([unavailable(`the index for vol. ${volume} couldn't be read`)], SUGGESTIONS_DOWN, text);
+      return;
     }
     if (mine !== generation) return;
     const pages = pageSuggestions(entries || [], q.page);
