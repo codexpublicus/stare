@@ -1594,40 +1594,26 @@ export function renderTextHtml(text, occurrences, citationMap, formatPlain = for
 // Hover previews
 // ---------------------------------------------------------------------------
 
-const previewCache = new Map();
-
-export async function fetchCasePreview(slug, volume, page, resolveFn) {
-  const key = `${slug}/${volume}/${page}`;
-  if (previewCache.has(key)) return previewCache.get(key);
-
-  const promise = (async () => {
-    try {
-      // A case after the first at its page (#204) is named by its sequence (`-02`).
-      const seq = /-(\d+)(?:@\d+)?$/.exec(String(page))?.[1];
-      const result = await resolveFn(slug, volume, citedPage(page), () => {}, seq ? parseInt(seq, 10) : null);
-      const c = result.caseData;
-      return {
-        name: c.name_abbreviation,
-        date: c.decision_date,
-        court: c.court?.name || '',
-        cite: c.citations?.[0]?.cite || '',
-      };
-    } catch {
-      return null;
-    }
-  })();
-
-  previewCache.set(key, promise);
-  const result = await promise;
-  previewCache.set(key, result);
-  return result;
+/**
+ * The preview for a citation link's case, `{ name, date, court, cite }`, from
+ * `previewFn` (resolve.js's casePreview, which reads the case's JSON by its zip span and
+ * keeps what it read), or null when it can't be read. `page` is the link's page segment,
+ * with a sequence (`148-02`) for a case after the first at its page (#204).
+ */
+export async function fetchCasePreview(slug, volume, page, previewFn) {
+  const seq = /-(\d+)(?:@\d+)?$/.exec(String(page))?.[1];
+  try {
+    return await previewFn(slug, volume, citedPage(page), seq ? parseInt(seq, 10) : null);
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Set up hover tooltips and click-to-open on citation links.
  * Resolvable citations open in a new tab. Hover shows preview tooltip.
  */
-export function setupCiteHovers(container, resolveFn) {
+export function setupCiteHovers(container, previewFn) {
   container.querySelectorAll('a.cite-link:not(.cite-external)').forEach(el => {
     let tooltipEl = null;
     let savedTitle = null;
@@ -1646,7 +1632,7 @@ export function setupCiteHovers(container, resolveFn) {
       tooltipEl = createTooltip(el);
       tooltipEl.innerHTML = `<span class="spinner"></span> Loading...`;
 
-      const preview = await fetchCasePreview(slug, volume, pageStr, resolveFn);
+      const preview = await fetchCasePreview(slug, volume, pageStr, previewFn);
       if (!tooltipEl) return;
 
       if (preview) {

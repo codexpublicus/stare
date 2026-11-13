@@ -1,6 +1,7 @@
 // Reading a CAP case by its index line's zip span (D180, #313): the span's checks, the one
 // Range request and what's done with each answer, the inflating, the index lines read in
-// JS, and the reader's span path (resolve.js's readBySpan and spanZip) with its fallbacks.
+// JS, the reader's span path (resolve.js's readBySpan and spanZip) with its fallbacks, and the
+// hover previews read by it (casePreview, #263).
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -9,7 +10,7 @@ import { deflateRawSync, gzipSync } from 'node:zlib';
 import {
   idxEntries, idxEntriesJs, lineEntry, parseIdxLine, partFor, parseIdxText, volumeCaseFiles,
 } from '../public/js/idx.js';
-import { readBySpan, spanZip } from '../public/js/resolve.js';
+import { casePreview, readBySpan, spanZip } from '../public/js/resolve.js';
 import { fetchSpan, inflate, parseSpan, readSpanText, spanKey, spanRange, SpanError } from '../public/js/zipspan.js';
 import { wasm } from './wasm-node.js';
 
@@ -271,5 +272,92 @@ describe('the reader\'s span path (readBySpan, spanZip)', () => {
     assert.equal(reads[1].name, 'json/0500-02.json');
     assert.deepEqual(await z.pageOrders('0500-01'), { first: 12, last: 14 });
     assert.equal(await z.pageOrders('0600-01'), null);
+  });
+});
+
+describe('hover previews (casePreview, #263)', () => {
+  const json = JSON.stringify({ ...CASE, citations: [{ type: 'official', cite: '1 R.I. 500' }] });
+  const { bytes, span } = zipWith(json, 500);
+  const manifest = { idx: 1, reporters: {}, parts: {}, aliases: {} };
+  const capEntry = (caseFile, zip) => ({ page: 500, source: 'cap', ref: caseFile, case_file: caseFile, ...(zip ? { zip } : {}) });
+  const reader = (log, opts = {}) => (reporter, folder, s) => readSpanText(`https://data.stare.pub/cap/${reporter}/${folder}.zip`, s, {
+    fetch: server(bytes, { log, ...opts }),
+  });
+  const want = { name: 'Smith v. Jones', date: '1943-01-01', court: 'Supreme Court', cite: '1 R.I. 500' };
+  let n = 0;
+  // Each test its own citation, so the previews kept from one don't answer another.
+  const vol = () => String(++n);
+
+  test('a line with a span is one Range request for the case\'s JSON, and the zip is never fetched', async () => {
+    const log = [];
+    const got = await casePreview('x', vol(), 500, null, {
+      manifest, wasm, idxEntries: async () => [capEntry('0500-01', span)], readSpan: reader(log),
+      zipFileText: async () => { throw new Error('read by range'); },
+    });
+    assert.deepEqual(got, want);
+    assert.deepEqual(log.map((r) => r.range), [spanRange(span)]);
+  });
+
+  test('a line without a span is read out of the zip by range, not fetched whole', async () => {
+    const reads = [];
+    const got = await casePreview('x', vol(), 500, null, {
+      manifest, wasm, idxEntries: async () => [capEntry('0500-01')],
+      readSpan: async () => { throw new Error('no span to read'); },
+      zipFileText: async (url, name) => { reads.push(name); return json; },
+    });
+    assert.deepEqual(got, want);
+    assert.deepEqual(reads, ['json/0500-01.json']);
+  });
+
+  test('a span that can\'t be read falls back to the range read', async () => {
+    const reads = [];
+    const got = await casePreview('x', vol(), 500, null, {
+      manifest, wasm, idxEntries: async () => [capEntry('0500-01', span)], readSpan: reader([], { shift: 3 }),
+      zipFileText: async (url, name) => { reads.push(name); return json; },
+    });
+    assert.deepEqual(got, want);
+    assert.deepEqual(reads, ['json/0500-01.json']);
+  });
+
+  test('a preview is kept, and a failure isn\'t: the next hover tries again', async () => {
+    const v = vol();
+    let calls = 0;
+    const deps = {
+      manifest, wasm, readSpan: reader([]),
+      idxEntries: async () => {
+        calls += 1;
+        if (calls === 1) throw new TypeError('Failed to fetch');
+        return [capEntry('0500-01', span)];
+      },
+    };
+    await assert.rejects(casePreview('x', v, 500, null, deps), /Failed to fetch/);
+    assert.deepEqual(await casePreview('x', v, 500, null, deps), want);
+    assert.deepEqual(await casePreview('x', v, 500, null, deps), want);
+    assert.equal(calls, 2);
+  });
+
+  test('the sequence picks the case after the first at its page', async () => {
+    const second = zipWith(JSON.stringify({ ...CASE, name_abbreviation: 'Doe v. Roe' }), 900);
+    const got = await casePreview('x', vol(), 500, 2, {
+      manifest, wasm,
+      idxEntries: async () => [capEntry('0500-01', span), capEntry('0500-02', second.span)],
+      readSpan: (reporter, folder, s) => readSpanText('https://data.stare.pub/cap/x/1.zip', s, {
+        fetch: server(s.offset === 900 ? second.bytes : bytes),
+      }),
+    });
+    assert.equal(got.name, 'Doe v. Roe');
+  });
+
+  test('a CourtListener record is its own fetch', async () => {
+    const got = await casePreview('x', vol(), 500, null, {
+      manifest, wasm,
+      idxEntries: async () => [{ page: 500, source: 'cl', ref: 'cl:1', cluster_id: 1, hash: H1 }],
+      fetchClRecord: async (e) => ({ name_abbreviation: `Record ${e.cluster_id}`, decision_date: '2001-02-03' }),
+    });
+    assert.deepEqual(got, { name: 'Record 1', date: '2001-02-03', court: '', cite: '' });
+  });
+
+  test('a page with no case is an error, for the tooltip to say', async () => {
+    await assert.rejects(casePreview('x', vol(), 500, null, { manifest, wasm, idxEntries: async () => [] }), /No case starts/);
   });
 });

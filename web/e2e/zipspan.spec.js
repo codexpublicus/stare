@@ -160,3 +160,48 @@ test('a span answered with other bytes falls back to the whole zip', async ({ pa
   const gets = page.zipRequests().filter((r) => r.method === 'GET');
   expect(gets.map((r) => r.range === null)).toEqual([false, true]);
 });
+
+// Hover previews (#263) read the cited case's JSON the way the reader does: by its line's
+// span, else out of the zip by range. Never the whole zip, with spans or without.
+async function hoverEveryCitation(page) {
+  const zips = [];
+  page.on('request', (r) => {
+    if (r.method() === 'GET' && /^https:\/\/data\.stare\.pub\/cap\/.+\.zip$/.test(r.url())) zips.push({ url: r.url(), range: r.headers().range ?? null });
+  });
+  await page.goto(CASE);
+  const links = page.locator('#reader a.cite-link:not(.cite-external)');
+  await expect(links.first()).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  const before = zips.length;
+  const n = await links.count();
+  for (let i = 0; i < n; i++) {
+    await links.nth(i).hover();
+    await expect(page.locator('.cite-tooltip .spinner')).toHaveCount(0);
+    await expect(page.locator('.cite-tooltip')).toHaveCount(1);
+    await page.mouse.move(0, 0);
+  }
+  return { n, zips: zips.slice(before) };
+}
+
+test('hover previews read each cited case by its span, never its whole zip', async ({ page }) => {
+  const { n, zips } = await hoverEveryCitation(page);
+  expect(n).toBeGreaterThan(3);
+  expect(zips.length).toBeGreaterThan(0);
+  for (const z of zips) expect(z.range, z.url).toMatch(EXPLICIT);
+  // The four the issue measured, named in their tooltips.
+  await page.locator('#reader a.cite-link[href^="#va/164/"]').first().hover();
+  await expect(page.locator('.cite-tooltip')).toContainText('Universal Credit Co. v. Taylor');
+});
+
+test('without spans, hover previews read the cited cases out of their zips by range', async ({ page }) => {
+  await page.route((url) => url.hostname === 'idx.stare.pub' && url.pathname.endsWith('.idx.gz'), async (route) => {
+    const res = await route.fetch();
+    const text = gunzipSync(await res.body()).toString('utf8').replace(/,zip=\d+:\d+:\d+/g, '');
+    await route.fulfill({ response: res, body: gzipSync(Buffer.from(text)) });
+  });
+  const { zips } = await hoverEveryCitation(page);
+  expect(zips.length).toBeGreaterThan(0);
+  for (const z of zips) expect(z.range, z.url).not.toBeNull();
+  await page.locator('#reader a.cite-link[href^="#va/164/"]').first().hover();
+  await expect(page.locator('.cite-tooltip')).toContainText('Universal Credit Co. v. Taylor');
+});

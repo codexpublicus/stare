@@ -1,4 +1,4 @@
-import { parseInput, resolve, extractCase, extractFile, getPageOrders } from './resolve.js';
+import { casePreview, parseInput, resolve, extractCase, extractFile, getPageOrders } from './resolve.js';
 import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } from './ui.js';
 import { caseHash, getHashParams, parseHash, setHash, onHashChange, replaceHash, routePath, setRoute } from './router.js';
 import { citationPath, clusters, keyPath, parseCasePath, pickPrinting, resolveKey } from './caseaddress.js';
@@ -404,7 +404,7 @@ async function showResolved(result, pin, cite, load, fromText = null) {
       const cached = citationsByCase.get(caseFile) || null;
       renderReader(readerContent, caseData, cached, layout.pages, layout.footnotes);
       if (cached) {
-        setupCiteHovers(readerContent, resolve);
+        setupCiteHovers(readerContent, casePreview);
         wireCiteNav(citationStatusHandle.listEl, readerContent);
       }
       if (pendingPin !== null) goToPage(pendingPin);
@@ -446,7 +446,7 @@ async function showResolved(result, pin, cite, load, fromText = null) {
     if (!result.zipData) wireLazyPdfLink(sidebar, result, caseFile);
     wireActions(actions);
     if (cached) {
-      setupCiteHovers(readerContent, resolve);
+      setupCiteHovers(readerContent, casePreview);
       wireCiteNav(citationStatusHandle.listEl, readerContent);
       return Promise.resolve();
     }
@@ -480,7 +480,7 @@ async function showResolved(result, pin, cite, load, fromText = null) {
         markTarget();
       }
       updateCitationStatus(handle, caseData, unique, 'done', groups);
-      setupCiteHovers(readerContent, resolve);
+      setupCiteHovers(readerContent, casePreview);
       wireCiteNav(handle.listEl, readerContent);
     } catch (e) {
       // A pass ended by another load (its AbortError) is no failure.
