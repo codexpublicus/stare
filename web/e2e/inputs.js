@@ -137,6 +137,7 @@ export const SPECS = {
   'web/e2e/addresses.spec.js': group(READER, ['web/tests/fixtures/crk/**', 'crates/stare/tests/fixtures/cl-record.json']),
   'web/e2e/altsources.spec.js': group(READER, ['web/tests/fixtures/crk/**', 'web/tests/fixtures/alt-sources/**']),
   'web/e2e/agents.spec.js': group(READER, PAGES),
+  'web/e2e/axe.spec.js': group(READER, CHECK, PAGES, SEARCH),
   'web/e2e/cache.spec.js': group(READER, CHECK, PAGES, SITEMAP),
   'web/e2e/caseload.spec.js': group(READER),
   'web/e2e/caseswitch.spec.js': group(READER),

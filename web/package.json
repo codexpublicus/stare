@@ -19,6 +19,7 @@
     "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@ghostery/adblocker": "^2.20.1",
     "@playwright/test": "^1.63.0",
     "esbuild": "^0.28.2"
