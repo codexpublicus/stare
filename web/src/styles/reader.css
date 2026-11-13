@@ -1,7 +1,7 @@
 /* web/src/styles/reader.css */
 .reader { max-width: 680px; margin: 0 auto; padding: 32px 24px 64px; }
 .reader-header { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-light); }
-.reader-title { font-family: var(--font-text); font-size: 22px; font-weight: 600; line-height: 1.3; color: var(--text); }
+.reader-title { margin: 0; font-family: var(--font-text); font-size: 22px; font-weight: 600; line-height: 1.3; color: var(--text); }
 .reader-meta { margin-top: 6px; font-size: 14px; color: var(--text-secondary); }
 .reader-source { margin-top: 4px; font-size: 13px; color: var(--text-secondary); }
 .reader-alias { max-width: 632px; margin: 24px auto 0; padding: 8px 12px; font-size: 13px; color: var(--text-secondary); border-left: 3px solid var(--border-light); }
@@ -68,6 +68,8 @@
 .citation-status-text:empty { padding: 0; min-height: 0; }
 
 .sidebar-action { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--sidebar-action); text-decoration: none; font-size: 13px; cursor: pointer; transition: color 0.15s; }
+/* Copy permalink and View as JSON are buttons (#270), drawn like the links beside them. */
+button.sidebar-action { width: 100%; background: none; border: 0; font: inherit; font-size: 13px; text-align: left; }
 .sidebar-action:hover { color: var(--text); }
 .sidebar-no-scans, .sidebar-no-scans:hover { cursor: default; color: var(--text-secondary); }
 .sidebar-action-icon { width: 16px; text-align: center; font-size: 14px; }

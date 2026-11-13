@@ -133,6 +133,7 @@ const group = (...parts) => parts.map((p) => (Array.isArray(p) ? { include: p, e
 
 // Each spec under web/e2e/ and the groups it tests, beyond SHARED and the spec itself.
 export const SPECS = {
+  'web/e2e/a11y.spec.js': group(READER),
   'web/e2e/addresses.spec.js': group(READER, ['web/tests/fixtures/crk/**', 'crates/stare/tests/fixtures/cl-record.json']),
   'web/e2e/agents.spec.js': group(READER, PAGES),
   'web/e2e/cache.spec.js': group(READER, CHECK, PAGES, SITEMAP),

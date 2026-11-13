@@ -1072,6 +1072,39 @@ regular core file on every page, and the case route's loading line is set in it,
 preload is used at the first paint there too (an unused preload is a console warning, which
 fails the smoke suite).
 
+### Keyboard and screen readers (#270)
+
+The case view is a `<main>` (the tabs and the reader) and an `<aside>` (the sidebar, "Case
+details"), with a skip link ("Skip to the case") first, which focuses the case's title
+without touching the hash. The title is an `<h1 id="reader-title" tabindex="-1">`; when a case
+is shown and the focus is on nothing or on something the case view just hid (the landing's
+box after a search, the top bar's editor), `focusCaseTitle` (main.js) moves it there, and a
+redraw of the reader keeps it; a case opened by the page's own address on load, before any key
+or pointer, leaves the focus alone. The view tabs are ARIA tabs: `role="tablist"`, `<button
+role="tab">` with `aria-selected` and `aria-controls`, `role="tabpanel"` on `#reader`,
+`#pdf-viewer` and `#page-viewer`, the selected tab alone in the tab order (`showView` keeps
+both in step), and the arrow keys, Home and End moving the focus among the tabs shown, with
+Enter or Space opening one (manual activation, since a page view fetches its pages when it
+opens). The top bar's citation, Copy permalink and View as JSON are `<button>`s; Copy says
+"Copied" (or that it couldn't) and announces it through `#copy-status`; Escape in the top
+bar's editor puts the focus back on the citation. The mobile sidebar's toggle has a name,
+`aria-controls` and `aria-expanded`; opened, the focus moves into the sidebar and Tab stays
+among its controls and the toggle, and Escape closes it and returns the focus to the toggle.
+`#landing-status` and `#status-bar` are `role="status"`. A citation's preview shows on
+keyboard focus as on hover, as a `role="tooltip"` the link names in `aria-describedby`, and
+Escape hides it.
+
+`theme.css` gives everything that takes the focus a 2 px `--focus` outline at
+`:focus-visible` (zero specificity, so a control's own rule wins; the inputs that set
+`outline: none` now show it), and `contrast.test.js` checks `--focus` at 3:1 or more on every
+ground it's drawn on, in both themes, beside the 4.5:1 text pairs (`--text-tertiary` and
+`--topbar-muted` among them, which #257's palette already brought up to 4.5:1). Under
+`prefers-reduced-motion: reduce` every animation and transition is stilled, the spinner and the
+WASM bar included. `web/e2e/a11y.spec.js` walks these by keyboard: the tabs, the title's focus
+after a search, the top bar's citation, the skip link, the live regions, Copy, a preview on
+focus, the mobile sidebar's focus, a visible ring on every control in both themes, and reduced
+motion.
+
 ### Crawlers and agents (`web/src/lib/robots.js`, `src/data/curated.json`, `public/llms.txt`, `src/lib/sitemap.js`; #171, #161)
 
 The crawl design is D41 and D44 on #171: one canonical URL per case, a sitemap of the site pages

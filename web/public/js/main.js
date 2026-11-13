@@ -233,6 +233,33 @@ function wireCiteNav(listEl, readerContent) {
   }
 }
 
+// Whether the reader has pressed a key or a pointer on the page yet: a case opened by the
+// page's own address on load leaves the focus where the browser puts it.
+let interacted = false;
+for (const type of ['keydown', 'pointerdown']) {
+  window.addEventListener(type, () => { interacted = true; }, { capture: true, once: true, passive: true });
+}
+
+// After a case is shown (#270): when the focus is on nothing or on something the case view
+// just hid (the landing's box after a search, the top bar's editor), it goes to the case's
+// title, an <h1 tabindex="-1">, so a keyboard or screen reader user lands on the case.
+function focusCaseTitle() {
+  if (!interacted) return;
+  const a = document.activeElement;
+  const lost = !a || a === document.body || !a.isConnected || a.closest('.hidden') || !a.getClientRects().length;
+  if (lost) document.getElementById('reader-title')?.focus({ preventScroll: true });
+}
+
+// The skip link goes to the case's title without touching the hash, which names the case.
+document.getElementById('skip-link')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  const title = document.getElementById('reader-title');
+  if (!title) return;
+  // On a page view, its tab: the title is in the hidden Reader.
+  if (!reader.classList.contains('hidden')) title.focus();
+  else document.querySelector('.view-tab[aria-selected="true"]')?.focus();
+});
+
 // The landing's status line as the page starts, empty (#282): a lookup's progress goes
 // there while the landing is showing, and nothing else takes it down.
 function clearLandingStatus() {
@@ -452,6 +479,7 @@ async function showResolved(result, pin, cite, load, fromText = null) {
   renderMultiNotice(multiEl, result.allCases, result.caseFile, switchSafely);
   statusBar.classList.add('hidden');
   const shown = showCase(result.caseFile, result.caseData, result);
+  focusCaseTitle();
   goToPage(cite ? null : pin);
   if (!cite && pin && !target && !pagesByCase.get(result.caseFile)?.pages) pendingPin = pin;
   await shown;
@@ -579,18 +607,32 @@ async function showResolved(result, pin, cite, load, fromText = null) {
 function wireActions(result) {
   const copyBtn = document.getElementById('copy-link-btn');
   if (copyBtn) {
-    copyBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const url = window.location.href;
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(url);
+    // The button says what happened, and the status beside it announces it (#270).
+    const label = copyBtn.querySelector('.copy-label');
+    const said = document.getElementById('copy-status');
+    let timer = 0;
+    const say = (text, spoken) => {
+      label.textContent = text;
+      if (said) said.textContent = spoken;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        label.textContent = 'Copy permalink';
+        if (said) said.textContent = '';
+      }, 2500);
+    };
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        say('Copied', 'Permalink copied to the clipboard');
+      } catch (e) {
+        console.info('Copy permalink:', e);
+        say("Couldn't copy", "Couldn't copy the permalink; it's the page's address in the address bar");
       }
     });
   }
   const jsonBtn = document.getElementById('view-json-btn');
   if (jsonBtn) {
-    jsonBtn.addEventListener('click', (e) => {
-      e.preventDefault();
+    jsonBtn.addEventListener('click', () => {
       const blob = new Blob([JSON.stringify(result.caseData, null, 2)], { type: 'application/json' });
       window.open(URL.createObjectURL(blob));
     });
@@ -995,6 +1037,7 @@ document.getElementById('topbar').addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape') {
     stopEditing();
+    topbarCite.focus();
   }
 });
 
@@ -1040,11 +1083,45 @@ try {
   }
 } catch(e) {}
 
-// Sidebar toggle (mobile)
+// Sidebar toggle (mobile): the case details open over the reader. Opened, the focus moves
+// into them and Tab stays among them and the toggle; Escape or the toggle closes them and
+// puts the focus back on the toggle (#270).
+function setSidebarOpen(open, { focus = true } = {}) {
+  sidebar.classList.toggle('open', open);
+  sidebarToggle.setAttribute('aria-expanded', String(open));
+  if (!focus) return;
+  if (open) {
+    sidebar.setAttribute('tabindex', '-1');
+    sidebar.focus();
+  } else {
+    sidebarToggle.focus();
+  }
+}
 sidebarToggle.addEventListener('click', (e) => {
   e.preventDefault();
   e.stopPropagation();
-  sidebar.classList.toggle('open');
+  setSidebarOpen(!sidebar.classList.contains('open'));
+});
+document.addEventListener('keydown', (e) => {
+  if (!sidebar.classList.contains('open') || sidebarToggle.classList.contains('hidden')
+    || !sidebarToggle.getClientRects().length) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    setSidebarOpen(false);
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  const stops = [...sidebar.querySelectorAll('a[href], button:not([disabled]), input, select, textarea, [tabindex="0"]')]
+    .filter((el) => el.getClientRects().length);
+  stops.push(sidebarToggle);
+  const i = stops.indexOf(document.activeElement);
+  if (e.shiftKey && (i <= 0)) {
+    e.preventDefault();
+    stops[stops.length - 1].focus();
+  } else if (!e.shiftKey && (i === -1 || i === stops.length - 1)) {
+    e.preventDefault();
+    stops[0].focus();
+  }
 });
 
 // Tab switching: the Reader (the case's text), the Archival PDF (our PDF of the volume,
@@ -1058,12 +1135,29 @@ const VIEWS = {
   scans: [tabPages, pageViewerEl],
 };
 
+// The tabs are ARIA tabs (#270): the selected one is the one in the tab order, and its
+// panel is shown.
 function showView(name) {
   for (const [key, [tab, el]] of Object.entries(VIEWS)) {
-    tab.classList.toggle('active', key === name);
-    el.classList.toggle('hidden', key !== name);
+    const on = key === name;
+    tab.classList.toggle('active', on);
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+    el.classList.toggle('hidden', !on);
   }
 }
+
+// The arrow keys, Home and End move the focus between the tabs shown; Enter or Space opens
+// the one focused (manual activation, since a page view fetches its pages when it opens).
+document.querySelector('.view-tabs').addEventListener('keydown', (e) => {
+  const tabs = Object.values(VIEWS).map(([tab]) => tab).filter((t) => !t.classList.contains('hidden'));
+  const i = tabs.indexOf(document.activeElement);
+  if (i < 0) return;
+  const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+  if (to === undefined) return;
+  e.preventDefault();
+  tabs[(to + tabs.length) % tabs.length].focus();
+});
 
 // The page each page view is on, for the hash when its tab is shown again.
 const viewPages = { pdf: 1, scans: 1 };

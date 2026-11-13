@@ -84,6 +84,24 @@ body {
 /* Form controls take the system font unless told otherwise. */
 button, input, textarea, select { font-family: inherit; }
 
+/* A visible focus ring on everything that takes the keyboard's focus, in both themes (#270):
+   --focus is checked at 3:1 or more against the grounds it's drawn on (contrast.test.js).
+   Zero specificity, so a control's own :focus-visible rule still wins. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 2px;
+}
+/* A heading the script moves the focus to (the case's title) isn't a control. */
+:where(h1[tabindex="-1"]):focus:not(:focus-visible) { outline: none; }
+
+/* Reduced motion: no animation or transition anywhere (#270), the spinner and the WASM
+   bar included; what they show is still there, just still. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+  }
+}
+
 
 /* Citations and counts: lining, tabular figures, so volume and page numbers
    line up and don't take the serif's old-style forms. */

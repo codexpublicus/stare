@@ -1,5 +1,5 @@
 // AA contrast for the theme's text colours (#257): every pair below is text the site
-// draws on that background, in light and in dark.
+// draws on that background, in light and in dark; and the focus ring at 3:1 (#270).
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -45,6 +45,15 @@ for (const [name, selector] of [['light', ':root'], ['dark', '[data-theme="dark"
       test(`--${fg} on --${bg} is at least 4.5:1`, () => {
         const ratio = contrast(t[fg], t[bg]);
         assert.ok(ratio >= 4.5, `${t[fg]} on ${t[bg]}: ${ratio.toFixed(2)}`);
+      });
+    }
+    // The focus ring (#270) is a non-text indicator: 3:1 against every ground it's drawn on
+    // (WCAG 1.4.11), and the error notice's ring against the notice.
+    for (const [ring, bg] of [['focus', 'bg'], ['focus', 'bg-alt'], ['focus', 'bg-surface'], ['focus', 'topbar-bg'],
+      ['focus', 'status-bg'], ['error-text', 'error-bg']]) {
+      test(`the focus ring --${ring} on --${bg} is at least 3:1`, () => {
+        const ratio = contrast(t[ring], t[bg]);
+        assert.ok(ratio >= 3, `${t[ring]} on ${t[bg]}: ${ratio.toFixed(2)}`);
       });
     }
     test('the § on the tablet is at least 3:1', () => {

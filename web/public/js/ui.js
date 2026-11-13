@@ -24,7 +24,7 @@ export function renderReader(el, caseData, citations, pages = null, footnotes = 
 
   let html = `
     <div class="reader-header">
-      <div class="reader-title">${esc(caseData.name_abbreviation)}</div>
+      <h1 class="reader-title" id="reader-title" tabindex="-1">${esc(caseData.name_abbreviation)}</h1>
       <div class="reader-meta">${esc(cite)} &mdash; ${esc(court)} &mdash; ${esc(caseData.decision_date)}</div>
       ${sourceLineHtml(caseData)}
       ${blockedLineHtml(caseData)}
@@ -45,8 +45,12 @@ export function renderReader(el, caseData, citations, pages = null, footnotes = 
     html += `${authorLine}<div class="reader-text">${paragraphs}</div>`;
   });
 
+  // Drawn again (citations found, page markers in), the title keeps the focus it had.
+  const titleFocused = typeof document !== 'undefined' && document.activeElement?.id === 'reader-title'
+    && el.contains(document.activeElement);
   el.innerHTML = html;
   insertPageMarkers(el, pages);
+  if (titleFocused) el.querySelector('#reader-title')?.focus({ preventScroll: true });
 }
 
 /**
@@ -217,12 +221,13 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
   const actionsHtml = `
     <div class="sidebar-section">
       <div class="sidebar-label">Actions</div>${pdfAction}
-      <a class="sidebar-action" href="#" id="copy-link-btn">
-        <span class="sidebar-action-icon">&#128279;</span>Copy permalink
-      </a>
-      <a class="sidebar-action" href="#" id="view-json-btn">
-        <span class="sidebar-action-icon">{}</span>View as JSON
-      </a>
+      <button type="button" class="sidebar-action" id="copy-link-btn">
+        <span class="sidebar-action-icon" aria-hidden="true">&#128279;</span><span class="copy-label">Copy permalink</span>
+      </button>
+      <span class="sr-only" id="copy-status" role="status"></span>
+      <button type="button" class="sidebar-action" id="view-json-btn">
+        <span class="sidebar-action-icon" aria-hidden="true">{}</span>View as JSON
+      </button>
     </div>
   `;
 
