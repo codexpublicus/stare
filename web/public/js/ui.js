@@ -224,7 +224,7 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
       <button type="button" class="sidebar-action" id="copy-link-btn">
         <span class="sidebar-action-icon" aria-hidden="true">&#128279;</span><span class="copy-label">Copy permalink</span>
       </button>
-      <span class="sr-only" id="copy-status" role="status"></span>
+      <span class="sr-only" id="copy-status" aria-live="polite"></span>
       <button type="button" class="sidebar-action" id="view-json-btn">
         <span class="sidebar-action-icon" aria-hidden="true">{}</span>View as JSON
       </button>
