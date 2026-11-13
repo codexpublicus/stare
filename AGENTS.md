@@ -581,7 +581,7 @@ keep that from happening again:
   404; the site sends no Content-Security-Policy, and if one is added each inline script
   (theme, caseroute, boot guard) needs its `'sha256-...'` in `script-src`, computed from
   the built HTML since the guard's text is generated.
-- **Only the reader's own modules are static.** main.js's static graph is 18 modules
+- **Only the reader's own modules are static.** main.js's static graph is 23 modules
   (`web/tests/boot-graph.test.js` keeps it so). The page views (`pdfviewer.js`,
   `scanviewer.js`, `pageshell.js`, `pagezoom.js`, `pdfpages.js`, `pdfjs-path.js`,
   `selectionpaint.js`) are imported when a page-view tab first opens; one that fails shows
@@ -726,8 +726,9 @@ a CourtListener-only decision's id to the records it opens (`{ cluster, hash }`,
 the ledger joined such a record to, to those printings and its key. D208 (2026-11-10): the
 ledger ruled them one decision, so that address opens the CAP printing (`pickPrinting`, as for
 `/k/`), keeps the case hash like a `/k/` address, and has the key's `/k/` address as its
-canonical; search gives those records no card. The reader lists no alternate sources for a CAP
-case, so the joined CourtListener record isn't linked from it.
+canonical; search gives those records no card. The CAP case lists the joined record under
+"Other printings and sources" (below), linked to CourtListener, since no address of stare.pub's
+opens it.
 So a lookup is the index manifest the reader already reads and one shard of about 2 KB,
 cached in `bins` with the index files and pruned with them. An id that opens several records
 lists them like the records on one page; a record has no page, so the address carries no case
@@ -735,6 +736,43 @@ hash and the arrows are off. An id the table doesn't have, or a build with no ta
 answers 404), says stare.pub has no record for it. The search tree's cards for these records
 route `d/<id>`, which `caseHref` links to `/d/<id>/`. `web/e2e/addresses.spec.js` covers
 it with the shard and the record served from fixtures.
+
+### Other printings and sources (#320: `web/public/js/altsources.js`)
+
+The case sidebar lists, under the case's citations, the decision's other printings and its
+CourtListener records, from data the reader already reads:
+
+- the case JSON's citations, each looked up in its volume's index like a typed citation,
+  leaving out a CAP case's `official` citation (the volume CAP scanned it in; br/358/0846-01's
+  reads "358 F. App'x 846", another case), the printing shown, and a citation that opens it;
+- the index's aliases at the case's own page to a case in another volume (`via=cl:<cluster>`),
+  on a page one CAP case starts on: that case is another printing and the cluster a record,
+  both labelled "Listed through CourtListener's citation metadata" until something else names
+  them (`551 Pa. 552` and `711 A.2d 1003`, cluster 2162554);
+- the ledger's decision row, for a case opened from `/k/<key>/` or a `/d/<id>/` with CAP
+  printings (the table's `cap` entry, with its `clusters`): its `cap:` and `cl-cluster:`
+  sources and those of decisions merged into it (`resolveInShard`'s `merged`). It still applies
+  after a link to one of the decision's other printings. A case opened by its hash has no row,
+  since nothing published maps a case file to its key, so the A.2d printing of the example lists
+  nothing that way.
+
+Rows are deduplicated (a printing by its case file, a record by its cluster) and kept in the
+order found, the citations first; the ledger doesn't mark the official printing, so none is
+called official. A printing links to its case hash, a page several cases start on to the page
+unless the ledger or an alias names one of them, a citation that opens a CourtListener record to
+that citation, and a cluster with no such citation to `courtlistener.com/opinion/<cluster>/`. A
+citation stare.pub doesn't hold or can't read is listed without a link; one whose lookup failed
+says "Not checked", and a failed lookup of the case's own page says so in the section.
+
+The section is filled after the case is shown (a frame and a task later) and costs nothing
+more on the case's load: its lookups read index files from the cache's `bins` store, and a
+citation in a volume not yet read costs that volume's `.idx.gz`, 0.4 to 5 KB (4.7 KB for
+a2d/711). `resolveEntries` hands the page's entries on as `pageEntries`, so the aliases need no
+second lookup. Room for the rows is held before the sidebar is painted (`--alt-rows`, one
+20 px line each, estimated from the citations, the aliases and the ledger row), so the list
+arriving moves nothing below it; a case with nothing to look up has no section.
+`web/tests/altsources.test.js` covers the rules and `web/e2e/altsources.spec.js` the sidebar,
+with the two volumes' index files and the ledger row served from fixtures.
 
 ### WASM module size (#73)
 

@@ -97,14 +97,16 @@ async function loadShard(id) {
 }
 
 /**
- * The CAP decision `id` names in a parsed shard (`{ cap: { <id>: { key, sources } } }`), as
- * `{ key, sources }` with only its `cap:` sources, or null.
+ * The CAP decision `id` names in a parsed shard (`{ cap: { <id>: { key, sources, clusters } }
+ * }`), as `{ key, sources, clusters }` with only its `cap:` sources and the CourtListener
+ * clusters joined to it that no citation reaches, or null.
  */
 export function capIn(shard, id) {
   const d = shard?.cap?.[id];
   const sources = Array.isArray(d?.sources) ? d.sources.filter((s) => /^cap:/.test(s)) : [];
   if (!sources.length) return null;
-  return { key: typeof d.key === 'string' ? d.key : null, sources };
+  const clusters = Array.isArray(d.clusters) ? d.clusters.filter((c) => Number.isSafeInteger(c)) : [];
+  return { key: typeof d.key === 'string' ? d.key : null, sources, clusters };
 }
 
 /**
