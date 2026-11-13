@@ -139,6 +139,7 @@ export const SPECS = {
   'web/e2e/cache.spec.js': group(READER, CHECK, PAGES, SITEMAP),
   'web/e2e/caseload.spec.js': group(READER),
   'web/e2e/caseswitch.spec.js': group(READER),
+  'web/e2e/failures.spec.js': group(READER),
   'web/e2e/onebox.spec.js': group(READER, SEARCH),
   'web/e2e/resilience.spec.js': group(READER, CHECK, PAGES),
   'web/e2e/search.spec.js': group(READER, SEARCH),

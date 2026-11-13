@@ -85,7 +85,19 @@
 /* The page views (public/js/pageshell.js, #246): the Archival PDF and the Raw Scans fill the
    reader column; the toolbar stays at the top and the page scrolls under it when zoomed. */
 #pdf-viewer, #page-viewer { height: 100%; }
-.page-viewer { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.page-viewer { display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative; }
+/* A page view's notice (pageshell.js's notice(), #254): over the bottom of the page area, so
+   showing it moves nothing; empty, it takes no room and isn't drawn. */
+.pv-notice {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 6;
+  display: flex; align-items: center; gap: 10px; max-width: calc(100% - 32px); width: max-content;
+  padding: 6px 8px 6px 12px; font-size: 13px; line-height: 1.4; color: var(--error-text);
+  background: var(--error-bg); border: 1px solid var(--error-border); border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.pv-notice:empty { display: none; }
+.pv-notice .page-viewer-btn { flex-shrink: 0; color: var(--error-text); border-color: var(--error-border); }
+.pv-notice-close { padding: 2px 8px; font-size: 15px; line-height: 1.2; }
 .page-viewer-toolbar {
   position: sticky; top: 0; z-index: 5;
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 20px;
