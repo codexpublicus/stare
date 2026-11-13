@@ -71,30 +71,48 @@ export async function getTarIndex(reporter, volume) {
   return result;
 }
 
+// A range of the tar that fails without an answer (the connection dropped or changed), or
+// with an answer that may not happen again (a timeout on a cold tar, a 5xx, a 429), is tried
+// this many more times, after TAR_RETRY_DELAY_MS and then twice that, as the Archival PDF
+// tries its ranges again (pdfpages.js). Any other HTTP error is final.
+export const TAR_RETRIES = 2;
+export const TAR_RETRY_DELAY_MS = 250;
+const retryStatus = (status) => status === 408 || status === 429 || status >= 500;
+
 /**
- * Fetch raw bytes from the tar via HTTP range request.
+ * An entry's bytes from the tar by an HTTP range request, tried again as above. `deps`
+ * ({ fetch, delayMs }) are injectable for tests.
  */
-async function fetchTarRange(reporter, volume, entry) {
+export async function fetchTarBytes(reporter, volume, entry, deps = {}) {
   const url = tarUrl(reporter, volume);
-  const response = await fetch(url, {
-    headers: { 'Range': `bytes=${entry.offset}-${entry.offset + entry.size - 1}` },
-  });
-  if (!response.ok && response.status !== 206) {
-    throw new Error(`HTTP ${response.status}`);
+  const fetchFn = deps.fetch || globalThis.fetch;
+  const delayMs = deps.delayMs ?? TAR_RETRY_DELAY_MS;
+  const range = `bytes=${entry.offset}-${entry.offset + entry.size - 1}`;
+  for (let attempt = 0; ; attempt++) {
+    let error;
+    try {
+      const response = await fetchFn(url, { headers: { Range: range } });
+      if (response.ok || response.status === 206) return new Uint8Array(await response.arrayBuffer());
+      error = new Error(`HTTP ${response.status} for ${range} of the volume's tar`);
+      error.retry = retryStatus(response.status);
+    } catch (e) {
+      error = e;
+      error.retry = e instanceof TypeError;
+    }
+    if (!error.retry || attempt >= TAR_RETRIES) throw error;
+    await new Promise((resolve) => setTimeout(resolve, delayMs * 2 ** attempt));
   }
-  return response;
 }
 
 /**
  * Fetch a page image. Returns a Blob URL.
  */
-export async function fetchPageImage(reporter, volume, pageOrder) {
+export async function fetchPageImage(reporter, volume, pageOrder, deps = {}) {
   const { imagesByOrder } = await getTarIndex(reporter, volume);
   const entry = imagesByOrder.get(pageOrder);
   if (!entry) return null;
-  const response = await fetchTarRange(reporter, volume, entry);
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
+  const bytes = await fetchTarBytes(reporter, volume, entry, deps);
+  return URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
 }
 
 /**
@@ -111,17 +129,18 @@ function getAltoForPage(tarIndex, pageOrder) {
 }
 
 /**
- * Fetch and parse ALTO for a page. Returns AltoPage or null.
+ * Fetch and parse ALTO for a page. Returns AltoPage, or null when the volume's tar has no
+ * ALTO for the page; a fetch that still fails after its retries is thrown, for the view to
+ * say so. `deps` ({ fetch, delayMs, wasm }) are injectable for tests.
  */
-export async function fetchAltoForPage(reporter, volume, pageOrder) {
+export async function fetchAltoForPage(reporter, volume, pageOrder, deps = {}) {
   const tarIndex = await getTarIndex(reporter, volume);
   const altoEntry = getAltoForPage(tarIndex, pageOrder);
   if (!altoEntry) return null;
 
-  const response = await fetchTarRange(reporter, volume, altoEntry);
-  const gzData = new Uint8Array(await response.arrayBuffer());
+  const gzData = await fetchTarBytes(reporter, volume, altoEntry, deps);
 
-  const w = await loadWasm();
+  const w = deps.wasm || await loadWasm();
   const json = w.parse_alto(gzData);
   return JSON.parse(json);
 }
@@ -176,6 +195,31 @@ export async function renderPageViewer(container, result, { page = 1, onPage } =
   const blobs = new Map();
   let destroyed = false;
 
+  // The text layer for the page shown, put in once its ALTO is read: on a failure (after
+  // fetchTarBytes's retries) the view says so, with a Retry, and the scan stays usable.
+  const TEXT_FAILED = "The page's text layer couldn't be loaded, so its text can't be shown or selected.";
+  function addOverlay(altoPage) {
+    if (!shown || shown.overlay || !altoPage?.lines?.length) return;
+    shown.overlay = renderOverlay(altoPage);
+    shown.altoPage = altoPage;
+    shown.inner.appendChild(shown.overlay);
+    ui.relayout();
+  }
+  function textFailed(order, e) {
+    console.warn(`Raw Scans: the ALTO for page ${order} couldn't be read:`, e);
+    ui.notice(TEXT_FAILED, {
+      retry: async () => {
+        ui.notice(null);
+        try {
+          const altoPage = await fetchAltoForPage(result.reporter, result.volume, order);
+          if (!destroyed && shown?.order === order) addOverlay(altoPage);
+        } catch (err) {
+          if (!destroyed && shown?.order === order) textFailed(order, err);
+        }
+      },
+    });
+  }
+
   async function pageImage(order) {
     if (!blobs.has(order)) {
       const url = await fetchPageImage(result.reporter, result.volume, order);
@@ -197,9 +241,14 @@ export async function renderPageViewer(container, result, { page = 1, onPage } =
       async load(i) {
         const order = orderOf(i);
         if (!shown) ui.area.innerHTML = '<div class="page-viewer-loading"><span class="spinner"></span> Loading page...</div>';
+        ui.notice(null);
+        let altoError = null;
         const [blobUrl, altoPage] = await Promise.all([
           pageImage(order),
-          fetchAltoForPage(result.reporter, result.volume, order).catch(() => null),
+          fetchAltoForPage(result.reporter, result.volume, order).catch((e) => {
+            altoError = e;
+            return null;
+          }),
         ]);
         const img = document.createElement('img');
         img.src = blobUrl;
@@ -221,7 +270,8 @@ export async function renderPageViewer(container, result, { page = 1, onPage } =
         ui.area.replaceChildren(outer);
         const width = img.naturalWidth * CSS_PER_SCAN_PIXEL;
         const height = img.naturalHeight * CSS_PER_SCAN_PIXEL;
-        shown = { outer, inner, overlay, altoPage, width, height };
+        shown = { order, outer, inner, overlay, altoPage, width, height };
+        if (altoError) textFailed(order, altoError);
         return { width, height };
       },
       place(zoom, rotation) {

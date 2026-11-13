@@ -1137,7 +1137,14 @@ takes it out. A hash has a place in the text (`~c=`) or a page view, not both:
   prefetches the next page once one is drawn. A 404 says the volume's PDF isn't published
   yet (f-appx/660) and offers the Raw Scans.
 - **Raw Scans** (`web/public/js/scanviewer.js`): CAP's color JPEGs from the volume's tar on
-  static.case.law, by range requests through its `.tar.csv`, with the ALTO text.
+  static.case.law, by range requests through its `.tar.csv`, with the ALTO text. A range
+  that fails without an answer, or with a 408, 429 or 5xx (a timeout on a cold tar), is tried
+  twice more (`fetchTarBytes`, 250 ms then 500 ms), as the PDF's ranges are. An ALTO that
+  still can't be read leaves the scan shown and says so (#254): pageshell.js's `notice()`
+  puts "The page's text layer couldn't be loaded" with Retry and Dismiss over the bottom of
+  the page area (`#pv-notice`, `role="status"`), absolutely placed so it moves nothing, and
+  Retry puts the text layer in when it arrives. `web/e2e/failures.spec.js` drops the ALTO
+  ranges once (retried, no notice) and three times (the notice, then Retry).
 
 Both page views share `web/public/js/pageshell.js` (the toolbar, page, zoom, rotation and
 text state, keys and gestures; plain logic in `pagezoom.js`, tested in
