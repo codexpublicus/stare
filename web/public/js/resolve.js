@@ -112,13 +112,17 @@ async function spanCacheKey(reporter, folder, span) {
 }
 
 // `{ text, raw, total }` for the case JSON at `span` of `<reporter>/<folder>.zip`, or
-// `{ whole }` (the zip, from a server that ignored the Range); see readSpanText.
+// `{ whole }` (the zip, from a server that ignored the Range); see readSpanText. The
+// bytes are kept in the cache under the span's key.
+async function readCaseSpan(reporter, folder, span) {
+  return readSpanText(zipUrl(reporter, folder), span, { key: await spanCacheKey(reporter, folder, span) });
+}
+
+// readCaseSpan for the case being opened, which resolve() may have started already.
 function fetchSpanText(reporter, folder, span) {
   const key = `${reporter}/${folder}.zip@${span.offset}:${span.length}:${span.method}`;
   if (spanFetch?.key !== key) {
-    const promise = (async () => readSpanText(zipUrl(reporter, folder), span, {
-      key: await spanCacheKey(reporter, folder, span),
-    }))();
+    const promise = readCaseSpan(reporter, folder, span);
     spanFetch = { key, promise };
     // A network error is worth another try; an answer that wasn't the span isn't.
     promise.catch((e) => { if (!(e instanceof SpanError) && spanFetch?.promise === promise) spanFetch = null; });
@@ -231,10 +235,15 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
     if (entries) return resolveEntries(reporter, cited, page, entries, onStatus, seq);
   }
 
+  const { volume, allCases } = await locateCases(reporter, cited, page, onStatus);
+  return resolveCap(reporter, volume, page, allCases, onStatus, seq);
+}
+
+// The CAP cases at `page` from the .bin and .multi files, for a build or volume without
+// the unified index: `{ volume, allCases }`, `volume` the folder they're in.
+async function locateCases(reporter, cited, page, onStatus) {
   const located = await locate(reporter, cited, page, onStatus);
-  if (located.allCases) {
-    return resolveCap(reporter, located.volume, page, located.allCases, onStatus, seq);
-  }
+  if (located.allCases) return located;
   const { volume, binData, caseFile } = located;
   const multiKey = await indexPath(`${reporter}/${volume}.multi`);
   const multiData = await fetchCachedText('multi', multiKey, indexUrl(multiKey));
@@ -251,7 +260,7 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
   if (allCases.length === 0) {
     throw new Error(`No case starts at page ${page} in ${reporter} vol. ${volume}.`);
   }
-  return resolveCap(reporter, volume, page, allCases, onStatus, seq);
+  return { volume, allCases };
 }
 
 // The case at a page from the unified index's entries there (the volume's own CAP
@@ -261,28 +270,53 @@ export async function resolve(reporter, citedVolume, page, onStatus, seq = null)
 // result saying what was cited and where the alias came from; CourtListener's records,
 // when neither is there.
 async function resolveEntries(reporter, cited, page, entries, onStatus, seq) {
+  const pick = pickEntries(reporter, cited, page, entries);
+  if (pick.source === 'cl') return resolveCl(reporter, cited, page, pick.records, onStatus, seq);
+  const result = await resolveCap(
+    pick.reporter, pick.volume, pick.page, pick.allCases, onStatus, pick.alias ? null : seq, pick.spans,
+  );
+  if (pick.alias) return { ...result, alias: pick.alias };
+  // The page's entries, for the case's other printings (altsources.js).
+  return { ...result, pageEntries: entries };
+}
+
+// What resolveEntries opens for a page's entries, without reading it: `{ source: 'cap',
+// reporter, volume, page, allCases, spans, alias }` (`alias` null for the volume's own
+// cases) or `{ source: 'cl', records }`. Throws when there are none.
+function pickEntries(reporter, cited, page, entries) {
   if (entries.length === 0) {
     throw new Error(`No case starts at page ${page} in ${reporter} vol. ${cited}.`);
   }
   const first = entries[0];
   if (first.source === 'cap' && first.reporter) {
     const targetPage = filePage(first.case_file);
-    const result = await resolveCap(
-      first.reporter, first.folder, targetPage === null ? page : targetPage,
-      [first.case_file], onStatus, null, new Map([[first.case_file, first.zip]]),
-    );
-    return { ...result, alias: { via: first.via || null, reporter, volume: cited, page } };
+    return {
+      source: 'cap', reporter: first.reporter, volume: first.folder,
+      page: targetPage === null ? page : targetPage, allCases: [first.case_file],
+      spans: new Map([[first.case_file, first.zip]]),
+      alias: { via: first.via || null, reporter, volume: cited, page },
+    };
   }
   if (first.source === 'cap') {
     const folder = first.folder || null;
     const own = entries.filter((e) => e.source === 'cap' && !e.reporter && (e.folder || null) === folder);
-    const allCases = own.map((e) => e.case_file);
-    const spans = new Map(own.map((e) => [e.case_file, e.zip]));
-    // The page's entries, for the case's other printings (altsources.js).
-    const result = await resolveCap(reporter, folder || cited, page, allCases, onStatus, seq, spans);
-    return { ...result, pageEntries: entries };
+    return {
+      source: 'cap', reporter, volume: folder || cited, page, allCases: own.map((e) => e.case_file),
+      spans: new Map(own.map((e) => [e.case_file, e.zip])), alias: null,
+    };
   }
-  return resolveCl(reporter, cited, page, entries.filter((e) => e.source === 'cl'), onStatus, seq);
+  return { source: 'cl', records: entries.filter((e) => e.source === 'cl') };
+}
+
+// The `seq`th of a page's case files, or the first: `{ caseFile, seq }`. The sequence
+// number is after the file name's last hyphen ("1114-1140-02").
+function pickCase(allCases, seq) {
+  const seqOf = (f) => parseInt(f.slice(f.lastIndexOf('-') + 1), 10);
+  if (seq !== null && seq > 0) {
+    const target = allCases.find((f) => seqOf(f) === seq);
+    if (target) return { caseFile: target, seq };
+  }
+  return { caseFile: allCases[0], seq: seqOf(allCases[0]) || 1 };
 }
 
 // A CAP case: the `seq`th of `allCases` (the page's case files), or the first. `spans`
@@ -297,21 +331,7 @@ async function resolveCap(reporter, volume, page, allCases, onStatus, seq, spans
   requireFeature('text');
   onStatus('Fetching case data...');
 
-  // If seq specified, pick that specific case; otherwise default to -01 (first).
-  // The sequence number is after the file name's last hyphen ("1114-1140-02").
-  const seqOf = (f) => parseInt(f.slice(f.lastIndexOf('-') + 1), 10);
-  let activeCaseFile = allCases[0];
-  let activeSeq = 1;
-  if (seq !== null && seq > 0) {
-    const target = allCases.find(f => seqOf(f) === seq);
-    if (target) {
-      activeCaseFile = target;
-      activeSeq = seq;
-    }
-  } else {
-    // Default to first case (-01), extract seq from filename
-    activeSeq = seqOf(activeCaseFile) || 1;
-  }
+  const { caseFile: activeCaseFile, seq: activeSeq } = pickCase(allCases, seq);
 
   const base = { reporter, volume, page, caseFile: activeCaseFile, seq: activeSeq, allCases };
   let zipData = null;
@@ -458,6 +478,70 @@ export function spanZip(reporter, folder, spans, total, deps = {}) {
     },
   };
   return zip;
+}
+
+// Previews read this page, by citation, in flight or done. A failure isn't kept, so the
+// next hover tries again.
+const previews = new Map();
+
+/**
+ * The name, date, court and first citation of the case a citation resolves to, for the
+ * reader's hover previews (citations.js): `{ name, date, court, cite }`. The case is
+ * found the way resolve() finds it, from the volume's index (which the citation pass has
+ * usually read already), and its JSON is read the way the reader reads another case of
+ * a page (spanZip's caseData): by its line's zip span, one Range request, else out of
+ * the zip by range requests (the directory from its tail, then the entry). The whole
+ * zip is never fetched for a preview. The span's bytes are kept in the cache, as the
+ * reader keeps them, so opening the case after a hover fetches nothing more for its text.
+ *
+ * `deps` ({ manifest, idxEntries, locateCases, readSpan, wasm, zipFileText,
+ * fetchClRecord }) are injectable for tests.
+ */
+export function casePreview(reporter, citedVolume, page, seq = null, deps = {}) {
+  const key = `${reporter}/${citedVolume}/${page}/${seq ?? ''}`;
+  if (!previews.has(key) || deps.fresh) {
+    const read = readPreview(reporter, String(citedVolume), page, seq, deps);
+    previews.set(key, read);
+    read.catch(() => { if (previews.get(key) === read) previews.delete(key); });
+  }
+  return previews.get(key);
+}
+
+async function readPreview(reporter, cited, page, seq, deps) {
+  requireFeature('text');
+  const manifest = deps.manifest || await loadManifest();
+  let pick = null;
+  if (hasIdx(manifest)) {
+    const number = foldedInto(manifest, reporter, cited);
+    let entries = await (deps.idxEntries || idxEntries)(reporter, number || cited, page);
+    if (entries && number) {
+      entries = entries.filter((e) => e.source === 'cap' && !e.reporter && e.folder === cited);
+    }
+    if (entries) pick = pickEntries(reporter, cited, page, entries);
+  }
+  if (!pick) {
+    const { volume, allCases } = await (deps.locateCases || locateCases)(reporter, cited, page, () => {});
+    pick = { source: 'cap', reporter, volume, allCases, spans: null, alias: null };
+  }
+  let data;
+  if (pick.source === 'cl') {
+    const n = seq !== null && seq > 0 && seq <= pick.records.length ? seq : 1;
+    data = await (deps.fetchClRecord || fetchClRecord)(pick.records[n - 1]);
+  } else {
+    const { caseFile } = pickCase(pick.allCases, pick.alias ? null : seq);
+    const zip = spanZip(pick.reporter, pick.volume, pick.spans, null, {
+      readSpan: deps.readSpan || readCaseSpan,
+      ...(deps.wasm ? { wasm: deps.wasm } : {}),
+      ...(deps.zipFileText ? { zipFileText: deps.zipFileText } : {}),
+    });
+    data = await zip.caseData(caseFile);
+  }
+  return {
+    name: data.name_abbreviation || data.name || '',
+    date: data.decision_date || '',
+    court: data.court?.name || '',
+    cite: data.citations?.[0]?.cite || '',
+  };
 }
 
 // The CourtListener record at `page` of `volume` (the `seq`th when several start

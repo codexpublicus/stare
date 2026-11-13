@@ -659,6 +659,22 @@ after the first showed in a median 0.19 to 0.28 s against 0.20 s on a fast conne
 22.6 s. Opened again, nothing is fetched for a case's zip, where before each cost a HEAD.
 `web/e2e/zipspan.spec.js` covers the path and its fallbacks on the live index.
 
+A citation's hover preview (#263) reads the cited case the same way, through `casePreview`
+(resolve.js): the case is found from the volume's index as resolve() finds it
+(`pickEntries`, `pickCase`, `locateCases` for a build without the unified index), usually
+from the `.idx.gz` the citation pass has already read, and its JSON comes from spanZip's
+`caseData`, the code the reader uses for another case of a page: the line's span, else the
+entry out of the zip by range (casenames.js's `zipFileText`). A preview never fetches the
+whole zip, and doesn't take over the one-at-a-time span or zip the case being opened uses.
+The span's bytes go into the cache under the span's key, so opening the case afterwards
+fetches nothing for its text. Previews are kept for the page, and a failure isn't, so the
+next hover tries again. Measured on 2026-11-13 on a2d/142/148-01, hovering the four
+citations #263 measured (va/164, pa-super/65, iowa/219, sc/189) with Chromium's cache off:
+with spans, 4 requests and 30.8 KB, the same as main since #318; with the index's spans
+taken out, as a build without them has, main fetched the four whole zips (4 requests,
+5,845 KB) and this reads them by range (8 GETs and 4 CORS preflights for the suffix ranges,
+295 KB).
+
 The case view is one flex column the height of the window (`#resolved`, `100dvh`): the top
 bar, then the reader and sidebar in what's left. The loading line and the WASM bar sit over
 the top of the reader (`.load-status`), the bar shows only after 500 ms (`SHOW_AFTER_MS` in
