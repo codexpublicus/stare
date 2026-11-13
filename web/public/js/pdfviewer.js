@@ -61,7 +61,8 @@ export async function renderPdfViewer(container, result, { openScans, page = 1, 
   let orders = null;
   try {
     orders = getPageOrders(result.zipData, result.caseFile);
-  } catch {
+  } catch (e) {
+    console.info(`Archival PDF: no page orders for ${result.caseFile}.`, e);
     orders = null;
   }
   const wanted = casePdfPages(orders);
@@ -284,7 +285,10 @@ export async function renderPdfViewer(container, result, { openScans, page = 1, 
     if (view.destroyed || !all) return;
     const mine = Array.from({ length: count }, (_, k) => all[first - 1 + k] || null);
     if (mine.some(Boolean)) ui.setLabels(mine.map((l, k) => l || fallbackLabels[k]));
-  }).catch(() => {});
+  }).catch((e) => {
+    // The case HTML's labels stay (pageLabels); only the PDF's own are missing.
+    console.info("Archival PDF: the PDF's page labels couldn't be read; using the case's.", e);
+  });
 
   await ui.go(ui.index);
 }

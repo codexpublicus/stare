@@ -65,7 +65,7 @@ export function renderReader(el, caseData, citations, pages = null, footnotes = 
  * @param {Array|null} groups - processCitations()' `groups` for them; without
  *   it they are grouped here, with no counts and no parallels
  */
-function citationStatusParts(caseData, detectedCitations, citationStatus, groups = null) {
+function citationStatusParts(caseData, detectedCitations, citationStatus, groups = null, failure = null) {
   const isLoading = citationStatus === 'loading';
   const isError = citationStatus === 'error';
 
@@ -77,6 +77,11 @@ function citationStatusParts(caseData, detectedCitations, citationStatus, groups
     statusText = 'Finding citations…';
   } else if (isError) {
     statusText = "Couldn't check citations.";
+    // Why, and what to do (#271): the list's place gets the reason and, when the check can
+    // run again, a Retry button (updateCitationStatus wires it).
+    listHtml = `<p class="citation-error">The citation check stopped${failure?.reason ? `: ${esc(failure.reason)}` : ''}.`
+      + ` The text is complete; only the links to the cases it cites are missing.</p>`
+      + (failure?.onRetry ? '<button type="button" class="citation-retry">Retry</button>' : '');
   } else if (detectedCitations && detectedCitations.length > 0) {
     // Held here, then statutes linked to their text, then cases to look
     // for elsewhere, then the rest; bare section references aren't
@@ -128,14 +133,17 @@ function citationStatusParts(caseData, detectedCitations, citationStatus, groups
  * only their contents.
  * @param {CitationStatusHandle} handle
  */
-function fillCitationStatus(handle, caseData, detectedCitations, citationStatus, groups = null) {
-  const { label, statusText, listHtml } = citationStatusParts(caseData, detectedCitations, citationStatus, groups);
+function fillCitationStatus(handle, caseData, detectedCitations, citationStatus, groups = null, failure = null) {
+  const { label, statusText, listHtml } = citationStatusParts(caseData, detectedCitations, citationStatus, groups, failure);
   handle.labelEl.textContent = label;
   handle.statusEl.textContent = statusText;
   handle.statusEl.className = citationStatus === 'error'
     ? 'citation-status-text citation-status-error'
     : 'citation-status-text';
   handle.listEl.innerHTML = listHtml;
+  if (citationStatus === 'error' && failure?.onRetry) {
+    handle.listEl.querySelector('.citation-retry')?.addEventListener('click', () => failure.onRetry());
+  }
 }
 
 /**
@@ -272,10 +280,67 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
  * @param {Array|null} detectedCitations - citation objects from processCitations()
  * @param {'error'|'done'} citationStatus
  * @param {Array|null} groups - processCitations()' `groups`, as for renderSidebar
+ * @param {{ reason?: string, onRetry?: Function }|null} failure - for 'error': why the
+ *   check stopped, said in the list's place, and what Retry does
  */
-export function updateCitationStatus(handle, caseData, detectedCitations, citationStatus, groups = null) {
+export function updateCitationStatus(handle, caseData, detectedCitations, citationStatus, groups = null, failure = null) {
   if (!handle) return;
-  fillCitationStatus(handle, caseData, detectedCitations, citationStatus, groups);
+  fillCitationStatus(handle, caseData, detectedCitations, citationStatus, groups, failure);
+}
+
+/**
+ * Say what went wrong in a part of the page that still works (#254, #271): a notice over
+ * the bottom of `host` (a positioned element: the reader's `.main-body`, a page view, the
+ * landing), so showing it moves nothing. `message` is plain text; `retry`, when given, gets
+ * a Retry button, and every notice has a button that dismisses it. A host shows one notice
+ * at a time; `showNotice(host, null)` takes it down. The notice is a `role="status"` region
+ * kept in the host, so its text is announced when it changes.
+ */
+export function showNotice(host, message, { retry = null } = {}) {
+  let el = host.querySelector(':scope > .notice');
+  if (!el) {
+    if (!message) return;
+    el = document.createElement('div');
+    el.className = 'notice';
+    el.setAttribute('role', 'status');
+    host.appendChild(el);
+  }
+  el.replaceChildren();
+  if (!message) return;
+  const text = document.createElement('span');
+  text.className = 'notice-text';
+  text.textContent = message;
+  el.appendChild(text);
+  if (retry) {
+    const again = document.createElement('button');
+    again.type = 'button';
+    again.className = 'notice-btn notice-retry';
+    again.textContent = 'Retry';
+    again.addEventListener('click', () => {
+      showNotice(host, null);
+      retry();
+    });
+    el.appendChild(again);
+  }
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'notice-btn notice-close';
+  close.setAttribute('aria-label', 'Dismiss');
+  close.textContent = '\u00d7';
+  close.addEventListener('click', () => showNotice(host, null));
+  el.appendChild(close);
+}
+
+/**
+ * Log a failure and say so on the page (#271): `console.error` with `where`, then
+ * showNotice's notice in `host` with `message` (else `${where} failed: <the error's
+ * message>`) and a Retry when `retry` is given.
+ */
+export function reportError(host, where, err, { message = null, retry = null } = {}) {
+  console.error(`${where}:`, err);
+  if (!host) return;
+  const why = err?.message || String(err || 'unknown error');
+  showNotice(host, message || `${where} failed: ${why}`, { retry });
 }
 
 export function renderMultiNotice(el, allCases, currentFile, onSwitch) {

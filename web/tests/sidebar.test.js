@@ -256,16 +256,20 @@ describe('updateCitationStatus persists the status and list nodes', () => {
     assert.match(el.innerHTML, /cited-case-link/);
   });
 
-  test('loading -> error updates statusEl in place and leaves the list empty', () => {
+  test('loading -> error updates statusEl in place and says why in the list\'s place, with no list', () => {
     const el = new FakeElement();
     const handle = renderSidebar(el, caseData, 'a2d', 1, [], null, 'loading');
 
-    updateCitationStatus(handle, caseData, null, 'error');
+    updateCitationStatus(handle, caseData, null, 'error', null, { reason: 'the server couldn\'t be reached' });
 
     assert.doesNotMatch(handle.statusEl.innerHTML, /Finding citations/);
     assert.match(handle.statusEl.innerHTML, /couldn.t check citations/i);
     assert.match(el.innerHTML, /couldn.t check citations/i);
-    assert.equal(handle.listEl.innerHTML, '');
+    // Why, and that the text itself is complete (#271); no list, and no Retry without one.
+    assert.match(handle.listEl.innerHTML, /citation check stopped: the server couldn.+t be reached/);
+    assert.match(handle.listEl.innerHTML, /The text is complete/);
+    assert.doesNotMatch(handle.listEl.innerHTML, /cited-case/);
+    assert.doesNotMatch(handle.listEl.innerHTML, /Retry/);
   });
 
   test('is a no-op when passed a null handle (case changed before detection finished)', () => {

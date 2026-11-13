@@ -143,10 +143,12 @@ let manifest = null;
 
 // The manifest, fetched once per page. An unreachable or unreadable one reads as an
 // empty legacy manifest marked `unreachable`: nothing shows as available, and resolving
-// still works, from the root.
+// still works, from the root. That answer isn't kept (#271): calls already waiting share
+// it, and the next call fetches the manifest again, so one blip on page load doesn't make
+// everything read as unavailable until a reload.
 export async function loadManifest(fetchFn = globalThis.fetch) {
   if (manifest) return manifest;
-  manifest = (async () => {
+  const read = (async () => {
     try {
       // Revalidated, never taken from the HTTP cache as it is: it's the pointer to the
       // live build, and a browser may otherwise reuse an old copy heuristically.
@@ -157,7 +159,9 @@ export async function loadManifest(fetchFn = globalThis.fetch) {
       return { ...normalizeManifest(null), unreachable: true };
     }
   })();
-  return manifest;
+  manifest = read;
+  read.then((m) => { if (m.unreachable && manifest === read) manifest = null; });
+  return read;
 }
 
 let pruned = false;

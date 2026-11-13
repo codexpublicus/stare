@@ -1,5 +1,5 @@
 import { casePreview, parseInput, resolve, extractCase, extractFile, getPageOrders } from './resolve.js';
-import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice } from './ui.js';
+import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice, reportError, showNotice } from './ui.js';
 import { caseHash, getHashParams, parseHash, setHash, onHashChange, replaceHash, routePath, setRoute } from './router.js';
 import { citationPath, clusters, keyPath, parseCasePath, pickPrinting, resolveKey } from './caseaddress.js';
 import { decisionPath, openDecisionRecord, resolveDecision } from './decisionroute.js';
@@ -59,6 +59,9 @@ const pdfViewerEl = document.getElementById('pdf-viewer');
 const pageViewerEl = document.getElementById('page-viewer');
 const landingWasmSlot = document.getElementById('landing-wasm-progress');
 const resolvedWasmSlot = document.getElementById('wasm-progress');
+// What went wrong in the case shown goes in a notice over the bottom of the reader (#271).
+const caseNotice = document.getElementById('case-notice');
+const mainBody = caseNotice.parentElement;
 // Each box's one button says where Enter takes its text, a citation or words (D163,
 // boxroute.js); its label follows the text as it's typed.
 const landingRoute = attachRouteLabel(landingInput, landingBtn, document.getElementById('landing-route-status'));
@@ -174,9 +177,17 @@ function casePages(zipData, caseFile, caseData) {
   if (!zipData) return NO_PAGES;
   try {
     return htmlPages(extractFile(zipData, `html/${caseFile}.html`), caseData);
-  } catch {
+  } catch (e) {
+    console.info(`No page markers for ${caseFile}: its HTML couldn't be read from the zip.`, e);
     return NO_PAGES;
   }
+}
+
+// A plain reason for a failure, for a notice: the connection, the WASM, or the error's own.
+function plainReason(e) {
+  if (e instanceof WasmLoadError) return 'the citation parser didn\'t load';
+  if (e instanceof TypeError && /fetch|network|load/i.test(e.message)) return 'the server couldn\'t be reached; check your connection';
+  return e?.message || String(e);
 }
 
 const NO_PAGES = { pages: null, footnotes: null };
@@ -410,7 +421,21 @@ async function showResolved(result, pin, cite, load, fromText = null) {
       if (pendingPin !== null) goToPage(pendingPin);
       else markTarget();
       pendingPin = null;
-    }, () => {});
+    }, (e) => {
+      // A case with no HTML in its zip has no page markers to show.
+      if (/ is not in /.test(e?.message || '')) {
+        console.info(`No page markers for ${caseFile}: its zip has no HTML for it.`);
+        return;
+      }
+      if (!load.current() || shownCaseFile !== caseFile) return;
+      reportError(mainBody, 'Reading the page numbers', e, {
+        message: `The page numbers and footnotes couldn't be loaded (${plainReason(e)}). The text is complete.`,
+        retry: () => {
+          pagesByCase.delete(caseFile);
+          pagesFor(caseFile, caseData);
+        },
+      });
+    });
     return NO_PAGES;
   };
   // A pin cite waiting for the page markers of a case read by its span.
@@ -424,7 +449,7 @@ async function showResolved(result, pin, cite, load, fromText = null) {
   // done/error transition.
   let citationStatusHandle = null;
 
-  renderMultiNotice(multiEl, result.allCases, result.caseFile, switchCase);
+  renderMultiNotice(multiEl, result.allCases, result.caseFile, switchSafely);
   statusBar.classList.add('hidden');
   const shown = showCase(result.caseFile, result.caseData, result);
   goToPage(cite ? null : pin);
@@ -487,8 +512,26 @@ async function showResolved(result, pin, cite, load, fromText = null) {
       if (!load.current()) return;
       console.error('Citation detection failed:', e);
       if (!shown()) return;
-      updateCitationStatus(handle, caseData, null, 'error');
+      updateCitationStatus(handle, caseData, null, 'error', null, {
+        reason: plainReason(e),
+        onRetry: () => {
+          if (!shown()) return;
+          updateCitationStatus(handle, caseData, null, 'loading');
+          highlightCase(caseFile, caseData, actions);
+        },
+      });
     }
+  }
+
+  // switchCase from the multi-case notice's links, with a failure said over the reader.
+  function switchSafely(caseFile) {
+    return switchCase(caseFile).catch((e) => {
+      if (!load.current()) return;
+      reportError(mainBody, 'Switching cases', e, {
+        message: `That case couldn't be shown (${plainReason(e)}).`,
+        retry: () => switchSafely(caseFile),
+      });
+    });
   }
 
   let switching = 0;
@@ -526,7 +569,7 @@ async function showResolved(result, pin, cite, load, fromText = null) {
     if (!routePath()) showKeyNotice(null);
     updateTopbar(caseData);
     updatePrevNext(result, caseFile);
-    renderMultiNotice(multiEl, result.allCases, caseFile, switchCase);
+    renderMultiNotice(multiEl, result.allCases, caseFile, switchSafely);
     resetPageViews();
     showCase(caseFile, caseData, shownResult);
     goToPage(null);
@@ -600,6 +643,7 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
   const load = loads.start();
   landingBtn.disabled = true;
   setStatus('', false);
+  showNotice(mainBody, null);
   showWasmBar(() => doResolve(reporter, volume, page, seq, pin, cite, view, fromText));
 
   try {
@@ -614,7 +658,8 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
     lastResolvedHash = window.location.hash;
     if (!routePath()) showKeyNotice(null);
     pendingView = result.alias || cite ? null : view;
-    showResolved(result, result.alias ? null : pin, result.alias ? null : cite, load, fromText);
+    showResolved(result, result.alias ? null : pin, result.alias ? null : cite, load, fromText)
+      .catch((e) => caseFailed(e, load, () => doResolve(reporter, volume, page, seq, pin, cite, view, fromText)));
   } catch (err) {
     if (!load.current()) return;
     if (err instanceof NotInCopyError) {
@@ -637,6 +682,16 @@ async function doResolve(reporter, volume, page, seq = null, pin = null, cite = 
   } finally {
     if (load.current()) landingBtn.disabled = false;
   }
+}
+
+// A case that arrived but couldn't be shown (#271): said over the reader, with a Retry that
+// loads it again, unless another load has replaced it.
+function caseFailed(e, load, retry) {
+  if (!load.current()) return;
+  reportError(mainBody, 'Showing the case', e, {
+    message: `This case couldn't be shown (${plainReason(e)}).`,
+    retry,
+  });
 }
 
 const SITE = 'https://stare.pub';
@@ -794,6 +849,7 @@ async function doResolveDecision(id, records, n) {
   const load = loads.start();
   landingBtn.disabled = true;
   setStatus('', false);
+  showNotice(mainBody, null);
   showWasmBar(() => doResolveDecision(id, records, n));
   try {
     const result = await openDecisionRecord(id, records, n, (msg) => { if (load.current()) setStatus(msg, false); });
@@ -801,7 +857,7 @@ async function doResolveDecision(id, records, n) {
     currentResult = result;
     lastResolvedHash = window.location.hash;
     pendingView = null;
-    showResolved(result, null, null, load);
+    showResolved(result, null, null, load).catch((e) => caseFailed(e, load, () => doResolveDecision(id, records, n)));
   } catch (err) {
     if (!load.current()) return;
     if (err instanceof WasmLoadError) return;
@@ -1050,8 +1106,34 @@ function viewFailed(view, el) {
 }
 
 // Show a page view, at the case's page `page` when given (the hash's), loading it the
-// first time.
-async function openPageView(view, page = null) {
+// first time. A failure is said in the view, with a Retry, and the Reader keeps working
+// (#271); nothing that opens a view needs to catch.
+function openPageView(view, page = null) {
+  const result = currentResult;
+  return openPageViewNow(view, page).catch((e) => {
+    console.error(`${VIEW_NAMES[view]} failed:`, e);
+    if (currentResult !== result) return;
+    pageViewFailed(view, plainReason(e));
+  });
+}
+
+// What a page view shows when it couldn't open the case's pages: the reason and a Retry.
+function pageViewFailed(view, reason) {
+  if (view === 'pdf') {
+    pdfViewerLoaded = false;
+    viewModules.pdf?.resetPdfViewer();
+  } else {
+    pageViewerLoaded = false;
+    viewModules.scans?.resetPageViewer();
+  }
+  const el = VIEWS[view][1];
+  el.innerHTML = `<div class="pdf-view-message" role="status">${VIEW_NAMES[view]} couldn't open this case's pages`
+    + ` (${reason.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}). The Reader still works.`
+    + ' <button type="button" class="page-viewer-btn view-retry">Retry</button></div>';
+  el.querySelector('.view-retry').addEventListener('click', () => openPageView(view));
+}
+
+async function openPageViewNow(view, page = null) {
   showView(view);
   if (page) viewPages[view] = page;
   setViewHash(view);
@@ -1091,11 +1173,10 @@ async function openPageView(view, page = null) {
     el.innerHTML = '<div class="page-viewer-loading"><span class="spinner"></span> Loading the volume\'s case data...</div>';
     try {
       result.zipData = await result.zip.loadZip();
-    } catch {
+    } catch (e) {
+      console.error(`${VIEW_NAMES[view]}: the volume's zip couldn't be fetched:`, e);
       if (currentResult !== result) return;
-      if (view === 'pdf') pdfViewerLoaded = false;
-      else pageViewerLoaded = false;
-      el.innerHTML = '<div class="pdf-view-message">Couldn\'t reach the server. Check your connection and try again.</div>';
+      pageViewFailed(view, 'the server couldn\'t be reached; check your connection');
       return;
     }
     if (currentResult !== result) return;

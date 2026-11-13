@@ -13,9 +13,9 @@
 //   printUrl(i)          resolves to a URL of the page's image, to print.
 //
 // The view says what went wrong with a page it still shows (its text layer, say) with
-// `notice(message, { retry })`: a line over the bottom of the page area, announced, with a
-// Retry button when `retry` is given and a button that dismisses it; `notice(null)` takes
-// it down. It sits over the page, so showing it moves nothing.
+// `notice(message, { retry })`, ui.js's showNotice in the view: a line over the bottom of
+// the page area, announced, with Retry when `retry` is given and Dismiss; `notice(null)`
+// takes it down. It sits over the page, so showing it moves nothing.
 //
 // The view puts selectionpaint.js's selectionLayer() in its page, between the image and the
 // text; this module paints the text selection there (#247).
@@ -25,6 +25,7 @@ import {
 } from './pagezoom.js';
 import { filePage } from './pagekey.js';
 import { watchSelection } from './selectionpaint.js';
+import { showNotice } from './ui.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -131,7 +132,7 @@ function viewHtml(prefix, kind, count) {
       </div>
     </div>
     <div class="page-viewer-image" id="${id('area')}"></div>
-    <div class="pv-notice" id="${id('notice')}" role="status" aria-live="polite"></div>
+    <div class="notice" id="${id('notice')}" role="status"></div>
   </div>`;
 }
 
@@ -261,30 +262,10 @@ export function createPageView(container, {
   };
   v.closeHelp = () => v.toggleHelp(false);
 
-  // A notice over the page area (above): the message, Retry and dismiss.
-  const noticeEl = $('notice');
-  v.notice = (message, { retry } = {}) => {
-    noticeEl.replaceChildren();
-    if (!message || v.destroyed) return;
-    const text = document.createElement('span');
-    text.className = 'pv-notice-text';
-    text.textContent = message;
-    noticeEl.appendChild(text);
-    if (retry) {
-      const again = document.createElement('button');
-      again.type = 'button';
-      again.className = 'page-viewer-btn pv-notice-retry';
-      again.textContent = 'Retry';
-      again.addEventListener('click', () => retry());
-      noticeEl.appendChild(again);
-    }
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'page-viewer-btn pv-notice-close';
-    close.setAttribute('aria-label', 'Dismiss');
-    close.textContent = '\u00d7';
-    close.addEventListener('click', () => v.notice(null));
-    noticeEl.appendChild(close);
+  // A notice over the page area (above).
+  v.notice = (message, opts) => {
+    if (message && v.destroyed) return;
+    showNotice(root, message, opts);
   };
 
   // Show page i: load it (the view shows its own loading state), then size and draw it.
@@ -495,7 +476,9 @@ export function pageLabels(count, extractFile, result) {
     const html = extractFile(result.zipData, `html/${result.caseFile}.html`);
     const doc = new DOMParser().parseFromString(html, 'text/html');
     breaks = [...doc.querySelectorAll('.page-label')].map((a) => a.getAttribute('data-label')).filter(Boolean);
-  } catch {
+  } catch (e) {
+    // Only the first page is labelled then, from the case's file name.
+    console.info(`Page view: no printed page labels for ${result.caseFile}; its HTML couldn't be read.`, e);
     breaks = [];
   }
   const first = filePage(result.caseFile);
