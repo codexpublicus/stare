@@ -39,7 +39,7 @@
   --footnote-text: #5d584f;
   --error-bg: #fdf0ee; --error-border: #f3c7c0; --error-text: #b91c1c;
   --status-bg: #e6efec; --status-border: #c9ddd7; --status-text: #2f6b5f;
-  /* Solid controls (the landing's Resolve, /check's button, the sidebar toggle) and the
+  /* Solid controls (the landing's Resolve, /check's button) and the
      citation tooltip: ink on the ground's light, in both themes. */
   --button-bg: #1d1b18; --button-text: #f8f7f4;
   --tooltip-bg: #1d1b18; --tooltip-text: #f8f7f4;

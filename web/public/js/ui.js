@@ -114,7 +114,7 @@ function citationStatusParts(caseData, detectedCitations, citationStatus, groups
   }
 
   const label = isLoading || isError ? 'Cited Cases' : `Cited Cases (${totalCites})`;
-  return { label, statusText, listHtml };
+  return { label, statusText, listHtml, count: isLoading || isError ? null : totalCites };
 }
 
 /**
@@ -128,6 +128,8 @@ function citationStatusParts(caseData, detectedCitations, citationStatus, groups
  *   sentence per transition, not every citation.
  * @property {Element} listEl - the cited-cases list itself. Not a live
  *   region; updated in place alongside statusEl, but silently.
+ * @property {number|null} count - the cases the list holds, the number in the
+ *   label; null while they're being found or when finding them failed
  */
 
 /**
@@ -138,7 +140,8 @@ function citationStatusParts(caseData, detectedCitations, citationStatus, groups
  * @param {CitationStatusHandle} handle
  */
 function fillCitationStatus(handle, caseData, detectedCitations, citationStatus, groups = null, failure = null) {
-  const { label, statusText, listHtml } = citationStatusParts(caseData, detectedCitations, citationStatus, groups, failure);
+  const { label, statusText, listHtml, count } = citationStatusParts(caseData, detectedCitations, citationStatus, groups, failure);
+  handle.count = count;
   handle.labelEl.textContent = label;
   handle.statusEl.textContent = statusText;
   handle.statusEl.className = citationStatus === 'error'

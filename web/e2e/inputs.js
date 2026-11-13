@@ -145,6 +145,7 @@ export const SPECS = {
   'web/e2e/onebox.spec.js': group(READER, SEARCH),
   'web/e2e/resilience.spec.js': group(READER, CHECK, PAGES),
   'web/e2e/search.spec.js': group(READER, SEARCH),
+  'web/e2e/sheet.spec.js': group(READER),
   'web/e2e/smoke.spec.js': group(READER, CHECK, PAGES, SITEMAP, [
     'crates/stare/tests/fixtures/cl-record.json',
     'crates/stare/tests/fixtures/cl-record-blocked.json',

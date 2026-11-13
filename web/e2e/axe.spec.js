@@ -1,6 +1,7 @@
 // An automated accessibility pass (axe-core, through @axe-core/playwright) over the pages the
 // smoke suite loads, in both themes: the landing, a case in each of its three views, /search/
-// with results, /about, /data and /check with a result. A serious or critical violation fails
+// with results, /about, /data and /check with a result, and a case at phone width with its
+// details bar and sheet. A serious or critical violation fails
 // the test; moderate and minor ones are listed in the output and attached to the report without
 // failing it. #270 and a11y.spec.js cover what axe can't see: the keyboard, the focus and the
 // live regions.
@@ -84,21 +85,50 @@ const PAGES = {
 // One violation as a line per element: rule, impact, help, and the element's selector.
 const describe = (v) => v.nodes.map((n) => `  [${v.impact}] ${v.id}: ${v.help}\n    ${n.target.join(' ')}\n    ${n.failureSummary?.replace(/\n/g, '\n    ') ?? ''}`).join('\n');
 
+// Fails on a serious or critical violation; lists and attaches the moderate and minor ones.
+async function check(page, testInfo, what) {
+  const { violations } = await new AxeBuilder({ page }).analyze();
+  const failing = violations.filter((v) => FAILING.has(v.impact));
+  const reported = violations.filter((v) => !FAILING.has(v.impact));
+  if (reported.length) {
+    const text = reported.map(describe).join('\n');
+    console.log(`axe, moderate and minor, ${what}:\n${text}`);
+    await testInfo.attach('axe-moderate-minor.txt', { body: text, contentType: 'text/plain' });
+  }
+  expect(failing.map(describe).join('\n'), 'serious or critical axe violations').toBe('');
+}
+
 for (const theme of ['light', 'dark']) {
   for (const [name, open] of Object.entries(PAGES)) {
     test(`axe: ${name} (${theme})`, async ({ page }, testInfo) => {
       test.slow(name.startsWith('case, ') && name !== 'case, Reader');
       await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
       await open(page);
-      const { violations } = await new AxeBuilder({ page }).analyze();
-      const failing = violations.filter((v) => FAILING.has(v.impact));
-      const reported = violations.filter((v) => !FAILING.has(v.impact));
-      if (reported.length) {
-        const text = reported.map(describe).join('\n');
-        console.log(`axe, moderate and minor, ${name} (${theme}):\n${text}`);
-        await testInfo.attach('axe-moderate-minor.txt', { body: text, contentType: 'text/plain' });
-      }
-      expect(failing.map(describe).join('\n'), 'serious or critical axe violations').toBe('');
+      await check(page, testInfo, `${name} (${theme})`);
     });
   }
 }
+
+// The case at phone width (D214): the case details bar, and the sheet it opens.
+const PHONE_PAGES = {
+  'case at phone width, bar': openCase,
+  'case at phone width, sheet open': async (page) => {
+    await openCase(page);
+    await page.click('#sheet-bar');
+    await expect(page.locator('#case-sheet')).toHaveAttribute('role', 'dialog');
+    await expect(page.locator('#copy-link-btn')).toBeVisible();
+  },
+};
+
+test.describe('at phone width', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  for (const theme of ['light', 'dark']) {
+    for (const [name, open] of Object.entries(PHONE_PAGES)) {
+      test(`axe: ${name} (${theme})`, async ({ page }, testInfo) => {
+        await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+        await open(page);
+        await check(page, testInfo, `${name} (${theme})`);
+      });
+    }
+  }
+});

@@ -272,6 +272,16 @@ describe('updateCitationStatus persists the status and list nodes', () => {
     assert.doesNotMatch(handle.listEl.innerHTML, /Retry/);
   });
 
+  test('the handle counts the cases listed once they\'re found, for the phone\'s bar (D214)', () => {
+    const el = new FakeElement();
+    const handle = renderSidebar(el, caseData, 'a2d', 1, [], null, 'loading');
+    assert.equal(handle.count, null);
+    updateCitationStatus(handle, caseData, detected, 'done');
+    assert.equal(handle.count, 1);
+    updateCitationStatus(handle, caseData, null, 'error');
+    assert.equal(handle.count, null);
+  });
+
   test('is a no-op when passed a null handle (case changed before detection finished)', () => {
     assert.doesNotThrow(() => updateCitationStatus(null, caseData, detected, 'done'));
   });

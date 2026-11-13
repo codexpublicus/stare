@@ -392,13 +392,14 @@ export const ALT_PARTIAL = "Couldn't check the index at this page.";
 /**
  * Fills the section from findAltSources's `found`: its rows, "None found" for none, and a
  * failure line when the lookups failed (`found` null) or the page's own lookup did. The
- * room reserveAltSources held stays, so a shorter list moves nothing.
+ * room reserveAltSources held stays, so a shorter list moves nothing. Returns the rows
+ * listed, or null when the lookups failed or the section is gone.
  */
 export function fillAltSources(el, found) {
-  if (!el?.isConnected) return;
+  if (!el?.isConnected) return null;
   const status = el.querySelector('.alt-status');
   const list = el.querySelector('.alt-list');
-  if (!status || !list) return;
+  if (!status || !list) return null;
   const rows = found?.rows || [];
   list.innerHTML = rows.map(rowHtml).join('');
   let text = '';
@@ -408,4 +409,5 @@ export function fillAltSources(el, found) {
   status.textContent = text;
   status.classList.toggle('alt-error', !found || !!found.aliasesFailed);
   status.classList.toggle('hidden', !text);
+  return found ? rows.length : null;
 }
