@@ -75,6 +75,18 @@
 .sidebar-title { font-size: 15px; font-weight: 600; line-height: 1.3; margin-bottom: 4px; }
 .sidebar-meta { color: var(--text-secondary); line-height: 1.5; }
 .sidebar-meta strong { color: var(--sidebar-meta-strong); font-weight: 500; }
+/* Other printings and sources (#320, altsources.js): one line a row, with room held for the
+   rows to come (--alt-rows, set before the sidebar is painted), so the list arriving after
+   the case is shown moves nothing below it. */
+.alt-body { min-height: calc(var(--alt-rows, 1) * 20px); }
+.alt-list { list-style: none; margin: 0; padding: 0; }
+.alt-item, .alt-status { height: 20px; line-height: 20px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.alt-status { color: var(--text-secondary); }
+.alt-status.alt-error { color: var(--error-text); }
+.alt-link { color: var(--cite); text-decoration: none; }
+.alt-link:hover { text-decoration: underline; }
+.alt-text { color: var(--text); }
+.alt-source { color: var(--text-secondary); font-size: 11px; margin-left: 4px; }
 
 .view-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-alt); flex-shrink: 0; }
 .view-tab { padding: 8px 20px; font-size: 13px; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; background: none; }

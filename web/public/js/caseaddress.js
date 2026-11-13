@@ -155,9 +155,10 @@ export function clusters(sources) {
 /**
  * What a key resolves to in one shard's rows (`{ keys, decisions }`):
  * `{ found: false }` when stare.pub hasn't minted it; otherwise `{ found: true, key, current,
- * provisional, decision, replaced }`: `current` is the key that names the decision now (the
- * row's `current` for a replaced key, the key itself otherwise), `replaced` whether the two
- * differ, and `decision` the decision row (null if the shard lacks it). A replaced key's
+ * provisional, decision, merged, replaced }`: `current` is the key that names the decision
+ * now (the row's `current` for a replaced key, the key itself otherwise), `replaced` whether
+ * the two differ, `decision` the decision row (null if the shard lacks it) and `merged` the
+ * shard's rows of decisions merged into it. A replaced key's
  * `current` is in the same court as a rule, but not always (a replacement in another court),
  * so the decision is looked up by id, which the shard holds either way.
  */
@@ -173,6 +174,8 @@ export function resolveInShard(shard, key) {
     decision = decisions.find((d) => d.id === into) || decision;
     if (decision.id !== into) break;
   }
+  // Decisions merged into this one, whose printings and records are this decision's too.
+  const merged = decision ? decisions.filter((d) => d.merged_into === decision.id) : [];
   return {
     found: true,
     key,
@@ -181,6 +184,7 @@ export function resolveInShard(shard, key) {
     status: row.status,
     provisional: decision ? !!decision.provisional : !!row.provisional,
     decision,
+    merged,
   };
 }
 
@@ -225,5 +229,5 @@ export async function resolveKey(key, deps = {}) {
   const otherPath = shardFor(ledger, hit.current);
   if (!otherPath || otherPath === path) return hit;
   const there = resolveInShard(await shardOf(otherPath), hit.current);
-  return there.found ? { ...hit, decision: there.decision, provisional: there.provisional } : hit;
+  return there.found ? { ...hit, decision: there.decision, merged: there.merged, provisional: there.provisional } : hit;
 }

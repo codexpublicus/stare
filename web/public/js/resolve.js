@@ -275,7 +275,9 @@ async function resolveEntries(reporter, cited, page, entries, onStatus, seq) {
   const result = await resolveCap(
     pick.reporter, pick.volume, pick.page, pick.allCases, onStatus, pick.alias ? null : seq, pick.spans,
   );
-  return pick.alias ? { ...result, alias: pick.alias } : result;
+  if (pick.alias) return { ...result, alias: pick.alias };
+  // The page's entries, for the case's other printings (altsources.js).
+  return { ...result, pageEntries: entries };
 }
 
 // What resolveEntries opens for a page's entries, without reading it: `{ source: 'cap',

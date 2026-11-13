@@ -3,6 +3,9 @@ import { renderReader, renderSidebar, updateCitationStatus, renderMultiNotice, r
 import { caseHash, getHashParams, parseHash, setHash, onHashChange, replaceHash, routePath, setRoute } from './router.js';
 import { citationPath, clusters, keyPath, parseCasePath, pickPrinting, resolveKey } from './caseaddress.js';
 import { decisionPath, openDecisionRecord, resolveDecision } from './decisionroute.js';
+import {
+  altSourcesFor, estimateRows, fillAltSources, ledgerSources, pageAliases, reserveAltSources, shownOf,
+} from './altsources.js';
 import { pdfJurisdiction } from './sources.js';
 import { aliasNoteHtml, processCitations, setupCiteHovers } from './citations.js';
 import { attachCiteNav } from './citenav.js';
@@ -469,6 +472,7 @@ async function showResolved(result, pin, cite, load, fromText = null) {
       casePdfPage(result.zipData, caseFile)
     );
     if (!result.zipData) wireLazyPdfLink(sidebar, result, caseFile);
+    showAltSources(caseFile, caseData, actions);
     wireActions(actions);
     if (cached) {
       setupCiteHovers(readerContent, casePreview);
@@ -476,6 +480,32 @@ async function showResolved(result, pin, cite, load, fromText = null) {
       return Promise.resolve();
     }
     return highlightCase(caseFile, caseData, actions);
+  }
+
+  // The case's other printings and sources (#320, altsources.js): room for them is held
+  // before the sidebar is painted, so filling it moves nothing, and they're looked up once
+  // the case is on screen, from the index files' cache and the decision row the address
+  // opened, if any.
+  function showAltSources(caseFile, caseData, shownResult) {
+    const view = { ...shownResult, caseFile, caseData };
+    const ledger = decisionLedger(view);
+    const shown = shownOf(view);
+    const aliases = view.pageEntries ? pageAliases(view.pageEntries, shown) : null;
+    const section = reserveAltSources(
+      sidebar.querySelector('#alt-sources'),
+      estimateRows(caseData, shown, { aliases, ledger: ledgerSources(ledger) }),
+    );
+    if (!section) return;
+    const current = () => load.current() && shownCaseFile === caseFile;
+    requestAnimationFrame(() => setTimeout(() => {
+      if (!current()) return;
+      altSourcesFor(view, ledger).then((found) => {
+        if (current()) fillAltSources(section, found);
+      }, (e) => {
+        console.warn('Looking up the other printings failed:', e);
+        if (current()) fillAltSources(section, null);
+      });
+    }, 0));
   }
 
   // Process citations in background, then re-render with them if this
@@ -696,6 +726,16 @@ function caseFailed(e, load, retry) {
 
 const SITE = 'https://stare.pub';
 const keyNotice = document.getElementById('key-notice');
+// The ledger's decision row (`{ sources, merged }`) for the last `/k/` key or `/d/` id with
+// CAP printings opened, which lists the case's other printings and records (altsources.js)
+// while the case shown is one of its printings.
+let routeDecision = null;
+
+function decisionLedger(view) {
+  if (!routeDecision || !view.caseFile || view.source === 'courtlistener') return null;
+  const source = `cap:${view.reporter}/${view.volume}/${view.caseFile}`;
+  return routeDecision.sources.includes(source) ? routeDecision : null;
+}
 // Each openAddress call; a lookup that returns after another started is dropped.
 let addressSeq = 0;
 
@@ -730,6 +770,7 @@ function showKeyNotice(msg) {
 // params, for a place in the case (`/k/<key>/#a2d/31/647-01~c=3`).
 async function openAddress(at, extra = null) {
   const seq = ++addressSeq;
+  routeDecision = null;
   if (at.kind === 'bad') {
     notFound({
       k: `${location.pathname} isn't a case key. A key looks like /k/us/dc/69/1943-05-11/.`,
@@ -782,6 +823,7 @@ async function openAddress(at, extra = null) {
       return;
     }
     setRoute(path, SITE + path);
+    routeDecision = hit.decision ? { sources: hit.decision.sources || [], merged: hit.merged || [] } : null;
     if (hit.provisional) {
       showKeyNotice('This key is provisional: trustworthy sources disagree about a fact it is computed from, '
         + 'so it may be corrected.');
@@ -832,6 +874,10 @@ async function openDecision(at, seq) {
       return;
     }
     setRoute(path, SITE + (hit.cap.key ? keyPath(hit.cap.key) : path));
+    routeDecision = {
+      sources: [...hit.cap.sources, ...(hit.cap.clusters || []).map((c) => `cl-cluster:${c}`)],
+      merged: [],
+    };
     landingInput.value = `${printing.reporter} ${printing.volume} ${printing.page}`;
     landingRoute.update();
     doResolve(printing.reporter, printing.volume, printing.page, printing.seq);
