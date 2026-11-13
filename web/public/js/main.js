@@ -370,6 +370,8 @@ function updatePrevNext(result, activeCaseFile) {
 function updateTopbar(caseData) {
   const cite = caseData.citations?.[0]?.cite || '';
   topbarCite.textContent = cite;
+  // The name starts with the citation it shows, so a voice user can say what they see (axe: label-content-name-mismatch).
+  topbarCite.setAttribute('aria-label', cite ? `${cite}: search another citation` : 'Search another citation');
   topbarCase.textContent = caseData.name_abbreviation;
   // The landing's box keeps the case shown, as written (#248), for going back to it.
   landingBox.fill(cite, getHashParams());

@@ -1476,7 +1476,7 @@ export function citedGroupHtml(g, caseHref, caseRel = 'noopener') {
   const raw = escapeHtml(g.primary.raw);
   const nav = g.count ? `
         <div class="cited-nav">
-          <button type="button" class="cited-show" aria-label="Show where the text cites ${raw}: ${g.count} ${g.count === 1 ? 'place' : 'places'}"><span class="cited-count">${g.count}×</span> in text</button>
+          <button type="button" class="cited-show" aria-label="${g.count}× in text: show where the text cites ${raw}"><span class="cited-count">${g.count}×</span> in text</button>
           <span class="cited-step" hidden>
             <button type="button" class="cited-prev" aria-label="Previous place ${raw} is cited" title="Previous ([)">&#8249;</button>
             <span class="cited-pos"></span>

@@ -98,7 +98,7 @@ describe('one entry per cited case', () => {
     assert.equal(entries.length, 2);
     assert.match(entries[1], /<a class="cited-case-link" href="\/#us\/138\/529" target="_blank" rel="noopener">138 U\.S\. 529<\/a>/);
     assert.match(entries[1], /<span class="cited-count">4×<\/span> in text/);
-    assert.match(entries[1], /aria-label="Show where the text cites 138 U\.S\. 529: 4 places"/);
+    assert.match(entries[1], /aria-label="4× in text: show where the text cites 138 U\.S\. 529"/);
     assert.match(entries[1], /<button type="button" class="cited-prev"[^>]*title="Previous \(\[\)"/);
     assert.match(entries[1], /<span class="cited-step" hidden>/);
     assert.match(entries[1], /data-cite-search="[^"]*barney v oelrichs[^"]*"/);
@@ -151,7 +151,7 @@ describe('one entry per cited case', () => {
       'Also cited as a short cite (3×)',
     ]);
     assert.match(html, /title="138 U\.S\. at 531; 138 U\.S\. at 535" data-cite-kind="short"/);
-    assert.match(html, /aria-label="Show where the text cites 138 U\.S\. 529: 8 places"/);
+    assert.match(html, /aria-label="8× in text: show where the text cites 138 U\.S\. 529"/);
   });
 
   test('a case cited once has a count of one', async () => {
@@ -159,7 +159,7 @@ describe('one entry per cited case', () => {
     const { groups } = await run(t, [cite(t, '138 U.S. 529', BARNEY)], cases);
     assert.equal(groups.length, 1);
     const html = citedGroupHtml(groups[0], () => '#');
-    assert.match(html, /aria-label="Show where the text cites 138 U\.S\. 529: 1 place"/);
+    assert.match(html, /aria-label="1× in text: show where the text cites 138 U\.S\. 529"/);
     // One form: the case's count is the form's, so the form has none of its own.
     assert.doesNotMatch(html, /cited-form-count|cited-also/);
   });

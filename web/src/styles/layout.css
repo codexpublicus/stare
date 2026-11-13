@@ -138,8 +138,9 @@
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .landing-tool:hover { border-color: var(--link); box-shadow: 0 2px 8px rgba(29,27,24,0.06); }
-.landing-tool.coming-soon { opacity: 0.75; }
-.landing-tool.coming-soon:hover { border-color: var(--link); opacity: 1; }
+/* Dashed, not faded: at 75% opacity its text fell below 4.5:1 in both themes. */
+.landing-tool.coming-soon { border-style: dashed; }
+.landing-tool.coming-soon:hover { border-color: var(--link); }
 .landing-tool-icon { font-size: 1.5rem; line-height: 1; flex-shrink: 0; margin-top: 2px; }
 .landing-tool-text { font-size: 0.85rem; line-height: 1.4; }
 .landing-tool-text strong { display: block; font-size: 0.95rem; margin-bottom: 0.2rem; }
@@ -192,6 +193,8 @@ html:root .site-footer .cp-footer {
 .page p { font-size: 0.95rem; line-height: 1.7; color: var(--text-body); margin-bottom: 1rem; }
 .page a { color: var(--link); text-decoration: none; }
 .page a:hover { text-decoration: underline; }
+/* A link in running text is underlined, not told apart by its colour alone (axe: link-in-text-block). */
+.page :is(p, li) a:not(.site-footer *) { text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
 .page ul { margin: 0.5rem 0 1rem 1.5rem; font-size: 0.95rem; line-height: 1.7; color: var(--text-body); }
 .page h3 { font-size: 0.95rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.25rem; }
 
