@@ -135,6 +135,7 @@ const group = (...parts) => parts.map((p) => (Array.isArray(p) ? { include: p, e
 export const SPECS = {
   'web/e2e/a11y.spec.js': group(READER),
   'web/e2e/addresses.spec.js': group(READER, ['web/tests/fixtures/crk/**', 'crates/stare/tests/fixtures/cl-record.json']),
+  'web/e2e/altsources.spec.js': group(READER, ['web/tests/fixtures/crk/**', 'web/tests/fixtures/alt-sources/**']),
   'web/e2e/agents.spec.js': group(READER, PAGES),
   'web/e2e/cache.spec.js': group(READER, CHECK, PAGES, SITEMAP),
   'web/e2e/caseload.spec.js': group(READER),
