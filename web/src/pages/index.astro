@@ -47,7 +47,7 @@ import SiteHead from '../components/SiteHead.astro';
 	<body>
 		<!-- Landing state -->
 		<div id="landing" class="landing">
-			<button class="landing-theme-toggle" id="landing-theme-btn" title="Toggle dark mode">&#9790;</button>
+			<button type="button" class="landing-theme-toggle" id="landing-theme-btn" title="Toggle dark mode" aria-label="Toggle dark mode">&#9790;</button>
 			<div class="landing-hero">
 				<h1 class="landing-brand"><Brand variant="hero" /></h1>
 				<p class="landing-tagline">Free, open U.S. case law lookup</p>
@@ -65,7 +65,7 @@ import SiteHead from '../components/SiteHead.astro';
 			</form>
 			<span id="landing-suggest-status" class="sr-only" aria-live="polite"></span>
 			<span id="landing-route-status" class="sr-only" aria-live="polite"></span>
-			<div id="landing-status" class="status-line"></div>
+			<div id="landing-status" class="status-line" role="status"></div>
 			<div id="landing-wasm-progress"></div>
 
 			<div class="landing-examples">
@@ -132,49 +132,52 @@ import SiteHead from '../components/SiteHead.astro';
 
 		<!-- Resolved state (hidden initially) -->
 		<div id="resolved" class="hidden">
+			<a class="skip-link" href="#reader-title" id="skip-link">Skip to the case</a>
 			<div class="topbar" id="topbar">
 				<a href="/" class="topbar-brand"><Brand /></a>
 				<span class="topbar-divider">|</span>
-				<span class="topbar-cite topbar-editable" id="topbar-cite" title="Search another citation"></span>
+				<button type="button" class="topbar-cite topbar-editable" id="topbar-cite" title="Search another citation" aria-label="Search another citation"></button>
 				<input class="topbar-cite-input hidden" id="topbar-cite-input" type="text" autocomplete="off" spellcheck="false" aria-label="Citation or words to search for" />
 				<button type="button" id="topbar-go" class="route-btn topbar-go hidden" data-goes="search"><span class="route-label route-search">Search</span><span class="route-label route-cite">Open citation</span></button>
 				<ul id="topbar-suggest" class="suggest topbar-suggest hidden" aria-label="Suggestions"></ul>
 				<span id="topbar-suggest-status" class="sr-only" aria-live="polite"></span>
 				<span id="topbar-route-status" class="sr-only" aria-live="polite"></span>
 				<span class="topbar-case" id="topbar-case"></span>
-				<button id="prev-btn" class="topbar-nav" title="Previous case" disabled>&#9664;</button>
-				<button id="next-btn" class="topbar-nav" title="Next case" disabled>&#9654;</button>
-				<button id="theme-btn" class="theme-toggle" title="Toggle dark mode">&#9790;</button>
+				<button id="prev-btn" class="topbar-nav" title="Previous case" aria-label="Previous case" disabled>&#9664;</button>
+				<button id="next-btn" class="topbar-nav" title="Next case" aria-label="Next case" disabled>&#9654;</button>
+				<button id="theme-btn" class="theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">&#9790;</button>
 			</div>
 			<div class="layout">
-				<div class="main">
-					<!-- The page views' tabs show once the case says it has scans (main.js). -->
-					<div class="view-tabs">
-						<div class="view-tab active" id="tab-reader">Reader</div>
-						<div class="view-tab hidden" id="tab-pdf">Archival PDF</div>
-						<div class="view-tab hidden" id="tab-pages">Raw Scans</div>
+				<main class="main">
+					<!-- The page views' tabs show once the case says it has scans (main.js). ARIA tabs
+					     (#270): one tab in the tab order at a time, the arrow keys, Home and End move
+					     between them (main.js). -->
+					<div class="view-tabs" role="tablist" aria-label="Case views">
+						<button type="button" class="view-tab active" id="tab-reader" role="tab" aria-selected="true" aria-controls="reader">Reader</button>
+						<button type="button" class="view-tab hidden" id="tab-pdf" role="tab" aria-selected="false" aria-controls="pdf-viewer" tabindex="-1">Archival PDF</button>
+						<button type="button" class="view-tab hidden" id="tab-pages" role="tab" aria-selected="false" aria-controls="page-viewer" tabindex="-1">Raw Scans</button>
 					</div>
 					<!-- A provisional key's notice, on a /k/ address (#283, main.js). -->
 					<p id="key-notice" class="key-notice hidden" role="note"></p>
 					<div class="main-body">
 						<!-- Over the top of the reader, so showing or hiding them moves nothing (#260). -->
 						<div class="load-status">
-							<div id="status-bar" class="status-line hidden"></div>
+							<div id="status-bar" class="status-line hidden" role="status"></div>
 							<div id="wasm-progress"></div>
 						</div>
 						<div class="main-content">
-							<div id="reader"></div>
-							<div id="pdf-viewer" class="hidden"></div>
-							<div id="page-viewer" class="hidden"></div>
+							<div id="reader" role="tabpanel" aria-labelledby="tab-reader"></div>
+							<div id="pdf-viewer" class="hidden" role="tabpanel" aria-labelledby="tab-pdf"></div>
+							<div id="page-viewer" class="hidden" role="tabpanel" aria-labelledby="tab-pages"></div>
 						</div>
 						<!-- What went wrong in the case shown, over the bottom of the reader (ui.js's showNotice, #271). -->
 						<div class="notice" id="case-notice" role="status"></div>
 					</div>
-				</div>
-				<div class="sidebar" id="sidebar"></div>
+				</main>
+				<aside class="sidebar" id="sidebar" aria-label="Case details"></aside>
 			</div>
 		</div>
-		<button class="sidebar-toggle hidden" id="sidebar-toggle">&#9776;</button>
+		<button type="button" class="sidebar-toggle hidden" id="sidebar-toggle" aria-label="Case details" aria-controls="sidebar" aria-expanded="false">&#9776;</button>
 
 		<script is:inline type="module" src="/js/main.js"></script>
 	</body>

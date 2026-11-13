@@ -1634,9 +1634,11 @@ export function setupCiteHovers(container, previewFn) {
     let tooltipEl = null;
     let savedTitle = null;
 
-    el.addEventListener('mouseenter', async () => {
+    // Shown on hover and on keyboard focus alike (#270), and linked to the link by
+    // aria-describedby while it's up.
+    const show = async () => {
       const hash = el.getAttribute('href');
-      if (!hash || !hash.startsWith('#')) return;
+      if (!hash || !hash.startsWith('#') || tooltipEl) return;
       const parts = hash.slice(1).split('/');
       if (parts.length !== 3) return;
       const [slug, volume, pageStr] = parts;
@@ -1645,28 +1647,42 @@ export function setupCiteHovers(container, previewFn) {
       savedTitle = el.getAttribute('title');
       el.removeAttribute('title');
 
-      tooltipEl = createTooltip(el);
-      tooltipEl.innerHTML = `<span class="spinner"></span> Loading...`;
+      const tip = createTooltip(el);
+      tooltipEl = tip;
+      el.setAttribute('aria-describedby', tip.id);
+      tip.innerHTML = `<span class="spinner"></span> Loading...`;
 
       const preview = await fetchCasePreview(slug, volume, pageStr, previewFn);
-      if (!tooltipEl) return;
+      if (tooltipEl !== tip) return;
 
       if (preview) {
-        tooltipEl.innerHTML = `<div><strong>${esc(preview.name)}</strong><br><span style="opacity:0.7">${esc(preview.cite)} &mdash; ${esc(preview.date)}</span></div>`;
+        tip.innerHTML = `<div><strong>${esc(preview.name)}</strong><br><span style="opacity:0.7">${esc(preview.cite)} &mdash; ${esc(preview.date)}</span></div>`;
       } else {
-        tooltipEl.textContent = "Couldn't load the preview. Point at the citation again to retry, or click to open the case.";
+        tip.textContent = "Couldn't load the preview. Point at the citation again to retry, or click to open the case.";
       }
-    });
+    };
 
-    el.addEventListener('mouseleave', () => {
+    const hide = () => {
       if (tooltipEl) {
         tooltipEl.remove();
         tooltipEl = null;
       }
+      el.removeAttribute('aria-describedby');
       // Restore title for accessibility
       if (savedTitle !== null) {
         el.setAttribute('title', savedTitle);
         savedTitle = null;
+      }
+    };
+
+    el.addEventListener('mouseenter', show);
+    el.addEventListener('mouseleave', () => { if (document.activeElement !== el) hide(); });
+    el.addEventListener('focus', () => { if (el.matches(':focus-visible')) show(); });
+    el.addEventListener('blur', hide);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && tooltipEl) {
+        e.stopPropagation();
+        hide();
       }
     });
 
@@ -1681,9 +1697,13 @@ export function setupCiteHovers(container, previewFn) {
   });
 }
 
+let tooltips = 0;
+
 function createTooltip(anchor) {
   const tip = document.createElement('div');
   tip.className = 'cite-tooltip';
+  tip.id = `cite-tooltip-${++tooltips}`;
+  tip.setAttribute('role', 'tooltip');
   document.body.appendChild(tip);
   const rect = anchor.getBoundingClientRect();
   tip.style.left = rect.left + 'px';

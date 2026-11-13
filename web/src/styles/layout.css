@@ -5,15 +5,16 @@
 .topbar-brand { display: inline-flex; align-items: center; flex-shrink: 0; border-radius: 3px; }
 .topbar-divider { color: var(--topbar-divider); }
 .topbar-cite { font-family: var(--font-mono); color: var(--topbar-cite); font-size: 13px; }
-.topbar-editable { cursor: pointer; padding: 2px 6px; border-radius: 3px; transition: background 0.15s; }
+/* A button (#270), drawn as the citation's text. */
+.topbar-editable { cursor: pointer; padding: 2px 6px; border-radius: 3px; transition: background 0.15s; background: none; border: 0; line-height: inherit; }
 .topbar-editable:hover { background: var(--topbar-hover); }
 .topbar-cite-input {
   font-family: var(--font-mono); font-size: 13px;
   background: var(--bg); color: var(--topbar-text);
   border: 1px solid var(--border); border-radius: 3px;
-  padding: 2px 8px; width: 180px; outline: none;
+  padding: 2px 8px; width: 180px;
 }
-.topbar-cite-input:focus { border-color: var(--focus); }
+.topbar-cite-input:focus { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 1px; }
 .topbar-go { font-family: var(--font-ui); color: var(--topbar-text); font-size: 12px; cursor: pointer; background: none; border: 1px solid var(--topbar-edit-border); border-radius: 3px; padding: 2px 8px; flex: none; }
 .topbar-go:hover { border-color: var(--topbar-muted); }
 /* One button for a citation or words (D163, boxroute.js): both labels sit in one grid cell
@@ -89,7 +90,8 @@
 .alt-source { color: var(--text-secondary); font-size: 11px; margin-left: 4px; }
 
 .view-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-alt); flex-shrink: 0; }
-.view-tab { padding: 8px 20px; font-size: 13px; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; background: none; }
+.view-tab { padding: 8px 20px; font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer; border: 0; border-bottom: 2px solid transparent; transition: all 0.15s; background: none; }
+.view-tab:focus-visible { outline-offset: -2px; }
 .view-tab:hover { color: var(--text); }
 .view-tab.active { color: var(--tab-active-text); font-weight: 600; border-bottom-color: var(--tab-active-border); background: var(--bg); }
 
@@ -109,7 +111,7 @@
 .landing-input-hint { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.12em; }
 .landing-form { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
 .landing-form input { padding: 12px 16px; border: 2px solid var(--border); border-radius: 8px; font-size: 16px; font-family: var(--font-mono); background: var(--bg); color: var(--text); width: 280px; }
-.landing-form input:focus { outline: none; border-color: var(--focus); }
+.landing-form input:focus { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 2px; }
 .landing-form button { padding: 12px 24px; background: var(--button-bg); color: var(--button-text); border: none; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer; transition: opacity 0.15s; }
 .landing-form button:hover { opacity: 0.85; }
 .landing-form button:disabled { opacity: 0.5; cursor: wait; }
@@ -254,3 +256,11 @@ html[data-route="case"] #status-bar:empty::before { content: 'Loading...'; }
   .wasm-progress-fill { transition: none; }
   .wasm-progress-indeterminate .wasm-progress-fill { animation: none; width: 100%; opacity: 0.4; }
 }
+
+/* The case view's skip link (#270): off screen until the keyboard focuses it. */
+.skip-link {
+  position: absolute; left: 8px; top: -100px; z-index: 30; padding: 6px 12px;
+  background: var(--bg); color: var(--link); border: 2px solid var(--focus); border-radius: 4px;
+  font-size: 14px; text-decoration: none;
+}
+.skip-link:focus { top: 4px; }
