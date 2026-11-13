@@ -204,6 +204,7 @@ export function renderSidebar(el, caseData, reporter, volume, allCases, detected
       <div class="sidebar-label">Citations</div>
       ${citeBadges}
     </div>
+    <div class="sidebar-section alt-sources" id="alt-sources"></div>
   `;
 
   const actionsHtml = `
