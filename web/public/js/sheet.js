@@ -213,8 +213,15 @@ export function attachSheet({ bar, sheet, head, sizeBtn, closeBtn, scrim, inert 
   });
 
   // A link that leaves for another case or place closes the sheet; one opening a new tab
-  // doesn't.
+  // doesn't. A cited case's "in text", previous or next control (citenav.js) moves the text
+  // to where it's cited, which a full-height sheet covers, so there it closes the sheet and
+  // the focus goes back to the bar, as Close does. At half height the text is above the
+  // sheet, and the sheet stays open.
   sheet.addEventListener('click', (e) => {
+    if (size === 'full' && e.target.closest?.('.cited-show, .cited-prev, .cited-next')) {
+      close();
+      return;
+    }
     const a = e.target.closest?.('a[href]');
     if (!a || a.target === '_blank' || size === 'closed') return;
     close({ focus: false });

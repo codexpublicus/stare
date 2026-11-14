@@ -140,6 +140,28 @@ test.describe('at phone width', () => {
     expect(box.y + box.height).toBeLessThanOrEqual(top + 0.5);
   });
 
+  test('"in text" closes a full-height sheet to show the place, and leaves a half-height one open', async ({ page }) => {
+    await openCase(page);
+    const show = page.locator('#case-sheet .cited-show').first();
+    const current = page.locator('#reader .cite-place-current').first();
+
+    await bar(page).tap();
+    await settled(page);
+    await show.tap();
+    await expect(current).toBeVisible();
+    await expect(bar(page)).toHaveAttribute('aria-expanded', 'true');
+    await expect(sheet(page)).toHaveAttribute('data-size', 'half');
+
+    await page.getByRole('button', { name: 'Expand' }).tap();
+    await settled(page);
+    await show.tap();
+    await expect(bar(page)).toHaveAttribute('aria-expanded', 'false');
+    await expect(bar(page)).toBeFocused();
+    await expect(sheet(page)).toBeHidden();
+    await expect(current).toBeInViewport();
+    expect(await page.evaluate(() => document.querySelector('#resolved .main').inert)).toBe(false);
+  });
+
   test('reduced motion opens the sheet without a slide', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await openCase(page);
