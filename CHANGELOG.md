@@ -2,6 +2,21 @@
 
 Site releases of stare.pub. Each release is tagged `vYYYY.MM.DD.N` and deployed to production when its release PR merges.
 
+## v2026.11.14.1 - 2026-11-14
+
+### Features
+
+- web: list a case's other printings and sources in the sidebar
+- web: open the case details on a phone from a bottom sheet
+
+### Fixes
+
+- web: read hover previews by the cited case's zip span, never the whole zip
+- web: retry a failed ALTO range and say so when the Raw Scans' text layer can't load
+- web: say what failed, with a Retry, instead of failing silently across the reader
+- web: make the reader's tabs, top bar and sidebar work by keyboard and screen reader
+- web: copy in the fixed Codex Publicus footer
+
 ## v2026.11.11.1 - 2026-11-11
 
 ### Features
