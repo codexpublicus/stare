@@ -169,7 +169,9 @@ html:root .site-footer .cp-footer {
   --cp-serif: var(--font-text);
 }
 .site-footer-line > * + *::before { content: '\00b7'; margin: 0 0.5em; color: var(--text-secondary); }
-/* Each item wraps whole, so the line breaks between them, never inside a version. */
+/* Each item wraps whole, so the line breaks between them, never inside a version. The items
+   sit with no space between them, so the line is a wrapping row rather than running text. */
+.site-footer-line { display: flex; flex-wrap: wrap; }
 .site-footer-line > * { white-space: nowrap; }
 .site-footer-line [hidden] { display: none; }
 /* A page's own link colour (.page a) doesn't reach into the footer. */

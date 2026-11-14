@@ -1,9 +1,10 @@
 /* The shared Codex Publicus footer: styles for footer/footer.html (see footer/README.md).
-   One quiet line: the Codex Publicus lead, the project's accounts as icons, then the site's own line if it has one.
+   The site's own line, if it has one, centred on its own row, and below it the Codex Publicus lead and the project's accounts as icons, centred on one row.
    Self-contained: every rule is scoped to .cp-footer, so a site can load it beside its own CSS.
    The site supplies Source Serif 4; the stack falls back without it.
    Theme: prefers-color-scheme, overridden by data-theme="light" or data-theme="dark" on <html>.
-   --cp-footer-width on .cp-footer sets the column the line sits in (default 38rem, the family measure). */
+   --cp-footer-width on .cp-footer sets the column the footer sits in (default 38rem, the family measure);
+   a site's line keeps to that measure in a wider column. */
 
 .cp-footer {
   --cp-ground: #f8f7f4;
@@ -42,27 +43,24 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem 1rem;
+  justify-content: center;
+  gap: 0 1rem;
+  text-align: center;
 }
 .cp-footer a { color: inherit; }
 .cp-footer a:hover { color: var(--cp-accent); }
 
-.cp-footer-lead { white-space: nowrap; }
-.cp-footer-lead a { text-decoration: none; }
-.cp-footer-of + a { margin-left: 0.15em; }
+/* The lead's pieces are centred on the line, as the icons are, so the mark sits level with
+   the text in any face; a baseline offset suits only the face it was tuned for. */
+.cp-footer-lead { display: inline-flex; align-items: center; gap: 0.4em; white-space: nowrap; }
+.cp-footer-lead a { display: inline-flex; align-items: center; gap: 0.35em; text-decoration: none; }
 .cp-footer-name {
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
   text-underline-offset: 0.15em;
 }
 .cp-footer-lead a:hover .cp-footer-name { text-decoration-color: currentColor; }
-.cp-footer-mark {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  margin-right: 0.35em;
-  vertical-align: -3px;
-}
+.cp-footer-mark { display: block; flex: none; width: 16px; height: 16px; }
 .cp-footer .cp-ink { fill: currentColor; }
 .cp-footer .cp-cut { fill: var(--cp-ground); }
 
@@ -76,4 +74,21 @@
 }
 .cp-footer-icon svg { display: block; width: 1rem; height: 1rem; fill: currentColor; }
 
-.cp-footer-line { margin: 0; }
+/* A site's line sits on its own row above the lead and icons, so it doesn't move between rows
+   as its width changes, and it takes the footer's type over a page's own paragraph rules. It
+   keeps to the family measure in a wide column, with its lines balanced, so centred prose
+   doesn't run 180 characters wide or leave one word alone on its last line. The measure is
+   padding, not a max-width, so the line still fills its row and the lead never joins it. */
+.cp-footer .cp-footer-line {
+  order: -1;
+  box-sizing: border-box;
+  flex-basis: 100%;
+  padding-inline: max(0px, calc((100% - 38rem) / 2));
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-wrap: balance;
+  justify-content: center;
+}
+/* The space between the site's line and the Codex Publicus row, and only there. */
+.cp-footer-inner:has(.cp-footer-line) > :is(.cp-footer-lead, .cp-footer-icons) { margin-top: 0.5rem; }
