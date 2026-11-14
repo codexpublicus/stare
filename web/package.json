@@ -15,7 +15,7 @@
     "collection": "node scripts/collection.mjs"
   },
   "dependencies": {
-    "astro": "^7.3.5",
+    "astro": "^7.4.7",
     "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
