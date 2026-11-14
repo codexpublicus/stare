@@ -174,10 +174,26 @@ import SiteHead from '../components/SiteHead.astro';
 						<div class="notice" id="case-notice" role="status"></div>
 					</div>
 				</main>
-				<aside class="sidebar" id="sidebar" aria-label="Case details"></aside>
+				<!-- The case details. At 768 px and under they're a bottom sheet the bar below opens
+				     (D214, sheet.js); wider, the sheet's head is hidden and the sidebar is a column. -->
+				<div class="sheet" id="case-sheet" data-size="closed" tabindex="-1">
+					<div class="sheet-head" id="sheet-head">
+						<span class="sheet-grip" aria-hidden="true"></span>
+						<h2 class="sheet-title" id="sheet-title">Case details</h2>
+						<button type="button" class="sheet-btn" id="sheet-size">Expand</button>
+						<button type="button" class="sheet-btn" id="sheet-close">Close</button>
+					</div>
+					<aside class="sidebar" id="sidebar" aria-label="Case details"></aside>
+				</div>
 			</div>
+			<!-- Its name is its text, the counts it shows (sheet.js's sheetSummary). -->
+			<button type="button" class="sheet-bar" id="sheet-bar" aria-controls="case-sheet" aria-expanded="false">
+				<span class="sheet-grip" aria-hidden="true"></span>
+				<span class="sheet-bar-text">Case details</span>
+				<svg class="sheet-bar-chevron" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16"><path d="M3.5 10 8 5.5 12.5 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+			</button>
+			<div class="sheet-scrim" id="sheet-scrim"></div>
 		</div>
-		<button type="button" class="sidebar-toggle hidden" id="sidebar-toggle" aria-label="Case details" aria-controls="sidebar" aria-expanded="false">&#9776;</button>
 
 		<script is:inline type="module" src="/js/main.js"></script>
 	</body>

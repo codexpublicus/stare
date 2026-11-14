@@ -17,6 +17,7 @@ import { filePage } from './pagekey.js';
 import { hasScans, pdfPage } from './scans.js';
 import { pdfUrl as volumePdfUrl } from './sources.js';
 import { generations } from './generation.js';
+import { attachSheet } from './sheet.js';
 import { attachRouteLabel, markNotCitation, routeNoteHtml, routeOf, searchHref, takeHandOff } from './boxroute.js';
 
 // The reader's own modules are imported above; the page views (scanviewer.js, pdfviewer.js
@@ -54,7 +55,6 @@ const nextBtn = document.getElementById('next-btn');
 const statusBar = document.getElementById('status-bar');
 const reader = document.getElementById('reader');
 const sidebar = document.getElementById('sidebar');
-const sidebarToggle = document.getElementById('sidebar-toggle');
 const tabReader = document.getElementById('tab-reader');
 const tabPdf = document.getElementById('tab-pdf');
 const tabPages = document.getElementById('tab-pages');
@@ -65,6 +65,17 @@ const resolvedWasmSlot = document.getElementById('wasm-progress');
 // What went wrong in the case shown goes in a notice over the bottom of the reader (#271).
 const caseNotice = document.getElementById('case-notice');
 const mainBody = caseNotice.parentElement;
+// The case details on a phone (D214, sheet.js): a bar at the foot of the case view says
+// what they hold and opens them as a bottom sheet over the reader.
+const caseSheet = attachSheet({
+  bar: document.getElementById('sheet-bar'),
+  sheet: document.getElementById('case-sheet'),
+  head: document.getElementById('sheet-head'),
+  sizeBtn: document.getElementById('sheet-size'),
+  closeBtn: document.getElementById('sheet-close'),
+  scrim: document.getElementById('sheet-scrim'),
+  inert: [document.getElementById('topbar'), document.querySelector('#resolved .main'), document.getElementById('skip-link')],
+});
 // Each box's one button says where Enter takes its text, a citation or words (D163,
 // boxroute.js); its label follows the text as it's typed.
 const landingRoute = attachRouteLabel(landingInput, landingBtn, document.getElementById('landing-route-status'));
@@ -277,7 +288,7 @@ function showLanding() {
   clearLandingStatus();
   landing.classList.remove('hidden');
   resolved.classList.add('hidden');
-  sidebarToggle.classList.add('hidden');
+  caseSheet.close({ focus: false });
   landingInput.focus();
 }
 
@@ -399,7 +410,6 @@ async function showResolved(result, pin, cite, load, fromText = null) {
   landing.classList.add('hidden');
   clearLandingStatus();
   resolved.classList.remove('hidden');
-  sidebarToggle.classList.remove('hidden');
 
   updateTopbar(result.caseData);
   updatePrevNext(result, result.caseFile);
@@ -502,6 +512,8 @@ async function showResolved(result, pin, cite, load, fromText = null) {
       casePdfPage(result.zipData, caseFile)
     );
     if (!result.zipData) wireLazyPdfLink(sidebar, result, caseFile);
+    caseSheet.setCounts(null);
+    caseSheet.setCounts({ cited: citationStatusHandle.count });
     showAltSources(caseFile, caseData, actions);
     wireActions(actions);
     if (cached) {
@@ -525,15 +537,18 @@ async function showResolved(result, pin, cite, load, fromText = null) {
       sidebar.querySelector('#alt-sources'),
       estimateRows(caseData, shown, { aliases, ledger: ledgerSources(ledger) }),
     );
-    if (!section) return;
+    if (!section) {
+      caseSheet.setCounts({ others: 0 });
+      return;
+    }
     const current = () => load.current() && shownCaseFile === caseFile;
     requestAnimationFrame(() => setTimeout(() => {
       if (!current()) return;
       altSourcesFor(view, ledger).then((found) => {
-        if (current()) fillAltSources(section, found);
+        if (current()) caseSheet.setCounts({ others: fillAltSources(section, found) });
       }, (e) => {
         console.warn('Looking up the other printings failed:', e);
-        if (current()) fillAltSources(section, null);
+        if (current()) caseSheet.setCounts({ others: fillAltSources(section, null) });
       });
     }, 0));
   }
@@ -565,6 +580,7 @@ async function showResolved(result, pin, cite, load, fromText = null) {
         markTarget();
       }
       updateCitationStatus(handle, caseData, unique, 'done', groups);
+      caseSheet.setCounts({ cited: handle.count });
       setupCiteHovers(readerContent, casePreview);
       wireCiteNav(handle.listEl, readerContent);
     } catch (e) {
@@ -1130,47 +1146,6 @@ try {
     allThemeBtns.forEach(b => b.textContent = '\u2600');
   }
 } catch(e) {}
-
-// Sidebar toggle (mobile): the case details open over the reader. Opened, the focus moves
-// into them and Tab stays among them and the toggle; Escape or the toggle closes them and
-// puts the focus back on the toggle (#270).
-function setSidebarOpen(open, { focus = true } = {}) {
-  sidebar.classList.toggle('open', open);
-  sidebarToggle.setAttribute('aria-expanded', String(open));
-  if (!focus) return;
-  if (open) {
-    sidebar.setAttribute('tabindex', '-1');
-    sidebar.focus();
-  } else {
-    sidebarToggle.focus();
-  }
-}
-sidebarToggle.addEventListener('click', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  setSidebarOpen(!sidebar.classList.contains('open'));
-});
-document.addEventListener('keydown', (e) => {
-  if (!sidebar.classList.contains('open') || sidebarToggle.classList.contains('hidden')
-    || !sidebarToggle.getClientRects().length) return;
-  if (e.key === 'Escape') {
-    e.preventDefault();
-    setSidebarOpen(false);
-    return;
-  }
-  if (e.key !== 'Tab') return;
-  const stops = [...sidebar.querySelectorAll('a[href], button:not([disabled]), input, select, textarea, [tabindex="0"]')]
-    .filter((el) => el.getClientRects().length);
-  stops.push(sidebarToggle);
-  const i = stops.indexOf(document.activeElement);
-  if (e.shiftKey && (i <= 0)) {
-    e.preventDefault();
-    stops[stops.length - 1].focus();
-  } else if (!e.shiftKey && (i === -1 || i === stops.length - 1)) {
-    e.preventDefault();
-    stops[0].focus();
-  }
-});
 
 // Tab switching: the Reader (the case's text), the Archival PDF (our PDF of the volume,
 // pdfviewer.js) and the Raw Scans (CAP's page images from the volume's tar,

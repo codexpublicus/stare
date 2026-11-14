@@ -581,7 +581,7 @@ keep that from happening again:
   404; the site sends no Content-Security-Policy, and if one is added each inline script
   (theme, caseroute, boot guard) needs its `'sha256-...'` in `script-src`, computed from
   the built HTML since the guard's text is generated.
-- **Only the reader's own modules are static.** main.js's static graph is 23 modules
+- **Only the reader's own modules are static.** main.js's static graph is 24 modules
   (`web/tests/boot-graph.test.js` keeps it so). The page views (`pdfviewer.js`,
   `scanviewer.js`, `pageshell.js`, `pagezoom.js`, `pdfpages.js`, `pdfjs-path.js`,
   `selectionpaint.js`) are imported when a page-view tab first opens; one that fails shows

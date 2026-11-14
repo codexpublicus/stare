@@ -1,7 +1,7 @@
 // The reader by keyboard and screen reader (#270): the view tabs are ARIA tabs, the top
 // bar's citation and the sidebar's actions are buttons, a case opened from a search takes the
 // focus to its title, the status lines are live regions, citation previews show on focus,
-// the mobile sidebar keeps the focus while open, every control has a visible focus ring in
+// the phone's case details sheet keeps the focus while open, every control has a visible focus ring in
 // both themes, and reduced motion stills every animation.
 import { test as base, expect } from '@playwright/test';
 
@@ -142,27 +142,25 @@ test('a citation\'s preview shows on keyboard focus, described by it, and Escape
 test.describe('at phone width', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-  test('the sidebar toggle is named, says whether it\'s open, and keeps the focus in the sidebar until Escape', async ({ page }) => {
+  test('the case details bar says whether the sheet is open, and the sheet keeps the focus until Escape', async ({ page }) => {
     await openCase(page);
-    const toggle = page.getByRole('button', { name: 'Case details' });
+    // Its name is its visible text (sheet.js): the counts, or "Case details" before them.
+    const toggle = page.locator('#sheet-bar');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await toggle.focus();
     await page.keyboard.press('Enter');
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(page.locator('#sidebar')).toBeFocused();
-    // Tab goes round the sidebar's controls and the toggle, never into the reader behind.
+    await expect(page.getByRole('dialog', { name: 'Case details' })).toBeFocused();
+    // Tab goes round the sheet's controls, never into the reader behind.
     for (let i = 0; i < 30; i++) {
       await page.keyboard.press('Tab');
-      const inside = await page.evaluate(() => {
-        const a = document.activeElement;
-        return !!a && (a.closest('#sidebar') !== null || a.id === 'sidebar-toggle');
-      });
+      const inside = await page.evaluate(() => document.activeElement?.closest('#case-sheet') !== null);
       expect(inside).toBe(true);
     }
     await page.keyboard.press('Escape');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(toggle).toBeFocused();
-    await expect(page.locator('#sidebar')).not.toHaveClass(/open/);
+    await expect(page.locator('#case-sheet')).toBeHidden();
   });
 });
 
