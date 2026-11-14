@@ -2,7 +2,8 @@
 
 `footer.html` and `footer.css` are byte-for-byte copies of `footer/footer.html` and
 `public/footer.css` in codexpublicus/codexpublicus.org at commit
-`41173cf72643a94226b2311ddbc629d43b49f1b6` (2026-10-25; the repo has no tags yet). Don't edit
+`bef6ab031347c2b8851e50840a2da548d78c1922` (2026-11-13, codexpublicus/codexpublicus.org#14;
+the repo has no tags yet). Don't edit
 them here: change the canonical copy and copy it in again.
 
 `web/src/components/SiteFooter.astro` carries the fragment with stare.pub's two slots
