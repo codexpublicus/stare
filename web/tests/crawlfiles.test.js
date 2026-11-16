@@ -147,7 +147,7 @@ describe('public/llms.txt', () => {
 
 describe('sitemap', () => {
   test('lists every page as its directory URL, and no endpoint', () => {
-    assert.deepEqual(sitePages(pagesDir).map((p) => p.path), ['/', '/about/', '/check/', '/data/', '/search/', '/updates/']);
+    assert.deepEqual(sitePages(pagesDir).map((p) => p.path), ['/', '/about/', '/check/', '/data/', '/search/', '/self-host/', '/updates/']);
   });
 
   test('curated cases follow the pages, at their /c/ URL with the lastmod curated.json gives', () => {
