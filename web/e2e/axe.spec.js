@@ -74,6 +74,10 @@ const PAGES = {
     await page.goto('/about');
     await expect(page.locator('h1').first()).toBeVisible();
   },
+  'self-host': async (page) => {
+    await page.goto('/self-host/');
+    await expect(page.locator('h1').first()).toBeVisible();
+  },
   data: async (page) => {
     await page.goto('/data');
     await expect(page.locator('h1').first()).toBeVisible();

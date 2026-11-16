@@ -92,6 +92,7 @@ const CHECK = ['web/src/pages/check.astro'];
 const PAGES = [
   'web/src/pages/about.astro',
   'web/src/pages/data.astro',
+  'web/src/pages/self-host.astro',
   'web/src/pages/updates.astro',
   'web/src/pages/updates.xml.js',
   'web/src/pages/robots.txt.js',
