@@ -11,10 +11,11 @@ name: release
 #   3. download the stare-wasm build and citare data bundle that site.yml's
 #      main build of the merge commit made, checked and smoke tested, rerun
 #      only the Astro build, with the release tag and a changelog regenerated
-#      for it, and hand web/dist and the notes to the next job as an artifact.
+#      for it, check web/dist has its hidden paths (scripts/check-release-dist),
+#      and hand web/dist and the notes to the next job as an artifact.
 #      Nothing in Rust is rebuilt: step 1 already required that run to pass.
 # release (contents: write, runs no build code):
-#   4. refuse if a newer release tag exists, so a re-run can't roll production back;
+#   4. check the artifact still has those hidden paths, then refuse if a newer release tag exists, so a re-run can't roll production back;
 #   5. create the tag on the merge commit through the API, refusing if it exists
 #      elsewhere, and the GitHub Release with the git-cliff notes;
 #   6. deploy production (stare.pub) with wrangler;
@@ -234,12 +235,16 @@ jobs:
         run: |
           set -euo pipefail
           cp -R web/dist "$RUNNER_TEMP/release/dist"
+          scripts/check-release-dist "$RUNNER_TEMP/release/dist"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release
           path: ${{ runner.temp }}/release
           if-no-files-found: error
+          # web/dist/.well-known/ has the release and recovery keys (#352), and
+          # upload-artifact leaves out dot-files and dot-directories by default.
+          include-hidden-files: true
           retention-days: 7
           # A re-run of all jobs uploads again under the same name.
           overwrite: true
@@ -271,6 +276,11 @@ jobs:
         with:
           name: release
           path: ${{ runner.temp }}/release
+
+      # Before the deploy and the attached tar: the artifact must still have
+      # the hidden paths the build checked (#352).
+      - name: Check the downloaded release files
+        run: scripts/check-release-dist "$RUNNER_TEMP/release/dist"
 
       - name: Refuse if a newer release exists
         env:
