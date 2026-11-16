@@ -1,0 +1,109 @@
+---
+import SiteFooter from '../components/SiteFooter.astro';
+import Brand from '../components/Brand.astro';
+import SiteHead from '../components/SiteHead.astro';
+import '../styles/theme.css';
+import '../styles/layout.css';
+
+// The release key that signs every release; mirror-kit/README.md and
+// web/public/.well-known/stare-release-key.pub give the same key, and
+// web/tests/selfhost.test.js fails if they differ.
+const RELEASE_KEY_ID = '6882DE6FA53FD7D1';
+const RELEASE_KEY = 'RWTR1z+lb96CaCdVkipBJO+O6KJyVIZkYQz2syiFItetSW+S74fWeKrF';
+const KIT = 'https://github.com/codexpublicus/stare/blob/main/mirror-kit/README.md';
+
+const download = [
+	'mkdir -p /srv/stare && cd /srv/stare',
+	'curl -fsSLO https://data.stare.pub/releases/latest.json',
+	'curl -fsSLO https://data.stare.pub/releases/latest.json.minisig',
+	`minisign -Vm latest.json -P ${RELEASE_KEY}`,
+	'release=$(jq -r .release latest.json)',
+	'curl -fsSLO https://data.stare.pub/releases/$release/release.json',
+	'curl -fsSLO https://data.stare.pub/releases/$release/release.json.minisig',
+	`minisign -Vm release.json -P ${RELEASE_KEY}`,
+	'curl -fsSLO https://data.stare.pub/releases/$release/stare-tier1-$release.tar',
+	`echo "$(jq -r '.tiers["1"].tar.sha256' release.json)  stare-tier1-$release.tar" | sha256sum -c`,
+].join('\n');
+
+const serve = ['tar -xf stare-tier1-$release.tar -C /srv/stare', 'cd /srv/stare/kit && docker compose up -d'].join('\n');
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<SiteHead />
+		<title>Run your own copy · stare.pub</title>
+		<meta name="description" content="How to download, verify and serve your own copy of stare.pub from its signed releases." />
+		<meta property="og:title" content="Run your own copy of §tare.pub" />
+		<meta property="og:description" content="Download, verify and serve your own copy of stare.pub from its signed releases." />
+		<meta property="og:type" content="website" />
+		<meta property="og:url" content="https://stare.pub/self-host/" />
+		<meta property="og:image" content="https://stare.pub/og-image.png" />
+		<script is:inline>
+			try {
+				var theme = localStorage.getItem('stare-theme');
+				if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+					document.documentElement.setAttribute('data-theme', 'dark');
+				}
+			} catch(e) {}
+		</script>
+	</head>
+	<body>
+		<header class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></header>
+		<div class="page">
+			<main>
+			<h1>Run your own copy</h1>
+			<p>stare.pub is static files, and the reader runs in each visitor's browser, so a copy of it is a directory and a web server that hands out files. Copies are published as signed releases on data.stare.pub. A copy reads its index and data from its own disk and never fetches them from stare.pub, so it keeps working if stare.pub goes away. A Raspberry Pi with a USB SSD is plenty.</p>
+			<p><a href="https://mirror.stare.pub/">mirror.stare.pub</a> is an example: a tier 1 copy of the current release, with the "A mirror of stare.pub" line every copy shows at the top of the page.</p>
+
+			<h2 id="tiers">What a copy holds</h2>
+			<div class="page-table-wrap" tabindex="0" role="region" aria-label="Tiers of a copy">
+				<table class="page-table">
+					<thead>
+						<tr><th scope="col">Tier</th><th scope="col">What it adds</th><th scope="col">Disk</th><th scope="col">Published</th></tr>
+					</thead>
+					<tbody>
+						<tr><td>1</td><td>The site, the citation index, the key ledger and the PDF list: citation lookup, the brief checker, and the <code>/k/</code> and <code>/c/</code> addresses</td><td>about 0.5 GB, one tar</td><td>Yes</td></tr>
+						<tr><td>2</td><td>Case text from CAP and CourtListener, and full-text search</td><td>a 128 GB SSD</td><td>Not yet</td></tr>
+						<tr><td>3</td><td>The archival page PDFs</td><td>a 2 TB SSD</td><td>Not yet</td></tr>
+						<tr><td>4</td><td>CAP's raw archive, with the color scans</td><td>about 12 TB</td><td>Not yet</td></tr>
+					</tbody>
+				</table>
+			</div>
+			<p>Tier 1 is the one published today. On a tier 1 copy a citation resolves to its case, and where the copy doesn't have something, such as the case text or the page scans, the reader says so in place and links to the same page on stare.pub.</p>
+
+			<h2 id="download">Download and verify</h2>
+			<p>You need <code>curl</code>, <code>jq</code>, <code>minisign</code> and <code>sha256sum</code> (on Debian or Raspberry Pi OS, <code>apt install curl jq minisign</code>). <a href="https://data.stare.pub/releases/latest.json">data.stare.pub/releases/latest.json</a> names the newest release, and each release's files are under <code>releases/&lt;release&gt;/</code>. These commands check the signatures on both files with stare.pub's release key, then check the tar against the SHA-256 that the signed <code>release.json</code> gives for it:</p>
+			<pre tabindex="0" role="region" aria-label="Download and verify commands"><code>{download}</code></pre>
+			<p>The release key, ID {RELEASE_KEY_ID}, signs every release:</p>
+			<pre tabindex="0" role="region" aria-label="Release key"><code>{RELEASE_KEY}</code></pre>
+			<p>The <a href={KIT}>kit's README</a> on GitHub gives the same key, and the recovery key that signs a change of release key. If the two ever differ, trust neither until you know why. The current release's <code>release.json</code> also names a torrent of the tier 1 tar, with data.stare.pub as its web seed.</p>
+
+			<h2 id="serve">Serve it</h2>
+			<p>The tar unpacks into the copy's root, with the site, the data under <code>mirror/</code>, and the kit under <code>kit/</code>. With Docker and its compose plugin:</p>
+			<pre tabindex="0" role="region" aria-label="Serve commands"><code>{serve}</code></pre>
+			<p>The copy is then at <code>http://&lt;your machine&gt;:8080/</code>. The kit has configurations for Caddy, nginx and Apache 2.4 too, if you already run one of them. Its <a href={KIT}>README</a> covers each of them, checking every file against its release's checksums, and the <code>mirror.json</code> file that tells the reader what the copy holds.</p>
+			<p>To upgrade, run the same steps when <code>latest.json</code> names a newer release and extract the new tar over the root; the server needs no restart. Nothing updates a copy automatically.</p>
+			<p>If you run a copy others can reach, write to <a href="mailto:info@codexpublicus.org">info@codexpublicus.org</a>.</p>
+
+			<a href="/" class="back-link">&larr; Back to stare.pub</a>
+			</main>
+
+			<SiteFooter />
+		</div>
+	<script is:inline>
+			(function() {
+				var btn = document.getElementById('page-theme-btn');
+				if (!btn) return;
+				try { if (localStorage.getItem('stare-theme') === 'dark' || (!localStorage.getItem('stare-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) btn.textContent = '☀'; } catch(e) {}
+				btn.addEventListener('click', function(e) {
+					e.preventDefault();
+					var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+					if (isDark) { document.documentElement.removeAttribute('data-theme'); btn.textContent = '☾'; try { localStorage.setItem('stare-theme', 'light'); } catch(e) {} }
+					else { document.documentElement.setAttribute('data-theme', 'dark'); btn.textContent = '☀'; try { localStorage.setItem('stare-theme', 'dark'); } catch(e) {} }
+				});
+			})();
+		</script>
+	</body>
+</html>

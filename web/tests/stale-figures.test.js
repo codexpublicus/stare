@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-import { cap, formatCount, formatMillions } from '../src/lib/collection.js';
+import { cap, decisionsLabel, formatCount, formatMillions } from '../src/lib/collection.js';
 
 const WEB = new URL('..', import.meta.url).pathname;
 const DIST = join(WEB, 'dist');
@@ -77,6 +77,16 @@ export function staleBlocks(name, text) {
   );
 }
 
+// The collection sentence names its sources open-ended (#300): a block giving the
+// collection's figure says "sources including ...", never a closed list such as "from
+// the Caselaw Access Project and CourtListener", so it holds when a source is added.
+const CLOSED_SOURCES = /\bfrom (?:the )?(?:Harvard )?Caselaw Access Project(?: \(CAP\))?,? and (?:from )?CourtListener\b/;
+
+/** The blocks that give the collection's figure with a closed list of sources. */
+export function closedSourceBlocks(name, text, label = decisionsLabel) {
+  return blocks(name, text).filter((b) => b.includes(label) && CLOSED_SOURCES.test(b));
+}
+
 function walk(dir) {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
@@ -110,6 +120,21 @@ describe('staleBlocks', () => {
   });
 });
 
+describe('closedSourceBlocks', () => {
+  test('flags the collection sentence with a closed list of sources', () => {
+    const page = `<body><p>stare.pub holds 7.7 million decisions from 1658 to 2026, from the Caselaw Access Project and CourtListener.</p>
+      <p>stare.pub holds 7.7 million decisions from 1658 to 2026, from sources including the Caselaw Access Project and CourtListener.</p>
+      <p>stare.pub aggregates published case law from the Caselaw Access Project and CourtListener.</p></body>`;
+    assert.deepEqual(closedSourceBlocks('about/index.html', page, '7.7 million decisions'), [
+      'stare.pub holds 7.7 million decisions from 1658 to 2026, from the Caselaw Access Project and CourtListener.',
+    ]);
+    assert.deepEqual(
+      closedSourceBlocks('llms.txt', '# t\n\n> It aggregates 7.7 million decisions from 1658 to 2026, from the Harvard Caselaw Access Project (CAP) and from CourtListener (Free Law Project).\n', '7.7 million decisions').length,
+      1,
+    );
+  });
+});
+
 describe('the built site', () => {
   const have = existsSync(DIST);
   test('gives no CAP figure as the whole collection\'s', { skip: !have && !process.env.STARE_REQUIRE_DIST && 'no web/dist; run the site build first' }, () => {
@@ -118,5 +143,12 @@ describe('the built site', () => {
     assert.ok(files.some((f) => f.endsWith('index.html')));
     const stale = files.flatMap((f) => staleBlocks(f, readFileSync(f, 'utf8')).map((b) => `${relative(DIST, f)}: ${b}`));
     assert.deepEqual(stale, []);
+  });
+
+  test('names the collection\'s sources open-ended', { skip: !have && !process.env.STARE_REQUIRE_DIST && 'no web/dist; run the site build first' }, () => {
+    assert.ok(have, 'STARE_REQUIRE_DIST is set and there is no web/dist');
+    const files = walk(DIST).filter((f) => /\.(html|xml|txt|json|svg)$/.test(f) && !SKIPPED.includes(relative(DIST, f)));
+    const closed = files.flatMap((f) => closedSourceBlocks(f, readFileSync(f, 'utf8')).map((b) => `${relative(DIST, f)}: ${b}`));
+    assert.deepEqual(closed, []);
   });
 });

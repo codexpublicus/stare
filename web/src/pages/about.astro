@@ -34,12 +34,13 @@ import SiteHead from '../components/SiteHead.astro';
 		</script>
 	</head>
 	<body>
-		<div class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
+		<header class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></header>
 		<div class="page">
+			<main>
 			<h1>About stare.pub</h1>
 			<p><strong>stare.pub</strong> resolves U.S. case citations to the full text of the decision and to the original scanned pages of the reporter it was printed in. Type <em>31 A.2d 647</em> and you get the opinion. It's a <a href="https://codexpublicus.org" target="_blank" rel="noopener">Codex Publicus</a> project, built by <a href="https://x.com/lokkju" target="_blank" rel="noopener">lokkju</a>.</p>
 			<p>Everything runs in your browser. The site, the citation index and the case data are all static files: there's no server doing work on your behalf, no database, and no API to go down. There's no account to create and nothing to sign up for. I count visits with <a href="https://www.cloudflare.com/web-analytics/" target="_blank" rel="noopener">Cloudflare Web Analytics</a>, which sets no cookies and reports only aggregate numbers.</p>
-			<p>stare.pub aggregates published case law from the Caselaw Access Project and CourtListener, and produces it as static data you can host yourself: the citation index, the case records, the reporter map and the schemas, served as plain files anyone can mirror, with no account, key or per-request server. Agents and tools use those same files with plain GETs, or through tools that run on their own machine (the <code>stare</code> command line tool, in alpha, and a planned local MCP server) rather than a hosted API. <a href="/llms.txt">llms.txt</a> has the recipe, and <a href="/data">the data page</a> describes the files.</p>
+			<p>stare.pub aggregates published case law from the Caselaw Access Project and CourtListener, and produces it as static data you can host yourself: the citation index, the case records, the reporter map and the schemas, served as plain files anyone can mirror, with no account, key or per-request server. Agents and tools use those same files with plain GETs, or through tools that run on their own machine (the <code>stare</code> command line tool and its local MCP server, <code>stare mcp</code>, both in alpha) rather than a hosted API. <a href="/llms.txt">llms.txt</a> has the recipe, and <a href="/data">the data page</a> describes the files.</p>
 			<p>Published case law is the law. Reading it shouldn't depend on a subscription, or on any one institution's continued goodwill and funding.</p>
 
 			<h2>The data</h2>
@@ -67,17 +68,21 @@ import SiteHead from '../components/SiteHead.astro';
 				<li><strong>Citation detection.</strong> citare, a Rust citation parser I wrote, finds the citations in every case you read and in anything you paste into the brief checker, including plain forms like 31 A.2d 647.</li>
 				<li><strong>Our own case text.</strong> Case data is served from the Codex Publicus copy, not from static.case.law.</li>
 				<li><strong>CourtListener.</strong> {formatCount(courtListener.records)} records of cases CAP doesn't hold, from CourtListener's export of {courtListener.export}, are published, and the index points their citations at them; CourtListener's parallel citations link a case's other printings to it.</li>
+				<li><strong>Archival PDFs.</strong> One PDF/A per volume, built from the original bitonal scans with lossless compression, with the OCR as an invisible, searchable text layer and a bookmark for every case. Every page is checked against its source scan, pixel for pixel. They come out about a quarter smaller than CAP's own PDFs of the same volumes, which have no text layer at all. Every volume with page scans has one, and the reader's Archival PDF view reads them.</li>
+				<li><strong>Full-text search</strong>, served as static files like everything else: <a href="/search/">search</a> finds decisions by the words in their text or their names, filtered by jurisdiction, court and years.</li>
+				<li><strong>Permanent addresses.</strong> A decision's court record key opens it at <code>/k/&lt;key&gt;/</code>, <code>/c/</code> opens a citation, and <code>/d/&lt;id&gt;/</code> a CourtListener record no citation reaches. The case sidebar lists a decision's other printings and its records from other sources.</li>
+				<li><strong>Your own copy.</strong> The site and its citation index are published as a signed download that runs on any static web server; <a href="/self-host/">Run your own copy</a> says how.</li>
+				<li><strong>The <code>stare</code> tool and its MCP server.</strong> <code>stare mcp</code> lets an agent check a brief's citations and read the cases on its own machine, against the same files. Linux builds are on <a href="https://github.com/codexpublicus/stare/releases" target="_blank" rel="noopener">GitHub</a>.</li>
 			</ul>
 			<p>In progress:</p>
 			<ul>
-				<li><strong>Archival PDFs.</strong> One PDF/A per volume, built from the original bitonal scans with lossless compression, with the OCR as an invisible, searchable text layer and a bookmark for every case. Every page is checked against its source scan, pixel for pixel. They come out about a quarter smaller than CAP's own PDFs of the same volumes, which have no text layer at all.</li>
 				<li><strong>Structured case text.</strong> Every decision in Akoma Ntoso, the OASIS standard for legal documents, with a stable identifier for each opinion.</li>
 			</ul>
 			<p>Planned:</p>
 			<ul>
-				<li><strong>Full-text search</strong>, served as static files like everything else.</li>
 				<li><strong>Statutes and regulations</strong>: the U.S. Code, the Statutes at Large and the state codes, from the public sources that publish them.</li>
-				<li><strong>IPFS and torrents</strong>, for anyone to pin and seed.</li>
+				<li><strong>Larger copies</strong>: case text and search, the archival PDFs and CAP's raw archive as downloads beside the citation index.</li>
+				<li><strong>IPFS and torrents of the CAP data</strong>, for anyone to pin and seed.</li>
 				<li><strong>The site itself on IPFS</strong>, where the whole system can outlive any single host, this one included.</li>
 			</ul>
 
@@ -107,9 +112,10 @@ import SiteHead from '../components/SiteHead.astro';
 			<h2>Help preserve case law</h2>
 			<p>Harvard has kept the bulk files online so far. One host is still one point of failure, and every independent copy of the full release is one more place it survives if static.case.law goes away.</p>
 			<ul>
-				<li><strong>Mirror it.</strong> The whole release is at <a href="https://static.case.law/" target="_blank" rel="noopener">static.case.law</a>. If you have 10.4 TB to spare, take a copy, and keep it to a request or two a second.</li>
+				<li><strong>Run a copy of stare.pub.</strong> The site and its citation index download as one signed tar and run on a Raspberry Pi; <a href="/self-host/">Run your own copy</a> has the steps.</li>
+				<li><strong>Mirror CAP.</strong> The whole release is at <a href="https://static.case.law/" target="_blank" rel="noopener">static.case.law</a>. If you have 10.4 TB to spare, take a copy, and keep it to a request or two a second.</li>
 				<li><strong>Pin it</strong> on IPFS, once we publish the CIDs.</li>
-				<li><strong>Seed it</strong>, once the per-reporter torrents exist.</li>
+				<li><strong>Seed it.</strong> The current copy's tar has a torrent, named in its <code>release.json</code>; per-reporter torrents of the CAP data will follow.</li>
 			</ul>
 
 			<h2>Built on</h2>
@@ -126,6 +132,7 @@ import SiteHead from '../components/SiteHead.astro';
 			<p>stare.pub is one of the <a href="https://codexpublicus.org" target="_blank" rel="noopener">Codex Publicus</a> projects. Write to <a href="mailto:info@codexpublicus.org">info@codexpublicus.org</a> with questions, corrections or a mirror you run.</p>
 
 			<a href="/" class="back-link">&larr; Back to stare.pub</a>
+			</main>
 
 			<SiteFooter />
 		</div>

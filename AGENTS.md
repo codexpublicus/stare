@@ -18,9 +18,11 @@ crates/stare-site    — `stare-site export-citare-data` and `export-reporters`:
                       citare data bundle and /reporters.json
 crates/stare-wasm    — wasm-bindgen bindings for the website (same core as the CLI)
 data/                — committed index files (e.g. a2d/31.bin) and other build artifacts
-web/                 — Astro site: landing, about, brief checker, case viewer
+web/                 — Astro site: landing, about, brief checker, search, case viewer, data,
+                      updates and the self-host page
+mirror-kit/          — the self-hosted copy's server configurations and operator README
 worker/              — the Worker's script: a 404 for non-navigation requests no file matches
-docs/plans/checklist.md             — Master checklist, iterate through this
+docs/plans/checklist.md             — The original master checklist, history; Current Status below is current
 docs/plans/cap-preservation-plan.md — Original plan: outreach, risk assessment, data sources
 docs/plans/static-case-law-mirror.md — Mirror of static.case.law: status, file formats, aria2 setup
 docs/plans/extraction-plan.md       — Citation index + data pipeline: bin index, R2 layout, WASM client
@@ -236,7 +238,7 @@ URL); `<hash>` is the first 16 hex digits of its SHA-256. The unified index's `c
 point at them; the site and the CLI fetch the record and render it like a CAP case with a
 source line, and no page scans or PDF. `cl.rs` and `sources.js` are the only places that
 build record paths. Index v2026.10.22 is the first live build with them: 900,342 records
-from CourtListener's 2026-09-30 export, at `data.stare.pub/cl/c/` (the exports under
+from CourtListener's 2026-09-30 export (863,228 in the live v2026.11.05.3), at `data.stare.pub/cl/c/` (the exports under
 `data.stare.pub/cl/exports/` are not served, 403, and nothing links them). The e2e tests that
 need a fixed case serve a hand-made record (`crates/stare/tests/fixtures/cl-record.json`)
 through routes. The site credits CourtListener on /about, /data, `llms.txt`, `openapi.json`,
@@ -248,8 +250,12 @@ the `/data` JSON-LD and the README (#206), with the record count and the export 
 
 Every page, social description, `llms.txt`'s summary, the `/data` JSON-LD
 (`temporalCoverage` included) and the OG image state the collection's size and range from
-`web/src/data/collection.json`, through `web/src/lib/collection.js`: "7.8 million decisions
-from 1658 to 2026, from the Caselaw Access Project and CourtListener" for index v2026.10.26.2.
+`web/src/data/collection.json`, through `web/src/lib/collection.js`: "7.7 million decisions
+from 1658 to 2026, from sources including the Caselaw Access Project and CourtListener" for
+index v2026.11.05.3. The sources are named open-ended (#300), from `collection.json`'s
+`sources` list and `SOURCE_NAMES` in `web/src/lib/collection-figures.js`, so the sentence
+holds when a source is added; `stale-figures.test.js` fails on a block that gives the figure
+with a closed list.
 `npm --prefix web run build` runs `web/scripts/collection.mjs` first (the prebuild script),
 which reads the live index build's `report.json` (CAP's cases, `totals.cases`, plus the
 CourtListener records it published, `idx.cl_input.records`), `manifest.json` (CAP's indexed
@@ -401,7 +407,8 @@ The ranking is the index builder's reference client and nobody else's. Each copy
 `search.mjs` reads one search format, so the site carries one per format a published tree
 is in: `web/src/vendor/stare-search/` holds `search.mjs` and `tokenize.mjs` for format 3
 (index builder commit 6098a43), and `web/src/vendor/stare-search-format2/` the same two
-files for format 2 (d419b9e), which the live tree for v2026.10.26.2 is in.
+files for format 2 (d419b9e), which the tree for v2026.10.26.2 is in; the live v2026.11.05.3
+tree is format 3.
 `web/src/vendor/roaringbuckets-client/` holds the RoaringBuckets JS client (v0.3.0 plus a
 fix that aborts a ranged read answered with the whole file), which both read the tree with. All
 are byte for byte at the commits `web/src/vendor/search-client.json` pins with each file's
@@ -1212,7 +1219,10 @@ tier 2 note, each linking to the same page on stare.pub and never fetching from 
 head script's preconnects to stare.pub's hosts are left out on a copy (`addLinks`). The
 site may not ship anything under `/mirror/`, and the release keys are at
 `/.well-known/stare-release-key.pub` and `stare-recovery-key.pub`
-(`web/tests/mirror.test.js`).
+(`web/tests/mirror.test.js`). `/self-host/` (`web/src/pages/self-host.astro`) is the short
+version for people, linked from /about, the landing, `llms.txt` and the README; it quotes the
+release key, which `web/tests/selfhost.test.js` checks against the published key and the kit
+README.
 
 ### Archival PDFs and CourtListener records
 
@@ -1426,11 +1436,19 @@ refuses a tag that doesn't match.
   old Pages project is deleted by #41). CI deploys it when a release PR merges (#60), so
   production is the latest `vYYYY.MM.DD.N` release tag, and `main` can be ahead of it.
 - **Live**: `idx.stare.pub` (R2 bucket `stare-pub-idx`) serves the citation index files. The
-  live build is the one the root `manifest.json`'s `version` names; on 2026-10-22 that was
-  `v2026.10.22`, the unified `.idx.gz` index (`idx: 1`) with `.bin`/`.multi` beside it: CAP's
-  40,622 volume folders under 401 slugs and 6,920,598 cases, plus 1,101,715 `cl` lines into
-  the 900,342 CourtListener records (export 2026-09-30) and `via=cl:` aliases, with 589 slugs in
-  `reporters` and its `based_on` naming CAP and CourtListener's bulk data.
+  live build is the one the root `manifest.json`'s `version` names; on 2026-11-16 that was
+  `v2026.11.05.3`, the unified `.idx.gz` index (`idx: 1`): CAP's 40,622 volume folders under
+  401 slugs and 6,920,598 cases, plus 1,071,253 `cl` lines into the 863,228 CourtListener
+  records (export 2026-09-30) and `via=cl:` aliases, with 574 slugs in `reporters`, 425 in
+  `aliases`, the full-text search tree and the `/d/` decision-route tables under its `base`,
+  and its `based_on` naming CAP and CourtListener's bulk data.
+- **Live**: the court record key ledger at `data.stare.pub/crk/ledger/` (v2026.11.08 on
+  2026-11-16), which `/k/<key>/` reads, and the archival PDFs at `data.stare.pub/pdf/`:
+  39,963 of CAP's 40,622 volumes, the 658 without page scans having none
+  (`pdf/manifest.json`).
+- **Live**: self-hosted copies. Release v2026.11.11 (sequence 1) is the first, tier 1 only,
+  named by `data.stare.pub/releases/latest.json`; `mirror.stare.pub` serves it as an example
+  copy, and stare.pub's `/self-host/` page and `mirror-kit/README.md` say how to run one.
 - **Zips**: the site and the CLI fetch case zips from `https://data.stare.pub/cap/<reporter>/<volume>.zip`
   (our copy, #27), and the volume PDF link opens our archival PDF at
   `https://data.stare.pub/pdf/<jurisdiction>/<reporter>/<volume>.pdf#page=N`. Tars and
@@ -1440,14 +1458,16 @@ refuses a tag that doesn't match.
   aria2 `codex-mirror` container is stopped.
 - **Pending, tracked by issue** (`gh issue list -R codexpublicus/stare`):
   - #42: `codex-data` contents and `data.stare.pub` exposure (tier 1 uploaded 2026-09-29)
-  - #51: archival per-volume PDFs (pipeline in the index builder)
+  - #51: archival per-volume PDFs (pipeline in the index builder; published, above)
   - #52, #61: Akoma Ntoso case text (profile in codexpublicus/exemplar); parallel-citation display
-  - #10 — a computable court record key, a stable identifier for every decision
+  - #10 — a computable court record key, a stable identifier for every decision (the ledger
+    and `/k/` addresses are live, above)
+  - #231 — self-hosted copies: tier 1 and the kit are live (#321); tiers 2 to 4 aren't
+    published
   - #8 — add case sources beyond CAP
   - #7 — pass-through citation resolver for cases this repo doesn't hold
   - #6 — offline, self-hosted law reference library, US then other countries
   - #5 — shared design system review across Codex Publicus sites
-  - #4 — settle the code license and declare it everywhere
   - #1 — adopt the shared Codex Publicus page viewer
 
   Beyond these, see issues for anything not listed here.
@@ -1458,11 +1478,11 @@ refuses a tag that doesn't match.
 2. **Citation index + CLI tool** (done): the per-volume index at idx.stare.pub, built by the index builder, and the Rust `stare` CLI (`stare resolve a2d 31 647` → text)
 3. **Web tool (WASM)** (live at stare.pub): citare and stare-wasm in the browser, zip extraction, served by the `stare-pub` Worker; PDF as fallback viewer link
 4. **DuckLake** — process zips into Parquet, build catalog, assign stable case IDs
-5. **RoaringBuckets search** — generate bitmaps from DuckLake data, add search to web UI
-6. **Page viewer** — tar range access + ALTO XML rendering in WASM (deferred; not needed for core text resolution)
+5. **RoaringBuckets search** (live) — the index builder's search tree under each index build, read by the search page
+6. **Page viewer** (live) — the Raw Scans view: tar range access and the ALTO text layer, beside the Archival PDF view
 7. **MCP server** (M1 built, #162) — `stare mcp`, below; M2 adds pin pages, more tools, HTTP on loopback and macOS and Windows builds
 8. **IPFS distribution** — pin tars + PDFs from the local mirror (alongside Phase 6)
-9. **CourtListener integration** (phase 2) — citation graph first, then post-2018 cases (text-only), then full pre-2018 merge if warranted. See `search-plan.md` for decision rationale. Worth asking Free Law Project about PDFs/scans before committing to text-only tier.
+9. **CourtListener integration** (records and parallel citations live since index v2026.10.22) — citation graph first, then post-2018 cases (text-only), then full pre-2018 merge if warranted. See `search-plan.md` for decision rationale. Worth asking Free Law Project about PDFs/scans before committing to text-only tier.
 
 ## Language & Tooling Preferences
 

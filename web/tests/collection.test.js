@@ -16,6 +16,7 @@ import {
   formatMillions,
   llmsSummary,
   ogLine,
+  sourcesPhrase,
   yearSpan,
 } from '../src/lib/collection.js';
 import { CAP_RELEASE, collectionFromIndex, readCollection } from '../src/lib/collection-read.js';
@@ -140,9 +141,23 @@ describe('formatMillions', () => {
 
   test('the phrases', () => {
     const f = figures(collectionFromIndex(index()));
-    assert.equal(f.coverage, '7.8 million decisions from 1658 to 2026, from the Caselaw Access Project and CourtListener');
+    assert.equal(f.coverage, '7.8 million decisions from 1658 to 2026, from sources including the Caselaw Access Project and CourtListener');
+    assert.equal(f.sources, 'sources including the Caselaw Access Project and CourtListener');
     assert.equal(f.capCasesLabel, '6.9 million cases');
     assert.equal(f.ogLine, '7.8 million decisions · 1658 to 2026 · Serverless. Actually.');
+  });
+});
+
+describe('sourcesPhrase', () => {
+  test('names the sources open-ended, from collection.json\'s list (#300)', () => {
+    assert.equal(sourcesPhrase({ sources: ['cap'] }), 'sources including the Caselaw Access Project');
+    assert.equal(sourcesPhrase({ sources: ['cap', 'courtlistener'] }, 'long'), 'sources including the Harvard Caselaw Access Project (CAP) and CourtListener (Free Law Project)');
+    assert.equal(sourcesPhrase({}), 'sources including the Caselaw Access Project and CourtListener');
+    assert.throws(() => sourcesPhrase({ sources: ['cap', 'nowhere'] }), /SOURCE_NAMES: nowhere/);
+  });
+
+  test('collection.json lists its sources', () => {
+    assert.deepEqual(collection.sources, ['cap', 'courtlistener']);
   });
 });
 

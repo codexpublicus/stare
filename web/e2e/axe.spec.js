@@ -1,7 +1,7 @@
 // An automated accessibility pass (axe-core, through @axe-core/playwright) over the pages the
 // smoke suite loads, in both themes: the landing, a case in each of its three views, /search/
-// with results, /about, /data and /check with a result, and a case at phone width with its
-// details bar and sheet. A moderate, serious or critical violation fails the test; minor ones,
+// with results, /about, /self-host, /data and /check with a result, and a case at phone width
+// with its details bar and sheet. A moderate, serious or critical violation fails the test; minor ones,
 // and the moderate ones a page is still allowed (ALLOWED), are listed in the output and attached
 // to the report without failing it. #270 and a11y.spec.js cover what axe can't see: the
 // keyboard, the focus and the live regions.
@@ -18,11 +18,9 @@ const CORS = {
 const CASE = '/#a2d/142/148-01';
 const TITLE = 'Renaire Corp. v. Vaughn';
 const FAILING = new Set(['moderate', 'serious', 'critical']);
-// Moderate rules a page may still break, by page name. /about still has its top bar and content
-// outside any landmark (#332): its markup is left to the docs work on that page.
-const ALLOWED = {
-  about: new Set(['landmark-one-main', 'region']),
-};
+// Moderate rules a page may still break, by page name. Empty: every page, /about and /self-host
+// included, now passes the moderate rules.
+const ALLOWED = {};
 
 // The search page answered from the format-2 fixture tree (search.spec.js serves it the same
 // way), so /search/ has results without a tree on R2.
@@ -72,6 +70,10 @@ const PAGES = {
   },
   about: async (page) => {
     await page.goto('/about');
+    await expect(page.locator('h1').first()).toBeVisible();
+  },
+  'self-host': async (page) => {
+    await page.goto('/self-host/');
     await expect(page.locator('h1').first()).toBeVisible();
   },
   data: async (page) => {

@@ -1,6 +1,6 @@
 # stare.pub
 
-> stare.pub resolves U.S. case law citations to the full text of the case. It aggregates published case law, 7.8 million decisions from 1658 to 2026, from the Harvard Caselaw Access Project (CAP) and from CourtListener (Free Law Project), whose records cover cases CAP doesn't have, including the decisions after CAP's last volumes, and produces it as static, self-hostable data: the citation index, the case records, the reporter map and the schemas. There is no API, no account, no key and no server to call; resolving a citation is two or three plain HTTPS GETs, and the same files work from a mirror.
+> stare.pub resolves U.S. case law citations to the full text of the case. It aggregates published case law, 7.7 million decisions from 1658 to 2026, from sources including the Harvard Caselaw Access Project (CAP) and CourtListener (Free Law Project); CourtListener's records cover cases CAP doesn't have, including the decisions after CAP's last volumes. stare.pub produces it all as static, self-hostable data: the citation index, the case records, the reporter map and the schemas. There is no API, no account, no key and no server to call; resolving a citation is two or three plain HTTPS GETs, and the same files work from a mirror.
 
 ## Resolving a citation
 
@@ -29,12 +29,13 @@ Index files under `v/<version>/` and the case files never change once published;
 
 ## Pages
 
-- [stare.pub](https://stare.pub/): look up a citation; the case viewer opens a case at `https://stare.pub/#<slug>/<volume>/<page>`, such as `https://stare.pub/#a2d/31/647`
+- [stare.pub](https://stare.pub/): look up a citation; the case viewer opens a case at `https://stare.pub/#<slug>/<volume>/<page>`, such as `https://stare.pub/#a2d/31/647`. In a browser it also opens a decision at its court record key, `/k/<key>/` (from the key ledger, `https://data.stare.pub/crk/ledger/latest.json`), a citation at `/c/<jurisdiction>/<slug>/<volume>/<page>/`, and a CourtListener record no citation reaches at its short id, `/d/<id>/`. These addresses are the reader, not files: a request that isn't a browser navigation gets a 404
 - [Brief checker](https://stare.pub/check/): paste a brief and check every citation in it
 - [Search](https://stare.pub/search/): find decisions by the words in their opinion text or case name, filtered by jurisdiction, court and years (`https://stare.pub/search/?q=palsgraf+railroad`). It runs in the browser on static search files under the live index build on idx.stare.pub, and says so when the live build has none yet
 - [About](https://stare.pub/about/): what stare is, where the data comes from and what's new
 - [Data](https://stare.pub/data/): the sources, the index and case files, and every index build's counts
 - [Updates](https://stare.pub/updates/): every site release ([Atom feed](https://stare.pub/updates.xml))
+- [Run your own copy](https://stare.pub/self-host/): download a signed release named by `https://data.stare.pub/releases/latest.json`, check it with minisign and serve it with the mirror kit; [mirror.stare.pub](https://mirror.stare.pub/) is an example copy
 
 ## Files
 
@@ -57,7 +58,7 @@ Index files under `v/<version>/` and the case files never change once published;
 
 ## Local tools
 
-The `stare` command-line tool resolves citations and prints case text from the same static files, and a local MCP server in it, `stare mcp`, is planned, so an agent can resolve citations through tools running on its own machine. Neither is published as a package yet. stare.pub hosts no MCP server; anything that runs, runs on your side.
+The `stare` command-line tool resolves citations and prints case text from the same static files, and `stare mcp` serves the Model Context Protocol over stdio from it, so an agent can resolve citations and check a brief through tools running on its own machine (`check_brief`, `get_case`, `resolve_citation`, `find_citations_in_text`, `index_info`). Linux binaries for x86_64 and aarch64 are attached to the `stare-cli-v*` releases at https://github.com/codexpublicus/stare/releases, with the agent skill; it isn't in a package registry. stare.pub hosts no MCP server; anything that runs, runs on your side.
 
 ## Crawling and use
 

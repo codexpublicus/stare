@@ -156,6 +156,7 @@
 }
 
 .landing-links { margin-top: 2rem; font-size: 0.85rem; }
+.landing-link-sep { margin: 0 0.5rem; color: var(--text-tertiary); }
 /* SiteFooter.astro: the Codex Publicus footer (src/vendor/cp-footer/footer.css), under the
    landing's column or a page's. footer.css reads the theme from prefers-color-scheme and
    data-theme="dark"/"light"; stare.pub's switch removes data-theme for light, so its colours
@@ -201,6 +202,13 @@ html:root .site-footer .cp-footer {
 .page :is(p, li) a:not(.site-footer *) { text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
 .page ul { margin: 0.5rem 0 1rem 1.5rem; font-size: 0.95rem; line-height: 1.7; color: var(--text-body); }
 .page h3 { font-size: 0.95rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.25rem; }
+/* Commands and keys on a content page (/self-host): scroll sideways, never wrap a command. */
+.page pre { background: var(--bg-alt); border: 1px solid var(--border-light); border-radius: 4px; padding: 0.75rem 1rem; margin: 0 0 1rem; overflow-x: auto; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.6; color: var(--text-body); }
+.page pre code { font-family: inherit; white-space: pre; }
+.page-table-wrap { overflow-x: auto; margin: 0.5rem 0 1rem; }
+.page-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; line-height: 1.5; color: var(--text-body); }
+.page-table th { text-align: left; font-weight: 600; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); }
+.page-table td { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border-light); vertical-align: top; }
 
 /* /about "What's new", rendered from CHANGELOG.md at build time. */
 .whats-new-release { margin-top: 1.25rem; }

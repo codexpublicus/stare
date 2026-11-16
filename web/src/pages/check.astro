@@ -1,6 +1,6 @@
 ---
 import SiteFooter from '../components/SiteFooter.astro';
-import { SOURCES, decisionsLabel } from '../lib/collection.js';
+import { decisionsLabel, sources } from '../lib/collection.js';
 import { BOOT_TIMEOUT_MS, bootGuardScript } from '../lib/bootguard.js';
 import '../styles/theme.css';
 import '../styles/layout.css';
@@ -17,7 +17,7 @@ import SiteHead from '../components/SiteHead.astro';
 		<title>Check Citations — stare.pub</title>
 		<meta name="description" content="Paste a legal brief and check all citations against the case law of the Caselaw Access Project and CourtListener." />
 		<meta property="og:title" content="Check Citations — §tare.pub" />
-		<meta property="og:description" content={`Paste a legal brief and check all citations against ${decisionsLabel} from ${SOURCES}.`} />
+		<meta property="og:description" content={`Paste a legal brief and check all citations against ${decisionsLabel} from ${sources}.`} />
 		<meta property="og:type" content="website" />
 		<meta property="og:url" content="https://stare.pub/check" />
 		<meta property="og:image" content="https://stare.pub/og-image.png" />

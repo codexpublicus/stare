@@ -8,9 +8,9 @@ import collection from '../data/collection.json' with { type: 'json' };
 import { figures } from './collection-figures.js';
 
 export { collection };
-export { SOURCES, figures, formatCount, formatMillions } from './collection-figures.js';
+export { SOURCE_NAMES, figures, formatCount, formatMillions, sourcesPhrase } from './collection-figures.js';
 
-export const { decisionsLabel, yearSpan, coverage, capCasesLabel, ogLine, llmsSummary } = figures(collection);
+export const { decisionsLabel, yearSpan, sources, coverage, capCasesLabel, ogLine, llmsSummary } = figures(collection);
 
 // CAP's release: its cases, volumes and years.
 export const cap = collection.cap;

@@ -7,7 +7,7 @@ with its release and the date of its data, and links to stare.pub for anything i
 hold.
 
 A copy is one of four tiers. Tier 1 (citation lookup, the brief checker, the `/k/` and `/c/`
-addresses) is what stare.pub publishes today, about 0.46 GB as one tar. Tiers 2 to 4 (case
+addresses) is what stare.pub publishes today, about 0.47 GB as one tar. Tiers 2 to 4 (case
 text and full-text search, the archival page PDFs, the raw CAP archive) follow.
 
 ## What you need
@@ -18,7 +18,8 @@ text and full-text search, the archival page PDFs, the raw CAP archive) follow.
   holds tier 3; tier 4 (about 12 TB) needs a disk array. Use ext4, or another filesystem that handles a
   million small files well. exFAT struggles with tier 2's 860,000 CourtListener records.
 - Docker with the compose plugin, or a web server you already run: Caddy, nginx or Apache.
-- `minisign` and `sha256sum` to check what you download (`apt install minisign`).
+- `minisign` and `sha256sum` to check what you download, and `jq` to read the release's
+  name from `latest.json` (`apt install minisign jq`).
 
 ## Layout
 
@@ -49,7 +50,7 @@ mkdir -p /srv/stare && cd /srv/stare
 curl -fsSLO https://data.stare.pub/releases/latest.json
 curl -fsSLO https://data.stare.pub/releases/latest.json.minisig
 minisign -Vm latest.json -P RWTR1z+lb96CaCdVkipBJO+O6KJyVIZkYQz2syiFItetSW+S74fWeKrF
-release=v2026.11.10   # the release latest.json names
+release=$(jq -r .release latest.json)   # the release latest.json names
 curl -fsSLO https://data.stare.pub/releases/$release/release.json
 curl -fsSLO https://data.stare.pub/releases/$release/release.json.minisig
 curl -fsSLO https://data.stare.pub/releases/$release/stare-tier1-$release.tar
@@ -108,6 +109,7 @@ which lists every file in the component.
 
    ```sh
    sha256sum stare-tier1-$release.tar
+   jq -r '.tiers["1"].tar.sha256' release.json
    ```
 
 3. Extract it, then check every file from the root against its component's list:
