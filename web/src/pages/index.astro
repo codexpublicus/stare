@@ -48,6 +48,8 @@ import SiteHead from '../components/SiteHead.astro';
 		<!-- Landing state -->
 		<div id="landing" class="landing">
 			<button type="button" class="landing-theme-toggle" id="landing-theme-btn" title="Toggle dark mode" aria-label="Toggle dark mode">&#9790;</button>
+			<!-- The landing's content is its main landmark; the theme button and the footer sit outside it. -->
+			<main class="landing-main">
 			<div class="landing-hero">
 				<h1 class="landing-brand"><Brand variant="hero" /></h1>
 				<p class="landing-tagline">Free, open U.S. case law lookup</p>
@@ -126,14 +128,15 @@ import SiteHead from '../components/SiteHead.astro';
 			<div class="landing-links">
 				<a href="/about" class="landing-link">About this project</a>
 			</div>
+			</main>
 
 			<SiteFooter variant="landing" />
 		</div>
 
 		<!-- Resolved state (hidden initially) -->
 		<div id="resolved" class="hidden">
-			<a class="skip-link" href="#reader-title" id="skip-link">Skip to the case</a>
-			<div class="topbar" id="topbar">
+			<header class="topbar" id="topbar">
+				<a class="skip-link" href="#reader-title" id="skip-link">Skip to the case</a>
 				<a href="/" class="topbar-brand"><Brand /></a>
 				<span class="topbar-divider">|</span>
 				<button type="button" class="topbar-cite topbar-editable" id="topbar-cite" title="Search another citation" aria-label="Search another citation"></button>
@@ -146,9 +149,12 @@ import SiteHead from '../components/SiteHead.astro';
 				<button id="prev-btn" class="topbar-nav" title="Previous case" aria-label="Previous case" disabled>&#9664;</button>
 				<button id="next-btn" class="topbar-nav" title="Next case" aria-label="Next case" disabled>&#9654;</button>
 				<button id="theme-btn" class="theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">&#9790;</button>
-			</div>
+			</header>
 			<div class="layout">
 				<main class="main">
+					<!-- The case's title as the level-one heading of a page view, where the Reader and
+					     its title are hidden (main.js's showView). -->
+					<h1 class="sr-only" id="view-title" hidden></h1>
 					<!-- The page views' tabs show once the case says it has scans (main.js). ARIA tabs
 					     (#270): one tab in the tab order at a time, the arrow keys, Home and End move
 					     between them (main.js). -->

@@ -74,8 +74,9 @@ import SiteHead from '../components/SiteHead.astro';
 		</style>
 	</head>
 	<body>
-		<div class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
+		<header class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></header>
 		<div class="check-container">
+			<main>
 			<div class="check-header">
 				<h1>Check Citations</h1>
 				<p>Paste a legal brief or any text containing case citations. We'll identify each citation and check whether we can resolve it to the full case text. When a citation gives the same decision in two reporters and we hold only one, the other opens the case we hold, marked as inferred from the citing text; if the two open different cases, both are flagged for review. A case from a volume we don't hold links to CourtListener and Google Scholar, where it may be, and a statute or regulation links to its text where it's published.</p>
@@ -104,6 +105,7 @@ Example: The court in D'Elia & Marks Co. v. Lyon, 31 A.2d 647 (D.C. Mun. Ct. App
 			</div>
 
 			<a href="/" class="back-link">&larr; Back to stare.pub</a>
+			</main>
 			<SiteFooter />
 		</div>
 

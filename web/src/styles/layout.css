@@ -96,6 +96,8 @@
 .view-tab.active { color: var(--tab-active-text); font-weight: 600; border-bottom-color: var(--tab-active-border); background: var(--bg); }
 
 .landing { display: flex; flex-direction: column; align-items: center; padding: 10vh 1rem 4rem; min-height: 100vh; position: relative; font-family: var(--font-text); }
+/* The landing's main landmark lays its content out as .landing did before it was there. */
+.landing-main { display: flex; flex-direction: column; align-items: center; width: 100%; }
 .landing-theme-toggle {
   position: absolute; top: 16px; right: 16px;
   background: none; border: none; font-size: 20px;

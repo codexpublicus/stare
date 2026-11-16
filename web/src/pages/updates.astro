@@ -33,8 +33,9 @@ import SiteHead from '../components/SiteHead.astro';
 		</script>
 	</head>
 	<body>
-		<div class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
+		<header class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></header>
 		<div class="page">
+			<main>
 			<h1>Updates</h1>
 			<p>Every release of the site, newest first. Each is tagged with the date it went live, and the footer of every page shows the one you're looking at. Follow along with the <a href="/updates.xml">Atom feed</a>.</p>
 			{releases.length === 0 && <p>No site releases yet.</p>}
@@ -60,6 +61,7 @@ import SiteHead from '../components/SiteHead.astro';
 
 
 			<a href="/" class="back-link">&larr; Back to stare.pub</a>
+			</main>
 
 			<SiteFooter />
 		</div>

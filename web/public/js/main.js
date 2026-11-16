@@ -49,6 +49,8 @@ const landingBtn = document.getElementById('landing-btn');
 const landingStatus = document.getElementById('landing-status');
 const topbarCite = document.getElementById('topbar-cite');
 const topbarCase = document.getElementById('topbar-case');
+// The level-one heading of a page view, where the Reader's title is hidden (axe: page-has-heading-one).
+const viewTitle = document.getElementById('view-title');
 const themeBtn = document.getElementById('theme-btn');
 const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
@@ -384,6 +386,7 @@ function updateTopbar(caseData) {
   // The name starts with the citation it shows, so a voice user can say what they see (axe: label-content-name-mismatch).
   topbarCite.setAttribute('aria-label', cite ? `${cite}: search another citation` : 'Search another citation');
   topbarCase.textContent = caseData.name_abbreviation;
+  viewTitle.textContent = caseData.name_abbreviation;
   // The landing's box keeps the case shown, as written (#248), for going back to it.
   landingBox.fill(cite, getHashParams());
 }
@@ -1168,6 +1171,7 @@ function showView(name) {
     tab.tabIndex = on ? 0 : -1;
     el.classList.toggle('hidden', !on);
   }
+  viewTitle.hidden = name === 'reader';
 }
 
 // The arrow keys, Home and End move the focus between the tabs shown; Enter or Space opens

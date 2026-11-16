@@ -36,7 +36,7 @@ const tree = import.meta.env.PUBLIC_SEARCH_TREE || '';
 		<script is:inline set:html={bootGuardScript({ targets: ['search-status'], what: 'Search', errorClass: 'search-error', timeout: BOOT_TIMEOUT_MS })}></script>
 	</head>
 	<body data-search-tree={tree}>
-		<div class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
+		<header class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></header>
 		<main class="search-page">
 			<h1>Search case law</h1>
 			<form id="search-form" class="search-form" role="search" action="/search/" method="get">

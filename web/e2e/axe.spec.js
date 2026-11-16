@@ -1,10 +1,10 @@
 // An automated accessibility pass (axe-core, through @axe-core/playwright) over the pages the
 // smoke suite loads, in both themes: the landing, a case in each of its three views, /search/
 // with results, /about, /data and /check with a result, and a case at phone width with its
-// details bar and sheet. A serious or critical violation fails
-// the test; moderate and minor ones are listed in the output and attached to the report without
-// failing it. #270 and a11y.spec.js cover what axe can't see: the keyboard, the focus and the
-// live regions.
+// details bar and sheet. A moderate, serious or critical violation fails the test; minor ones,
+// and the moderate ones a page is still allowed (ALLOWED), are listed in the output and attached
+// to the report without failing it. #270 and a11y.spec.js cover what axe can't see: the
+// keyboard, the focus and the live regions.
 import AxeBuilder from '@axe-core/playwright';
 import { test, expect } from '@playwright/test';
 
@@ -17,7 +17,12 @@ const CORS = {
 };
 const CASE = '/#a2d/142/148-01';
 const TITLE = 'Renaire Corp. v. Vaughn';
-const FAILING = new Set(['serious', 'critical']);
+const FAILING = new Set(['moderate', 'serious', 'critical']);
+// Moderate rules a page may still break, by page name. /about still has its top bar and content
+// outside any landmark (#332): its markup is left to the docs work on that page.
+const ALLOWED = {
+  about: new Set(['landmark-one-main', 'region']),
+};
 
 // The search page answered from the format-2 fixture tree (search.spec.js serves it the same
 // way), so /search/ has results without a tree on R2.
@@ -85,17 +90,19 @@ const PAGES = {
 // One violation as a line per element: rule, impact, help, and the element's selector.
 const describe = (v) => v.nodes.map((n) => `  [${v.impact}] ${v.id}: ${v.help}\n    ${n.target.join(' ')}\n    ${n.failureSummary?.replace(/\n/g, '\n    ') ?? ''}`).join('\n');
 
-// Fails on a serious or critical violation; lists and attaches the moderate and minor ones.
-async function check(page, testInfo, what) {
+// Fails on a moderate, serious or critical violation the page isn't allowed; lists and
+// attaches the rest.
+async function check(page, testInfo, what, name) {
   const { violations } = await new AxeBuilder({ page }).analyze();
-  const failing = violations.filter((v) => FAILING.has(v.impact));
-  const reported = violations.filter((v) => !FAILING.has(v.impact));
+  const allowed = (v) => v.impact === 'moderate' && ALLOWED[name]?.has(v.id);
+  const failing = violations.filter((v) => FAILING.has(v.impact) && !allowed(v));
+  const reported = violations.filter((v) => !failing.includes(v));
   if (reported.length) {
     const text = reported.map(describe).join('\n');
-    console.log(`axe, moderate and minor, ${what}:\n${text}`);
-    await testInfo.attach('axe-moderate-minor.txt', { body: text, contentType: 'text/plain' });
+    console.log(`axe, minor and allowed, ${what}:\n${text}`);
+    await testInfo.attach('axe-minor-allowed.txt', { body: text, contentType: 'text/plain' });
   }
-  expect(failing.map(describe).join('\n'), 'serious or critical axe violations').toBe('');
+  expect(failing.map(describe).join('\n'), 'moderate, serious or critical axe violations').toBe('');
 }
 
 for (const theme of ['light', 'dark']) {
@@ -104,7 +111,7 @@ for (const theme of ['light', 'dark']) {
       test.slow(name.startsWith('case, ') && name !== 'case, Reader');
       await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
       await open(page);
-      await check(page, testInfo, `${name} (${theme})`);
+      await check(page, testInfo, `${name} (${theme})`, name);
     });
   }
 }
@@ -127,7 +134,7 @@ test.describe('at phone width', () => {
       test(`axe: ${name} (${theme})`, async ({ page }, testInfo) => {
         await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
         await open(page);
-        await check(page, testInfo, `${name} (${theme})`);
+        await check(page, testInfo, `${name} (${theme})`, name);
       });
     }
   }
