@@ -84,6 +84,8 @@ export function collectionFromIndex({ manifest, report, facets }) {
     index_version: version,
     index_generated_at: report.generated_at,
     decisions: capCases + clRecords,
+    // The sources the decisions come from, in the order the site names them (#300).
+    sources: ['cap', 'courtlistener'],
     first_year: firstYear,
     last_year: lastYear,
     cap: {

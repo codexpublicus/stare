@@ -1,7 +1,7 @@
 ---
 import JsonLd from '../components/JsonLd.astro';
 import SiteFooter from '../components/SiteFooter.astro';
-import { SOURCES, coverage, decisionsLabel, indexVersion, yearSpan } from '../lib/collection.js';
+import { coverage, decisionsLabel, indexVersion, sources, yearSpan } from '../lib/collection.js';
 import { webSite } from '../lib/jsonld.js';
 import { caseRouteScript } from '../lib/caseroute.js';
 import { DATA_URL, INDEX_URL } from '../../public/js/sources.js';
@@ -82,7 +82,7 @@ import SiteHead from '../components/SiteHead.astro';
 					<div class="landing-feature-icon">&#128214;</div>
 					<div class="landing-feature-text">
 						<strong id="collection-cases" data-index-version={indexVersion}>{decisionsLabel}</strong>
-						<span>{yearSpan}, from {SOURCES}</span>
+						<span>{yearSpan}, from {sources}</span>
 					</div>
 				</div>
 				<div class="landing-feature">

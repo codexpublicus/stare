@@ -80,9 +80,9 @@ test('/ returns 200 with the title and security headers', async ({ page }) => {
 });
 
 test('/ gives the collection figures of the index build it names', async ({ page }) => {
-  const { decisionsLabel, yearSpan } = figures(await deployedCollection(page));
+  const { decisionsLabel, yearSpan, sources } = figures(await deployedCollection(page));
   await expect(page.locator('#collection-cases')).toHaveText(decisionsLabel);
-  await expect(page.locator('#collection-cases + span')).toContainText(`${yearSpan}, from the Caselaw Access Project and CourtListener`);
+  await expect(page.locator('#collection-cases + span')).toContainText(`${yearSpan}, from ${sources}`);
 });
 
 test('the WASM is served as application/wasm, compressed', async ({ request }) => {

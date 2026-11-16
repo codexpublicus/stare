@@ -2,6 +2,10 @@
   "index_version": "v2026.11.05.3",
   "index_generated_at": "2026-11-05T15:05:48Z",
   "decisions": 7783826,
+  "sources": [
+    "cap",
+    "courtlistener"
+  ],
   "first_year": 1658,
   "last_year": 2026,
   "cap": {
