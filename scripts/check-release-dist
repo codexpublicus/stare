@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Fails unless a built site directory (web/dist, or release.yml's copy of it)
+# has the files a release must publish under a hidden path. Hidden paths are
+# the ones a step can drop without anyone noticing: upload-artifact leaves out
+# dot-files and dot-directories unless told otherwise, which is how
+# stare.pub/.well-known/ went missing (#352). Usage: check-release-dist DIR
+set -euo pipefail
+dist=${1:?usage: check-release-dist DIR}
+required=(
+  .well-known/stare-release-key.pub
+  .well-known/stare-recovery-key.pub
+)
+missing=0
+for path in "${required[@]}"; do
+  if [ -s "$dist/$path" ]; then
+    echo "ok: $path"
+  else
+    echo "::error::$dist/$path is missing or empty"
+    missing=1
+  fi
+done
+exit "$missing"
