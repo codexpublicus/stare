@@ -1147,20 +1147,21 @@ motion.
 
 The crawl design is D41 and D44 on #171: one canonical URL per case, a sitemap of the site pages
 plus a curated set of case pages, and the rest of the corpus not crawled. Every case keeps one
-permanent page at `/c/<slug>/<volume>/<page>/` (`CASE_PREFIX` and `casePath` in
-`src/lib/robots.js`), and no URL changes when a case's crawl status does. When several cases
-start on one page, each gets `/c/<slug>/<volume>/<page>/<n>/` in CAP's file order and the bare
-page path lists them (D59 on #171); an `Allow:` on the page path covers all of them. That
-segment applies once case pages ship. `robots.txt` has
+permanent page at `/c/<jurisdiction>/<slug>/<volume>/<page>/`, the citation address the reader
+opens (D97, #316; `CASE_PREFIX` and `casePath` in `src/lib/robots.js`, `parseCasePath` in
+`public/js/caseaddress.js`), and no URL changes when a case's crawl status does. When several
+cases start on one page, each gets `/c/<jurisdiction>/<slug>/<volume>/<page>/<n>/` in CAP's file
+order and the bare page path lists them (D59 on #171); an `Allow:` on the page path covers all of
+them, and a curated entry for the page drops the `<n>/` entries under it from `robots.txt`.
+`robots.txt` has
 `Disallow: /c/` plus an `Allow:` line per curated case; the longer rule wins. The one list is
 `src/data/curated.json` (empty until #172 picks the set): `src/pages/robots.txt.js` renders
 `robots.txt` from it at build time, and the sitemap lists the same cases with each entry's
 `lastmod`. Joining or leaving the set changes those two files only. Google reads 500 KiB of
-robots.txt, about 10,000 case lines; past that, list a reporter (`"a2d/"`) or volume
-(`"a2d/31/"`) as a subpath entry, which replaces the case lines under it in `robots.txt` while
-the sitemap keeps listing the cases. `renderRobots` and the build both fail past 500 KiB. No case
-pages exist yet, and nothing was ever served under `/case/`, the curated prefix of the first
-design. `robots.txt` states the content signals `search=yes, ai-input=yes` (D40) with
+robots.txt, about 10,000 case lines; past that, list a jurisdiction (`"pa/"`), reporter
+(`"pa/a2d/"`) or volume (`"pa/a2d/31/"`) as a subpath entry, which replaces the case lines under it in `robots.txt` while
+the sitemap keeps listing the cases. `renderRobots` and the build both fail past 500 KiB. Nothing
+was ever served under `/case/`, the curated prefix of the first design. `robots.txt` states the content signals `search=yes, ai-input=yes` (D40) with
 Cloudflare's Content Signals Policy text, and `ai-train` stays unstated until decided. Cloudflare's
 managed robots.txt is off on the zone: before this file existed, stare.pub served the free-plan
 default, the policy text with no signals and no rules, which a robots.txt from the Worker replaces.

@@ -7,12 +7,19 @@
 // specific rule; the sitemap lists the same cases. A change to the set changes
 // those two files and nothing else.
 //
+// A case's page is the citation address the reader opens (D97, #316):
+// /c/<jurisdiction>/<slug>/<volume>/<page>/, with <n>/ after it for the nth
+// case on a page several cases share (D59), as public/js/caseaddress.js reads it.
+//
 // The list is src/data/curated.json, an array of entries:
-//   { "path": "a2d/31/647" }                  one case: Allow /c/a2d/31/647/
-//   { "path": "a2d/31/647", "lastmod": "…" }  with the record's date, for the sitemap
-//   { "path": "a2d/31/" }                     a whole volume (or "a2d/", a reporter)
-// A case covered by a subpath entry isn't listed in robots.txt again, but stays
-// in the sitemap. Choosing the set is #172; until then it's empty.
+//   { "path": "us/a2d/31/647" }                  one case: Allow /c/us/a2d/31/647/
+//   { "path": "us/a2d/31/647/2" }                the second case on that page
+//   { "path": "us/a2d/31/647", "lastmod": "…" }  with the record's date, for the sitemap
+//   { "path": "us/a2d/31/" }                     a whole volume (or "us/a2d/", a
+//                                                reporter, or "us/", a jurisdiction)
+// A case covered by a subpath entry, or a page's nth case covered by an entry for
+// the page, isn't listed in robots.txt again, but stays in the sitemap. Choosing
+// the set is #172; until then it's empty.
 
 export const SITE = 'https://stare.pub';
 export const CASE_PREFIX = '/c/';
@@ -21,12 +28,17 @@ export const CASE_PREFIX = '/c/';
 // 10,000 single-case lines, allow subpaths instead of listing cases.
 export const ROBOTS_MAX_BYTES = 500 * 1024;
 
-// A case is <slug>/<volume>/<page>; a subpath is <slug>/ or <slug>/<volume>/.
-// Lowercase letters, digits, dots and hyphens only, so no line can carry
-// robots.txt's `*` or `$` or a character a crawler would percent-encode.
-const SEGMENT = '[a-z0-9][a-z0-9.-]*';
-const CASE = new RegExp(`^${SEGMENT}/${SEGMENT}/${SEGMENT}$`);
-const SUBPATH = new RegExp(`^${SEGMENT}/(?:${SEGMENT}/)?$`);
+// A case is <jurisdiction>/<slug>/<volume>/<page>[/<n>]; a subpath is
+// <jurisdiction>/, <jurisdiction>/<slug>/ or <jurisdiction>/<slug>/<volume>/.
+// Each segment is what caseaddress.js's parseCasePath accepts in lowercase:
+// letters, digits and hyphens, so no line can carry robots.txt's `*` or `$` or a
+// character a crawler would percent-encode.
+const SLUG = '[a-z0-9][a-z0-9-]*';
+const VOLUME = '[0-9](?:[0-9a-z-]*[0-9a-z])?';
+const PAGE = '[1-9][0-9]{0,15}';
+const NTH = '[1-9][0-9]{0,3}';
+const CASE = new RegExp(`^${SLUG}/${SLUG}/${VOLUME}/${PAGE}(?:/${NTH})?$`);
+const SUBPATH = new RegExp(`^${SLUG}/(?:${SLUG}/(?:${VOLUME}/)?)?$`);
 
 // Checks the list and returns it split into cases and subpaths, each sorted and
 // without duplicates. Throws naming the first bad entry.
@@ -55,13 +67,15 @@ export function curatedSet(list) {
 }
 
 // A case's page: a directory URL like the site's other pages, so `Allow:
-// /c/a2d/31/647/` can't also match /c/a2d/31/6470/.
+// /c/us/a2d/31/647/` can't also match /c/us/a2d/31/6470/.
 export const casePath = (path) => `${CASE_PREFIX}${path}/`;
 
-// The Allow rules for a curated set: every subpath, and every case no subpath
-// already covers.
+// The Allow rules for a curated set: every subpath, and every case no subpath, and
+// no entry for the page it shares, already covers.
 export function curatedAllows({ cases, subpaths }) {
-  const covers = (path) => subpaths.some((s) => path.startsWith(s));
+  const pages = new Set(cases.map(({ path }) => `${path}/`));
+  const covers = (path) => subpaths.some((s) => path.startsWith(s))
+    || pages.has(path.replace(/[^/]+$/, ''));
   const out = [
     ...subpaths.filter((s) => !subpaths.some((t) => t !== s && s.startsWith(t))).map((s) => `${CASE_PREFIX}${s}`),
     ...cases.filter(({ path }) => !covers(path)).map(({ path }) => casePath(path)),
@@ -75,9 +89,10 @@ export const curatedSitemapEntries = ({ cases }) =>
 
 const HEADER = `# robots.txt for stare.pub (codexpublicus/stare#171).
 #
-# The site's pages may be crawled. Every case page lives under /c/, which is
-# not crawled except for a curated set of cases, each allowed below by name
-# or by its reporter or volume; sitemap.xml lists the site pages and those
+# The site's pages may be crawled. Every case page lives under /c/, at
+# /c/<jurisdiction>/<slug>/<volume>/<page>/, which is not crawled except for
+# a curated set of cases, each allowed below by name or by its jurisdiction,
+# reporter or volume; sitemap.xml lists the site pages and those
 # cases with the date each last changed. A case's URL never changes when it
 # joins or leaves the set. Anyone with a link can open any case page. To
 # resolve citations in bulk, read the static index and case files described
