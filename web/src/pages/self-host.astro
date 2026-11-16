@@ -50,8 +50,9 @@ const serve = ['tar -xf stare-tier1-$release.tar -C /srv/stare', 'cd /srv/stare/
 		</script>
 	</head>
 	<body>
-		<div class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></div>
+		<header class="page-topbar"><a href="/"><Brand /></a><button class="page-theme-toggle" id="page-theme-btn" title="Toggle dark mode">&#9790;</button></header>
 		<div class="page">
+			<main>
 			<h1>Run your own copy</h1>
 			<p>stare.pub is static files, and the reader runs in each visitor's browser, so a copy of it is a directory and a web server that hands out files. Copies are published as signed releases on data.stare.pub. A copy reads its index and data from its own disk and never fetches them from stare.pub, so it keeps working if stare.pub goes away. A Raspberry Pi with a USB SSD is plenty.</p>
 			<p><a href="https://mirror.stare.pub/">mirror.stare.pub</a> is an example: a tier 1 copy of the current release, with the "A mirror of stare.pub" line every copy shows at the top of the page.</p>
@@ -87,6 +88,7 @@ const serve = ['tar -xf stare-tier1-$release.tar -C /srv/stare', 'cd /srv/stare/
 			<p>If you run a copy others can reach, write to <a href="mailto:info@codexpublicus.org">info@codexpublicus.org</a>.</p>
 
 			<a href="/" class="back-link">&larr; Back to stare.pub</a>
+			</main>
 
 			<SiteFooter />
 		</div>
