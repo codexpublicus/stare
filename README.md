@@ -125,7 +125,7 @@ Apache configurations, the Docker setup, verification and upgrades.
 
 | Document | Contents |
 |----------|----------|
-| `docs/plans/checklist.md` | Master checklist — current status and next steps |
+| `docs/plans/checklist.md` | The original master checklist, kept as history; `AGENTS.md`'s Current Status is current |
 | `docs/plans/cap-preservation-plan.md` | Original plan: outreach contacts, risk assessment, data sources |
 | `docs/plans/static-case-law-mirror.md` | Mirror status, file format analysis, aria2 setup |
 | `docs/plans/extraction-plan.md` | Citation index design, R2 layout, WASM client architecture |

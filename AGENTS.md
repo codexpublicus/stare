@@ -22,7 +22,7 @@ web/                 — Astro site: landing, about, brief checker, search, case
                       updates and the self-host page
 mirror-kit/          — the self-hosted copy's server configurations and operator README
 worker/              — the Worker's script: a 404 for non-navigation requests no file matches
-docs/plans/checklist.md             — Master checklist, iterate through this
+docs/plans/checklist.md             — The original master checklist, history; Current Status below is current
 docs/plans/cap-preservation-plan.md — Original plan: outreach, risk assessment, data sources
 docs/plans/static-case-law-mirror.md — Mirror of static.case.law: status, file formats, aria2 setup
 docs/plans/extraction-plan.md       — Citation index + data pipeline: bin index, R2 layout, WASM client
