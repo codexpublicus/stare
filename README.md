@@ -25,9 +25,9 @@ Built on the [Harvard Caselaw Access Project](https://case.law/) dataset:
 - CAP's case files are CC0 1.0; see Licences below
 
 And on [CourtListener](https://www.courtlistener.com/)'s [bulk data](https://www.courtlistener.com/help/api/bulk-data/), from Free Law Project:
-- **900,342 case records** for cases CAP doesn't hold, from the export of 2026-09-30, at
+- **863,228 case records** for cases CAP doesn't hold, from the export of 2026-09-30, at
   `data.stare.pub/cl/c/<cluster_id>/<hash>.json.gz` and named by the index's `cl` lines
-  (index v2026.10.22)
+  (index v2026.11.05.3)
 - parallel citations from CourtListener's citation table, as `via=cl:<cluster>` aliases in the index
 - each record states its terms: the Public Domain Mark 1.0 in `license`, and CourtListener,
   Free Law Project and the export date in `attribution`
@@ -97,6 +97,15 @@ Linux binaries (x86_64 and aarch64, static) are attached to the `stare-cli-vX.Y.
 this repository, built by `.github/workflows/stare-cli-release.yml`; each archive has the
 binary, the reporters-db and courts-db licences and the skill.
 
+## Run your own copy
+
+A copy of stare.pub is the site and its citation index as static files, served by any web
+server. Copies are published as signed releases at `https://data.stare.pub/releases/`
+(`latest.json` names the newest); [stare.pub/self-host](https://stare.pub/self-host/) has the
+short version, and [`mirror-kit/README.md`](mirror-kit/README.md) has the Caddy, nginx and
+Apache configurations, the Docker setup, verification and upgrades.
+[mirror.stare.pub](https://mirror.stare.pub/) is an example copy.
+
 ## Status
 
 - [x] Data source analysis (`static-case-law-mirror.md`)
@@ -104,8 +113,11 @@ binary, the reporters-db and courts-db licences and the skill.
 - [x] Citation index (idx.stare.pub; the live build is the one `manifest.json`'s `version` names)
 - [x] Website (stare.pub), with the brief checker at stare.pub/check
 - [x] CourtListener records for cases CAP doesn't hold, and its parallel citations (index v2026.10.22)
+- [x] Full-text search (stare.pub/search), on the RoaringBuckets search tree under each index build
+- [x] Archival PDFs: one PDF/A per volume with scans (39,963 of 40,622), at `data.stare.pub/pdf/`
+- [x] Permanent addresses: `/k/<key>/` from the court record key ledger, `/c/` and `/d/<id>/` (#283)
+- [x] Self-hosted copies: tier 1 releases and `mirror-kit/` (#231); tiers 2 to 4 aren't published yet
 - [ ] DuckLake database
-- [ ] RoaringBuckets search index
 - [x] MCP server (`stare mcp`, #162): stdio, five tools; pin pages, more tools and HTTP come in M2
 - [ ] IPFS distribution
 
