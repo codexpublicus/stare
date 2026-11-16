@@ -74,14 +74,14 @@ const serve = ['tar -xf stare-tier1-$release.tar -C /srv/stare', 'cd /srv/stare/
 
 			<h2 id="download">Download and verify</h2>
 			<p>You need <code>curl</code>, <code>jq</code>, <code>minisign</code> and <code>sha256sum</code> (on Debian or Raspberry Pi OS, <code>apt install curl jq minisign</code>). <a href="https://data.stare.pub/releases/latest.json">data.stare.pub/releases/latest.json</a> names the newest release, and each release's files are under <code>releases/&lt;release&gt;/</code>. These commands check the signatures on both files with stare.pub's release key, then check the tar against the SHA-256 that the signed <code>release.json</code> gives for it:</p>
-			<pre tabindex="0" aria-label="Download and verify commands"><code>{download}</code></pre>
+			<pre tabindex="0" role="region" aria-label="Download and verify commands"><code>{download}</code></pre>
 			<p>The release key, ID {RELEASE_KEY_ID}, signs every release:</p>
-			<pre tabindex="0" aria-label="Release key"><code>{RELEASE_KEY}</code></pre>
+			<pre tabindex="0" role="region" aria-label="Release key"><code>{RELEASE_KEY}</code></pre>
 			<p>The <a href={KIT}>kit's README</a> on GitHub gives the same key, and the recovery key that signs a change of release key. If the two ever differ, trust neither until you know why. The current release's <code>release.json</code> also names a torrent of the tier 1 tar, with data.stare.pub as its web seed.</p>
 
 			<h2 id="serve">Serve it</h2>
 			<p>The tar unpacks into the copy's root, with the site, the data under <code>mirror/</code>, and the kit under <code>kit/</code>. With Docker and its compose plugin:</p>
-			<pre tabindex="0" aria-label="Serve commands"><code>{serve}</code></pre>
+			<pre tabindex="0" role="region" aria-label="Serve commands"><code>{serve}</code></pre>
 			<p>The copy is then at <code>http://&lt;your machine&gt;:8080/</code>. The kit has configurations for Caddy, nginx and Apache 2.4 too, if you already run one of them. Its <a href={KIT}>README</a> covers each of them, checking every file against its release's checksums, and the <code>mirror.json</code> file that tells the reader what the copy holds.</p>
 			<p>To upgrade, run the same steps when <code>latest.json</code> names a newer release and extract the new tar over the root; the server needs no restart. Nothing updates a copy automatically.</p>
 			<p>If you run a copy others can reach, write to <a href="mailto:info@codexpublicus.org">info@codexpublicus.org</a>.</p>
