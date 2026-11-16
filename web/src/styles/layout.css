@@ -140,20 +140,14 @@
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .landing-tool:hover { border-color: var(--link); box-shadow: 0 2px 8px rgba(29,27,24,0.06); }
-/* Dashed, not faded: at 75% opacity its text fell below 4.5:1 in both themes. */
-.landing-tool.coming-soon { border-style: dashed; }
-.landing-tool.coming-soon:hover { border-color: var(--link); }
+/* The CLI card: a card with links in it, not a link, so it doesn't light up as one. */
+.landing-tool-static:hover { border-color: var(--border); box-shadow: none; }
 .landing-tool-icon { font-size: 1.5rem; line-height: 1; flex-shrink: 0; margin-top: 2px; }
 .landing-tool-text { font-size: 0.85rem; line-height: 1.4; }
 .landing-tool-text strong { display: block; font-size: 0.95rem; margin-bottom: 0.2rem; }
 .landing-tool-text span { color: var(--text-secondary); }
-.coming-soon-badge {
-  display: inline-block; font-size: 0.65rem; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.5px;
-  padding: 1px 6px; border-radius: 3px;
-  background: var(--cite-badge-bg); color: var(--cite-badge-text);
-  vertical-align: middle; margin-left: 4px;
-}
+.landing-tool-text .landing-tool-links { display: block; margin-top: 0.4rem; color: var(--text-secondary); }
+.landing-tool-links a { color: var(--link); }
 
 .landing-links { margin-top: 2rem; font-size: 0.85rem; }
 /* SiteFooter.astro: the Codex Publicus footer (src/vendor/cp-footer/footer.css), under the
