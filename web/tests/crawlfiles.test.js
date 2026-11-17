@@ -41,7 +41,7 @@ describe('robots.txt (ruling D44)', () => {
       '/js/main.js', '/wasm/stare_wasm_bg.wasm']) {
       assert.ok(isAllowed(all, path), path);
     }
-    for (const path of [CASE_PREFIX, `${CASE_PREFIX}zz-not-curated/1/1/`]) assert.ok(!isAllowed(all, path), path);
+    for (const path of [CASE_PREFIX, `${CASE_PREFIX}zz/not-curated/1/1/`]) assert.ok(!isAllowed(all, path), path);
   });
 
   test('/c/ catches no site page that starts with its letter', () => {
@@ -55,30 +55,47 @@ describe('robots.txt (ruling D44)', () => {
   });
 
   test('a curated case is allowed at its one /c/ URL, and its neighbours are not', () => {
-    const g = groupOf(renderRobots(curatedSet([{ path: 'a2d/31/647' }])));
-    assert.ok(isAllowed(g, '/c/a2d/31/647/'));
-    assert.ok(!isAllowed(g, '/c/a2d/31/6470/'));
-    assert.ok(!isAllowed(g, '/c/a2d/31/648/'));
+    const g = groupOf(renderRobots(curatedSet([{ path: 'pa/a2d/31/647' }])));
+    assert.ok(isAllowed(g, '/c/pa/a2d/31/647/'));
+    assert.ok(isAllowed(g, '/c/pa/a2d/31/647/2/'));
+    assert.ok(!isAllowed(g, '/c/pa/a2d/31/6470/'));
+    assert.ok(!isAllowed(g, '/c/pa/a2d/31/648/'));
+    assert.ok(!isAllowed(g, '/c/nj/a2d/31/647/'));
+    // The form without a jurisdiction isn't a case address; it isn't allowed either.
+    assert.ok(!isAllowed(g, '/c/a2d/31/647/'));
     assert.ok(isAllowed(g, '/about/'));
   });
 
-  test('a subpath allows a whole volume or reporter and replaces the cases under it', () => {
+  test('the nth case on a shared page is allowed alone, or through its page', () => {
+    const one = groupOf(renderRobots(curatedSet([{ path: 'pa/a2d/31/647/2' }])));
+    assert.ok(isAllowed(one, '/c/pa/a2d/31/647/2/'));
+    assert.ok(!isAllowed(one, '/c/pa/a2d/31/647/1/'));
+    assert.ok(!isAllowed(one, '/c/pa/a2d/31/647/'));
+    const set = curatedSet([{ path: 'pa/a2d/31/647/2' }, { path: 'pa/a2d/31/647' }]);
+    assert.deepEqual(curatedAllows(set), ['/c/pa/a2d/31/647/']);
+    assert.deepEqual(curatedSitemapEntries(set).map((e) => e.loc),
+      [`${SITE}/c/pa/a2d/31/647/`, `${SITE}/c/pa/a2d/31/647/2/`]);
+  });
+
+  test('a subpath allows a whole volume, reporter or jurisdiction and replaces the cases under it', () => {
     const set = curatedSet([
-      { path: 'a2d/31/647' }, { path: 'a2d/31/' }, { path: 'us/' }, { path: 'us/598/175' }, { path: 'us/598/' },
-      { path: 'f2d/1/1' },
+      { path: 'pa/a2d/31/647' }, { path: 'pa/a2d/31/' }, { path: 'us/us/' }, { path: 'us/us/598/175' },
+      { path: 'us/us/598/' }, { path: 'us/f2d/1/1' }, { path: 'nj/' }, { path: 'nj/a2d/40/1' },
     ]);
-    assert.deepEqual(curatedAllows(set), ['/c/a2d/31/', '/c/f2d/1/1/', '/c/us/']);
+    assert.deepEqual(curatedAllows(set), ['/c/nj/', '/c/pa/a2d/31/', '/c/us/f2d/1/1/', '/c/us/us/']);
     const g = groupOf(renderRobots(set));
-    assert.ok(isAllowed(g, '/c/a2d/31/9/'));
-    assert.ok(!isAllowed(g, '/c/a2d/32/1/'));
-    assert.ok(isAllowed(g, '/c/us/1/1/'));
+    assert.ok(isAllowed(g, '/c/pa/a2d/31/9/'));
+    assert.ok(!isAllowed(g, '/c/pa/a2d/32/1/'));
+    assert.ok(isAllowed(g, '/c/us/us/1/1/'));
+    assert.ok(!isAllowed(g, '/c/us/f2d/1/2/'));
+    assert.ok(isAllowed(g, '/c/nj/a2d/99/1/'));
     // The sitemap still lists every curated case, not the subpaths.
     assert.deepEqual(curatedSitemapEntries(set).map((e) => e.loc),
-      [`${SITE}/c/a2d/31/647/`, `${SITE}/c/f2d/1/1/`, `${SITE}/c/us/598/175/`]);
+      [`${SITE}/c/nj/a2d/40/1/`, `${SITE}/c/pa/a2d/31/647/`, `${SITE}/c/us/f2d/1/1/`, `${SITE}/c/us/us/598/175/`]);
   });
 
   test('10,000 single cases with long slugs fit under 500 KiB, and more throws', () => {
-    const many = (n) => Array.from({ length: n }, (_, i) => ({ path: `cal-app-4th-supp-something/${1000 + (i % 9000)}/${10000 + i}` }));
+    const many = (n) => Array.from({ length: n }, (_, i) => ({ path: `cal/cal-app-4th-supp/${1000 + (i % 9000)}/${10000 + i}` }));
     const text = renderRobots(curatedSet(many(10_000)));
     assert.ok(new TextEncoder().encode(text).length <= ROBOTS_MAX_BYTES);
     assert.equal(groupOf(text).allow.length, 10_001);
@@ -87,12 +104,18 @@ describe('robots.txt (ruling D44)', () => {
 
   test('curatedSet rejects bad paths, bad dates and duplicates', () => {
     assert.throws(() => curatedSet({}), /not an array/);
-    for (const path of ['A2d/31/647', 'a2d/31', 'a2d/31/647/', '/a2d/31/647', 'a2d/*/647', 'a2d/31/64$', 'a2d/3 1/647']) {
+    for (const path of [
+      // The form without a jurisdiction, which the reader doesn't open
+      'a2d/31/647',
+      'pa/A2d/31/647', 'pa/a2d/31', 'pa/a2d/31/647/', '/pa/a2d/31/647', 'pa/a2d/*/647', 'pa/a2d/31/64$',
+      'pa/a2d/3 1/647', 'pa/a.2d/31/647', 'pa/a2d/x31/647', 'pa/a2d/31/xxix', 'pa/a2d/31/0647',
+      'pa/a2d/31/647/0', 'pa/a2d/31/647/2/3', 'pa/a2d/31/647/', 'pa/a2d/31/647/2/',
+    ]) {
       assert.throws(() => curatedSet([{ path }]), /bad path/, path);
     }
-    assert.throws(() => curatedSet([{ path: 'a2d/31/647', lastmod: 'yesterday' }]), /bad lastmod/);
-    assert.throws(() => curatedSet([{ path: 'a2d/31/' , lastmod: '2026-10-18' }]), /has no lastmod/);
-    assert.throws(() => curatedSet([{ path: 'a2d/31/647' }, { path: 'a2d/31/647' }]), /twice/);
+    assert.throws(() => curatedSet([{ path: 'pa/a2d/31/647', lastmod: 'yesterday' }]), /bad lastmod/);
+    assert.throws(() => curatedSet([{ path: 'pa/a2d/31/' , lastmod: '2026-10-18' }]), /has no lastmod/);
+    assert.throws(() => curatedSet([{ path: 'pa/a2d/31/647' }, { path: 'pa/a2d/31/647' }]), /twice/);
   });
 });
 
@@ -151,13 +174,13 @@ describe('sitemap', () => {
   });
 
   test('curated cases follow the pages, at their /c/ URL with the lastmod curated.json gives', () => {
-    const set = curatedSet([{ path: 'us/598/175', lastmod: '2026-10-18' }, { path: 'a2d/31/647' }]);
+    const set = curatedSet([{ path: 'us/us/598/175', lastmod: '2026-10-18' }, { path: 'pa/a2d/31/647' }]);
     assert.deepEqual(curatedSitemapEntries(set), [
-      { loc: `${SITE}/c/a2d/31/647/`, lastmod: null },
-      { loc: `${SITE}/c/us/598/175/`, lastmod: '2026-10-18' },
+      { loc: `${SITE}/c/pa/a2d/31/647/`, lastmod: null },
+      { loc: `${SITE}/c/us/us/598/175/`, lastmod: '2026-10-18' },
     ]);
     assert.deepEqual(parseSitemap(renderSitemap(curatedSitemapEntries(set))).map((e) => e.loc),
-      [`${SITE}/c/a2d/31/647/`, `${SITE}/c/us/598/175/`]);
+      [`${SITE}/c/pa/a2d/31/647/`, `${SITE}/c/us/us/598/175/`]);
   });
 
   test('a page\'s content files are what it imports, not its styles', () => {
