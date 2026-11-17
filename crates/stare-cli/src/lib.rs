@@ -3,6 +3,7 @@ pub mod engine;
 pub mod http;
 #[cfg(feature = "mcp")]
 pub mod mcp;
+pub mod mirror;
 
 /// Where the last index manifest fetched is saved, under the cache's `bins` directory.
 /// `bins` is laid out like the index source (the manifest, then each file at its
