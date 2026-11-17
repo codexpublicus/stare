@@ -63,6 +63,11 @@ stare download --reporters a2d,a3d
 # Serve the Model Context Protocol over stdio, for agents
 stare mcp
 
+# Install a self-hosted copy of stare.pub from the newest signed release, and check it
+stare mirror install /srv/stare
+stare mirror verify /srv/stare
+stare mirror scan /srv/stare
+
 # Configuration and cache
 stare config show
 stare config set index /path/to/local/index
@@ -104,7 +109,10 @@ server. Copies are published as signed releases at `https://data.stare.pub/relea
 (`latest.json` names the newest); [stare.pub/self-host](https://stare.pub/self-host/) has the
 short version, and [`mirror-kit/README.md`](mirror-kit/README.md) has the Caddy, nginx and
 Apache configurations, the Docker setup, verification and upgrades.
-[mirror.stare.pub](https://mirror.stare.pub/) is an example copy.
+[mirror.stare.pub](https://mirror.stare.pub/) is an example copy. `stare mirror install <root>`
+does the download, both signature checks, every hash check and the extraction in one step,
+`stare mirror verify <root>` rehashes a copy against its release, and `stare mirror scan
+<root>` lists what a copy holds and the files its release doesn't name.
 
 ## Status
 
