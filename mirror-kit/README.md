@@ -42,8 +42,26 @@ The server maps `/` to `site/`, `/mirror/` to `mirror/`, and `/robots.txt` to
 
 ## Install
 
-Every release is under `https://data.stare.pub/releases/`. `latest.json` names the newest
-one; its files are in `releases/<release>/`.
+With the stare CLI (the `stare-cli-vX.Y.Z` releases of
+[codexpublicus/stare](https://github.com/codexpublicus/stare/releases)), one command
+downloads the newest release, checks `latest.json`'s and `release.json`'s signatures against
+the release key built into it, checks the torrent, every component's file list and the tar
+against the hashes in `release.json`, extracts the tar, and checks every file it extracted:
+
+```sh
+stare mirror install /srv/stare
+```
+
+The root must not exist yet, or be empty. The download goes to `/srv/stare.partial/`, which
+is deleted once the copy is in place; a run that stops resumes the tar where it left off.
+`--release v2026.11.11` installs an older release, and `--origin <base>` fetches from another
+copy of the releases tree first, an `https://` URL or a directory (`--only-origins` to use
+nothing else). `stare mirror verify /srv/stare` later rehashes every file against the
+installed release, and `stare mirror scan /srv/stare` lists what the copy holds, anything
+missing, and the files its release doesn't name (an old site or index version, say).
+
+Without the CLI, by hand: every release is under `https://data.stare.pub/releases/`.
+`latest.json` names the newest one; its files are in `releases/<release>/`.
 
 ```sh
 mkdir -p /srv/stare && cd /srv/stare

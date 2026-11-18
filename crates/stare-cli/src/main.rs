@@ -57,6 +57,11 @@ enum Commands {
         #[arg(long, value_delimiter = ',', required = true)]
         reporters: Vec<String>,
     },
+    /// Install and check a self-hosted copy of stare.pub from a signed mirror release
+    Mirror {
+        #[command(subcommand)]
+        action: MirrorAction,
+    },
     /// Serve the Model Context Protocol over stdin and stdout, for agents
     #[cfg(feature = "mcp")]
     Mcp {
@@ -64,6 +69,61 @@ enum Commands {
         #[arg(long)]
         index_version: Option<String>,
     },
+}
+
+#[derive(Subcommand)]
+enum MirrorAction {
+    /// Install a new copy from the newest signed release: download, check both signatures
+    /// and every hash, extract, and check every file
+    Install {
+        /// The copy's directory; it must not exist yet, or be empty
+        root: std::path::PathBuf,
+        /// The tier to install (tier 1 is the site and the citation index)
+        #[arg(long, default_value_t = 1)]
+        tier: u32,
+        /// Install this release (v2026.11.11) instead of the one latest.json names
+        #[arg(long)]
+        release: Option<String>,
+        /// Another release base to fetch from first: an https:// URL or a directory laid
+        /// out like https://data.stare.pub/releases/ (repeatable)
+        #[arg(long = "origin")]
+        origins: Vec<String>,
+        /// Fetch only from the --origin bases, never from stare.pub's origins
+        #[arg(long)]
+        only_origins: bool,
+        #[command(flatten)]
+        key: MirrorKey,
+    },
+    /// Rehash every file of a copy against its installed release
+    Verify {
+        /// The copy's directory
+        root: std::path::PathBuf,
+        #[command(flatten)]
+        key: MirrorKey,
+    },
+    /// Show a copy's release, and the files missing from it or not in its release
+    Scan {
+        /// The copy's directory
+        root: std::path::PathBuf,
+        #[command(flatten)]
+        key: MirrorKey,
+    },
+}
+
+#[derive(clap::Args)]
+struct MirrorKey {
+    /// Check signatures with this minisign public key instead of stare.pub's release key
+    #[arg(long, value_name = "FILE")]
+    pubkey: Option<std::path::PathBuf>,
+}
+
+impl MirrorKey {
+    fn load(&self) -> Result<stare_cli::mirror::release::Key> {
+        match &self.pubkey {
+            Some(p) => stare_cli::mirror::release::Key::from_file(p),
+            None => Ok(stare_cli::mirror::release::Key::release()),
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -128,6 +188,7 @@ fn main() -> Result<()> {
             CacheAction::Clear { kind } => cache_clear(&kind)?,
         },
         Commands::Download { reporters } => download_reporters(&src, reporters)?,
+        Commands::Mirror { action } => mirror(action, json)?,
         #[cfg(feature = "mcp")]
         Commands::Mcp { index_version } => stare_cli::mcp::serve_stdio(stare_cli::mcp::Options {
             index: cli.index.clone(),
@@ -500,4 +561,120 @@ fn print_download_event(event: &stare_cli::download::Event) {
             println!("{}: done", reporter);
         }
     }
+}
+
+fn mirror(action: MirrorAction, json: bool) -> Result<()> {
+    use stare_cli::mirror::copy;
+    match action {
+        MirrorAction::Install {
+            root,
+            tier,
+            release,
+            origins,
+            only_origins,
+            key,
+        } => {
+            let report = copy::install(
+                &root,
+                copy::InstallOptions {
+                    tier,
+                    release,
+                    origins,
+                    only_origins,
+                    key: key.load()?,
+                    log: Box::new(|m| eprintln!("{m}")),
+                },
+            )?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!(
+                    "{}: release {} (sequence {}), tier {}, data as of {}, {} files, {} bytes",
+                    report.root.display(),
+                    report.release,
+                    report.sequence,
+                    report.tier,
+                    report.data_date,
+                    report.files,
+                    report.bytes
+                );
+            }
+        }
+        MirrorAction::Verify { root, key } => {
+            let report = copy::verify(&root, &key.load()?)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else if report.problems == 0 {
+                println!(
+                    "{}: all {} files match release {} (sequence {})",
+                    report.root.display(),
+                    report.files,
+                    report.release,
+                    report.sequence
+                );
+            } else {
+                for p in &report.listed {
+                    println!("{p}");
+                }
+                if report.problems > report.listed.len() {
+                    println!("... and {} more", report.problems - report.listed.len());
+                }
+            }
+            if report.problems > 0 {
+                bail!(
+                    "{} of {} files in {} don't match release {}",
+                    report.problems,
+                    report.files,
+                    report.root.display(),
+                    report.release
+                );
+            }
+        }
+        MirrorAction::Scan { root, key } => {
+            let report = copy::scan(&root, &key.load()?)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+                return Ok(());
+            }
+            println!(
+                "{}: release {} (sequence {}), tier {}, data as of {}",
+                report.root.display(),
+                report.release,
+                report.sequence,
+                report
+                    .tiers
+                    .iter()
+                    .map(|t| t.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                report.data_date
+            );
+            for c in &report.components {
+                let state = match (c.missing, c.wrong_size) {
+                    (0, 0) => "complete".to_string(),
+                    (m, w) => format!("{m} missing, {w} at the wrong size"),
+                };
+                println!(
+                    "  {:<13} {:<16} {:>7} files  {}",
+                    c.id, c.version, c.files, state
+                );
+            }
+            for m in &report.missing {
+                println!("  {m}");
+            }
+            if report.extra.is_empty() {
+                println!("no files outside the release");
+            } else {
+                println!(
+                    "{} files ({} bytes) not in the release, e.g.:",
+                    report.extra.len(),
+                    report.extra_bytes
+                );
+                for e in report.extra.iter().take(copy::MAX_LISTED) {
+                    println!("  {e}");
+                }
+            }
+        }
+    }
+    Ok(())
 }

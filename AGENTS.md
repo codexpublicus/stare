@@ -1225,6 +1225,24 @@ version for people, linked from /about, the landing, `llms.txt` and the README; 
 release key, which `web/tests/selfhost.test.js` checks against the published key and the kit
 README.
 
+`stare mirror` (#338, `crates/stare-cli/src/mirror/`) is the client for the signed releases
+at `data.stare.pub/releases/` (`stare-mirror-release` 1.x). `install <root>` reads
+`latest.json` and `release.json` and checks both minisign signatures against the release key
+built into the binary (`release::RELEASE_KEY`, the kit README's; `--pubkey` for another),
+refuses another format major or a `signing.public_key` that isn't the key, checks the
+torrent's infohashes and pieces root, every component's `files.json.gz` and `SHA256SUMS`, and
+the tier 1 tar's SHA-256 and v2 pieces root, extracts it into `<root>.partial/tree` (regular
+files, directories and sibling symlinks only), checks every file, pointer and symlink, copies
+the signed list into `mirror/releases/<release>/` and renames the tree into place. Origins are
+`--origin`s first, then data.stare.pub's and mirror.stare.pub's releases bases, then the
+list's `origins`; every pinned file is checked wherever it came from, and a mismatch moves on
+to the next origin. HTTPS only, apart from loopback. `verify` rehashes a copy offline against
+the release `mirror/mirror.json` names, its list's signature checked again; `scan` checks
+sizes and lists files outside the release (`mirror/releases/` excepted). `tests/mirror.rs`
+builds signed fixture releases with a key made per test and installs them from a directory
+and over the loopback server, resuming a half-downloaded tar. `sync`, `export` and `serve`
+aren't built yet.
+
 ### Archival PDFs and CourtListener records
 
 The archival per-volume PDF pipeline (#51) and the CourtListener bulk-export pipeline (#83)
