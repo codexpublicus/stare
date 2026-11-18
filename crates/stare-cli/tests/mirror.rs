@@ -1,6 +1,7 @@
 //! `stare mirror install`, `verify` and `scan` against fixture releases laid out as
-//! data.stare.pub/releases/ lays out a real one (`stare-mirror-release` 1.0.0), signed
-//! with a key made for the test, served from a directory and over a loopback HTTP server.
+//! data.stare.pub/releases/ lays out a real one (`stare-mirror-release` 1.0.0, and 1.1.0
+//! with its per-file copies), signed with a key made for the test, served from a directory
+//! and over a loopback HTTP server.
 
 mod common;
 
@@ -117,11 +118,22 @@ fn copy_files() -> Vec<ComponentFiles> {
     ]
 }
 
-/// Tar entries beyond the copy's files, to test what extraction refuses.
+/// Tar entries beyond the copy's files, to test what extraction refuses, or a 1.1.0
+/// release, which also publishes the site and kit files under each component version's
+/// `files/` and the release's pointer files under its `pointers/`, with `files_base` and
+/// `pointer_files` in `release.json`.
 enum Extra {
     None,
     Symlink(&'static str, &'static str),
+    Format110,
 }
+
+/// The pointer files the fixture copy has.
+const POINTERS: &[&str] = &[
+    "mirror/mirror.json",
+    "mirror/idx/manifest.json",
+    "mirror/data/crk/errata.json",
+];
 
 struct Fixture {
     dir: tempfile::TempDir,
@@ -152,6 +164,8 @@ fn build_with(signer: Signer, extra: Extra) -> Fixture {
     let base = dir.path().join("releases");
     let stage = dir.path().join("stage");
     let comps = copy_files();
+    let v110 = matches!(extra, Extra::Format110);
+    let format_version = if v110 { "1.1.0" } else { "1.0.0" };
 
     // The copy, staged.
     for (_, _, files) in &comps {
@@ -199,11 +213,20 @@ fn build_with(signer: Signer, extra: Extra) -> Fixture {
             "index" => "mirror/idx".to_string(),
             _ => "mirror/data/crk".to_string(),
         };
+        let files_base = (v110 && matches!(*id, "site" | "kit")).then(|| {
+            let fb = format!("{cpath}/files/");
+            for (p, d) in files {
+                let rel = p.strip_prefix(&format!("{root}/")).unwrap();
+                put(&base.join(&fb).join(rel), d);
+            }
+            fb
+        });
         comp_entries.push(serde_json::json!({
             "id": id, "version": version, "tier": 1, "root": root,
             "files": files.len(), "bytes": files.iter().map(|f| f.1.len()).sum::<usize>(),
             "files_json": pinned(&format!("{cpath}/files.json.gz"), &fj),
             "sha256sums": pinned(&format!("{cpath}/SHA256SUMS"), sums.as_bytes()),
+            "files_base": files_base,
             "pack": null, "torrent": null, "license": null,
         }));
     }
@@ -254,8 +277,18 @@ fn build_with(signer: Signer, extra: Extra) -> Fixture {
     put(&base.join(&tor_rel), &torrent);
 
     let pointer = hash_reader(&mirror_json[..]).unwrap();
-    let release = serde_json::json!({
-        "format": "stare-mirror-release", "format_version": "1.0.0", "release": RELEASE,
+    let pointer_files: Vec<serde_json::Value> = POINTERS
+        .iter()
+        .filter(|_| v110)
+        .map(|p| {
+            let d = std::fs::read(stage.join(p)).unwrap();
+            put(&base.join(RELEASE).join("pointers").join(p), &d);
+            let h = hash_reader(&d[..]).unwrap();
+            serde_json::json!({"path": p, "sha256": h.sha256, "bytes": h.bytes, "btv2": h.btv2})
+        })
+        .collect();
+    let mut release = serde_json::json!({
+        "format": "stare-mirror-release", "format_version": format_version, "release": RELEASE,
         "created": "2026-11-20T00:00:00Z", "previous": "v2026.11.11", "sequence": 2,
         "upstream": "https://stare.pub", "data_date": "2026-11-08",
         "site": {"version": "v2026.11.20.1", "commit": "0", "component": "site"},
@@ -284,6 +317,10 @@ fn build_with(signer: Signer, extra: Extra) -> Fixture {
             "published_at": "https://stare.pub/.well-known/stare-release-key.pub",
         },
     });
+    if v110 {
+        release["pointer_files"] =
+            serde_json::json!({"base": format!("{RELEASE}/pointers/"), "files": pointer_files});
+    }
     let rj = serde_json::to_vec_pretty(&release).unwrap();
     put(&base.join(RELEASE).join("release.json"), &rj);
     put(
@@ -564,4 +601,40 @@ fn copy_dir(from: &Path, to: &Path) {
             std::fs::copy(entry.path(), dest).unwrap();
         }
     }
+}
+
+#[test]
+fn a_1_1_0_release_with_per_file_copies_installs_and_verifies() {
+    let fx = build(Extra::Format110);
+    // The fixture really is 1.1.0, with its per-file copies beside the release.
+    let rj: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(fx.base().join(RELEASE).join("release.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(rj["format_version"], "1.1.0");
+    assert_eq!(rj["pointer_files"]["files"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        std::fs::read(
+            fx.base()
+                .join("components/site/v2026.11.20.1/files/about/index.html")
+        )
+        .unwrap(),
+        b"about"
+    );
+    assert!(fx
+        .base()
+        .join(RELEASE)
+        .join("pointers/mirror/idx/manifest.json")
+        .is_file());
+
+    // A 1.x reader installs it from the tar, as it would a 1.0.0 release.
+    let out = tempfile::tempdir().unwrap();
+    let root = out.path().join("copy");
+    let report = copy::install(&root, opts(&fx, vec![fx.base_str()])).unwrap();
+    assert_eq!((report.release.as_str(), report.files), (RELEASE, 7));
+    let v = copy::verify(&root, &fx.signer.key()).unwrap();
+    assert_eq!((v.problems, v.files, v.release.as_str()), (0, 7, RELEASE));
+    let s = copy::scan(&root, &fx.signer.key()).unwrap();
+    assert!(s.extra.is_empty(), "{:?}", s.extra);
+    assert!(s.missing.is_empty());
 }
